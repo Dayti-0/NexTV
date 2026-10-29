@@ -76,4 +76,14 @@ Points d'extension :
 ./gradlew :app:assembleDebug    # application (SDK Android requis)
 ```
 
-La CI GitHub Actions exécute les tests du cœur, la compilation de l'application et le lint Android.
+La CI GitHub Actions exécute les tests du cœur, la compilation de l'application (debug et release) et le lint Android.
+
+## Publication
+
+Pousser un tag `v*` (ex. `git tag v0.1.0 && git push origin v0.1.0`) déclenche le workflow `Release` :
+tests, APK release (R8) puis publication d'une release GitHub avec l'APK et son empreinte SHA-256
+(versions `v0.*` ou `*-…` publiées en pré-version).
+
+Signature : définir dans les secrets du dépôt `NEXTV_KEYSTORE_BASE64` (keystore encodé en base64),
+`NEXTV_KEYSTORE_PASSWORD`, `NEXTV_KEY_ALIAS` et `NEXTV_KEY_PASSWORD`. En leur absence, l'APK est signé avec
+une clé de test temporaire : il s'installe, mais chaque nouvelle version impose de désinstaller la précédente.

@@ -1,0 +1,83 @@
+name: Release
+
+# Publication d'une version : `git tag v0.1.0 && git push origin v0.1.0`.
+# Signature : définir les secrets NEXTV_KEYSTORE_BASE64, NEXTV_KEYSTORE_PASSWORD, NEXTV_KEY_ALIAS
+# et NEXTV_KEY_PASSWORD. Sans eux, l'APK est signé avec une clé de test temporaire.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish release APK
+    runs-on: ubuntu-latest
+    env:
+      KEYSTORE_BASE64: ${{ secrets.NEXTV_KEYSTORE_BASE64 }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Decode signing key
+        if: env.KEYSTORE_BASE64 != ''
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+          echo "NEXTV_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      - name: Test core module
+        run: ./gradlew -p core test --stacktrace
+
+      - name: Build release APK
+        env:
+          NEXTV_KEYSTORE_PASSWORD: ${{ secrets.NEXTV_KEYSTORE_PASSWORD }}
+          NEXTV_KEY_ALIAS: ${{ secrets.NEXTV_KEY_ALIAS }}
+          NEXTV_KEY_PASSWORD: ${{ secrets.NEXTV_KEY_PASSWORD }}
+        run: |
+          ./gradlew :app:assembleRelease --stacktrace \
+            -Pnextv.versionName="${GITHUB_REF_NAME#v}" \
+            -Pnextv.versionCode="${GITHUB_RUN_NUMBER}"
+
+      - name: Prepare release assets
+        run: |
+          APK="NexTV-${GITHUB_REF_NAME}.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$APK"
+          sha256sum "$APK" > "$APK.sha256"
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            SIGNING="Signé avec la clé de publication du projet."
+          else
+            SIGNING="⚠️ Version de test signée avec une clé temporaire : désinstallez la version précédente avant d'installer celle-ci."
+          fi
+          cat > notes.md <<NOTES
+          Version ${GITHUB_REF_NAME#v} de NexTV (Android 7.0+, téléphone, tablette et Android TV).
+
+          **Sources prises en charge**
+          - Playlists M3U/M3U8 distantes (HTTP/HTTPS, redirections suivies) ou importées depuis un fichier de l'appareil
+          - Playlists protégées par identifiants (HTTP Basic), chiffrés sur l'appareil et masqués dans les journaux
+          - Flux HTTP/HTTPS (HLS, DASH, progressif) lus avec Media3 ; RTSP/UDP en mode limité
+          - Guides EPG XMLTV distants ou locaux (.xml, .xml.gz), y compris ceux annoncés par la playlist (url-tvg)
+          - Plusieurs playlists : ajout, modification, suppression, actualisation
+          - Proxy HTTP/SOCKS configurable pour les playlists, l'EPG et les flux
+
+          **Installation** : téléchargez \`${APK}\`, autorisez l'installation depuis des sources inconnues puis ouvrez le fichier.
+
+          ${SIGNING}
+          NOTES
+          echo "APK=$APK" >> "$GITHUB_ENV"
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PRERELEASE=""
+          case "$GITHUB_REF_NAME" in v0.*|*-*) PRERELEASE="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" "$APK" "$APK.sha256" \
+            --title "NexTV ${GITHUB_REF_NAME}" \
+            --notes-file notes.md \
+            $PRERELEASE

@@ -7,6 +7,9 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+// Clé de publication fournie par l'environnement (secrets CI) ; jamais versionnée.
+val releaseKeystorePath: String? = providers.environmentVariable("NEXTV_KEYSTORE_FILE").orNull
+
 android {
     namespace = "tv.nextv.app"
     compileSdk = 36
@@ -15,8 +18,19 @@ android {
         applicationId = "tv.nextv.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = providers.gradleProperty("nextv.versionCode").orNull?.toIntOrNull() ?: 1
+        versionName = providers.gradleProperty("nextv.versionName").orNull ?: "0.1.0"
+    }
+
+    signingConfigs {
+        if (releaseKeystorePath != null) {
+            create("release") {
+                storeFile = file(releaseKeystorePath)
+                storePassword = providers.environmentVariable("NEXTV_KEYSTORE_PASSWORD").orNull
+                keyAlias = providers.environmentVariable("NEXTV_KEY_ALIAS").orNull
+                keyPassword = providers.environmentVariable("NEXTV_KEY_PASSWORD").orNull
+            }
+        }
     }
 
     buildTypes {
@@ -24,6 +38,8 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // Sans clé de publication, l'APK est signé avec la clé de debug : installable pour les tests.
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 

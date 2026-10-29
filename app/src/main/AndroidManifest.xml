@@ -12,6 +12,10 @@
     <uses-feature
         android:name="android.hardware.touchscreen"
         android:required="false" />
+    <!-- Implicite avec CHANGE_WIFI_MULTICAST_STATE : les box TV en Ethernet seul doivent rester compatibles. -->
+    <uses-feature
+        android:name="android.hardware.wifi"
+        android:required="false" />
 
     <application
         android:name=".NexTvApplication"
