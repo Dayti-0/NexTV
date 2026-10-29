@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">NexTV</string>
+
+    <!-- Actions -->
+    <string name="action_add_source">Ajouter</string>
+    <string name="action_back">Retour</string>
+    <string name="action_cancel">Annuler</string>
+    <string name="action_delete">Supprimer</string>
+    <string name="action_edit">Modifier</string>
+    <string name="action_hide">Masquer</string>
+    <string name="action_ok">OK</string>
+    <string name="action_refresh">Actualiser</string>
+    <string name="action_refresh_all">Tout actualiser</string>
+    <string name="action_refresh_epg">Guide</string>
+    <string name="action_retry">Réessayer</string>
+    <string name="action_save">Enregistrer</string>
+    <string name="action_show">Afficher</string>
+
+    <!-- Liste des sources -->
+    <string name="sources_title">Playlists</string>
+    <string name="sources_empty_title">Aucune playlist</string>
+    <string name="sources_empty_message">Ajoutez une playlist M3U/M3U8 par son URL (HTTP ou HTTPS) ou importez un fichier depuis l’appareil.</string>
+    <string name="location_kind_remote">URL</string>
+    <string name="location_kind_local">Fichier local</string>
+    <string name="location_local_file">Fichier local</string>
+    <string name="status_never_loaded">Jamais chargée</string>
+    <string name="status_refreshing">Actualisation en cours…</string>
+    <string name="status_channels">%1$d chaînes · mise à jour %2$s</string>
+    <string name="status_epg">Guide : %1$d programmes, %2$d chaînes associées</string>
+    <string name="status_epg_error">Guide : %1$s</string>
+    <string name="warning_truncated">Playlist tronquée : trop d’entrées.</string>
+    <string name="warning_single_stream">L’URL désigne directement un flux vidéo : une seule chaîne.</string>
+    <string name="warning_unsupported_streams">Certaines chaînes utilisent un flux non pris en charge.</string>
+    <string name="delete_title">Supprimer la playlist ?</string>
+    <string name="delete_message">« %1$s », ses chaînes, son guide et ses identifiants enregistrés seront supprimés.</string>
+    <string name="refresh_success">%1$s : %2$d chaînes chargées</string>
+    <string name="refresh_epg_success">%1$s : %2$d programmes chargés</string>
+    <string name="refresh_failure">%1$s : %2$s</string>
+
+    <!-- Édition d’une source -->
+    <string name="editor_title_new">Nouvelle playlist</string>
+    <string name="editor_title_edit">Modifier la playlist</string>
+    <string name="editor_name">Nom</string>
+    <string name="editor_name_hint">Déduit de l’adresse si vide</string>
+    <string name="editor_section_source">Source</string>
+    <string name="editor_mode_url">Playlist distante (URL HTTP/HTTPS)</string>
+    <string name="editor_mode_file">Fichier de l’appareil</string>
+    <string name="editor_url">URL de la playlist M3U/M3U8</string>
+    <string name="editor_url_help">Les redirections sont suivies. Une URL de flux (HLS…) donne une chaîne unique.</string>
+    <string name="editor_file_help">Fichier .m3u ou .m3u8. Il est relu à chaque actualisation.</string>
+    <string name="editor_file_not_persisted">Ce fournisseur de fichiers n’accorde pas d’accès durable : le fichier pourra devoir être sélectionné à nouveau.</string>
+    <string name="editor_pick_file">Choisir un fichier</string>
+    <string name="editor_no_file">Aucun fichier sélectionné</string>
+    <string name="editor_no_picker">Aucun sélecteur de fichiers n’est disponible sur cet appareil.</string>
+    <string name="editor_section_credentials">Identifiants (facultatif)</string>
+    <string name="editor_credentials_help">Pour les serveurs protégés par authentification HTTP Basic. Ils sont chiffrés sur l’appareil et jamais écrits dans les journaux.</string>
+    <string name="editor_credentials_stored">Des identifiants sont enregistrés. Laissez les champs vides pour les conserver.</string>
+    <string name="editor_credentials_remove">Supprimer les identifiants enregistrés</string>
+    <string name="editor_username">Nom d’utilisateur</string>
+    <string name="editor_password">Mot de passe</string>
+    <string name="editor_user_agent">User-Agent (facultatif)</string>
+    <string name="editor_user_agent_help">Certains serveurs exigent un User-Agent précis.</string>
+    <string name="editor_section_epg">Guide des programmes (EPG)</string>
+    <string name="editor_epg_none">Pas de guide spécifique</string>
+    <string name="editor_epg_url">Guide XMLTV distant (URL)</string>
+    <string name="editor_epg_file">Fichier XMLTV de l’appareil (.xml ou .xml.gz)</string>
+    <string name="editor_epg_url_label">URL du guide XMLTV (.xml ou .xml.gz)</string>
+    <string name="editor_epg_file_help">Fichier .xml ou .xml.gz, relu à chaque actualisation.</string>
+    <string name="editor_epg_header">Utiliser aussi le guide annoncé par la playlist (url-tvg)</string>
+    <string name="editor_save_and_load">Enregistrer et charger</string>
+
+    <!-- Chaînes -->
+    <string name="channels_search">Rechercher une chaîne</string>
+    <string name="channels_all">Toutes (%1$d)</string>
+    <string name="channels_no_group">Sans groupe</string>
+    <string name="channels_empty">Aucune chaîne chargée pour le moment.</string>
+    <string name="channels_no_match">Aucune chaîne ne correspond à la recherche.</string>
+    <string name="channels_now">En cours : %1$s</string>
+    <string name="stream_limited">Limité</string>
+    <string name="stream_unsupported_short">Non pris en charge</string>
+    <string name="stream_unsupported">Ce flux ne peut pas être lu par le lecteur.</string>
+    <string name="stream_issue_scheme">Protocole non pris en charge (seuls HTTP, HTTPS, RTSP et UDP sont lus).</string>
+    <string name="stream_issue_relative">Adresse relative dans un fichier local : impossible de la résoudre.</string>
+    <string name="stream_issue_malformed">Adresse du flux invalide.</string>
+    <string name="stream_issue_drm">Contenu protégé par DRM : lecture non prise en charge.</string>
+    <string name="stream_issue_no_proxy">Le proxy ne s’applique pas à ce protocole.</string>
+    <string name="stream_issue_multicast">Flux multicast : nécessite un réseau qui le diffuse.</string>
+
+    <!-- Lecteur -->
+    <string name="player_now">%1$s · %2$s</string>
+    <string name="player_next">Ensuite %1$s · %2$s</string>
+    <string name="player_error_title">Lecture impossible</string>
+    <string name="player_channel_missing">Cette chaîne n’existe plus (playlist actualisée ou supprimée).</string>
+    <string name="player_error_connection">Connexion au serveur du flux impossible.</string>
+    <string name="player_error_timeout">Le serveur du flux ne répond pas (délai dépassé).</string>
+    <string name="player_error_proxy_hint">La lecture passe par le proxy configuré : vérifiez qu’il est joignable.</string>
+    <string name="player_error_auth">Le serveur du flux exige une authentification ou a refusé les identifiants.</string>
+    <string name="player_error_forbidden">Accès au flux refusé (abonnement, nombre de connexions, zone géographique…).</string>
+    <string name="player_error_not_found">Flux introuvable sur le serveur.</string>
+    <string name="player_error_http">Le serveur du flux a répondu par une erreur HTTP %1$d.</string>
+    <string name="player_error_http_unknown">Le serveur du flux a répondu par une erreur HTTP.</string>
+    <string name="player_error_content_type">Le serveur n’a pas renvoyé un flux vidéo.</string>
+    <string name="player_error_format_unsupported">Format de flux non pris en charge.</string>
+    <string name="player_error_malformed">Flux invalide ou corrompu.</string>
+    <string name="player_error_codec">Codec vidéo ou audio non pris en charge par cet appareil.</string>
+    <string name="player_error_audio">Erreur de sortie audio.</string>
+    <string name="player_error_generic">Erreur de lecture (%1$s).</string>
+
+    <!-- Réglages : proxy -->
+    <string name="settings_title">Réglages</string>
+    <string name="settings_saved">Réglages enregistrés</string>
+    <string name="proxy_enable">Utiliser un proxy</string>
+    <string name="proxy_description">Pour les playlists, guides et flux distants.</string>
+    <string name="proxy_type">Type de proxy</string>
+    <string name="proxy_type_http">HTTP (HTTPS via CONNECT)</string>
+    <string name="proxy_type_socks">SOCKS</string>
+    <string name="proxy_host">Hôte</string>
+    <string name="proxy_port">Port</string>
+    <string name="proxy_username">Nom d’utilisateur (facultatif)</string>
+    <string name="proxy_password">Mot de passe</string>
+    <string name="proxy_socks_no_auth">L’authentification n’est pas prise en charge pour les proxys SOCKS.</string>
+    <string name="proxy_scopes">Appliquer le proxy à</string>
+    <string name="proxy_scope_playlists">Playlists et logos des chaînes</string>
+    <string name="proxy_scope_epg">Guides EPG</string>
+    <string name="proxy_scope_streams">Flux vidéo HTTP/HTTPS (HLS, DASH…)</string>
+    <string name="proxy_bypass_local">Ne pas l’utiliser pour le réseau local</string>
+    <string name="proxy_limits">Les fichiers de l’appareil ne passent jamais par le proxy. Les flux RTSP et UDP sont lus directement, sans proxy.</string>
+    <string name="proxy_problem_missing_host">Indiquez l’hôte du proxy.</string>
+    <string name="proxy_problem_invalid_host">Hôte invalide : indiquez seulement le nom ou l’adresse IP, sans « http:// » ni chemin.</string>
+    <string name="proxy_problem_invalid_port">Port invalide (1 à 65535).</string>
+    <string name="proxy_problem_socks_auth">L’authentification n’est pas prise en charge pour un proxy SOCKS.</string>
+    <string name="proxy_problem_username">Le nom d’utilisateur ne peut pas contenir « : ».</string>
+    <string name="proxy_problem_no_scope">Choisissez au moins un type de requête.</string>
+
+    <!-- Erreurs de source -->
+    <string name="error_url_empty">Indiquez une adresse.</string>
+    <string name="error_url_missing_scheme">L’adresse doit commencer par http:// ou https://.</string>
+    <string name="error_url_malformed">Adresse invalide.</string>
+    <string name="error_invalid_characters">Caractères non autorisés.</string>
+    <string name="error_unsupported_scheme">Le protocole « %1$s » n’est pas pris en charge ici (HTTP ou HTTPS uniquement).</string>
+    <string name="error_unsupported_source_type">Type de source non pris en charge par cette version.</string>
+    <string name="error_timeout">Le serveur ne répond pas (délai dépassé).</string>
+    <string name="error_unknown_host">Serveur introuvable : %1$s. Vérifiez l’adresse et la connexion.</string>
+    <string name="error_connection_failed">Connexion au serveur impossible.</string>
+    <string name="error_tls">Connexion sécurisée impossible (certificat invalide ou non reconnu).</string>
+    <string name="error_too_many_redirects">Trop de redirections (boucle probable).</string>
+    <string name="error_unsupported_redirect">Le serveur redirige vers une adresse non prise en charge.</string>
+    <string name="error_cleartext">Connexion HTTP non chiffrée refusée par le système.</string>
+    <string name="error_http">Le serveur a répondu par une erreur HTTP %1$d.</string>
+    <string name="error_http_forbidden">Accès refusé par le serveur (HTTP 403).</string>
+    <string name="error_http_not_found">Fichier introuvable sur le serveur (HTTP 404).</string>
+    <string name="error_http_server">Erreur du serveur (HTTP %1$d). Réessayez plus tard.</string>
+    <string name="error_auth_required">Ce serveur exige des identifiants.</string>
+    <string name="error_auth_failed">Identifiants refusés par le serveur.</string>
+    <string name="error_auth_scheme">Le serveur utilise une authentification non prise en charge (%1$s).</string>
+    <string name="error_proxy_unreachable">Proxy injoignable. Vérifiez son adresse et son port.</string>
+    <string name="error_proxy_auth_required">Le proxy exige des identifiants valides.</string>
+    <string name="error_proxy_failure">Le proxy n’a pas pu joindre le serveur.</string>
+    <string name="error_network">Erreur réseau pendant le téléchargement.</string>
+    <string name="error_file_not_found">Fichier introuvable : il a peut-être été déplacé ou supprimé.</string>
+    <string name="error_permission_denied">Accès au fichier perdu. Sélectionnez-le à nouveau.</string>
+    <string name="error_empty">Le contenu reçu est vide.</string>
+    <string name="error_html">Le serveur a renvoyé une page web au lieu d’une playlist (abonnement expiré, portail captif ?).</string>
+    <string name="error_not_a_playlist">Ce contenu n’est pas une playlist M3U.</string>
+    <string name="error_no_channels">La playlist ne contient aucune chaîne.</string>
+    <string name="error_invalid_xmltv">Ce contenu n’est pas un guide XMLTV valide.</string>
+    <string name="error_too_large">Contenu trop volumineux (limite : %1$d Mo).</string>
+    <string name="error_unknown">Erreur inattendue.</string>
+</resources>

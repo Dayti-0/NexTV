@@ -1,0 +1,116 @@
+name: Release
+
+# Publication d'une version, au choix :
+#  - pousser un tag :                git tag v0.1.0 && git push origin v0.1.0
+#  - pousser une branche de version : release/v0.1.0 (ou claude/release-v0.1.0)
+#  - lancer le workflow à la main (onglet Actions) avec la version voulue.
+# Le tag est créé par la publication s'il n'existe pas encore.
+# Signature : définir les secrets NEXTV_KEYSTORE_BASE64, NEXTV_KEYSTORE_PASSWORD, NEXTV_KEY_ALIAS
+# et NEXTV_KEY_PASSWORD. Sans eux, l'APK est signé avec une clé de test temporaire.
+
+on:
+  push:
+    tags: ["v*"]
+    branches: ["release/v*", "claude/release-v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version à publier (ex. v0.2.0)"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish release APK
+    runs-on: ubuntu-latest
+    env:
+      KEYSTORE_BASE64: ${{ secrets.NEXTV_KEYSTORE_BASE64 }}
+    steps:
+      - name: Resolve version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            TAG="$INPUT_VERSION"
+          elif [ "${GITHUB_REF#refs/tags/}" != "$GITHUB_REF" ]; then
+            TAG="$GITHUB_REF_NAME"
+          else
+            TAG="${GITHUB_REF_NAME##*release[-/]}"
+          fi
+          if ! printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+            echo "::error::Version invalide : '$TAG' (attendu : vX.Y.Z ou vX.Y.Z-suffixe)"
+            exit 1
+          fi
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Decode signing key
+        if: env.KEYSTORE_BASE64 != ''
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+          echo "NEXTV_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      - name: Test core module
+        run: ./gradlew -p core test --stacktrace
+
+      - name: Build release APK
+        env:
+          NEXTV_KEYSTORE_PASSWORD: ${{ secrets.NEXTV_KEYSTORE_PASSWORD }}
+          NEXTV_KEY_ALIAS: ${{ secrets.NEXTV_KEY_ALIAS }}
+          NEXTV_KEY_PASSWORD: ${{ secrets.NEXTV_KEY_PASSWORD }}
+        run: |
+          ./gradlew :app:assembleRelease --stacktrace \
+            -Pnextv.versionName="$VERSION" \
+            -Pnextv.versionCode="${GITHUB_RUN_NUMBER}"
+
+      - name: Prepare release assets
+        run: |
+          APK="NexTV-${TAG}.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$APK"
+          sha256sum "$APK" > "$APK.sha256"
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            SIGNING="Signé avec la clé de publication du projet."
+          else
+            SIGNING="⚠️ Version de test signée avec une clé temporaire : désinstallez la version précédente avant d'installer celle-ci."
+          fi
+          cat > notes.md <<NOTES
+          Version ${VERSION} de NexTV (Android 7.0+, téléphone, tablette et Android TV).
+
+          **Sources prises en charge**
+          - Playlists M3U/M3U8 distantes (HTTP/HTTPS, redirections suivies) ou importées depuis un fichier de l'appareil
+          - Playlists protégées par identifiants (HTTP Basic), chiffrés sur l'appareil et masqués dans les journaux
+          - Flux HTTP/HTTPS (HLS, DASH, progressif) lus avec Media3 ; RTSP/UDP en mode limité
+          - Guides EPG XMLTV distants ou locaux (.xml, .xml.gz), y compris ceux annoncés par la playlist (url-tvg)
+          - Plusieurs playlists : ajout, modification, suppression, actualisation
+          - Proxy HTTP/SOCKS configurable pour les playlists, l'EPG et les flux
+
+          **Installation** : téléchargez \`${APK}\`, autorisez l'installation depuis des sources inconnues puis ouvrez le fichier.
+
+          ${SIGNING}
+          NOTES
+          echo "APK=$APK" >> "$GITHUB_ENV"
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PRERELEASE=""
+          case "$TAG" in v0.*|*-*) PRERELEASE="--prerelease" ;; esac
+          gh release create "$TAG" "$APK" "$APK.sha256" \
+            --target "$GITHUB_SHA" \
+            --title "NexTV ${TAG}" \
+            --notes-file notes.md \
+            $PRERELEASE

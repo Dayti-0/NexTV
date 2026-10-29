@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Beaucoup de serveurs IPTV (et de serveurs du réseau local) ne servent que du HTTP en clair :
+    il est autorisé pour les playlists, les guides et les flux. HTTPS reste vérifié avec les
+    autorités de certification du système.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
