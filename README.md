@@ -80,9 +80,10 @@ La CI GitHub Actions exécute les tests du cœur, la compilation de l'applicatio
 
 ## Publication
 
-Pousser un tag `v*` (ex. `git tag v0.1.0 && git push origin v0.1.0`) déclenche le workflow `Release` :
-tests, APK release (R8) puis publication d'une release GitHub avec l'APK et son empreinte SHA-256
-(versions `v0.*` ou `*-…` publiées en pré-version).
+Le workflow `Release` se déclenche en poussant un tag `v*` (ex. `git tag v0.1.0 && git push origin v0.1.0`),
+une branche `release/vX.Y.Z`, ou manuellement depuis l'onglet Actions avec la version voulue.
+Il exécute les tests, construit l'APK release (R8) puis publie une release GitHub avec l'APK et son
+empreinte SHA-256, en créant le tag s'il n'existe pas (versions `v0.*` ou `*-…` publiées en pré-version).
 
 Signature : définir dans les secrets du dépôt `NEXTV_KEYSTORE_BASE64` (keystore encodé en base64),
 `NEXTV_KEYSTORE_PASSWORD`, `NEXTV_KEY_ALIAS` et `NEXTV_KEY_PASSWORD`. En leur absence, l'APK est signé avec
