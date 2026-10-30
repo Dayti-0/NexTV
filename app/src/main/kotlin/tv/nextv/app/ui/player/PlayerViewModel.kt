@@ -2,6 +2,7 @@ package tv.nextv.app.ui.player
 
 import android.content.Context
 import android.net.wifi.WifiManager
+import java.io.File
 import androidx.annotation.OptIn
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -39,7 +40,11 @@ import tv.nextv.app.data.db.ChannelEntity
 import tv.nextv.app.data.db.ChannelListRow
 import tv.nextv.app.data.db.GroupRow
 import tv.nextv.app.data.db.HeaderCodec
+import tv.nextv.app.data.progress.ProgressEntity
+import tv.nextv.app.data.progress.ProgressRepository
 import tv.nextv.app.player.PlaybackRequest
+import tv.nextv.app.player.TimeshiftBuffer
+import tv.nextv.app.player.TimeshiftRecorder
 import tv.nextv.app.player.VideoDecoders
 import tv.nextv.app.player.describePlaybackError
 import tv.nextv.app.ui.common.describe
@@ -81,6 +86,25 @@ data class PlayerUiState(
     val channelVersion: Int = 0,
     /** Détails techniques de la lecture en cours (panneau « Infos de lecture »). */
     val info: PlaybackInfo = PlaybackInfo(),
+    /** Direct en pause. */
+    val paused: Boolean = false,
+    /** Début de la pause en cours (le retard sur le direct augmente pendant la pause). */
+    val pausedAtMillis: Long? = null,
+    /** Retard sur le direct accumulé par les pauses précédentes. */
+    val liveDelayMs: Long = 0,
+    /** Film ou épisode déjà commencé : choix entre reprendre et recommencer. */
+    val resumePrompt: ResumePrompt? = null,
+)
+
+/**
+ * @property resumeLabel épisode à reprendre (« S01E08 »), `null` pour un film.
+ * @property startLabel épisode demandé, s'il diffère de celui à reprendre.
+ */
+data class ResumePrompt(
+    val title: String,
+    val resumeLabel: String?,
+    val positionMs: Long,
+    val startLabel: String?,
 )
 
 /** Ce que le lecteur décode réellement : formats, décodeurs, images perdues. */
@@ -171,6 +195,17 @@ class PlayerViewModel(
 
     /** Qualité que l'appareil n'a pas su décoder (images perdues), retenue d'une chaîne à l'autre. */
     private var decoderCeilingRank: Int? = null
+
+    // Différé du direct.
+    private var timeshift: TimeshiftBuffer? = null
+    private var recorder: TimeshiftRecorder? = null
+    private var playingTimeshift = false
+    private var playingAsHls = false
+
+    // Reprise de lecture des films et épisodes.
+    private var resumeMode: String = handle.get<String>(ARG_RESUME) ?: RESUME_ASK
+    private var startPositionMs = 0L
+    private var pendingResume: Pair<ChannelEntity, ProgressEntity>? = null
     private val bandwidthMeter: DefaultBandwidthMeter = container.playerFactory.newBandwidthMeter()
 
     private val listener = object : Player.Listener {
@@ -178,6 +213,7 @@ class PlayerViewModel(
             when (playbackState) {
                 Player.STATE_BUFFERING -> switcher?.onBufferingStarted()
                 Player.STATE_READY -> switcher?.onReady()
+                Player.STATE_ENDED -> onEnded()
             }
             mutableState.update { it.copy(buffering = playbackState == Player.STATE_BUFFERING) }
         }
@@ -239,6 +275,7 @@ class PlayerViewModel(
         override fun onDroppedVideoFrames(eventTime: AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long) {
             updateInfo { it.copy(droppedFrames = it.droppedFrames + droppedFrames) }
             // L'appareil ne suit pas cette qualité (4K sur une petite box…) : version inférieure si elle existe.
+            if (timeshift != null) return
             val decision = switcher?.onDroppedFrames(droppedFrames)
             if (decision is QualitySwitcher.Decision.Switch) {
                 decoderCeilingRank = switcher?.decoderCeilingRank
@@ -280,8 +317,16 @@ class PlayerViewModel(
             while (true) {
                 delay(QUALITY_CHECK_MILLIS)
                 val estimate = state.value.bandwidthMbps?.let { (it * 1_000_000).toLong() }
+                if (timeshift != null) continue
                 val decision = switcher?.evaluate(estimate)
                 if (decision is QualitySwitcher.Decision.Switch) switchQuality(decision)
+            }
+        }
+        // Position des films et épisodes, pour la reprise de lecture.
+        viewModelScope.launch {
+            while (true) {
+                delay(PROGRESS_SAVE_MILLIS)
+                saveProgress()
             }
         }
     }
@@ -324,6 +369,7 @@ class PlayerViewModel(
     }
 
     private fun load(id: Long) {
+        stopTimeshift()
         channelId = id
         handle[ARG_CHANNEL_ID] = id
         loadJob?.cancel()
@@ -377,6 +423,8 @@ class PlayerViewModel(
             )
         }
         refreshProgrammes()
+        if (isLive) startPositionMs = 0
+        if (!isLive && handleResume(requested)) return
         val firstId = switcher?.current?.channelId ?: startId
         val variant = if (firstId == requested.id) requested else dao.get(firstId) ?: requested
         playVariant(variant, notice = null)
@@ -384,6 +432,7 @@ class PlayerViewModel(
 
     /** Lance la lecture d'une version précise de la chaîne. */
     private suspend fun playVariant(variant: ChannelEntity, notice: String?) {
+        stopTimeshift()
         playing = variant
         val stream = variant.toStream()
         mutableState.update {
@@ -441,10 +490,13 @@ class PlayerViewModel(
         val playbackRequest = request ?: return
         releasePlayer()
         mutableState.update { it.copy(info = PlaybackInfo()) }
+        playingAsHls = forceHls || playbackRequest.stream.format == StreamFormat.HLS
         val player = container.playerFactory.create(playbackRequest, bandwidthMeter, preferredDecoders).apply {
             addListener(listener)
             addAnalyticsListener(analytics)
-            setMediaItem(container.playerFactory.mediaItem(playbackRequest.stream, forceHls))
+            val item = container.playerFactory.mediaItem(playbackRequest.stream, forceHls)
+            // Position de départ seulement pour une reprise : un direct démarre au plus près du direct.
+            if (startPositionMs > 0) setMediaItem(item, startPositionMs) else setMediaItem(item)
             playWhenReady = true
             prepare()
         }
@@ -455,10 +507,17 @@ class PlayerViewModel(
     private fun handleError(error: PlaybackException) {
         val player = mutablePlayer.value ?: return
         val playbackRequest = request ?: return
+        if (playingTimeshift) {
+            // Enregistrement du différé interrompu : retour au direct.
+            container.logger.warn(TAG, "Différé interrompu (${error.errorCodeName})", error)
+            backToLive()
+            return
+        }
         if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
-            // Direct trop en retard sur la fenêtre disponible : on revient au direct.
+            // Direct trop en retard sur la fenêtre disponible (pause trop longue) : on revient au direct.
             player.seekToDefaultPosition()
             player.prepare()
+            mutableState.update { it.copy(liveDelayMs = 0, paused = false, pausedAtMillis = null) }
             return
         }
         val format = playbackRequest.stream.format
@@ -505,6 +564,205 @@ class PlayerViewModel(
         val player = mutablePlayer.value ?: return
         resumeOnStart = player.playWhenReady
         player.pause()
+        viewModelScope.launch { saveProgress() }
+    }
+
+    // --- Pause du direct et différé -------------------------------------------------------------
+
+    /** Pause / lecture. En direct, la pause crée un différé ; le retard sur le direct est affiché. */
+    fun togglePause() {
+        val player = mutablePlayer.value ?: return
+        if (!state.value.isLive) {
+            if (player.isPlaying) player.pause() else player.play()
+            return
+        }
+        if (state.value.paused) resumeLive(player) else pauseLive(player)
+    }
+
+    private fun pauseLive(player: ExoPlayer) {
+        player.pause()
+        val now = System.currentTimeMillis()
+        val playback = request
+        // Flux continu (MPEG-TS…) : le serveur le coupe si on cesse de le lire. Il est donc
+        // enregistré pendant la pause, puis relu depuis l'enregistrement.
+        if (timeshift == null && playback != null && !playingAsHls && playback.stream.format in RECORDABLE_FORMATS) {
+            val buffer = TimeshiftBuffer(File(context.cacheDir, TIMESHIFT_FILE), timeshiftLimit())
+            val call = container.playerFactory.liveCall(playback)
+            timeshift = buffer
+            recorder = TimeshiftRecorder(call, buffer).also { it.start() }
+        }
+        mutableState.update { it.copy(paused = true, pausedAtMillis = now) }
+    }
+
+    private fun resumeLive(player: ExoPlayer) {
+        val since = state.value.pausedAtMillis ?: System.currentTimeMillis()
+        val delay = state.value.liveDelayMs + (System.currentTimeMillis() - since)
+        val buffer = timeshift
+        if (buffer != null && !playingTimeshift) {
+            startTimeshiftPlayback(buffer)
+        } else {
+            player.play()
+        }
+        mutableState.update { it.copy(paused = false, pausedAtMillis = null, liveDelayMs = delay) }
+    }
+
+    /** Lecture depuis l'enregistrement du différé. */
+    private fun startTimeshiftPlayback(buffer: TimeshiftBuffer) {
+        val playbackRequest = request ?: return
+        releasePlayer()
+        playingTimeshift = true
+        val player = container.playerFactory.create(playbackRequest, bandwidthMeter, preferredDecoders).apply {
+            addListener(listener)
+            addAnalyticsListener(analytics)
+            setMediaSource(container.playerFactory.timeshiftSource(buffer))
+            playWhenReady = true
+            prepare()
+        }
+        mutablePlayer.value = player
+    }
+
+    /** Retour au direct : fin du différé. */
+    fun backToLive() {
+        val wasDelayed = state.value.liveDelayMs > 0 || state.value.paused
+        val hadRecording = timeshift != null
+        stopTimeshift()
+        if (!wasDelayed && !hadRecording) return
+        val player = mutablePlayer.value
+        if (!hadRecording && player != null) {
+            // HLS : le lecteur rejoint le direct dans la fenêtre du serveur.
+            player.seekToDefaultPosition()
+            player.play()
+        } else {
+            start(forceHls = playingAsHls && request?.stream?.format != StreamFormat.HLS)
+        }
+    }
+
+    private fun stopTimeshift() {
+        recorder?.stop()
+        recorder = null
+        timeshift?.release()
+        timeshift = null
+        playingTimeshift = false
+        mutableState.update { it.copy(paused = false, pausedAtMillis = null, liveDelayMs = 0) }
+    }
+
+    private fun timeshiftLimit(): Long = minOf(TIMESHIFT_MAX_BYTES, context.cacheDir.usableSpace / 2)
+
+    private fun onEnded() {
+        if (playingTimeshift) {
+            // Fin de l'enregistrement (limite atteinte ou flux arrêté) : retour au direct.
+            backToLive()
+            return
+        }
+        if (!state.value.isLive) {
+            val player = mutablePlayer.value ?: return
+            viewModelScope.launch { saveProgress(positionMs = player.duration, durationMs = player.duration) }
+        }
+    }
+
+    // --- Reprise de lecture -----------------------------------------------------------------------
+
+    /** @return vrai si la lecture attend le choix « reprendre / recommencer » (ou reprend un autre épisode). */
+    private suspend fun handleResume(requested: ChannelEntity): Boolean {
+        val mode = resumeMode
+        resumeMode = RESUME_ASK
+        startPositionMs = 0
+        if (mode == RESUME_NO) return false
+        val progress = container.progress.get(requested.sourceId, requested.itemKey) ?: return false
+        val sameItem = progress.channelId == requested.id
+        if (mode == RESUME_YES) {
+            if (sameItem) {
+                startPositionMs = progress.positionMs
+                return false
+            }
+            resumeOther(progress)
+            return true
+        }
+        if (sameItem && progress.positionMs <= 0) return false
+        pendingResume = requested to progress
+        mutableState.update {
+            it.copy(
+                buffering = false,
+                resumePrompt = ResumePrompt(
+                    title = progress.title,
+                    resumeLabel = progress.episodeLabel,
+                    positionMs = progress.positionMs,
+                    startLabel = if (sameItem) null else episodeLabel(requested),
+                ),
+            )
+        }
+        return true
+    }
+
+    /** Choix fait dans la question « reprendre / recommencer ». */
+    fun answerResume(resume: Boolean) {
+        val (requested, progress) = pendingResume ?: return
+        pendingResume = null
+        mutableState.update { it.copy(resumePrompt = null, buffering = true) }
+        viewModelScope.launch {
+            when {
+                !resume -> {
+                    startPositionMs = 0
+                    playVariant(requested, notice = null)
+                }
+                progress.channelId == requested.id -> {
+                    startPositionMs = progress.positionMs
+                    playVariant(requested, notice = null)
+                }
+                else -> resumeOther(progress)
+            }
+        }
+    }
+
+    /** Reprend un autre épisode (celui en cours dans la série). */
+    private fun resumeOther(progress: ProgressEntity) {
+        resumeMode = RESUME_YES
+        load(progress.channelId)
+    }
+
+    /** Enregistre la position du film ou de l'épisode en cours. */
+    private suspend fun saveProgress(positionMs: Long? = null, durationMs: Long? = null) {
+        val item = playing ?: return
+        if (item.kind == ContentKind.LIVE.name || state.value.resumePrompt != null) return
+        val player = mutablePlayer.value
+        val position = positionMs ?: player?.currentPosition ?: return
+        val duration = (durationMs ?: player?.duration ?: 0).takeIf { it > 0 } ?: 0
+        val entity = ProgressEntity(
+            sourceId = item.sourceId,
+            itemKey = item.itemKey,
+            kind = item.kind,
+            channelId = item.id,
+            title = if (item.kind == ContentKind.SERIES.name) item.seriesName ?: item.title else item.title,
+            episodeLabel = if (item.kind == ContentKind.SERIES.name) episodeLabel(item) else null,
+            logoUrl = item.logoUrl,
+            positionMs = position,
+            durationMs = duration,
+            updatedAt = System.currentTimeMillis(),
+        )
+        val finished = duration > 0 && (duration - position < ProgressRepository.END_MARGIN_MS || position >= duration * 95 / 100)
+        if (finished && item.kind == ContentKind.SERIES.name) {
+            // Épisode terminé : la série reprendra à l'épisode suivant.
+            val episodes = container.channelDao.episodes(item.sourceId, item.itemKey)
+            val next = episodes.getOrNull(episodes.indexOfFirst { it.id == item.id } + 1)
+            if (next != null) {
+                val nextEntity = container.channelDao.get(next.id)
+                container.progress.saveNext(entity.copy(channelId = next.id, episodeLabel = nextEntity?.let(::episodeLabel)))
+            } else {
+                container.progress.clear(item.sourceId, item.itemKey)
+            }
+            return
+        }
+        container.progress.save(entity)
+    }
+
+    private fun episodeLabel(item: ChannelEntity): String? {
+        val season = item.season
+        val episode = item.episode
+        return when {
+            season != null && episode != null -> "S%02dE%02d".format(season, episode)
+            episode != null -> "E%02d".format(episode)
+            else -> null
+        }
     }
 
     private fun ChannelEntity.toStream() = StreamDescriptor(
@@ -539,12 +797,36 @@ class PlayerViewModel(
     }
 
     override fun onCleared() {
+        // Dernière position (le ViewModel disparaît : enregistrement dans la portée de l'application).
+        val player = mutablePlayer.value
+        val item = playing
+        if (player != null && item != null && item.kind != ContentKind.LIVE.name && state.value.resumePrompt == null) {
+            val position = player.currentPosition
+            val duration = player.duration
+            container.applicationScope.launch { saveProgress(position, duration) }
+        }
+        stopTimeshift()
         releasePlayer()
         releaseMulticastLock()
     }
 
     companion object {
         const val ARG_CHANNEL_ID = "channelId"
+        const val ARG_RESUME = "resume"
+
+        /** Demander s'il faut reprendre un film ou un épisode commencé. */
+        const val RESUME_ASK = "ask"
+
+        /** Reprendre sans demander (catégorie « Reprendre la lecture », bouton « Reprendre »). */
+        const val RESUME_YES = "yes"
+
+        /** Depuis le début, sans demander. */
+        const val RESUME_NO = "no"
+
+        private const val PROGRESS_SAVE_MILLIS = 10_000L
+        private const val TIMESHIFT_FILE = "timeshift.ts"
+        private const val TIMESHIFT_MAX_BYTES = 4L * 1024 * 1024 * 1024
+        private val RECORDABLE_FORMATS = setOf(StreamFormat.PROGRESSIVE, StreamFormat.UNKNOWN)
         private const val TAG = "Player"
         private const val PROGRAMME_REFRESH_MILLIS = 30_000L
         private const val QUALITY_CHECK_MILLIS = 2_000L

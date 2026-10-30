@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import tv.nextv.app.AppContainer
 import tv.nextv.app.data.catalog.MetadataState
+import tv.nextv.app.data.progress.ProgressEntity
 import tv.nextv.app.data.db.EpisodeRow
 import tv.nextv.core.meta.MediaType
 import tv.nextv.core.meta.TmdbError
@@ -33,6 +34,8 @@ data class DetailUiState(
     val seasons: List<Season> = emptyList(),
     val selectedSeason: Int = 0,
     val missing: Boolean = false,
+    /** Lecture en cours (film commencé, épisode en cours de la série). */
+    val progress: ProgressEntity? = null,
 )
 
 /** Fiche d'un film ou d'une série : données de la playlist, enrichies par TMDB si possible. */
@@ -67,6 +70,11 @@ class DetailViewModel(
             mutableState.update { it.copy(seasons = seasons) }
         }
 
+        viewModelScope.launch {
+            container.progress.observe(entity.sourceId, entity.itemKey).collect { progress ->
+                mutableState.update { it.copy(progress = progress) }
+            }
+        }
         viewModelScope.launch {
             container.favorites.observeKeys(entity.sourceId).collect { keys ->
                 mutableState.update { it.copy(isFavorite = entity.itemKey in keys) }

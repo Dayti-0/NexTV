@@ -18,6 +18,8 @@ import kotlinx.coroutines.launch
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import tv.nextv.app.data.catalog.FavoritesRepository
+import tv.nextv.app.data.progress.ProgressDatabase
+import tv.nextv.app.data.progress.ProgressRepository
 import tv.nextv.app.data.catalog.MetadataRepository
 import tv.nextv.app.data.db.NexTvDatabase
 import tv.nextv.app.data.db.RoomPlaylistStore
@@ -122,6 +124,9 @@ class AppContainer(context: Context) {
     )
 
     val favorites = FavoritesRepository(database)
+
+    /** Reprise de lecture des films et séries (base distincte, sans migration de celle des playlists). */
+    val progress = ProgressRepository(ProgressDatabase.create(appContext))
 
     fun hasTmdbKey(): Boolean = tmdbKey.value != null || BuildConfig.TMDB_API_KEY.isNotBlank()
 

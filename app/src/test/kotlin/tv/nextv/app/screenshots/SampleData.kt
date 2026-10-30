@@ -1,6 +1,7 @@
 package tv.nextv.app.screenshots
 
 import tv.nextv.app.data.catalog.MetadataState
+import tv.nextv.app.data.progress.ProgressEntity
 import tv.nextv.app.data.db.ChannelListRow
 import tv.nextv.app.data.db.EpisodeRow
 import tv.nextv.app.data.db.GroupRow
@@ -287,6 +288,14 @@ object SampleData {
         proxyEnabled = false,
         version = "0.2.0",
     )
+
+    val continueSeries = listOf(
+        ProgressEntity(1, "series:enquêtes en série", "SERIES", 2_018, "Enquêtes en série", "S01E08", null, 754_000, 2_700_000, NOW),
+        ProgressEntity(1, "series:les héritiers", "SERIES", 2_109, "Les Héritiers", "S02E03", null, 0, 0, NOW - 3_600_000),
+        ProgressEntity(1, "series:code atlas", "SERIES", 2_501, "Code Atlas", "S01E02", null, 1_800_000, 3_000_000, NOW - 86_400_000),
+    )
+
+    val movieProgress = ProgressEntity(1, "movie:le grand voyage", "MOVIE", 1_000, "Le Grand Voyage", null, null, 2_530_000, 7_080_000, NOW)
 
     val playbackInfo = PlaybackInfo(
         videoMimeType = "video/hevc",

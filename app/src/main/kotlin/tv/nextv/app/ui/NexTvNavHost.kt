@@ -27,7 +27,7 @@ private object Routes {
     const val HOME = "home"
     const val PLAYLISTS = "playlists"
     const val EDITOR = "editor?${SourceEditorViewModel.ARG_SOURCE_ID}={${SourceEditorViewModel.ARG_SOURCE_ID}}"
-    const val PLAYER = "player/{${PlayerViewModel.ARG_CHANNEL_ID}}"
+    const val PLAYER = "player/{${PlayerViewModel.ARG_CHANNEL_ID}}?${PlayerViewModel.ARG_RESUME}={${PlayerViewModel.ARG_RESUME}}"
     const val MOVIE = "movie/{$ARG_ITEM}"
     const val SERIES = "series/{$ARG_ITEM}"
     const val SETTINGS = "settings"
@@ -35,7 +35,7 @@ private object Routes {
 
     fun startup(reload: Boolean = false) = "startup?${StartupViewModel.ARG_RELOAD}=$reload"
     fun editor(sourceId: Long? = null) = "editor?${SourceEditorViewModel.ARG_SOURCE_ID}=${sourceId ?: -1}"
-    fun player(channelId: Long) = "player/$channelId"
+    fun player(channelId: Long, resume: String = PlayerViewModel.RESUME_ASK) = "player/$channelId?${PlayerViewModel.ARG_RESUME}=$resume"
     fun movie(channelId: Long) = "movie/$channelId"
     fun series(channelId: Long) = "series/$channelId"
 }
@@ -74,6 +74,7 @@ fun NexTvNavHost() {
                 onMovie = { navController.navigate(Routes.movie(it)) },
                 onSeries = { navController.navigate(Routes.series(it)) },
                 onSettings = { navController.navigate(Routes.SETTINGS) },
+                onResume = { navController.navigate(Routes.player(it, PlayerViewModel.RESUME_YES)) },
             )
         }
         composable(
@@ -85,6 +86,8 @@ fun NexTvNavHost() {
                 kind = ContentKind.MOVIE,
                 onPlay = { navController.navigate(Routes.player(it)) },
                 onBack = { navController.popBackStack() },
+                onResume = { navController.navigate(Routes.player(it, PlayerViewModel.RESUME_YES)) },
+                onRestart = { navController.navigate(Routes.player(it, PlayerViewModel.RESUME_NO)) },
             )
         }
         composable(
@@ -96,11 +99,19 @@ fun NexTvNavHost() {
                 kind = ContentKind.SERIES,
                 onPlay = { navController.navigate(Routes.player(it)) },
                 onBack = { navController.popBackStack() },
+                onResume = { navController.navigate(Routes.player(it, PlayerViewModel.RESUME_YES)) },
+                onRestart = { navController.navigate(Routes.player(it, PlayerViewModel.RESUME_NO)) },
             )
         }
         composable(
             Routes.PLAYER,
-            arguments = listOf(navArgument(PlayerViewModel.ARG_CHANNEL_ID) { type = NavType.LongType }),
+            arguments = listOf(
+                navArgument(PlayerViewModel.ARG_CHANNEL_ID) { type = NavType.LongType },
+                navArgument(PlayerViewModel.ARG_RESUME) {
+                    type = NavType.StringType
+                    defaultValue = PlayerViewModel.RESUME_ASK
+                },
+            ),
         ) {
             PlayerScreen(onBack = { navController.popBackStack() })
         }

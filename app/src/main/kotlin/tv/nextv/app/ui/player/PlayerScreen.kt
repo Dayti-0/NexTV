@@ -124,10 +124,11 @@ fun PlayerScreen(onBack: () -> Unit) {
     var bannerVisible by remember { mutableStateOf(true) }
     var infoVisible by rememberSaveable { mutableStateOf(false) }
     val rootFocus = remember { FocusRequester() }
-    val now by produceState(System.currentTimeMillis()) {
+    // Pendant une pause du direct, chaque seconde (retard sur le direct affiché) ; sinon toutes les 5 s.
+    val now by produceState(System.currentTimeMillis(), state.paused) {
         while (true) {
-            delay(5_000)
             value = System.currentTimeMillis()
+            delay(if (state.paused) 1_000 else 5_000)
         }
     }
 
@@ -158,18 +159,31 @@ fun PlayerScreen(onBack: () -> Unit) {
             .fillMaxSize()
             .background(Color.Black)
             .onPreviewKeyEvent { event ->
-                if (event.type != KeyEventType.KeyDown || menu.open) return@onPreviewKeyEvent false
+                if (event.type != KeyEventType.KeyDown || menu.open || state.resumePrompt != null) return@onPreviewKeyEvent false
+                val delayed = state.paused || state.liveDelayMs > 0
                 when (event.key) {
                     Key.ChannelUp -> true.also { viewModel.zap(+1) }
                     Key.ChannelDown -> true.also { viewModel.zap(-1) }
                     Key.DirectionUp -> state.isLive.also { if (it) viewModel.zap(+1) }
                     Key.DirectionDown -> state.isLive.also { if (it) viewModel.zap(-1) }
-                    // En erreur, OK relance la lecture ; sinon il affiche le bandeau.
+                    // En erreur, OK relance la lecture ; bandeau affiché : pause / lecture ; sinon il affiche le bandeau.
                     Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> when {
                         !state.isLive -> false
                         state.error != null -> true.also { viewModel.retry() }
+                        bannerVisible || state.paused -> true.also {
+                            viewModel.togglePause()
+                            bannerTrigger++
+                        }
                         else -> true.also { bannerTrigger++ }
                     }
+                    Key.MediaPlayPause, Key.MediaPlay, Key.MediaPause -> state.isLive.also {
+                        if (it) {
+                            viewModel.togglePause()
+                            bannerTrigger++
+                        }
+                    }
+                    // Différé : retour au direct.
+                    Key.DirectionRight, Key.MediaFastForward -> (state.isLive && delayed).also { if (it) viewModel.backToLive() }
                     Key.Info, Key.Menu -> true.also { infoVisible = !infoVisible }
                     Key.Guide -> true.also { bannerTrigger++ }
                     else -> false
@@ -190,7 +204,8 @@ fun PlayerScreen(onBack: () -> Unit) {
                 view.player = player
                 // Direct : pas de barre de lecture, OK affiche le bandeau. Film / épisode : commandes Media3.
                 view.useController = !state.isLive
-                if (!state.isLive) view.requestFocus()
+                // Film / épisode : focus sur le lecteur (commandes Media3), sans le reprendre à ses commandes.
+                if (!state.isLive && state.resumePrompt == null && !view.hasFocus()) view.requestFocus()
             },
             onRelease = { view -> view.player = null },
             modifier = Modifier.fillMaxSize(),
@@ -199,7 +214,7 @@ fun PlayerScreen(onBack: () -> Unit) {
         PlayerOverlay(
             state = state,
             now = now,
-            visible = (bannerVisible || state.error != null) && !menu.open,
+            visible = (bannerVisible || state.error != null || state.paused) && !menu.open && state.resumePrompt == null,
             showTouchControls = !window.isTv,
             onBack = onBack,
             onZap = viewModel::zap,
@@ -213,6 +228,10 @@ fun PlayerScreen(onBack: () -> Unit) {
             visible = infoVisible && !menu.open,
             modifier = Modifier.align(Alignment.TopEnd),
         )
+
+        state.resumePrompt?.let { prompt ->
+            ResumePromptCard(prompt, onAnswer = viewModel::answerResume, modifier = Modifier.align(Alignment.Center))
+        }
 
         ChannelMenu(
             menu = menu,
@@ -261,6 +280,13 @@ fun PlayerOverlay(
                         monogramSize = 24.dp,
                     )
                     ChannelInfo(state, now, Modifier.weight(1f))
+                    // Heure actuelle.
+                    Text(
+                        timeOf(now),
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = Color.White,
+                        modifier = Modifier.align(Alignment.Top),
+                    )
                     if (showTouchControls && state.isLive) {
                         Column {
                             IconAction(Icons.Filled.KeyboardArrowUp, stringResource(R.string.player_next_channel), { onZap(+1) }, tint = Color.White)
@@ -328,7 +354,15 @@ private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Mo
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            if (state.isLive) StatusPill(stringResource(R.string.player_live), NexTvColors.Live, Modifier.align(Alignment.CenterVertically))
+            if (state.isLive) {
+                val delay = liveDelay(state, now)
+                if (state.paused) StatusPill(stringResource(R.string.player_paused), NexTvColors.Warning, Modifier.align(Alignment.CenterVertically))
+                if (delay >= 1_000) {
+                    StatusPill(stringResource(R.string.player_delay, formatClock(delay)), NexTvColors.Warning, Modifier.align(Alignment.CenterVertically))
+                } else if (!state.paused) {
+                    StatusPill(stringResource(R.string.player_live), NexTvColors.Live, Modifier.align(Alignment.CenterVertically))
+                }
+            }
             state.quality?.let { Badge(it, Modifier.align(Alignment.CenterVertically), color = NexTvColors.Primary) }
             state.bandwidthMbps?.let { SpeedLabel(it, Modifier.align(Alignment.CenterVertically)) }
         }
@@ -359,6 +393,9 @@ private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Mo
         }
         state.qualityNotice?.let {
             Text(it, style = MaterialTheme.typography.bodySmall, color = NexTvColors.Warning)
+        }
+        if (state.isLive && (state.paused || state.liveDelayMs > 0)) {
+            Text(stringResource(R.string.player_timeshift_hint), style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.75f))
         }
         state.notices.forEach {
             Text(it, style = MaterialTheme.typography.bodySmall, color = NexTvColors.Warning)
@@ -637,4 +674,52 @@ private fun channelsLabel(count: Int): String = when (count) {
     6 -> "5.1"
     8 -> "7.1"
     else -> stringResource(R.string.player_info_channels, count)
+}
+
+/** Retard sur le direct, pause en cours comprise. */
+private fun liveDelay(state: PlayerUiState, now: Long): Long =
+    state.liveDelayMs + (state.pausedAtMillis?.let { (now - it).coerceAtLeast(0) } ?: 0)
+
+/** « 4:05 », « 1:02:03 ». */
+fun formatClock(millis: Long): String {
+    val total = millis / 1_000
+    val hours = total / 3_600
+    val minutes = total % 3_600 / 60
+    val seconds = total % 60
+    return if (hours > 0) "%d:%02d:%02d".format(hours, minutes, seconds) else "%d:%02d".format(minutes, seconds)
+}
+
+/** Film ou épisode déjà commencé : reprendre (épisode en cours pour une série) ou recommencer. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun ResumePromptCard(prompt: ResumePrompt, onAnswer: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+    val resumeFocus = remember { FocusRequester() }
+    LaunchedEffect(prompt) { runCatching { resumeFocus.requestFocus() } }
+    val resumeText = when {
+        prompt.resumeLabel == null -> stringResource(R.string.player_resume_at, formatClock(prompt.positionMs))
+        prompt.positionMs > 0 -> stringResource(R.string.player_resume_episode_at, prompt.resumeLabel, formatClock(prompt.positionMs))
+        else -> stringResource(R.string.player_resume_next_episode, prompt.resumeLabel)
+    }
+    val restartText = prompt.startLabel?.let { stringResource(R.string.player_restart_episode, it) }
+        ?: stringResource(R.string.player_restart)
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = MaterialTheme.shapes.large,
+        modifier = modifier.padding(24.dp).widthIn(max = 620.dp),
+    ) {
+        Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text(stringResource(R.string.player_resume_title), style = MaterialTheme.typography.titleLarge)
+            Text(prompt.title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                PillButton(
+                    resumeText,
+                    { onAnswer(true) },
+                    icon = Icons.Filled.PlayArrow,
+                    style = PillStyle.Primary,
+                    modifier = Modifier.focusRequester(resumeFocus),
+                )
+                PillButton(restartText, { onAnswer(false) }, icon = Icons.Filled.Refresh)
+            }
+        }
+    }
 }

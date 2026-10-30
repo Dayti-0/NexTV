@@ -189,6 +189,8 @@ fun PosterCard(
     onLongClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
     moving: Boolean = false,
+    /** Part déjà regardée (reprise de lecture), barre en bas de l'affiche. */
+    progress: Float? = null,
 ) {
     FocusSurface(
         onClick = onClick,
@@ -201,6 +203,7 @@ fun PosterCard(
             Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f)) {
                 PosterImage(title, imageUrl, Modifier.fillMaxSize())
                 if (isFavorite) FavoriteStar(Modifier.align(Alignment.TopEnd).padding(8.dp))
+                progress?.let { LiveProgress(0, 1_000, (it * 1_000).toLong(), Modifier.align(Alignment.BottomCenter).padding(8.dp)) }
             }
             Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
                 Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)

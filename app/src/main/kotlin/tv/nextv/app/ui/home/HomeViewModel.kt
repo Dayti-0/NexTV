@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import tv.nextv.app.AppContainer
+import tv.nextv.app.data.progress.ProgressEntity
 import tv.nextv.app.R
 import tv.nextv.app.data.db.ChannelListRow
 import tv.nextv.app.data.db.GroupRow
@@ -44,6 +45,9 @@ enum class HomeSection { TV, MOVIES, SERIES, GUIDE }
 sealed interface Category {
     data object Favorites : Category
     data object All : Category
+
+    /** Films et séries commencés (reprise de lecture). */
+    data object ContinueWatching : Category
 
     /** [title] vide : éléments sans groupe. */
     data class Group(val title: String) : Category
@@ -121,7 +125,7 @@ class HomeViewModel(
      */
     val channels: Flow<PagingData<ChannelListRow>> = filterFor(HomeSection.TV)
         .flatMapLatest { (id, c, q) ->
-            if (c == Category.Favorites) {
+            if (c == Category.Favorites || c == Category.ContinueWatching) {
                 emptyFlow()
             } else {
                 pager { dao.pageChannels(id, c.filterFlag(), c.groupTitle(), q, System.currentTimeMillis()) }
@@ -135,7 +139,7 @@ class HomeViewModel(
 
     val movies: Flow<PagingData<MovieRow>> = filterFor(HomeSection.MOVIES)
         .flatMapLatest { (id, c, q) ->
-            if (c == Category.Favorites) emptyFlow() else pager { dao.pageMovies(id, c.filterFlag(), c.groupTitle(), q) }
+            if (c == Category.Favorites || c == Category.ContinueWatching) emptyFlow() else pager { dao.pageMovies(id, c.filterFlag(), c.groupTitle(), q) }
         }
         .cachedIn(viewModelScope)
 
@@ -145,13 +149,28 @@ class HomeViewModel(
 
     val series: Flow<PagingData<SeriesRow>> = filterFor(HomeSection.SERIES)
         .flatMapLatest { (id, c, q) ->
-            if (c == Category.Favorites) emptyFlow() else pager { dao.pageSeries(id, c.filterFlag(), c.groupTitle(), q) }
+            if (c == Category.Favorites || c == Category.ContinueWatching) emptyFlow() else pager { dao.pageSeries(id, c.filterFlag(), c.groupTitle(), q) }
         }
         .cachedIn(viewModelScope)
 
     val favoriteSeries: StateFlow<List<SeriesRow>> = sourceId.filterNotNull()
         .flatMapLatest { dao.observeFavoriteSeries(it) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Films et séries commencés, du plus récent au plus ancien. */
+    val continueMovies: StateFlow<List<ProgressEntity>> = sourceId.flatMapLatest { id ->
+        if (id == null) flowOf(emptyList()) else container.progress.observeAll(id, ContentKind.MOVIE.name)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val continueSeries: StateFlow<List<ProgressEntity>> = sourceId.flatMapLatest { id ->
+        if (id == null) flowOf(emptyList()) else container.progress.observeAll(id, ContentKind.SERIES.name)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Retire un film ou une série de « Reprendre la lecture ». */
+    fun clearProgress(itemKey: String) {
+        val id = sourceId.value ?: return
+        viewModelScope.launch { container.progress.clear(id, itemKey) }
+    }
 
     fun selectSection(target: HomeSection) {
         section.value = target

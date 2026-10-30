@@ -36,6 +36,8 @@ import tv.nextv.app.ui.home.HomeSection
 import tv.nextv.app.ui.home.ReorderState
 import tv.nextv.app.ui.player.ChannelMenu
 import tv.nextv.app.ui.player.PlaybackInfoPanel
+import tv.nextv.app.ui.player.ResumePrompt
+import tv.nextv.app.ui.player.ResumePromptCard
 import tv.nextv.app.ui.player.PlayerOverlay
 import tv.nextv.app.ui.settings.ProxySettingsContent
 import tv.nextv.app.ui.settings.SettingsContent
@@ -112,6 +114,11 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
+    fun homeContinue() = capture("08b_reprendre") {
+        Home(HomeSection.SERIES, Category.ContinueWatching)
+    }
+
+    @Test
     fun guide() = capture("09_guide") {
         Home(HomeSection.GUIDE, Category.All)
     }
@@ -131,6 +138,20 @@ abstract class ScreenshotSuite(private val device: String) {
     fun movie() = capture("11_fiche_film") {
         DetailContent(
             state = SampleData.movieDetail,
+            kind = ContentKind.MOVIE,
+            snackbarHostState = remember { SnackbarHostState() },
+            onPlay = {},
+            onTrailer = {},
+            onToggleFavorite = {},
+            onSelectSeason = {},
+            onBack = {},
+        )
+    }
+
+    @Test
+    fun movieInProgress() = capture("11b_fiche_film_reprise") {
+        DetailContent(
+            state = SampleData.movieDetail.copy(progress = SampleData.movieProgress),
             kind = ContentKind.MOVIE,
             snackbarHostState = remember { SnackbarHostState() },
             onPlay = {},
@@ -176,6 +197,21 @@ abstract class ScreenshotSuite(private val device: String) {
         PlayerOverlay(state = state, now = SampleData.NOW, visible = false, showTouchControls = false, onBack = {}, onZap = {}, onRetry = {})
         Box(Modifier.fillMaxSize()) {
             PlaybackInfoPanel(state = state, visible = true, modifier = Modifier.align(Alignment.TopEnd))
+        }
+    }
+
+    @Test
+    fun playerPaused() = capture("13c_lecteur_pause") {
+        FakeVideo()
+        val state = SampleData.player.copy(paused = true, pausedAtMillis = SampleData.NOW - 83_000, qualityNotice = null)
+        PlayerOverlay(state = state, now = SampleData.NOW, visible = true, showTouchControls = device == "phone", onBack = {}, onZap = {}, onRetry = {})
+    }
+
+    @Test
+    fun resumePrompt() = capture("13d_reprise") {
+        FakeVideo()
+        Box(Modifier.fillMaxSize()) {
+            ResumePromptCard(ResumePrompt("Enquêtes en série", "S01E08", 754_000, "S01E01"), onAnswer = {}, modifier = Modifier.align(Alignment.Center))
         }
     }
 
@@ -305,6 +341,8 @@ abstract class ScreenshotSuite(private val device: String) {
             now = SampleData.NOW,
             snackbarHostState = remember { SnackbarHostState() },
             actions = HomeActions(),
+            continueSeries = SampleData.continueSeries,
+            continueMovies = listOf(SampleData.movieProgress),
             guide = { modifier ->
                 GuideContent(
                     state = SampleData.guide,

@@ -27,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -62,6 +63,7 @@ import tv.nextv.app.R
 import tv.nextv.app.data.catalog.MetadataState
 import tv.nextv.app.data.db.EpisodeRow
 import tv.nextv.app.ui.common.appViewModel
+import tv.nextv.app.ui.player.formatClock
 import tv.nextv.app.ui.components.FocusSurface
 import tv.nextv.app.ui.components.IconAction
 import tv.nextv.app.ui.components.PillButton
@@ -77,7 +79,14 @@ import tv.nextv.core.model.ContentKind
 import java.text.NumberFormat
 
 @Composable
-fun DetailScreen(channelId: Long, kind: ContentKind, onPlay: (Long) -> Unit, onBack: () -> Unit) {
+fun DetailScreen(
+    channelId: Long,
+    kind: ContentKind,
+    onPlay: (Long) -> Unit,
+    onBack: () -> Unit,
+    onResume: (Long) -> Unit = onPlay,
+    onRestart: (Long) -> Unit = onPlay,
+) {
     val viewModel = appViewModel(key = "detail-$kind-$channelId") { container, _ -> DetailViewModel(container, channelId, kind) }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -89,6 +98,8 @@ fun DetailScreen(channelId: Long, kind: ContentKind, onPlay: (Long) -> Unit, onB
         kind = kind,
         snackbarHostState = snackbar,
         onPlay = onPlay,
+        onResume = onResume,
+        onRestart = onRestart,
         onTrailer = { key -> if (!openTrailer(context, key)) scope.launch { snackbar.showSnackbar(noTrailerApp) } },
         onToggleFavorite = viewModel::toggleFavorite,
         onSelectSeason = viewModel::selectSeason,
@@ -125,13 +136,18 @@ fun DetailContent(
     onToggleFavorite: () -> Unit,
     onSelectSeason: (Int) -> Unit,
     onBack: () -> Unit,
+    /** Reprendre le film ou l'épisode en cours, sans question. */
+    onResume: (Long) -> Unit = onPlay,
+    /** Film recommencé depuis le début, sans question. */
+    onRestart: (Long) -> Unit = onPlay,
 ) {
     val window = rememberWindowInfo()
     val item = state.item
     val details = (state.metadata as? MetadataState.Available)?.details
     val title = details?.title?.takeIf { it.isNotBlank() } ?: item?.title.orEmpty()
     val playFocus = remember { FocusRequester() }
-    LaunchedEffect(item != null) { if (item != null && window.isTv) runCatching { playFocus.requestFocus() } }
+    // Focus sur « Reprendre » s'il existe (la reprise est connue juste après la fiche), sinon sur « Lecture ».
+    LaunchedEffect(item != null, state.progress != null) { if (item != null && window.isTv) runCatching { playFocus.requestFocus() } }
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background, snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
@@ -195,13 +211,37 @@ fun DetailContent(
                                 } else {
                                     item?.firstId
                                 }
+                                val progress = state.progress
+                                if (progress != null) {
+                                    PillButton(
+                                        when {
+                                            progress.episodeLabel == null -> stringResource(R.string.player_resume_at, formatClock(progress.positionMs))
+                                            progress.positionMs > 0 ->
+                                                stringResource(R.string.player_resume_episode_at, progress.episodeLabel, formatClock(progress.positionMs))
+                                            else -> stringResource(R.string.player_resume_next_episode, progress.episodeLabel)
+                                        },
+                                        { onResume(progress.channelId) },
+                                        icon = Icons.Filled.PlayArrow,
+                                        style = PillStyle.Primary,
+                                        modifier = Modifier.focusRequester(playFocus),
+                                    )
+                                }
+                                // Film déjà commencé : « Depuis le début » (sans question). Série : premier épisode,
+                                // le lecteur propose alors de reprendre l'épisode en cours.
+                                val restartMovie = progress != null && kind == ContentKind.MOVIE
                                 PillButton(
-                                    stringResource(if (kind == ContentKind.SERIES) R.string.detail_play_episode else R.string.detail_play),
-                                    { playTarget?.let(onPlay) },
-                                    icon = Icons.Filled.PlayArrow,
-                                    style = PillStyle.Primary,
+                                    stringResource(
+                                        when {
+                                            restartMovie -> R.string.player_restart
+                                            kind == ContentKind.SERIES -> R.string.detail_play_episode
+                                            else -> R.string.detail_play
+                                        },
+                                    ),
+                                    { playTarget?.let(if (restartMovie) onRestart else onPlay) },
+                                    icon = if (restartMovie) Icons.Filled.Refresh else Icons.Filled.PlayArrow,
+                                    style = if (progress == null) PillStyle.Primary else PillStyle.Secondary,
                                     enabled = playTarget != null,
-                                    modifier = Modifier.focusRequester(playFocus),
+                                    modifier = if (progress == null) Modifier.focusRequester(playFocus) else Modifier,
                                 )
                                 details?.trailerYoutubeKey?.let { key ->
                                     PillButton(stringResource(R.string.detail_trailer), { onTrailer(key) }, icon = NexTvIcons.Movie)

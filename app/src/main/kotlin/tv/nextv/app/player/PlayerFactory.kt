@@ -5,13 +5,19 @@ import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.MediaSource
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
+import okhttp3.Call
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import tv.nextv.core.model.Credentials
 import tv.nextv.core.model.StreamDescriptor
 import tv.nextv.core.model.StreamFormat
@@ -54,23 +60,9 @@ class PlayerFactory(
         bandwidthMeter: DefaultBandwidthMeter? = null,
         preferredDecoders: Map<String, String> = emptyMap(),
     ): ExoPlayer {
-        val baseClient = clients.client(RequestPurpose.STREAM)
-        val origin = request.credentialsOrigin?.toHttpUrlOrNull()
-        val client = if (request.credentials != null && origin != null) {
-            baseClient.newBuilder()
-                .authenticator(ScopedCredentialsAuthenticator(AuthScope.forUrl(origin, request.credentials)))
-                .build()
-        } else {
-            baseClient
-        }
-
-        val headers = request.stream.headers
-        val userAgent = headers["User-Agent"]
-            ?: request.userAgent?.takeIf { it.isNotBlank() }
-            ?: clients.networkSettings.defaultUserAgent
-        val httpFactory = OkHttpDataSource.Factory(client)
-            .setUserAgent(userAgent)
-            .setDefaultRequestProperties(headers - "User-Agent")
+        val httpFactory = OkHttpDataSource.Factory(httpClient(request))
+            .setUserAgent(userAgent(request))
+            .setDefaultRequestProperties(request.stream.headers - "User-Agent")
         val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
 
         // Repli automatique sur un autre décodeur si le premier ne démarre pas (box aux décodeurs capricieux).
@@ -81,6 +73,35 @@ class PlayerFactory(
         if (bandwidthMeter != null) builder.setBandwidthMeter(bandwidthMeter)
         return builder.build()
     }
+
+    /** Requête du direct pour l'enregistrement du différé : mêmes client, en-têtes et identifiants que la lecture. */
+    fun liveCall(request: PlaybackRequest): Call {
+        val builder = Request.Builder().url(request.stream.url).header("User-Agent", userAgent(request))
+        (request.stream.headers - "User-Agent").forEach { (name, value) -> builder.header(name, value) }
+        return httpClient(request).newCall(builder.build())
+    }
+
+    /** Source du lecteur pour l'enregistrement du différé. */
+    fun timeshiftSource(buffer: TimeshiftBuffer): MediaSource =
+        ProgressiveMediaSource.Factory(DataSource.Factory { TimeshiftDataSource(buffer) })
+            .createMediaSource(MediaItem.fromUri("timeshift://live"))
+
+    private fun httpClient(request: PlaybackRequest): OkHttpClient {
+        val baseClient = clients.client(RequestPurpose.STREAM)
+        val origin = request.credentialsOrigin?.toHttpUrlOrNull()
+        return if (request.credentials != null && origin != null) {
+            baseClient.newBuilder()
+                .authenticator(ScopedCredentialsAuthenticator(AuthScope.forUrl(origin, request.credentials)))
+                .build()
+        } else {
+            baseClient
+        }
+    }
+
+    private fun userAgent(request: PlaybackRequest): String =
+        request.stream.headers["User-Agent"]
+            ?: request.userAgent?.takeIf { it.isNotBlank() }
+            ?: clients.networkSettings.defaultUserAgent
 
     /** @param forceHls traiter le flux comme du HLS (seconde tentative pour une URL sans extension). */
     fun mediaItem(stream: StreamDescriptor, forceHls: Boolean = false): MediaItem {

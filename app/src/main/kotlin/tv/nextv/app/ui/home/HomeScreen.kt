@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
@@ -68,6 +69,7 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
 import kotlinx.coroutines.delay
 import tv.nextv.app.R
+import tv.nextv.app.data.progress.ProgressEntity
 import tv.nextv.app.data.db.ChannelListRow
 import tv.nextv.app.data.db.GroupRow
 import tv.nextv.app.data.db.MovieRow
@@ -84,6 +86,7 @@ import tv.nextv.app.ui.components.PillButton
 import tv.nextv.app.ui.components.WindowInfo
 import tv.nextv.app.ui.components.rememberWindowInfo
 import tv.nextv.app.ui.guide.GuideScreen
+import tv.nextv.app.ui.guide.formatDuration
 import tv.nextv.app.ui.theme.NexTvColors
 import tv.nextv.app.ui.theme.NexTvIcons
 import tv.nextv.core.model.ContentKind
@@ -101,10 +104,19 @@ class HomeActions(
     val onPick: (String) -> Unit = {},
     val onMove: (ContentKind, String, Int) -> Unit = { _, _, _ -> },
     val onSettings: () -> Unit = {},
+    /** Reprendre un film ou un épisode commencé (sans question). */
+    val onResume: (Long) -> Unit = {},
+    val onClearProgress: (String) -> Unit = {},
 )
 
 @Composable
-fun HomeScreen(onPlay: (Long) -> Unit, onMovie: (Long) -> Unit, onSeries: (Long) -> Unit, onSettings: () -> Unit) {
+fun HomeScreen(
+    onPlay: (Long) -> Unit,
+    onMovie: (Long) -> Unit,
+    onSeries: (Long) -> Unit,
+    onSettings: () -> Unit,
+    onResume: (Long) -> Unit = onPlay,
+) {
     val resources = LocalContext.current.resources
     val viewModel = appViewModel { container, _ -> HomeViewModel(container, resources) }
     val section by viewModel.section.collectAsStateWithLifecycle()
@@ -118,6 +130,8 @@ fun HomeScreen(onPlay: (Long) -> Unit, onMovie: (Long) -> Unit, onSeries: (Long)
     val favoriteChannels by viewModel.favoriteChannels.collectAsStateWithLifecycle()
     val favoriteMovies by viewModel.favoriteMovies.collectAsStateWithLifecycle()
     val favoriteSeries by viewModel.favoriteSeries.collectAsStateWithLifecycle()
+    val continueMovies by viewModel.continueMovies.collectAsStateWithLifecycle()
+    val continueSeries by viewModel.continueSeries.collectAsStateWithLifecycle()
     val now by viewModel.now.collectAsStateWithLifecycle()
     val channels = viewModel.channels.collectAsLazyPagingItems()
     val movies = viewModel.movies.collectAsLazyPagingItems()
@@ -164,8 +178,12 @@ fun HomeScreen(onPlay: (Long) -> Unit, onMovie: (Long) -> Unit, onSeries: (Long)
             onPick = viewModel::pick,
             onMove = viewModel::moveFavorite,
             onSettings = onSettings,
+            onResume = onResume,
+            onClearProgress = viewModel::clearProgress,
         ),
         guide = { modifier -> sourceId?.let { GuideScreen(it, onPlay, modifier) } },
+        continueMovies = continueMovies,
+        continueSeries = continueSeries,
     )
 }
 
@@ -189,6 +207,8 @@ fun HomeContent(
     snackbarHostState: SnackbarHostState,
     actions: HomeActions,
     guide: @Composable (Modifier) -> Unit,
+    continueMovies: List<ProgressEntity> = emptyList(),
+    continueSeries: List<ProgressEntity> = emptyList(),
 ) {
     val window = rememberWindowInfo()
     // Dernière vignette ouverte : elle reprend le focus au retour sur l'accueil (télécommande).
@@ -207,6 +227,11 @@ fun HomeContent(
                     HomeSection.MOVIES -> favoriteMovies.size
                     else -> favoriteSeries.size
                 }
+                val resumeItems = when (section) {
+                    HomeSection.MOVIES -> continueMovies
+                    HomeSection.SERIES -> continueSeries
+                    else -> null
+                }
                 CatalogSection(
                     section = section,
                     window = window,
@@ -214,11 +239,14 @@ fun HomeContent(
                     category = category,
                     query = query,
                     favoritesCount = favoritesCount,
+                    resumeCount = resumeItems?.size,
                     reorder = reorder,
                     actions = actions,
                     modifier = Modifier.weight(1f),
                 ) { columns ->
-                    when (section) {
+                    if (resumeItems != null && category == Category.ContinueWatching) {
+                        ContinueBody(resumeItems, columns, window, lastOpened, actions)
+                    } else when (section) {
                         HomeSection.TV -> TvBody(channels, favoriteChannels, category, favoriteKeys, reorder, now, columns, window, lastOpened, actions)
                         HomeSection.MOVIES -> MoviesBody(movies, favoriteMovies, category, favoriteKeys, reorder, columns, window, lastOpened, actions)
                         else -> SeriesBody(series, favoriteSeries, category, favoriteKeys, reorder, columns, window, lastOpened, actions)
@@ -330,6 +358,8 @@ private fun CatalogSection(
     category: Category,
     query: String,
     favoritesCount: Int,
+    /** Films ou séries en cours ; `null` : pas de catégorie « Reprendre la lecture » (chaînes). */
+    resumeCount: Int?,
     reorder: ReorderState,
     actions: HomeActions,
     modifier: Modifier,
@@ -353,6 +383,13 @@ private fun CatalogSection(
                             actions.onCategory(Category.Favorites)
                         }
                     }
+                    if (resumeCount != null) {
+                        item {
+                            CategoryItem(stringResource(R.string.home_continue), resumeCount, category == Category.ContinueWatching) {
+                                actions.onCategory(Category.ContinueWatching)
+                            }
+                        }
+                    }
                     item { CategoryItem(allLabel(section), total, category == Category.All) { actions.onCategory(Category.All) } }
                     items(groups, key = { it.title ?: NO_GROUP_KEY }) { group ->
                         val title = group.title.orEmpty()
@@ -362,7 +399,7 @@ private fun CatalogSection(
                     }
                 }
             }
-            SectionBody(section, category, groups, favoritesCount, reorder, window, actions, Modifier.weight(1f), body)
+            SectionBody(section, category, groups, favoritesCount, resumeCount ?: 0, reorder, window, actions, Modifier.weight(1f), body)
         }
     } else {
         Column(modifier.fillMaxSize()) {
@@ -372,6 +409,13 @@ private fun CatalogSection(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 item { CategoryChip(stringResource(R.string.home_favorites), category == Category.Favorites, star = true) { actions.onCategory(Category.Favorites) } }
+                if (resumeCount != null) {
+                    item {
+                        CategoryChip(stringResource(R.string.home_continue), category == Category.ContinueWatching) {
+                            actions.onCategory(Category.ContinueWatching)
+                        }
+                    }
+                }
                 item { CategoryChip(stringResource(R.string.channels_all_short), category == Category.All) { actions.onCategory(Category.All) } }
                 items(groups, key = { it.title ?: NO_GROUP_KEY }) { group ->
                     val title = group.title.orEmpty()
@@ -380,7 +424,7 @@ private fun CatalogSection(
                     }
                 }
             }
-            SectionBody(section, category, groups, favoritesCount, reorder, window, actions, Modifier.weight(1f), body)
+            SectionBody(section, category, groups, favoritesCount, resumeCount ?: 0, reorder, window, actions, Modifier.weight(1f), body)
         }
     }
 }
@@ -391,6 +435,7 @@ private fun SectionBody(
     category: Category,
     groups: List<GroupRow>,
     favoritesCount: Int,
+    resumeCount: Int,
     reorder: ReorderState,
     window: WindowInfo,
     actions: HomeActions,
@@ -406,6 +451,7 @@ private fun SectionBody(
                 Text(categoryTitle(section, category), style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 val count = when (category) {
                     Category.Favorites -> favoritesCount
+                    Category.ContinueWatching -> resumeCount
                     Category.All -> groups.sumOf { it.count }
                     is Category.Group -> groups.firstOrNull { it.title.orEmpty() == category.title }?.count ?: 0
                 }
@@ -447,6 +493,7 @@ private fun SectionBody(
 @Composable
 private fun categoryTitle(section: HomeSection, category: Category): String = when (category) {
     Category.Favorites -> stringResource(R.string.home_favorites)
+    Category.ContinueWatching -> stringResource(R.string.home_continue)
     Category.All -> allLabel(section)
     is Category.Group -> category.title.ifEmpty { stringResource(R.string.channels_no_group) }
 }
@@ -678,6 +725,54 @@ private fun SeriesBody(
             items(count = series.itemCount, key = series.itemKey { it.itemKey }) { index ->
                 series[index]?.let { poster(it, false) }
             }
+        }
+    }
+}
+
+/** « Reprendre la lecture » : films et séries commencés. OK reprend, appui long retire de la liste. */
+@Composable
+private fun ContinueBody(
+    items: List<ProgressEntity>,
+    columns: Int,
+    window: WindowInfo,
+    lastOpened: MutableState<String?>,
+    actions: HomeActions,
+) {
+    if (items.isEmpty()) {
+        EmptyState(Icons.Filled.PlayArrow, stringResource(R.string.home_continue_empty_title), stringResource(R.string.home_continue_empty))
+        return
+    }
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(columns),
+        contentPadding = gridPadding(window),
+        horizontalArrangement = Arrangement.spacedBy(GRID_SPACING),
+        verticalArrangement = Arrangement.spacedBy(GRID_SPACING),
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        items(items.size, key = { items[it].itemKey }) { index ->
+            val item = items[index]
+            val remaining = (item.durationMs - item.positionMs).coerceAtLeast(0)
+            val subtitle = when {
+                item.episodeLabel != null && item.positionMs <= 0 -> stringResource(R.string.home_continue_next, item.episodeLabel)
+                item.episodeLabel != null && item.durationMs > 0 ->
+                    stringResource(R.string.home_continue_episode, item.episodeLabel, formatDuration(remaining))
+                item.episodeLabel != null -> item.episodeLabel
+                item.durationMs > 0 -> stringResource(R.string.home_continue_remaining, formatDuration(remaining))
+                else -> null
+            }
+            PosterCard(
+                title = item.title,
+                subtitle = subtitle,
+                imageUrl = item.logoUrl,
+                isFavorite = false,
+                onClick = {
+                    lastOpened.value = item.itemKey
+                    actions.onResume(item.channelId)
+                },
+                onLongClick = { actions.onClearProgress(item.itemKey) },
+                modifier = Modifier.restoreFocus(item.itemKey, lastOpened),
+                progress = if (item.durationMs > 0) item.positionMs.toFloat() / item.durationMs else null,
+            )
         }
     }
 }
