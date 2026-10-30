@@ -14,7 +14,10 @@ data class QualityOption(val channelId: Long, val quality: StreamQuality?)
  *   (versions de la chaîne regardée) sont envisagées.
  * - Trop d'images perdues par le décodeur (l'appareil ne suit pas, typiquement en 4K) : passage
  *   à une qualité inférieure, et plus de retour à cette qualité pour la chaîne en cours.
- * - Lecture stable et débit mesuré suffisant : retour progressif à une meilleure version.
+ * - Lecture stable : retour progressif à une meilleure version, dès que le débit mesuré le
+ *   justifie, sinon à l'essai. Le débit d'un direct en MPEG-TS ne dépasse jamais celui de la vidéo
+ *   (le serveur l'envoie au rythme de la lecture) : il ne peut pas prouver qu'une meilleure version
+ *   passerait. Un essai qui ne démarre pas vite revient aussitôt à la version qui fonctionnait.
  * - Une version en échec n'est réessayée qu'après un délai, doublé à chaque nouvel échec.
  * - Désactivé ([enabled] faux) : aucune bascule, une erreur est simplement signalée.
  *
@@ -36,8 +39,13 @@ class QualitySwitcher(
         val maxInitialBufferingMillis: Long = 8_000,
         val rebufferWindowMillis: Long = 30_000,
         val maxRebuffersInWindow: Int = 2,
-        val stableMillisBeforeUpgrade: Long = 120_000,
+        /** Lecture stable avant de remonter quand le débit mesuré le justifie. */
+        val stableMillisBeforeUpgrade: Long = 60_000,
         val upgradeHeadroom: Double = 1.4,
+        /** Lecture stable avant d'essayer une meilleure version sans preuve de débit. */
+        val stableMillisBeforeTrial: Long = 90_000,
+        /** Démarrage toléré pour une version à l'essai avant de revenir à la précédente. */
+        val maxTrialStartMillis: Long = 5_000,
         val failureCooldownMillis: Long = 5 * 60_000,
         val maxFailureCooldownMillis: Long = 60 * 60_000,
         /** Images perdues tolérées sur [droppedFramesWindowMillis] avant de juger que l'appareil ne suit pas. */
@@ -73,6 +81,9 @@ class QualitySwitcher(
 
     /** La version courante a commencé à jouer : les mises en mémoire tampon suivantes sont des blocages. */
     private var played = false
+
+    /** Meilleure version à l'essai, pas encore démarrée : rang de la version qui fonctionnait. */
+    private var trialFrom: Int? = null
     private val droppedFrames = ArrayDeque<Pair<Long, Int>>()
 
     /** Rang de qualité que l'appareil n'a pas su décoder : aucune remontée à ce rang ou au-dessus. */
@@ -104,12 +115,15 @@ class QualitySwitcher(
     fun onReady() {
         bufferingSince = null
         played = true
+        trialFrom = null
     }
 
     /** La version courante ne peut pas être lue. */
     fun onError(): Decision {
         markFailed(current)
         if (!enabled) return Decision.GiveUp
+        // Essai d'une meilleure version : retour à celle qui fonctionnait.
+        trialFrom?.let { return switchTo(ladder[it], Reason.ERROR) }
         return lower()?.let { switchTo(it, Reason.ERROR) } ?: Decision.GiveUp
     }
 
@@ -138,6 +152,12 @@ class QualitySwitcher(
         while (rebuffers.isNotEmpty() && now - rebuffers.first() > config.rebufferWindowMillis) rebuffers.removeFirst()
 
         val buffering = bufferingSince
+        val trial = trialFrom
+        // Meilleure version à l'essai qui tarde à démarrer : retour à la version qui fonctionnait.
+        if (trial != null && now - stableSince >= config.maxTrialStartMillis) {
+            markFailed(current)
+            return switchTo(ladder[trial], Reason.BUFFERING)
+        }
         val tolerated = if (played) config.maxContinuousBufferingMillis else config.maxInitialBufferingMillis
         val stalled = buffering != null && now - buffering >= tolerated
         val unstable = rebuffers.size >= config.maxRebuffersInWindow
@@ -147,10 +167,13 @@ class QualitySwitcher(
             return switchTo(target, Reason.BUFFERING)
         }
 
-        if (buffering == null && rebuffers.isEmpty() && now - stableSince >= config.stableMillisBeforeUpgrade && bandwidthBps != null) {
+        if (buffering == null && rebuffers.isEmpty()) {
             val target = higher() ?: return Decision.Stay
-            if (bandwidthBps >= requiredBitrate(target.quality) * config.upgradeHeadroom) {
-                return switchTo(target, Reason.UPGRADE)
+            val stableFor = now - stableSince
+            val proven = bandwidthBps != null && bandwidthBps >= requiredBitrate(target.quality) * config.upgradeHeadroom
+            if ((proven && stableFor >= config.stableMillisBeforeUpgrade) || (played && stableFor >= config.stableMillisBeforeTrial)) {
+                val from = index
+                return switchTo(target, Reason.UPGRADE).also { trialFrom = from }
             }
         }
         return Decision.Stay
@@ -161,18 +184,27 @@ class QualitySwitcher(
         return ladder.drop(index + 1).firstOrNull { (cooldownUntil[it.channelId] ?: 0) <= now && accept(it) }
     }
 
+    /**
+     * Qualité juste au-dessus de la version courante (une de ses versions disponibles) ; jamais
+     * plus haut tant que celle-ci est en échec : ce qui ne passe pas en HD ne passera pas en FHD.
+     */
     private fun higher(): QualityOption? {
         val now = clock()
         val ceiling = decoderCeilingRank
-        return ladder.take(index).lastOrNull {
-            (cooldownUntil[it.channelId] ?: 0) <= now && (ceiling == null || StreamQuality.rankOf(it.quality) < ceiling)
+        val currentRank = StreamQuality.rankOf(current.quality)
+        val above = ladder.take(index).filter {
+            val rank = StreamQuality.rankOf(it.quality)
+            rank > currentRank && (ceiling == null || rank < ceiling)
         }
+        val nextRank = above.lastOrNull()?.let { StreamQuality.rankOf(it.quality) } ?: return null
+        return above.lastOrNull { StreamQuality.rankOf(it.quality) == nextRank && (cooldownUntil[it.channelId] ?: 0) <= now }
     }
 
     private fun switchTo(option: QualityOption, reason: Reason): Decision {
         index = ladder.indexOf(option)
         bufferingSince = null
         played = false
+        trialFrom = null
         rebuffers.clear()
         droppedFrames.clear()
         stableSince = clock()

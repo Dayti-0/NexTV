@@ -138,7 +138,7 @@ jobs:
           - Lecteur : bandeau avec heure, programme et débit, zapping haut/bas, liste des chaînes sur « Retour » (catégories avec gauche/droite)
           - Pause du direct (OK) avec affichage du retard sur le direct, retour au direct avec droite
           - Reprise de lecture des films et séries (catégorie « Reprendre la lecture », bouton sur les fiches)
-          - Qualité automatique FHD → HD → SD → LOW entre les versions de la playlist (désactivable), baisse si l'appareil perd des images
+          - Qualité automatique FHD → HD → SD → LOW entre les versions de la playlist (désactivable) : baisse en cas de blocage ou si l'appareil perd des images, remonte à l'essai quand la lecture est stable
           - Infos de lecture (touche Info/Menu) et choix du décodeur vidéo matériel ou logiciel
           - Nombre de chaînes et d'affiches par ligne réglable ; double appui sur « Retour » pour revenir à l'accueil
           - Ajout d'une playlist depuis un ordinateur : adb shell "am start -n tv.nextv.app/.MainActivity --es url 'ADRESSE'"

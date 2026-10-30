@@ -29,7 +29,10 @@ Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3, enti�
   lancer, appui long sur OK pour la fiche du programme avec sa description), un second Retour la ferme.
 - **Qualité automatique** : quand une chaîne existe en plusieurs versions dans la playlist (« FHD », « HD », « SD »,
   « LOW » dans le nom), la lecture descend d'un cran en cas d'erreur ou de mise en mémoire tampon persistante, puis
-  remonte quand le débit mesuré le permet. Jamais de bascule vers une autre chaîne ; désactivable dans les réglages.
+  remonte d'un cran : dès que le débit mesuré le justifie, sinon à l'essai après 1 min 30 de lecture stable (le débit
+  d'un direct MPEG-TS ne dépasse jamais celui de la vidéo). Un essai qui ne démarre pas en 5 s revient à la version
+  qui fonctionnait, et le suivant attend plus longtemps (5 min, puis 10, 20… jusqu'à 1 h). Jamais de bascule vers une
+  autre chaîne ; désactivable dans les réglages.
   Chaque catégorie affiche toutes ses chaînes dans l'ordre de la playlist (TF1 SD dans « FR TV SD »…) ; « Toutes »,
   la recherche et le zapping n'en gardent qu'une ligne par chaîne, sa meilleure version visible.
 - **Guide TV** : grille chaînes × horaires avec repère de l'heure actuelle et programme en cours mis en valeur ;

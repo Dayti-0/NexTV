@@ -121,6 +121,58 @@ class QualitySwitcherTest {
     }
 
     @Test
+    fun `stable playback tries the better version even when the bandwidth cannot prove it`() {
+        // Direct MPEG-TS : le débit mesuré reste celui de la vidéo en cours (SD).
+        val switcher = switcher(initial = 3)
+        switcher.onReady()
+        now += 60_000
+        assertEquals(QualitySwitcher.Decision.Stay, switcher.evaluate(2_500_000))
+
+        now += 30_000
+        assertEquals(QualitySwitcher.Decision.Switch(hd, QualitySwitcher.Reason.UPGRADE), switcher.evaluate(2_500_000))
+        switcher.onReady()
+        now += 90_000
+        assertEquals(QualitySwitcher.Decision.Switch(fhd, QualitySwitcher.Reason.UPGRADE), switcher.evaluate(5_000_000))
+    }
+
+    @Test
+    fun `a trial that does not start goes back to the version that worked, then waits longer`() {
+        val switcher = switcher(initial = 3)
+        switcher.onReady()
+        now += 90_000
+        assertEquals(QualitySwitcher.Decision.Switch(hd, QualitySwitcher.Reason.UPGRADE), switcher.evaluate(null))
+
+        switcher.onBufferingStarted()
+        now += 4_000
+        assertEquals(QualitySwitcher.Decision.Stay, switcher.evaluate(null))
+        now += 1_000
+        assertEquals(QualitySwitcher.Decision.Switch(sd, QualitySwitcher.Reason.BUFFERING), switcher.evaluate(null))
+
+        // HD en délai de grâce (5 min) : pas de nouvel essai avant.
+        switcher.onReady()
+        now += 3 * 60_000
+        assertEquals(QualitySwitcher.Decision.Stay, switcher.evaluate(null))
+        now += 2 * 60_000
+        assertEquals(QualitySwitcher.Decision.Switch(hd, QualitySwitcher.Reason.UPGRADE), switcher.evaluate(null))
+    }
+
+    @Test
+    fun `an error during a trial goes back to the version that worked`() {
+        val switcher = switcher(initial = 3)
+        switcher.onReady()
+        now += 90_000
+        assertEquals(QualitySwitcher.Decision.Switch(hd, QualitySwitcher.Reason.UPGRADE), switcher.evaluate(null))
+        assertEquals(QualitySwitcher.Decision.Switch(sd, QualitySwitcher.Reason.ERROR), switcher.onError())
+    }
+
+    @Test
+    fun `no trial before the version has played`() {
+        val switcher = switcher(initial = 3)
+        now += 10 * 60_000
+        assertEquals(QualitySwitcher.Decision.Stay, switcher.evaluate(null))
+    }
+
+    @Test
     fun `disabled switching never changes quality`() {
         val switcher = switcher(enabled = false)
         switcher.onBufferingStarted()
