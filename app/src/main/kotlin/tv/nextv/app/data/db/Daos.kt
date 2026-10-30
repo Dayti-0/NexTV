@@ -153,12 +153,9 @@ data class EpisodeRow(
     val streamSupport: String,
 )
 
-/** Programme du guide avec la chaîne qui le diffuse (sa meilleure version visible). */
-data class BroadcastRow(
-    val channelId: Long,
-    val channelName: String,
-    val channelTitle: String,
-    val logoUrl: String?,
+/** Programme du guide susceptible de diffuser un match (section Foot). */
+data class FootballProgrammeRow(
+    val epgChannelId: String,
     val title: String,
     val subtitle: String?,
     val description: String?,
@@ -167,6 +164,9 @@ data class BroadcastRow(
     val startMillis: Long,
     val stopMillis: Long,
 )
+
+/** Chaîne visible associée au guide (section Foot). */
+data class EpgChannelRow(val epgChannelId: String?, val id: Long, val name: String, val title: String, val logoUrl: String?)
 
 /** Version (qualité) d'une chaîne. */
 data class VariantRow(val id: Long, val quality: String?, val position: Int, val streamSupport: String)
@@ -439,6 +439,19 @@ interface ChannelDao {
     )
     suspend fun primaryOf(sourceId: Long, variantKey: String): ChannelEntity?
 
+    /**
+     * Chaînes visibles associées au guide, la meilleure version d'abord : la première de chaque
+     * identifiant de guide est celle qui diffuse ses programmes (section Foot).
+     */
+    @Query(
+        """
+        SELECT c.epgChannelId, c.id, c.name, c.title, c.logoUrl FROM channels c
+        WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.epgChannelId IS NOT NULL AND $NOT_HIDDEN
+        ORDER BY c.qualityRank DESC, c.position
+        """,
+    )
+    suspend fun epgChannels(sourceId: Long): List<EpgChannelRow>
+
     /** Chaînes associées au guide, pour la grille des programmes (hors catégories masquées). */
     @Query(
         """
@@ -564,32 +577,27 @@ interface ProgrammeDao {
     suspend fun inWindow(sourceId: Long, epgChannelIds: List<String>, from: Long, to: Long): List<ProgrammeEntity>
 
     /**
-     * Programmes sportifs ou de football possibles (genre, titre ou sous-titre) entre [from] et [to],
-     * sur les chaînes visibles ; le tri fin est fait par [tv.nextv.core.football.FootballMatches] et
-     * [tv.nextv.core.football.BroadcastFinder].
+     * Programmes qui peuvent être des matchs entre [from] et [to] : genre « Football », compétition
+     * citée, ou programme sportif dont le titre oppose deux équipes. Le tri fin est fait par
+     * [tv.nextv.core.football.FootballMatches] et [tv.nextv.core.football.BroadcastFinder].
      */
     @Query(
         """
-        SELECT c.id AS channelId, c.name AS channelName, c.title AS channelTitle, c.logoUrl,
-            p.title, p.subtitle, p.description, p.category, p.year, p.startMillis, p.stopMillis
+        SELECT p.epgChannelId, p.title, p.subtitle, p.description, p.category, p.year, p.startMillis, p.stopMillis
         FROM programmes p
         JOIN sources s ON s.id = p.sourceId AND p.generation = s.epgGeneration
-        JOIN channels c ON c.id = (
-            SELECT c2.id FROM channels c2
-            WHERE c2.sourceId = p.sourceId AND c2.kind = 'LIVE' AND c2.epgChannelId = p.epgChannelId
-              AND IFNULL(c2.groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'LIVE')
-            ORDER BY c2.qualityRank DESC, c2.position LIMIT 1
-        )
         WHERE p.sourceId = :sourceId AND p.stopMillis > :from AND p.startMillis < :to
-          AND (p.category LIKE '%sport%' OR p.category LIKE '%foot%'
+          AND (p.category LIKE '%foot%'
             OR p.title LIKE '%foot%' OR p.title LIKE '%ligue%' OR p.title LIKE '%league%' OR p.title LIKE '%liga%'
-            OR p.title LIKE '%serie a%' OR p.title LIKE '%uefa%' OR p.title LIKE '%coupe%' OR p.title LIKE '% / %'
-            OR p.title LIKE '% vs%' OR p.subtitle LIKE '%ligue%' OR p.subtitle LIKE '%league%' OR p.subtitle LIKE '%liga%'
-            OR p.subtitle LIKE '% / %')
-        ORDER BY p.startMillis, c.position
+            OR p.title LIKE '%serie a%' OR p.title LIKE '%uefa%' OR p.title LIKE '%coupe%' OR p.title LIKE '%euro%'
+            OR p.title LIKE '%nations%'
+            OR p.subtitle LIKE '%foot%' OR p.subtitle LIKE '%ligue%' OR p.subtitle LIKE '%league%' OR p.subtitle LIKE '%liga%'
+            OR p.subtitle LIKE '%serie a%' OR p.subtitle LIKE '%uefa%' OR p.subtitle LIKE '%coupe%' OR p.subtitle LIKE '%euro%'
+            OR p.subtitle LIKE '%nations%'
+            OR (p.category LIKE '%sport%' AND (p.title LIKE '% / %' OR p.title LIKE '% vs%' OR p.subtitle LIKE '% / %')))
         """,
     )
-    suspend fun footballCandidates(sourceId: Long, from: Long, to: Long): List<BroadcastRow>
+    suspend fun footballCandidates(sourceId: Long, from: Long, to: Long): List<FootballProgrammeRow>
 }
 
 @Dao

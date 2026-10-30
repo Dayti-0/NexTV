@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -84,7 +85,17 @@ fun FootballContent(
     fun count(choice: Competition?) = state.matches.count { choice == null || it.competition == choice }
 
     val list: @Composable (Modifier) -> Unit = { listModifier ->
-        if (!state.loading && shown.isEmpty()) {
+        if (state.loading) {
+            Column(listModifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator()
+                Text(
+                    stringResource(R.string.football_loading),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 16.dp),
+                )
+            }
+        } else if (shown.isEmpty()) {
             EmptyState(
                 icon = NexTvIcons.Football,
                 title = stringResource(R.string.football_empty_title),

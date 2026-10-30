@@ -129,22 +129,26 @@ object FootballMatches {
 
     /** Compétition d'un programme de football, sans exiger les équipes. */
     internal fun competitionOf(title: String, subtitle: String?, category: String?, description: String?): Competition? {
+        // Titre, sous-titre et genre d'abord (courts) : la plupart des programmes s'arrêtent là.
         val heading = FootballText.fold(listOfNotNull(title, subtitle).joinToString(" "))
         val genre = FootballText.fold(category.orEmpty())
-        val details = FootballText.fold(description.orEmpty())
         if (FootballText.NOT_A_MATCH.containsMatchIn(FootballText.fold(title)) || FootballText.NOT_A_MATCH.containsMatchIn(genre)) return null
         if (FootballText.OTHER_SPORTS.containsMatchIn(heading) || FootballText.OTHER_SPORTS.containsMatchIn(genre)) return null
-        if (FootballText.WOMEN.containsMatchIn("$heading $genre $details")) return null
+        if (FootballText.WOMEN.containsMatchIn(heading) || FootballText.WOMEN.containsMatchIn(genre)) return null
         // Documentaire, série… : le genre indiqué n'est pas sportif.
         if (genre.isNotBlank() && !FootballText.SPORT_GENRE.containsMatchIn(genre)) return null
         val football = FootballText.FOOTBALL.containsMatchIn(heading) || FootballText.FOOTBALL.containsMatchIn(genre)
+        val details by lazy { FootballText.fold(description.orEmpty()) }
+        val competition = find(heading) ?: run {
+            // Le titre nomme une autre compétition (« Coupe de la Ligue anglaise », « Liga 2 ») : la description,
+            // qui peut citer d'autres compétitions, n'est pas consultée.
+            if (FootballText.COMPETITION_WORDS.containsMatchIn(heading)) return null
+            if (football || FootballText.FOOTBALL.containsMatchIn(details)) find(details) else null
+        } ?: return null
         // Sans « football » dans le titre ni le genre, la description ne doit pas parler d'un autre sport.
         if (!football && FootballText.OTHER_SPORTS.containsMatchIn(details)) return null
-        find(heading)?.let { return it }
-        // Le titre nomme une autre compétition (« Coupe de la Ligue anglaise », « Liga 2 ») : la description,
-        // qui peut citer d'autres compétitions, n'est pas consultée.
-        if (FootballText.COMPETITION_WORDS.containsMatchIn(heading)) return null
-        return if (football || FootballText.FOOTBALL.containsMatchIn(details)) find(details) else null
+        if (FootballText.WOMEN.containsMatchIn(details)) return null
+        return competition
     }
 
     /** Les deux équipes d'un texte comme « Ligue 1 - 11e journée : Paris-SG / Marseille ». */

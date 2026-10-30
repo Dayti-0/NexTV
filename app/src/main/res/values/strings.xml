@@ -159,6 +159,7 @@
     <string name="football_empty_title">Aucun match trouvé</string>
     <string name="football_empty_message">Pas de match dans les 8 prochains jours pour cette compétition.</string>
     <string name="football_no_channel">Pas trouvé dans le guide</string>
+    <string name="football_loading">Recherche des matchs…</string>
     <string name="football_notice_no_key">Matchs trouvés dans le guide TV. Pour la liste complète, ajoutez une clé football-data.org (Réglages › Matchs de foot).</string>
     <string name="football_notice_invalid_key">Clé football-data.org refusée (Réglages › Matchs de foot) : matchs trouvés dans le guide TV.</string>
     <string name="football_notice_unavailable">football-data.org ne répond pas : matchs trouvés dans le guide TV.</string>

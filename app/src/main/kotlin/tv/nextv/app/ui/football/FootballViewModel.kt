@@ -4,18 +4,20 @@ import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import tv.nextv.app.AppContainer
-import tv.nextv.app.data.db.BroadcastRow
+import tv.nextv.app.data.db.EpgChannelRow
+import tv.nextv.app.data.db.FootballProgrammeRow
 import tv.nextv.app.ui.guide.GuideChannel
 import tv.nextv.app.ui.guide.GuideProgramme
 import tv.nextv.core.football.Broadcast
@@ -70,27 +72,57 @@ data class FootballUiState(
  * gratuite) et le guide des programmes donne la chaîne qui les diffuse. Les autres compétitions
  * (Ligue Europa, Conférence, équipes nationales), ou toutes sans clé d'API, viennent du guide seul.
  */
-@OptIn(ExperimentalCoroutinesApi::class)
 class FootballViewModel(private val container: AppContainer, private val sourceId: Long) : ViewModel() {
 
     /** `null` : toutes les compétitions. */
     val competition = MutableStateFlow<Competition?>(null)
 
+    /** Matchs calculés (guide et football-data.org) : travail lourd, refait toutes les 15 min au plus. */
+    private class Snapshot(val hidden: List<String>, val loadedAt: Long, val matches: List<FootballMatch>, val notice: FootballNotice?)
+
+    private var lastSnapshot: Snapshot? = null
+
+    private val reloads = flow {
+        while (true) {
+            emit(Unit)
+            delay(RELOAD_MILLIS)
+        }
+    }
+
+    // Jamais annulé par la demande suivante (conflate + map) : un appareil lent finit toujours son calcul.
+    private val snapshots: Flow<Snapshot> =
+        combine(reloads, container.hiddenGroupDao.observeTitles(sourceId, ContentKind.LIVE.name)) { _, hidden -> hidden }
+            .conflate()
+            .map { hidden ->
+                lastSnapshot?.takeIf { it.hidden == hidden && System.currentTimeMillis() - it.loadedAt < RELOAD_MILLIS }
+                    ?: load(hidden).also { lastSnapshot = it }
+            }
+
     private val clock = flow {
         while (true) {
             emit(System.currentTimeMillis())
-            delay(REFRESH_MILLIS)
+            delay(TICK_MILLIS)
         }
     }
 
     val state: StateFlow<FootballUiState> =
-        combine(clock, container.hiddenGroupDao.observeTitles(sourceId, ContentKind.LIVE.name)) { now, _ -> now }
-            .mapLatest { now -> load(now) }
+        combine(snapshots, clock) { snapshot, now ->
+            FootballUiState(loading = false, now = now, matches = snapshot.matches.filter { it.endMillis > now }, notice = snapshot.notice)
+        }
             .flowOn(Dispatchers.Default)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FootballUiState())
 
-    private suspend fun load(now: Long): FootballUiState {
-        val rows = container.programmeDao.footballCandidates(sourceId, now, now + WINDOW_MILLIS)
+    private suspend fun load(hidden: List<String>): Snapshot {
+        val now = System.currentTimeMillis()
+        // Chaîne qui diffuse les programmes de chaque identifiant du guide : sa meilleure version visible.
+        val channels = HashMap<String, EpgChannelRow>()
+        for (channel in container.channelDao.epgChannels(sourceId)) {
+            val id = channel.epgChannelId ?: continue
+            if (id !in channels) channels[id] = channel
+        }
+        val rows = container.programmeDao.footballCandidates(sourceId, now, now + WINDOW_MILLIS).mapNotNull { programme ->
+            channels[programme.epgChannelId]?.let { BroadcastRow(it, programme) }
+        }
         val api = container.footballData.matches(now, now + WINDOW_MILLIS)
         val matches = when (api) {
             is FootballDataResult.Success -> apiMatches(api.matches, rows, now) + guideMatches(rows) { it.apiId == null }
@@ -102,20 +134,30 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
             FootballDataError.INVALID_KEY -> FootballNotice.INVALID_KEY
             else -> FootballNotice.UNAVAILABLE
         }
-        return FootballUiState(
-            loading = false,
-            now = now,
-            matches = matches.sortedWith(compareBy({ it.kickoffMillis }, { it.competition.ordinal })),
-            notice = notice,
-        )
+        return Snapshot(hidden, now, matches.sortedWith(compareBy({ it.kickoffMillis }, { it.competition.ordinal })), notice)
     }
 
     private companion object {
-        const val REFRESH_MILLIS = 60_000L
+        const val RELOAD_MILLIS = 15 * 60_000L
+        const val TICK_MILLIS = 30_000L
 
         /** Le guide couvre en général une semaine. */
         const val WINDOW_MILLIS = 8 * 24 * 60 * 60_000L
     }
+}
+
+/** Programme du guide avec la chaîne de la playlist qui le diffuse. */
+private class BroadcastRow(channel: EpgChannelRow, programme: FootballProgrammeRow) {
+    val channelId = channel.id
+    val channelName = channel.title.ifBlank { channel.name }
+    val logoUrl = channel.logoUrl
+    val title = programme.title
+    val subtitle = programme.subtitle
+    val description = programme.description
+    val category = programme.category
+    val year = programme.year
+    val startMillis = programme.startMillis
+    val stopMillis = programme.stopMillis
 }
 
 private const val MATCH_MILLIS = 2 * 60 * 60_000L
@@ -185,7 +227,7 @@ private fun isMatchHour(millis: Long): Boolean =
 private fun simplify(text: String): String =
     Normalizer.normalize(text.lowercase(), Normalizer.Form.NFD).replace(Regex("[^a-z0-9]+"), "")
 
-private fun channelOf(row: BroadcastRow) = GuideChannel(row.channelId, row.channelTitle.ifBlank { row.channelName }, null, row.logoUrl, emptyList())
+private fun channelOf(row: BroadcastRow) = GuideChannel(row.channelId, row.channelName, null, row.logoUrl, emptyList())
 
 private fun programmeOf(row: BroadcastRow) =
     GuideProgramme(row.title, row.startMillis, row.stopMillis, row.subtitle, row.description, row.category, row.year)
