@@ -8,6 +8,14 @@
     <string name="action_back">Retour</string>
     <string name="action_cancel">Annuler</string>
     <string name="action_close">Fermer</string>
+
+    <!-- Rappels -->
+    <string name="reminder_soon">Commence dans %1$d min</string>
+    <string name="reminder_started">A commencé à %1$s</string>
+    <string name="reminder_keys">OK : regarder · Retour : fermer</string>
+    <string name="reminder_keys_dismiss">Retour : fermer</string>
+    <string name="reminder_set">Me prévenir</string>
+    <string name="reminder_on">Rappel programmé</string>
     <string name="action_delete">Supprimer</string>
     <string name="action_edit">Modifier</string>
     <string name="action_hide">Masquer</string>
@@ -163,6 +171,20 @@
     <string name="football_empty_message">Pas de match dans les 8 prochains jours pour cette compétition.</string>
     <string name="football_no_channel">Pas trouvé dans le guide</string>
     <string name="football_loading">Recherche des matchs…</string>
+    <string name="football_matches">Matchs</string>
+    <string name="football_standings">Classement</string>
+    <string name="football_my_teams">Mes équipes</string>
+    <string name="football_my_teams_empty_title">Aucun match de vos équipes</string>
+    <string name="football_my_teams_none">Vous ne suivez aucune équipe. Appui long sur un match puis « Suivre » (ou OK sur une équipe du classement) pour retrouver ici ses matchs.</string>
+    <string name="football_my_teams_no_match">Pas de match de vos équipes dans les 8 prochains jours.</string>
+    <string name="football_follow">Suivre %1$s</string>
+    <string name="football_unfollow">Ne plus suivre %1$s</string>
+    <string name="football_standings_unavailable">Classement indisponible</string>
+    <string name="football_standings_empty">football-data.org ne donne pas de classement pour cette compétition.</string>
+    <string name="football_table_team">Équipe</string>
+    <string name="football_table_played">J</string>
+    <string name="football_table_difference">Diff.</string>
+    <string name="football_table_points">Pts</string>
     <string name="football_notice_no_key">Matchs trouvés dans le guide TV. Pour la liste complète, ajoutez une clé football-data.org (Réglages › Matchs de foot).</string>
     <string name="football_notice_invalid_key">Clé football-data.org refusée (Réglages › Matchs de foot) : matchs trouvés dans le guide TV.</string>
     <string name="football_notice_unavailable">football-data.org ne répond pas : matchs trouvés dans le guide TV.</string>
@@ -281,6 +303,28 @@
     <string name="settings_playlist">Playlist</string>
     <string name="settings_no_playlist">Aucune playlist active.</string>
     <string name="settings_updated">mise à jour %1$s</string>
+    <string name="settings_parental_pin">Code parental</string>
+    <string name="settings_parental_pin_on">Activé : demandé pour réafficher les catégories masquées</string>
+    <string name="settings_parental_pin_off">Désactivé</string>
+    <string name="settings_backup">Sauvegarde</string>
+    <string name="settings_backup_help">Playlists (avec leurs identifiants), favoris, catégories masquées et réglages dans un fichier, pour les retrouver après une réinstallation ou sur un autre appareil. Le fichier contient vos mots de passe : gardez-le pour vous.</string>
+    <string name="settings_backup_save">Sauvegarder</string>
+    <string name="settings_backup_restore">Restaurer</string>
+    <string name="settings_backup_saved">Sauvegarde enregistrée : %1$s</string>
+    <string name="settings_backup_failed">Sauvegarde impossible.</string>
+    <string name="settings_restore_failed">Ce fichier n’est pas une sauvegarde NexTV lisible.</string>
+    <string name="settings_restore_missing">Aucune sauvegarde trouvée (%1$s).</string>
+    <string name="pin_enter">Code parental</string>
+    <string name="pin_enter_message">Saisissez le code parental pour gérer les catégories masquées.</string>
+    <string name="pin_create">Choisir un code parental</string>
+    <string name="pin_confirm">Confirmer le code</string>
+    <string name="pin_create_message">4 chiffres, demandés pour réafficher les catégories masquées. Touches chiffrées de la télécommande ou pavé à l’écran.</string>
+    <string name="pin_remove">Retirer le code parental</string>
+    <string name="pin_remove_message">Saisissez le code actuel.</string>
+    <string name="pin_wrong">Code incorrect.</string>
+    <string name="pin_mismatch">Les deux codes sont différents : recommencez.</string>
+    <string name="pin_set_done">Code parental activé.</string>
+    <string name="pin_removed">Code parental retiré.</string>
     <string name="settings_account_checking">Abonnement : vérification…</string>
     <string name="settings_account_unavailable">Abonnement : le serveur n’a pas répondu.</string>
     <string name="settings_account_refused">Abonnement : identifiant ou mot de passe refusé par le serveur.</string>
@@ -433,6 +477,10 @@
     <plurals name="settings_account_connections">
         <item quantity="one">%d connexion simultanée</item>
         <item quantity="other">%d connexions simultanées</item>
+    </plurals>
+    <plurals name="settings_restore_done">
+        <item quantity="one">Sauvegarde restaurée (%d playlist).</item>
+        <item quantity="other">Sauvegarde restaurée (%d playlists).</item>
     </plurals>
     <plurals name="channels_count">
         <item quantity="one">%d chaîne</item>

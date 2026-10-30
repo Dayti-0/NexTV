@@ -15,10 +15,12 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import tv.nextv.app.data.security.KeystoreSecretCipher
+import tv.nextv.core.backup.SettingBackup
 import tv.nextv.core.net.DnsProvider
 import tv.nextv.core.net.ProxyScope
 import tv.nextv.core.net.ProxySettings
 import tv.nextv.core.net.ProxyType
+import java.security.MessageDigest
 
 private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
@@ -161,6 +163,82 @@ class SettingsRepository(
 
     private fun recentKey(sourceId: Long) = stringPreferencesKey(RECENT_PREFIX + sourceId)
 
+    /** Code parental : demandé pour réafficher les catégories masquées. Seule son empreinte est gardée. */
+    val parentalPinSet: Flow<Boolean> = dataStore.data.map { it[PARENTAL_PIN] != null }.distinctUntilChanged()
+
+    /** `null` : code retiré. */
+    suspend fun setParentalPin(pin: String?) {
+        dataStore.edit { prefs -> if (pin == null) prefs.remove(PARENTAL_PIN) else prefs[PARENTAL_PIN] = pinHash(pin) }
+    }
+
+    /** Vrai si [pin] est le code parental (ou s'il n'y en a pas). */
+    suspend fun checkParentalPin(pin: String): Boolean = dataStore.data.first()[PARENTAL_PIN].let { it == null || it == pinHash(pin) }
+
+    private fun pinHash(pin: String): String =
+        MessageDigest.getInstance("SHA-256").digest("nextv-pin:$pin".toByteArray()).joinToString("") { "%02x".format(it) }
+
+    /**
+     * Réglages transportables d'un appareil à l'autre (sauvegarde) : tous sauf les secrets chiffrés
+     * avec une clé de l'appareil, les décodeurs, et ce qui dépend des numéros de playlist ou de chaîne.
+     */
+    suspend fun exportPreferences(): List<SettingBackup> = dataStore.data.first().asMap()
+        .filterKeys { isPortable(it.name) }
+        .map { (key, value) -> SettingBackup(key.name, value) }
+
+    suspend fun importPreferences(values: List<SettingBackup>) {
+        dataStore.edit { prefs ->
+            for (setting in values) {
+                if (!isPortable(setting.key)) continue
+                when (val value = setting.value) {
+                    is Boolean -> prefs[booleanPreferencesKey(setting.key)] = value
+                    is Int -> prefs[intPreferencesKey(setting.key)] = value
+                    is Long -> prefs[longPreferencesKey(setting.key)] = value
+                    is String -> prefs[stringPreferencesKey(setting.key)] = value
+                    is Set<*> -> prefs[stringSetPreferencesKey(setting.key)] = value.filterIsInstance<String>().toSet()
+                }
+            }
+        }
+    }
+
+    private fun isPortable(name: String): Boolean =
+        name !in NOT_PORTABLE && NOT_PORTABLE_PREFIXES.none { name.startsWith(it) }
+
+    /** Équipes suivies dans la section Foot (noms donnés par football-data.org ou le guide). */
+    val favoriteTeams: Flow<Set<String>> = dataStore.data
+        .map { prefs -> prefs[FAVORITE_TEAMS]?.split('\n')?.filter { it.isNotEmpty() }?.toSet().orEmpty() }
+        .distinctUntilChanged()
+
+    suspend fun toggleFavoriteTeam(name: String) {
+        if (name.isBlank() || '\n' in name) return
+        dataStore.edit { prefs ->
+            val teams = prefs[FAVORITE_TEAMS]?.split('\n')?.filter { it.isNotEmpty() }.orEmpty()
+            prefs[FAVORITE_TEAMS] = (if (name in teams) teams - name else teams + name).joinToString("\n")
+        }
+    }
+
+    /** Rappels programmés (programmes du guide et matchs), du plus proche au plus lointain. */
+    val reminders: Flow<List<Reminder>> = dataStore.data
+        .map { prefs -> prefs[REMINDERS]?.split('\n')?.mapNotNull(Reminder::decode).orEmpty().sortedBy { it.startMillis } }
+        .distinctUntilChanged()
+
+    /** Ajoute le rappel, ou le retire s'il existe déjà. Les rappels passés depuis une heure sont oubliés. */
+    suspend fun toggleReminder(reminder: Reminder, now: Long = System.currentTimeMillis()) {
+        dataStore.edit { prefs ->
+            val current = prefs[REMINDERS]?.split('\n')?.mapNotNull(Reminder::decode).orEmpty()
+                .filter { it.startMillis > now - REMINDER_RETENTION_MILLIS }
+            val updated = if (current.any { it.key == reminder.key }) current.filterNot { it.key == reminder.key } else current + reminder
+            prefs[REMINDERS] = updated.joinToString("\n") { it.encode() }
+        }
+    }
+
+    suspend fun removeReminder(key: String) {
+        dataStore.edit { prefs ->
+            prefs[REMINDERS] = prefs[REMINDERS]?.split('\n')?.mapNotNull(Reminder::decode).orEmpty()
+                .filterNot { it.key == key }
+                .joinToString("\n") { it.encode() }
+        }
+    }
+
     /**
      * Qualité qui a joué sans problème pour chaque chaîne d'une playlist (clé de version → nom de
      * [tv.nextv.core.model.StreamQuality]) : la lecture suivante commence directement par elle.
@@ -260,11 +338,53 @@ class SettingsRepository(
         val AUDIO_LANGUAGE = stringPreferencesKey("audio_language")
         val SUBTITLE_LANGUAGE = stringPreferencesKey("subtitle_language")
         val START_ON_LAST_CHANNEL = booleanPreferencesKey("start_on_last_channel")
+        val FAVORITE_TEAMS = stringPreferencesKey("favorite_teams")
+        val REMINDERS = stringPreferencesKey("reminders")
+        val PARENTAL_PIN = stringPreferencesKey("parental_pin")
+
+        /** Secrets chiffrés pour cet appareil, playlist active (numéro local), rappels (numéros de chaîne). */
+        val NOT_PORTABLE = setOf(PROXY_CREDENTIALS, TMDB_KEY, FOOTBALL_KEY, ACTIVE_PLAYLIST, REMINDERS).map { it.name }.toSet()
+        val NOT_PORTABLE_PREFIXES = listOf(DECODER_PREFIX, RECENT_PREFIX, QUALITY_PREFIX)
+        const val REMINDER_RETENTION_MILLIS = 60 * 60_000L
         const val DECODER_PREFIX = "decoder_"
         const val RECENT_PREFIX = "recent_channels_"
         const val MAX_RECENT_CHANNELS = 30
         const val QUALITY_PREFIX = "working_quality_"
         const val MAX_REMEMBERED_QUALITIES = 300
+    }
+}
+
+/**
+ * Rappel d'un programme ou d'un match : un bandeau le signale peu avant le début.
+ * @property key identifiant du programme (chaîne et heure de début, ou match).
+ * @property channelId chaîne à ouvrir depuis le bandeau, si elle est connue.
+ */
+data class Reminder(
+    val key: String,
+    val startMillis: Long,
+    val title: String,
+    val channelId: Long? = null,
+    val channelName: String? = null,
+) {
+    /** Une ligne, champs séparés par des tabulations. */
+    fun encode(): String = listOf(key, startMillis.toString(), channelId?.toString().orEmpty(), channelName.orEmpty(), title)
+        .joinToString("\t") { it.replace('\t', ' ').replace('\n', ' ') }
+
+    companion object {
+        fun decode(line: String): Reminder? {
+            val fields = line.split('\t')
+            if (fields.size < 5) return null
+            return Reminder(
+                key = fields[0].takeIf { it.isNotEmpty() } ?: return null,
+                startMillis = fields[1].toLongOrNull() ?: return null,
+                title = fields[4],
+                channelId = fields[2].toLongOrNull(),
+                channelName = fields[3].takeIf { it.isNotEmpty() },
+            )
+        }
+
+        /** Clé d'un programme du guide. */
+        fun keyOf(channelId: Long, startMillis: Long) = "programme-$channelId-$startMillis"
     }
 }
 

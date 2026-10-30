@@ -1,5 +1,8 @@
 package tv.nextv.app.ui.settings
 
+import android.content.ActivityNotFoundException
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +21,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -51,9 +55,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import tv.nextv.app.R
 import tv.nextv.app.player.VideoDecoders
+import tv.nextv.app.ui.common.PinDialog
 import tv.nextv.app.ui.common.appViewModel
 import tv.nextv.app.ui.common.describe
 import tv.nextv.app.ui.common.relativeTime
@@ -74,13 +81,37 @@ import tv.nextv.app.ui.theme.NexTvColors
 import tv.nextv.app.ui.theme.NexTvIcons
 import tv.nextv.core.epg.HttpEpgFeedProvider
 import tv.nextv.core.net.DnsProvider
+import tv.nextv.core.backup.BackupFormatException
 import tv.nextv.core.repository.RefreshResult
+import java.io.File
+import java.io.IOException
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
 
+/** Étape de la saisie du code parental. */
+private sealed interface PinStep {
+    /** Ouverture des catégories de chaînes. */
+    data object Unlock : PinStep
+
+    data object Create : PinStep
+
+    data class Confirm(val first: String) : PinStep
+
+    data object Remove : PinStep
+}
+
+private const val BACKUP_FILE_NAME = "nextv-sauvegarde.json"
+
+/** [onRestored] : sauvegarde restaurée, la playlist active est à recharger. */
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onPlaylists: () -> Unit, onProxy: () -> Unit, onChannelGroups: () -> Unit = {}) {
+fun SettingsScreen(
+    onBack: () -> Unit,
+    onPlaylists: () -> Unit,
+    onProxy: () -> Unit,
+    onChannelGroups: () -> Unit = {},
+    onRestored: () -> Unit = {},
+) {
     val viewModel = appViewModel { container, _ -> SettingsViewModel(container) }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val update by viewModel.update.collectAsStateWithLifecycle()
@@ -89,6 +120,56 @@ fun SettingsScreen(onBack: () -> Unit, onPlaylists: () -> Unit, onProxy: () -> U
     val resources = context.resources
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    var pinStep by remember { mutableStateOf<PinStep?>(null) }
+    var pinError by remember { mutableStateOf<String?>(null) }
+
+    // Sauvegarde : fichier choisi avec le sélecteur du système, sinon dans le dossier de l'application.
+    val backupFile = remember { File(context.getExternalFilesDir(null) ?: context.filesDir, BACKUP_FILE_NAME) }
+    fun saveBackup(where: String, write: (String) -> Unit) {
+        scope.launch {
+            val message = try {
+                val text = viewModel.exportBackup()
+                withContext(Dispatchers.IO) { write(text) }
+                resources.getString(R.string.settings_backup_saved, where)
+            } catch (e: IOException) {
+                resources.getString(R.string.settings_backup_failed)
+            } catch (e: SecurityException) {
+                resources.getString(R.string.settings_backup_failed)
+            }
+            snackbar.showSnackbar(message)
+        }
+    }
+    fun restoreBackup(read: () -> String) {
+        scope.launch {
+            val result = try {
+                viewModel.restoreBackup(withContext(Dispatchers.IO) { read() })
+            } catch (e: IOException) {
+                null
+            } catch (e: SecurityException) {
+                null
+            } catch (e: BackupFormatException) {
+                null
+            }
+            if (result == null) {
+                snackbar.showSnackbar(resources.getString(R.string.settings_restore_failed))
+            } else {
+                snackbar.showSnackbar(resources.getQuantityString(R.plurals.settings_restore_done, result.total, result.total))
+                onRestored()
+            }
+        }
+    }
+    val createDocument = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) {
+            saveBackup(uri.lastPathSegment.orEmpty()) { text ->
+                context.contentResolver.openOutputStream(uri)?.use { it.write(text.toByteArray()) } ?: throw IOException("Fichier inaccessible")
+            }
+        }
+    }
+    val openDocument = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            restoreBackup { context.contentResolver.openInputStream(uri)?.use { it.readBytes().decodeToString() } ?: throw IOException("Fichier inaccessible") }
+        }
+    }
 
     // Recherche de mise à jour à l'ouverture des réglages.
     LaunchedEffect(viewModel) {
@@ -124,7 +205,28 @@ fun SettingsScreen(onBack: () -> Unit, onPlaylists: () -> Unit, onProxy: () -> U
         onSaveFootballKey = viewModel::saveFootballKey,
         onClearFootballKey = viewModel::clearFootballKey,
         onProxy = onProxy,
-        onChannelGroups = onChannelGroups,
+        // Code parental : demandé avant de pouvoir réafficher des catégories masquées.
+        onChannelGroups = { if (state.parentalPin) pinStep = PinStep.Unlock else onChannelGroups() },
+        onParentalPin = { pinStep = if (state.parentalPin) PinStep.Remove else PinStep.Create },
+        onBackup = {
+            try {
+                createDocument.launch(BACKUP_FILE_NAME)
+            } catch (e: ActivityNotFoundException) {
+                // Pas de sélecteur de fichiers (Fire TV) : dossier de l'application.
+                saveBackup(backupFile.path) { backupFile.writeText(it) }
+            }
+        },
+        onRestore = {
+            try {
+                openDocument.launch(arrayOf("application/json", "text/plain", "application/octet-stream"))
+            } catch (e: ActivityNotFoundException) {
+                if (backupFile.exists()) {
+                    restoreBackup { backupFile.readText() }
+                } else {
+                    scope.launch { snackbar.showSnackbar(resources.getString(R.string.settings_restore_missing, backupFile.path)) }
+                }
+            }
+        },
         onCycleDecoder = viewModel::cycleDecoder,
         onGridColumns = viewModel::setGridColumns,
         onChannelPreview = viewModel::setChannelPreview,
@@ -140,6 +242,62 @@ fun SettingsScreen(onBack: () -> Unit, onPlaylists: () -> Unit, onProxy: () -> U
             if (!opened) scope.launch { snackbar.showSnackbar(resources.getString(R.string.settings_update_permission_manual)) }
         },
     )
+
+    pinStep?.let { step ->
+        PinDialog(
+            title = stringResource(
+                when (step) {
+                    PinStep.Unlock -> R.string.pin_enter
+                    PinStep.Create -> R.string.pin_create
+                    is PinStep.Confirm -> R.string.pin_confirm
+                    PinStep.Remove -> R.string.pin_remove
+                },
+            ),
+            message = stringResource(
+                when (step) {
+                    PinStep.Unlock -> R.string.pin_enter_message
+                    PinStep.Create, is PinStep.Confirm -> R.string.pin_create_message
+                    PinStep.Remove -> R.string.pin_remove_message
+                },
+            ),
+            error = pinError,
+            onPin = { pin ->
+                when (step) {
+                    PinStep.Create -> {
+                        pinError = null
+                        pinStep = PinStep.Confirm(pin)
+                    }
+                    is PinStep.Confirm -> if (pin == step.first) {
+                        viewModel.setParentalPin(pin)
+                        pinStep = null
+                        pinError = null
+                        scope.launch { snackbar.showSnackbar(resources.getString(R.string.pin_set_done)) }
+                    } else {
+                        pinError = resources.getString(R.string.pin_mismatch)
+                        pinStep = PinStep.Create
+                    }
+                    PinStep.Unlock, PinStep.Remove -> scope.launch {
+                        if (viewModel.checkParentalPin(pin)) {
+                            pinStep = null
+                            pinError = null
+                            if (step == PinStep.Unlock) {
+                                onChannelGroups()
+                            } else {
+                                viewModel.setParentalPin(null)
+                                snackbar.showSnackbar(resources.getString(R.string.pin_removed))
+                            }
+                        } else {
+                            pinError = resources.getString(R.string.pin_wrong)
+                        }
+                    }
+                }
+            },
+            onDismiss = {
+                pinStep = null
+                pinError = null
+            },
+        )
+    }
 }
 
 /** Réglages, sans dépendance au ViewModel (captures d'écran). */
@@ -168,6 +326,9 @@ fun SettingsContent(
     onCheckUpdate: () -> Unit = {},
     onInstallUpdate: (AppRelease) -> Unit = {},
     onAllowInstall: () -> Unit = {},
+    onParentalPin: () -> Unit = {},
+    onBackup: () -> Unit = {},
+    onRestore: () -> Unit = {},
     account: AccountState? = null,
     now: Long = System.currentTimeMillis(),
 ) {
@@ -275,6 +436,11 @@ fun SettingsContent(
                                 onClick = onChannelGroups,
                             )
                         }
+                        ValueRow(
+                            title = stringResource(R.string.settings_parental_pin),
+                            value = stringResource(if (state.parentalPin) R.string.settings_parental_pin_on else R.string.settings_parental_pin_off),
+                            onClick = onParentalPin,
+                        )
                     }
 
                     // Guide TV commun.
@@ -399,6 +565,14 @@ fun SettingsContent(
                     }
 
                     // Mise à jour de l'application.
+                    // Sauvegarde et restauration.
+                    SectionCard(stringResource(R.string.settings_backup), subtitle = stringResource(R.string.settings_backup_help), icon = Icons.Filled.Lock) {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            PillButton(stringResource(R.string.settings_backup_save), onBackup, icon = Icons.Filled.Check)
+                            PillButton(stringResource(R.string.settings_backup_restore), onRestore, icon = Icons.Filled.Refresh)
+                        }
+                    }
+
                     SectionCard(stringResource(R.string.settings_update), icon = Icons.Filled.Refresh) {
                         UpdateSection(state.version, update, onCheckUpdate, onInstallUpdate, onAllowInstall)
                     }

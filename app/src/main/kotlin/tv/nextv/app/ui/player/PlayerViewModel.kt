@@ -687,8 +687,9 @@ class PlayerViewModel(
         val (start, stop) = programme
         switcher = null
         // Version enregistrée par le serveur : toutes les qualités ne le sont pas forcément.
-        val variants = if (primary.variantKey.isNotEmpty()) container.channelDao.variants(primary.sourceId, primary.variantKey) else emptyList()
-        val recorded = (listOf(requested) + variants).firstOrNull { it.catchupDays > 0 } ?: requested
+        val recorded = requested.takeIf { it.catchupDays > 0 }
+            ?: container.channelDao.recordedVersion(primary.sourceId, primary.variantKey)
+            ?: requested
         val source = container.sourceRepository.getSource(recorded.sourceId)
         val title = container.programmeDao.upcoming(primary.id, start, limit = 1).firstOrNull()?.takeIf { it.startMillis == start }?.title
         val channelName = primary.title.ifBlank { primary.name }

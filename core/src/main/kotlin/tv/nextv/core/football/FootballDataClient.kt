@@ -21,14 +21,14 @@ import java.util.TimeZone
 import java.util.concurrent.TimeUnit
 
 /** Équipe d'un match (football-data.org). [crestUrl] : écusson. */
-data class Team(val name: String, val shortName: String?, val code: String?, val crestUrl: String?) {
+data class Team(val name: String, val shortName: String?, val code: String?, val crestUrl: String?, val id: Long? = null) {
     /** Nom affiché : le nom court s'il existe (« PSG », « Marseille »). */
     val displayName: String get() = shortName?.takeIf { it.isNotBlank() } ?: name
 }
 
 enum class MatchStatus { SCHEDULED, LIVE, FINISHED, POSTPONED, CANCELLED }
 
-/** Match programmé, d'après football-data.org. */
+/** Match programmé, d'après football-data.org. Score : en cours de match ou final, `null` avant le coup d'envoi. */
 data class ScheduledMatch(
     val id: Long,
     val competition: Competition,
@@ -36,6 +36,24 @@ data class ScheduledMatch(
     val status: MatchStatus,
     val home: Team,
     val away: Team,
+    val homeScore: Int? = null,
+    val awayScore: Int? = null,
+) {
+    /** En cours ou sur le point de commencer : le score change, il est redemandé plus souvent. */
+    fun isActive(now: Long): Boolean =
+        status == MatchStatus.LIVE || (status == MatchStatus.SCHEDULED && kickoffMillis <= now + 5 * 60_000L && kickoffMillis >= now - 3 * 60 * 60_000L)
+}
+
+/** Ligne du classement d'un championnat. */
+data class Standing(
+    val position: Int,
+    val team: Team,
+    val played: Int,
+    val won: Int,
+    val draw: Int,
+    val lost: Int,
+    val goalDifference: Int,
+    val points: Int,
 )
 
 enum class FootballDataError { MISSING_KEY, INVALID_KEY, RATE_LIMITED, NETWORK, SERVER }
@@ -45,10 +63,16 @@ sealed interface FootballDataResult {
     data class Failed(val error: FootballDataError) : FootballDataResult
 }
 
+sealed interface StandingsResult {
+    data class Success(val table: List<Standing>) : StandingsResult
+    data class Failed(val error: FootballDataError) : StandingsResult
+}
+
 /**
- * Matchs des compétitions couvertes par l'offre gratuite de football-data.org (API v4).
+ * Matchs et classements des compétitions couvertes par l'offre gratuite de football-data.org (API v4).
  * La clé (« jeton », en-tête `X-Auth-Token`) n'apparaît jamais dans les journaux.
- * L'offre gratuite limite le nombre d'appels : les résultats sont gardés [cacheMillis].
+ * L'offre gratuite limite le nombre d'appels : les résultats sont gardés [cacheMillis], ou
+ * [liveCacheMillis] pendant les matchs (scores en direct).
  */
 class FootballDataClient(
     private val clients: HttpClientProvider,
@@ -57,6 +81,8 @@ class FootballDataClient(
     private val logger: Logger = Logger.None,
     private val clock: () -> Long = System::currentTimeMillis,
     private val cacheMillis: Long = 30 * 60_000L,
+    private val liveCacheMillis: Long = 2 * 60_000L,
+    private val standingsCacheMillis: Long = 60 * 60_000L,
     /** Au-delà, la section Foot n'attend plus le service et se rabat sur le guide. */
     private val callTimeoutMillis: Long = 10_000,
 ) {
@@ -64,8 +90,11 @@ class FootballDataClient(
 
     private val mutex = Mutex()
     private var cached: Cached? = null
+    private val cachedStandings = HashMap<Competition, CachedStandings>()
 
     private class Cached(val key: String, val from: Long, val to: Long, val at: Long, val matches: List<ScheduledMatch>)
+
+    private class CachedStandings(val key: String, val at: Long, val table: List<Standing>)
 
     /**
      * Matchs entre [fromMillis] et [toMillis] (10 jours au plus). Une réponse récente pour la même
@@ -75,7 +104,7 @@ class FootballDataClient(
         val key = apiKey()?.trim()?.takeIf { it.isNotEmpty() } ?: return@withLock FootballDataResult.Failed(FootballDataError.MISSING_KEY)
         val from = day(fromMillis)
         val to = day(toMillis)
-        cached?.takeIf { it.key == key && it.from == from && it.to == to && clock() - it.at < cacheMillis }?.let {
+        cached?.takeIf { it.key == key && it.from == from && it.to == to && clock() - it.at < freshness(it.matches) }?.let {
             return@withLock FootballDataResult.Success(it.matches)
         }
         try {
@@ -95,7 +124,37 @@ class FootballDataClient(
         }
     }
 
+    /** Durée de validité d'une réponse : courte pendant les matchs, pour suivre le score. */
+    private fun freshness(matches: List<ScheduledMatch>): Long {
+        val now = clock()
+        return if (matches.any { it.isActive(now) }) liveCacheMillis else cacheMillis
+    }
+
     private fun stale(key: String): FootballDataResult? = cached?.takeIf { it.key == key }?.let { FootballDataResult.Success(it.matches) }
+
+    /** Classement d'un championnat ([Competition.apiId] requis), gardé [standingsCacheMillis]. */
+    suspend fun standings(competition: Competition): StandingsResult = mutex.withLock {
+        val key = apiKey()?.trim()?.takeIf { it.isNotEmpty() } ?: return@withLock StandingsResult.Failed(FootballDataError.MISSING_KEY)
+        val apiId = competition.apiId ?: return@withLock StandingsResult.Success(emptyList())
+        val previous = cachedStandings[competition]?.takeIf { it.key == key }
+        previous?.takeIf { clock() - it.at < standingsCacheMillis }?.let { return@withLock StandingsResult.Success(it.table) }
+        try {
+            val json = get(key, baseUrl.newBuilder().addPathSegment("competitions").addPathSegment(apiId.toString()).addPathSegment("standings").build())
+            val table = parseStandings(json)
+            cachedStandings[competition] = CachedStandings(key, clock(), table)
+            StandingsResult.Success(table)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: FootballDataException) {
+            previous?.let { StandingsResult.Success(it.table) } ?: StandingsResult.Failed(e.error)
+        } catch (e: IOException) {
+            logger.warn(TAG, "football-data.org injoignable", e)
+            previous?.let { StandingsResult.Success(it.table) } ?: StandingsResult.Failed(FootballDataError.NETWORK)
+        } catch (e: JSONException) {
+            logger.warn(TAG, "Classement football-data.org illisible", e)
+            previous?.let { StandingsResult.Success(it.table) } ?: StandingsResult.Failed(FootballDataError.SERVER)
+        }
+    }
 
     private suspend fun fetch(key: String, from: Long, to: Long): List<ScheduledMatch> {
         val url = baseUrl.newBuilder().addPathSegment("matches")
@@ -103,6 +162,11 @@ class FootballDataClient(
             .addQueryParameter("dateFrom", isoDay(from))
             .addQueryParameter("dateTo", isoDay(to))
             .build()
+        val items = get(key, url).optJSONArray("matches") ?: return emptyList()
+        return (0 until items.length()).mapNotNull { index -> items.optJSONObject(index)?.let(::parseMatch) }
+    }
+
+    private suspend fun get(key: String, url: HttpUrl): JSONObject {
         val request = Request.Builder()
             .url(url)
             .header("X-Auth-Token", key)
@@ -110,7 +174,7 @@ class FootballDataClient(
             .build()
         val call = clients.client(RequestPurpose.METADATA).newCall(request)
         call.timeout().timeout(callTimeoutMillis, TimeUnit.MILLISECONDS)
-        val json = call.await().use { response ->
+        return call.await().use { response ->
             when {
                 // Jeton refusé (400 « invalid token », 401) ou compétition hors de l'offre (403).
                 response.code == 400 || response.code == 401 || response.code == 403 -> throw FootballDataException(FootballDataError.INVALID_KEY)
@@ -119,8 +183,30 @@ class FootballDataClient(
             }
             JSONObject(response.body.string())
         }
-        val items = json.optJSONArray("matches") ?: return emptyList()
-        return (0 until items.length()).mapNotNull { index -> items.optJSONObject(index)?.let(::parseMatch) }
+    }
+
+    /** Classement général (« TOTAL ») ; pour une phase de groupes, les groupes à la suite. */
+    private fun parseStandings(json: JSONObject): List<Standing> {
+        val standings = json.optJSONArray("standings") ?: return emptyList()
+        val total = (0 until standings.length()).mapNotNull { standings.optJSONObject(it) }
+            .filter { it.optString("type", "TOTAL") == "TOTAL" }
+        return total.flatMap { standing ->
+            val table = standing.optJSONArray("table") ?: return@flatMap emptyList()
+            (0 until table.length()).mapNotNull { index ->
+                val row = table.optJSONObject(index) ?: return@mapNotNull null
+                val team = row.optJSONObject("team")?.let(::parseTeam) ?: return@mapNotNull null
+                Standing(
+                    position = row.optInt("position"),
+                    team = team,
+                    played = row.optInt("playedGames"),
+                    won = row.optInt("won"),
+                    draw = row.optInt("draw"),
+                    lost = row.optInt("lost"),
+                    goalDifference = row.optInt("goalDifference"),
+                    points = row.optInt("points"),
+                )
+            }
+        }
     }
 
     private fun parseMatch(json: JSONObject): ScheduledMatch? {
@@ -128,6 +214,8 @@ class FootballDataClient(
         val kickoff = parseUtc(json.optString("utcDate")) ?: return null
         val home = json.optJSONObject("homeTeam")?.let(::parseTeam) ?: return null
         val away = json.optJSONObject("awayTeam")?.let(::parseTeam) ?: return null
+        // Score du moment pendant le match, score final ensuite.
+        val score = json.optJSONObject("score")?.optJSONObject("fullTime")
         return ScheduledMatch(
             id = json.optLong("id"),
             competition = competition,
@@ -141,8 +229,12 @@ class FootballDataClient(
             },
             home = home,
             away = away,
+            homeScore = score?.score("home"),
+            awayScore = score?.score("away"),
         )
     }
+
+    private fun JSONObject.score(side: String): Int? = if (isNull(side) || !has(side)) null else optInt(side)
 
     /** Équipe connue ; `null` tant qu'elle n'est pas désignée (tirage à venir). */
     private fun parseTeam(json: JSONObject): Team? {
@@ -153,6 +245,7 @@ class FootballDataClient(
             code = json.text("tla"),
             // Écussons au format SVG ou PNG : la version PNG s'affiche sans décodeur supplémentaire.
             crestUrl = json.text("crest")?.replace(Regex("""\.svg$""", RegexOption.IGNORE_CASE), ".png"),
+            id = json.text("id")?.toLongOrNull(),
         )
     }
 

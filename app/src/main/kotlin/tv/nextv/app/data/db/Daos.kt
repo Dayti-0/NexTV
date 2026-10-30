@@ -440,6 +440,16 @@ interface ChannelDao {
     @Query("SELECT COUNT(*) FROM channels c WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND $NOT_HIDDEN AND $BEST_VISIBLE")
     fun observeListedCount(sourceId: Long): Flow<Int>
 
+    /** Meilleure version de la chaîne que le serveur enregistre (replay). */
+    @Query(
+        """
+        SELECT * FROM channels
+        WHERE sourceId = :sourceId AND kind = 'LIVE' AND variantKey = :variantKey AND variantKey != '' AND catchupDays > 0
+        ORDER BY qualityRank DESC, position LIMIT 1
+        """,
+    )
+    suspend fun recordedVersion(sourceId: Long, variantKey: String): ChannelEntity?
+
     /** Meilleure version de la chaîne (pour l'affichage et le zapping). */
     @Query(
         """

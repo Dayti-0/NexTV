@@ -20,9 +20,11 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
+import tv.nextv.app.data.backup.BackupManager
 import tv.nextv.app.data.catalog.FavoritesRepository
 import tv.nextv.app.data.progress.ProgressDatabase
 import tv.nextv.app.data.progress.ProgressRepository
+import tv.nextv.app.data.reminders.ReminderWatcher
 import tv.nextv.app.data.catalog.MetadataRepository
 import tv.nextv.app.data.db.NexTvDatabase
 import tv.nextv.app.data.db.RoomPlaylistStore
@@ -83,6 +85,9 @@ class AppContainer(context: Context) {
 
     private val cipher = KeystoreSecretCipher()
     val settings = SettingsRepository(appContext, cipher)
+
+    /** Rappels des programmes et des matchs (bandeau 5 minutes avant le début). */
+    val reminders = ReminderWatcher(settings, applicationScope)
     val documentAccess = AndroidDocumentAccess(appContext.contentResolver, logger)
 
     private val contentOpener = CompositeContentOpener(
@@ -150,6 +155,9 @@ class AppContainer(context: Context) {
     )
 
     val favorites = FavoritesRepository(database)
+
+    /** Sauvegarde et restauration des playlists, favoris, catégories masquées et réglages. */
+    val backup = BackupManager(playlistStore, sourceRepository, database.favoriteDao(), hiddenGroupDao, settings)
 
     /** Reprise de lecture des films et séries (base distincte, sans migration de celle des playlists). */
     val progress = ProgressRepository(ProgressDatabase.create(appContext))

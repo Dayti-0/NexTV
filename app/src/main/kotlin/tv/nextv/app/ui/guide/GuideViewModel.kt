@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import tv.nextv.app.AppContainer
 import tv.nextv.app.data.db.GroupRow
+import tv.nextv.app.data.settings.Reminder
 import tv.nextv.core.model.ContentKind
 import java.util.Calendar
 
@@ -84,6 +85,19 @@ class GuideViewModel(
         while (true) {
             emit(System.currentTimeMillis())
             delay(REFRESH_MILLIS)
+        }
+    }
+
+    /** Programmes avec un rappel ([Reminder.keyOf]). */
+    val reminders: StateFlow<Set<String>> = container.settings.reminders
+        .map { list -> list.map { it.key }.toSet() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
+    fun toggleReminder(channel: GuideChannel, programme: GuideProgramme) {
+        viewModelScope.launch {
+            container.settings.toggleReminder(
+                Reminder(Reminder.keyOf(channel.id, programme.startMillis), programme.startMillis, programme.title, channel.id, channel.name),
+            )
         }
     }
 

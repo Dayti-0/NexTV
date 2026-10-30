@@ -4,6 +4,7 @@ import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,9 +17,12 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.transformLatest
+import kotlinx.coroutines.launch
 import tv.nextv.app.AppContainer
 import tv.nextv.app.data.db.EpgChannelRow
 import tv.nextv.app.data.db.FootballProgrammeRow
+import tv.nextv.app.data.settings.Reminder
 import tv.nextv.app.ui.guide.GuideChannel
 import tv.nextv.app.ui.guide.GuideProgramme
 import tv.nextv.core.football.Broadcast
@@ -29,6 +33,8 @@ import tv.nextv.core.football.FootballDataResult
 import tv.nextv.core.football.FootballMatches
 import tv.nextv.core.football.MatchStatus
 import tv.nextv.core.football.ScheduledMatch
+import tv.nextv.core.football.Standing
+import tv.nextv.core.football.StandingsResult
 import tv.nextv.core.model.ContentKind
 import java.text.Normalizer
 import java.util.Calendar
@@ -49,13 +55,36 @@ data class FootballMatch(
     val programme: GuideProgramme? = null,
     /** Autres chaînes qui le diffusent. */
     val otherChannels: Int = 0,
+    /** Score en cours de match (football-data.org). */
+    val homeScore: Int? = null,
+    val awayScore: Int? = null,
+    /** Noms complets des équipes, pour les équipes suivies. */
+    val homeTeam: String = home,
+    val awayTeam: String = away,
 ) {
     /** « PSG – Marseille ». */
     val label: String get() = "$home – $away"
 
+    /** « 2 – 1 », quand le score est connu. */
+    val score: String? get() = if (homeScore != null && awayScore != null) "$homeScore – $awayScore" else null
+
     val key: String get() = "${competition.name}-$kickoffMillis-$label"
 
+    /** Clé de son rappel ([Reminder]). */
+    val reminderKey: String get() = "match-$key"
+
     fun isLive(now: Long): Boolean = kickoffMillis <= now && endMillis > now
+
+    fun involves(teams: Set<String>): Boolean = homeTeam in teams || awayTeam in teams
+}
+
+/** Classement d'une compétition : en chargement, ses lignes, ou la raison de son absence. */
+sealed interface StandingsState {
+    data object Loading : StandingsState
+
+    data class Loaded(val table: List<Standing>) : StandingsState
+
+    data class Failed(val notice: FootballNotice) : StandingsState
 }
 
 /** Pourquoi la liste vient du guide seul (football-data.org n'a pas servi). */
@@ -73,10 +102,54 @@ data class FootballUiState(
  * gratuite) et le guide des programmes donne la chaîne qui les diffuse. Les autres compétitions
  * (Ligue Europa, Conférence, équipes nationales), ou toutes sans clé d'API, viennent du guide seul.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class FootballViewModel(private val container: AppContainer, private val sourceId: Long) : ViewModel() {
 
     /** `null` : toutes les compétitions. */
     val competition = MutableStateFlow<Competition?>(null)
+
+    /** « Mes équipes » : matchs des équipes suivies, toutes compétitions confondues. */
+    val myTeams = MutableStateFlow(false)
+
+    /** Classement affiché à la place des matchs (championnats suivis par football-data.org). */
+    val showStandings = MutableStateFlow(false)
+
+    val favoriteTeams: StateFlow<Set<String>> = container.settings.favoriteTeams
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
+    /** Matchs avec un rappel ([FootballMatch.reminderKey]). */
+    val reminders: StateFlow<Set<String>> = container.settings.reminders
+        .map { list -> list.map { it.key }.toSet() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
+    val standings: StateFlow<StandingsState?> = combine(competition, showStandings, myTeams) { competition, shown, mine ->
+        competition?.takeIf { shown && !mine && it.apiId != null }
+    }
+        .distinctUntilChanged()
+        .transformLatest { competition ->
+            if (competition == null) {
+                emit(null)
+            } else {
+                emit(StandingsState.Loading)
+                emit(
+                    when (val result = container.footballData.standings(competition)) {
+                        is StandingsResult.Success -> StandingsState.Loaded(result.table)
+                        is StandingsResult.Failed -> StandingsState.Failed(noticeOf(result.error))
+                    },
+                )
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    fun toggleTeam(name: String) {
+        viewModelScope.launch { container.settings.toggleFavoriteTeam(name) }
+    }
+
+    fun toggleReminder(match: FootballMatch) {
+        viewModelScope.launch {
+            container.settings.toggleReminder(Reminder(match.reminderKey, match.kickoffMillis, match.label, match.channel?.id, match.channel?.name))
+        }
+    }
 
     /** Programmes susceptibles de diffuser un match, et matchs que le guide annonce seul. */
     private class GuideData(val rows: List<BroadcastRow>, val fixtures: List<FootballMatch>)
@@ -103,12 +176,26 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
         .conflate()
         .map { version -> cachedGuide?.takeIf { it.first == version }?.second ?: loadGuide().also { cachedGuide = version to it } }
 
-    /** Réponse de football-data.org, redemandée toutes les 30 min (le client la garde ce temps-là). */
+    /**
+     * Réponse de football-data.org, redemandée toutes les 30 min, et toutes les 2 min pendant les
+     * matchs (scores en direct) ; le client la garde ce temps-là.
+     */
     private val api: Flow<FootballDataResult> = flow {
         while (true) {
             val now = System.currentTimeMillis()
-            emit(container.footballData.matches(now, now + WINDOW_MILLIS))
-            delay(API_REFRESH_MILLIS)
+            val result = container.footballData.matches(now, now + WINDOW_MILLIS)
+            emit(result)
+            val matches = (result as? FootballDataResult.Success)?.matches.orEmpty()
+            val after = System.currentTimeMillis()
+            val nextKickoff = matches.filter { it.kickoffMillis > after }.minOfOrNull { it.kickoffMillis }
+            delay(
+                when {
+                    matches.any { it.isActive(after) } -> LIVE_REFRESH_MILLIS
+                    // Prochain coup d'envoi : score suivi dès le début du match.
+                    nextKickoff != null -> (nextKickoff - after - LIVE_REFRESH_MILLIS).coerceIn(LIVE_REFRESH_MILLIS, API_REFRESH_MILLIS)
+                    else -> API_REFRESH_MILLIS
+                },
+            )
         }
     }.distinctUntilChanged()
 
@@ -152,17 +239,19 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
                 apiMatches(api.matches, guide.rows, System.currentTimeMillis()) + guide.fixtures.filter { it.competition.apiId == null }
             is FootballDataResult.Failed -> guide.fixtures
         }
-        val notice = when ((api as? FootballDataResult.Failed)?.error) {
-            null -> null
-            FootballDataError.MISSING_KEY -> FootballNotice.NO_KEY
-            FootballDataError.INVALID_KEY -> FootballNotice.INVALID_KEY
-            else -> FootballNotice.UNAVAILABLE
-        }
+        val notice = (api as? FootballDataResult.Failed)?.error?.let(::noticeOf)
         return Assembled(matches.sortedWith(compareBy({ it.kickoffMillis }, { it.competition.ordinal })), notice)
+    }
+
+    private fun noticeOf(error: FootballDataError): FootballNotice = when (error) {
+        FootballDataError.MISSING_KEY -> FootballNotice.NO_KEY
+        FootballDataError.INVALID_KEY -> FootballNotice.INVALID_KEY
+        else -> FootballNotice.UNAVAILABLE
     }
 
     private companion object {
         const val API_REFRESH_MILLIS = 30 * 60_000L
+        const val LIVE_REFRESH_MILLIS = 2 * 60_000L
         const val TICK_MILLIS = 30_000L
 
         /** Le guide couvre en général une semaine. */
@@ -209,6 +298,10 @@ private fun apiMatches(matches: List<ScheduledMatch>, rows: List<BroadcastRow>, 
             channel = first?.let(::channelOf),
             programme = first?.let(::programmeOf),
             otherChannels = (shows.size - 1).coerceAtLeast(0),
+            homeScore = match.homeScore.takeIf { match.status == MatchStatus.LIVE },
+            awayScore = match.awayScore.takeIf { match.status == MatchStatus.LIVE },
+            homeTeam = match.home.name,
+            awayTeam = match.away.name,
         )
     }
 }

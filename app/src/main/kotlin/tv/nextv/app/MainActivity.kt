@@ -16,6 +16,9 @@ class MainActivity : ComponentActivity() {
     /** Action du double appui rapide sur « Retour » (retour à l'accueil), fournie par la navigation. */
     var onDoubleBack: (() -> Unit)? = null
 
+    /** Touches traitées avant l'écran affiché (bandeau de rappel) ; vrai : touche consommée. */
+    var keyInterceptor: ((KeyEvent) -> Boolean)? = null
+
     /** Relâchement du dernier « Retour » (horloge des événements). */
     private var lastBackUpTime = 0L
     private var doubleBack = false
@@ -56,6 +59,7 @@ class MainActivity : ComponentActivity() {
      */
     @SuppressLint("RestrictedApi", "GestureBackNavigation")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (keyInterceptor?.invoke(event) == true) return true
         if (event.keyCode != KeyEvent.KEYCODE_BACK) return super.dispatchKeyEvent(event)
         when (event.action) {
             KeyEvent.ACTION_DOWN -> {

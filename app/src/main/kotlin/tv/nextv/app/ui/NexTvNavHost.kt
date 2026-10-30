@@ -1,21 +1,30 @@
 package tv.nextv.app.ui
 
+import android.view.KeyEvent
 import androidx.activity.compose.LocalActivity
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import tv.nextv.app.MainActivity
+import tv.nextv.app.ui.common.ReminderBanner
 import tv.nextv.app.ui.common.appContainer
 import tv.nextv.app.ui.detail.DetailScreen
 import tv.nextv.app.ui.editor.SourceEditorScreen
@@ -80,8 +89,58 @@ fun NexTvNavHost() {
         navController.currentBackStackEntryFlow.first { it.destination.route != Routes.STARTUP }
         navController.navigate(Routes.editor())
     }
-    AppNavHost(navController)
+    // Rappel d'un programme : bandeau par-dessus l'écran affiché, masqué au bout d'une minute.
+    val reminder by container.reminders.due.collectAsState()
+    Box(Modifier.fillMaxSize()) {
+        AppNavHost(navController)
+        reminder?.let { due ->
+            val watch: (() -> Unit)? = due.channelId?.let { id ->
+                {
+                    container.reminders.dismiss()
+                    navController.navigate(Routes.player(id)) { popUpTo(Routes.HOME) }
+                }
+            }
+            ReminderBanner(
+                reminder = due,
+                now = System.currentTimeMillis(),
+                onWatch = watch,
+                onDismiss = container.reminders::dismiss,
+                modifier = Modifier.align(Alignment.TopEnd).padding(24.dp),
+            )
+            LaunchedEffect(due) {
+                delay(REMINDER_BANNER_MILLIS)
+                container.reminders.dismiss()
+            }
+            // OK : regarder ; Retour : fermer. Une touche relâchée sans avoir été enfoncée ici reste à l'écran.
+            DisposableEffect(due, activity) {
+                var pressed = false
+                activity?.keyInterceptor = { event ->
+                    val action = when (event.keyCode) {
+                        KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> watch
+                        KeyEvent.KEYCODE_BACK -> container.reminders::dismiss
+                        else -> null
+                    }
+                    when {
+                        action == null -> false
+                        event.action == KeyEvent.ACTION_DOWN -> {
+                            pressed = true
+                            true
+                        }
+                        event.action == KeyEvent.ACTION_UP && pressed -> {
+                            pressed = false
+                            action?.invoke()
+                            true
+                        }
+                        else -> false
+                    }
+                }
+                onDispose { activity?.keyInterceptor = null }
+            }
+        }
+    }
 }
+
+private const val REMINDER_BANNER_MILLIS = 60_000L
 
 @Composable
 private fun AppNavHost(navController: NavHostController) {
@@ -172,6 +231,7 @@ private fun AppNavHost(navController: NavHostController) {
                 onPlaylists = { navController.navigate(Routes.PLAYLISTS) },
                 onProxy = { navController.navigate(Routes.PROXY) },
                 onChannelGroups = { navController.navigate(Routes.CHANNEL_GROUPS) },
+                onRestored = { navController.restartAt(Routes.startup(reload = true)) },
             )
         }
         composable(Routes.PLAYLISTS) {
