@@ -18,6 +18,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+import java.util.concurrent.TimeUnit
 
 /** Équipe d'un match (football-data.org). [crestUrl] : écusson. */
 data class Team(val name: String, val shortName: String?, val code: String?, val crestUrl: String?) {
@@ -56,6 +57,8 @@ class FootballDataClient(
     private val logger: Logger = Logger.None,
     private val clock: () -> Long = System::currentTimeMillis,
     private val cacheMillis: Long = 30 * 60_000L,
+    /** Au-delà, la section Foot n'attend plus le service et se rabat sur le guide. */
+    private val callTimeoutMillis: Long = 10_000,
 ) {
     private class FootballDataException(val error: FootballDataError) : Exception(error.name)
 
@@ -105,7 +108,9 @@ class FootballDataClient(
             .header("X-Auth-Token", key)
             .header("Accept", "application/json")
             .build()
-        val json = clients.client(RequestPurpose.METADATA).newCall(request).await().use { response ->
+        val call = clients.client(RequestPurpose.METADATA).newCall(request)
+        call.timeout().timeout(callTimeoutMillis, TimeUnit.MILLISECONDS)
+        val json = call.await().use { response ->
             when {
                 // Jeton refusé (400 « invalid token », 401) ou compétition hors de l'offre (403).
                 response.code == 400 || response.code == 401 || response.code == 403 -> throw FootballDataException(FootballDataError.INVALID_KEY)
