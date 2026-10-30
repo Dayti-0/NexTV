@@ -15,8 +15,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         CredentialEntity::class,
         FavoriteEntity::class,
         TmdbCacheEntity::class,
+        HiddenGroupEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = false,
 )
 abstract class NexTvDatabase : RoomDatabase() {
@@ -26,6 +27,7 @@ abstract class NexTvDatabase : RoomDatabase() {
     abstract fun credentialDao(): CredentialDao
     abstract fun favoriteDao(): FavoriteDao
     abstract fun tmdbDao(): TmdbDao
+    abstract fun hiddenGroupDao(): HiddenGroupDao
 
     companion object {
         /** Année des programmes du guide : nouvelle colonne, les données existantes sont conservées. */
@@ -35,9 +37,20 @@ abstract class NexTvDatabase : RoomDatabase() {
             }
         }
 
+        /** Catégories masquées : nouvelle table, les données existantes sont conservées. */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `hidden_groups` (`sourceId` INTEGER NOT NULL, `kind` TEXT NOT NULL, " +
+                        "`title` TEXT NOT NULL, PRIMARY KEY(`sourceId`, `kind`, `title`), " +
+                        "FOREIGN KEY(`sourceId`) REFERENCES `sources`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+                )
+            }
+        }
+
         fun create(context: Context): NexTvDatabase =
             Room.databaseBuilder(context.applicationContext, NexTvDatabase::class.java, "nextv.db")
-                .addMigrations(MIGRATION_2_3)
+                .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
                 // Versions de test antérieures (1) : les données sont rechargées depuis la playlist.
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()

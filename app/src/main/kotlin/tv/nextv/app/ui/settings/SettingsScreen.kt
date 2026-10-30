@@ -78,7 +78,7 @@ import tv.nextv.core.repository.RefreshResult
 import java.util.Locale
 
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onPlaylists: () -> Unit, onProxy: () -> Unit) {
+fun SettingsScreen(onBack: () -> Unit, onPlaylists: () -> Unit, onProxy: () -> Unit, onChannelGroups: () -> Unit = {}) {
     val viewModel = appViewModel { container, _ -> SettingsViewModel(container) }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val update by viewModel.update.collectAsStateWithLifecycle()
@@ -118,6 +118,7 @@ fun SettingsScreen(onBack: () -> Unit, onPlaylists: () -> Unit, onProxy: () -> U
         onSaveTmdbKey = viewModel::saveTmdbKey,
         onClearTmdbKey = viewModel::clearTmdbKey,
         onProxy = onProxy,
+        onChannelGroups = onChannelGroups,
         onCycleDecoder = viewModel::cycleDecoder,
         onGridColumns = viewModel::setGridColumns,
         onCycleDns = viewModel::cycleDns,
@@ -147,6 +148,7 @@ fun SettingsContent(
     onSaveTmdbKey: (String) -> Unit,
     onClearTmdbKey: () -> Unit,
     onProxy: () -> Unit,
+    onChannelGroups: () -> Unit = {},
     onCycleDecoder: (String) -> Unit = {},
     onGridColumns: (GridColumns) -> Unit = {},
     onCycleDns: () -> Unit = {},
@@ -236,6 +238,17 @@ fun SettingsContent(
                             onChange = { onGridColumns(grid.copy(posters = it)) },
                         )
                         InfoText(stringResource(R.string.settings_columns_help))
+                        if (state.playlist != null) {
+                            ValueRow(
+                                title = stringResource(R.string.settings_channel_groups),
+                                value = if (state.hiddenChannelGroups == 0) {
+                                    stringResource(R.string.settings_channel_groups_visible)
+                                } else {
+                                    resources.getQuantityString(R.plurals.channel_groups_hidden, state.hiddenChannelGroups, state.hiddenChannelGroups)
+                                },
+                                onClick = onChannelGroups,
+                            )
+                        }
                     }
 
                     // Guide TV commun.

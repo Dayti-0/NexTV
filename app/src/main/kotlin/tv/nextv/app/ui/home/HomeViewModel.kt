@@ -36,6 +36,7 @@ import tv.nextv.app.data.settings.GridColumns
 import tv.nextv.app.R
 import tv.nextv.app.data.db.ChannelListRow
 import tv.nextv.app.data.db.GroupRow
+import tv.nextv.app.data.db.HiddenGroupEntity
 import tv.nextv.app.data.db.MovieRow
 import tv.nextv.app.data.db.SeriesRow
 import tv.nextv.core.model.ContentKind
@@ -71,6 +72,7 @@ class HomeViewModel(
 ) : ViewModel() {
 
     private val dao = container.channelDao
+    private val hiddenGroups = container.hiddenGroupDao
 
     val sourceId: StateFlow<Long?> = container.settings.activePlaylistId
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
@@ -98,6 +100,20 @@ class HomeViewModel(
     val groups: StateFlow<List<GroupRow>> = combine(sourceId, section) { id, s -> id to s.kind() }
         .flatMapLatest { (id, kind) -> if (id == null || kind == null) flowOf(emptyList()) else dao.observeGroups(id, kind.name) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    init {
+        // Catégorie de chaînes masquée (ici ou dans les réglages) : retour à « Toutes ».
+        viewModelScope.launch {
+            sourceId.filterNotNull()
+                .flatMapLatest { hiddenGroups.observeTitles(it, ContentKind.LIVE.name) }
+                .collect { hidden ->
+                    categories.update { current ->
+                        val selected = current[HomeSection.TV] as? Category.Group
+                        if (selected != null && selected.title in hidden) current + (HomeSection.TV to Category.All) else current
+                    }
+                }
+        }
+    }
 
     val favoriteKeys: StateFlow<Set<String>> = sourceId.flatMapLatest { id ->
         if (id == null) flowOf(emptySet()) else container.favorites.observeKeys(id).map { it.toSet() }
@@ -185,6 +201,16 @@ class HomeViewModel(
     fun selectCategory(target: Category) {
         categories.update { it + (section.value to target) }
         reorder.value = ReorderState()
+    }
+
+    /** Masque une catégorie de chaînes ([title] vide : chaînes sans groupe). */
+    fun hideChannelGroup(title: String) {
+        val id = sourceId.value ?: return
+        viewModelScope.launch {
+            hiddenGroups.hide(HiddenGroupEntity(id, ContentKind.LIVE.name, title))
+            val name = title.ifEmpty { resources.getString(R.string.channels_no_group) }
+            mutableMessages.emit(resources.getString(R.string.category_hidden, name))
+        }
     }
 
     fun setQuery(text: String) {

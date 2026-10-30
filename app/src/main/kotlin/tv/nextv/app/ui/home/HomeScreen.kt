@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -41,6 +42,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -115,6 +117,8 @@ class HomeActions(
     /** Reprendre un film ou un épisode commencé (sans question). */
     val onResume: (Long) -> Unit = {},
     val onClearProgress: (String) -> Unit = {},
+    /** Appui long sur une catégorie de chaînes : proposer de la masquer ([String] vide : sans groupe). */
+    val onHideCategory: (String) -> Unit = {},
 )
 
 @Composable
@@ -146,6 +150,7 @@ fun HomeScreen(
     val movies = viewModel.movies.collectAsLazyPagingItems()
     val series = viewModel.series.collectAsLazyPagingItems()
     val snackbar = remember { SnackbarHostState() }
+    var pendingHide by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(viewModel) {
         viewModel.messages.collect { snackbar.showSnackbar(it) }
@@ -189,12 +194,32 @@ fun HomeScreen(
             onSettings = onSettings,
             onResume = onResume,
             onClearProgress = viewModel::clearProgress,
+            onHideCategory = { pendingHide = it },
         ),
         guide = { modifier -> sourceId?.let { GuideScreen(it, onPlay, modifier) } },
         continueMovies = continueMovies,
         continueSeries = continueSeries,
         gridColumns = gridColumns,
     )
+
+    pendingHide?.let { title ->
+        val name = title.ifEmpty { stringResource(R.string.channels_no_group) }
+        AlertDialog(
+            onDismissRequest = { pendingHide = null },
+            title = { Text(stringResource(R.string.category_hide_title, name)) },
+            text = { Text(stringResource(R.string.category_hide_message)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.hideChannelGroup(title)
+                    pendingHide = null
+                }) { Text(stringResource(R.string.category_hide)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingHide = null }) { Text(stringResource(R.string.action_cancel)) }
+            },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        )
+    }
 }
 
 /** Accueil : sections TV, Films, Séries et Guide TV. Sans dépendance au ViewModel (captures d'écran). */
@@ -384,6 +409,8 @@ private fun CatalogSection(
     body: @Composable (grid: GridLayout) -> Unit,
 ) {
     val total = groups.sumOf { it.count }
+    // Chaînes : appui long sur une catégorie pour la masquer.
+    val hide: (String) -> (() -> Unit)? = { title -> if (section == HomeSection.TV) ({ actions.onHideCategory(title) }) else null }
     if (window.isWide) {
         Row(modifier.fillMaxSize()) {
             Column(
@@ -411,7 +438,12 @@ private fun CatalogSection(
                     item { CategoryItem(allLabel(section), total, category == Category.All) { actions.onCategory(Category.All) } }
                     items(groups, key = { it.title ?: NO_GROUP_KEY }) { group ->
                         val title = group.title.orEmpty()
-                        CategoryItem(group.title ?: stringResource(R.string.channels_no_group), group.count, category == Category.Group(title)) {
+                        CategoryItem(
+                            group.title ?: stringResource(R.string.channels_no_group),
+                            group.count,
+                            category == Category.Group(title),
+                            onLongClick = hide(title),
+                        ) {
                             actions.onCategory(Category.Group(title))
                         }
                     }
@@ -437,7 +469,7 @@ private fun CatalogSection(
                 item { CategoryChip(stringResource(R.string.channels_all_short), category == Category.All) { actions.onCategory(Category.All) } }
                 items(groups, key = { it.title ?: NO_GROUP_KEY }) { group ->
                     val title = group.title.orEmpty()
-                    CategoryChip(group.title ?: stringResource(R.string.channels_no_group), category == Category.Group(title)) {
+                    CategoryChip(group.title ?: stringResource(R.string.channels_no_group), category == Category.Group(title), onLongClick = hide(title)) {
                         actions.onCategory(Category.Group(title))
                     }
                 }
@@ -858,9 +890,17 @@ private fun gridPadding(window: WindowInfo) = PaddingValues(
 )
 
 @Composable
-private fun CategoryItem(name: String, count: Int, selected: Boolean, star: Boolean = false, onClick: () -> Unit) {
+private fun CategoryItem(
+    name: String,
+    count: Int,
+    selected: Boolean,
+    star: Boolean = false,
+    onLongClick: (() -> Unit)? = null,
+    onClick: () -> Unit,
+) {
     FocusSurface(
         onClick = onClick,
+        onLongClick = onLongClick,
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.small,
         color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
@@ -878,9 +918,10 @@ private fun CategoryItem(name: String, count: Int, selected: Boolean, star: Bool
 }
 
 @Composable
-private fun CategoryChip(name: String, selected: Boolean, star: Boolean = false, onClick: () -> Unit) {
+private fun CategoryChip(name: String, selected: Boolean, star: Boolean = false, onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
     FocusSurface(
         onClick = onClick,
+        onLongClick = onLongClick,
         shape = CircleShape,
         color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
         focusedColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,

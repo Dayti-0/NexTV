@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import tv.nextv.app.AppContainer
 import tv.nextv.app.data.db.GroupRow
 import tv.nextv.core.model.ContentKind
@@ -61,6 +63,15 @@ class GuideViewModel(
     /** `null` : toutes les chaînes ; `""` : chaînes sans groupe ; [FAVORITES] : chaînes favorites. */
     val selectedGroup = MutableStateFlow<String?>(null)
 
+    private val hiddenGroups = container.hiddenGroupDao.observeTitles(sourceId, ContentKind.LIVE.name)
+
+    init {
+        // Catégorie masquée entre-temps : retour à toutes les chaînes.
+        viewModelScope.launch {
+            hiddenGroups.collect { hidden -> selectedGroup.update { if (it != null && it in hidden) null else it } }
+        }
+    }
+
     private val clock = flow {
         while (true) {
             emit(System.currentTimeMillis())
@@ -68,7 +79,7 @@ class GuideViewModel(
         }
     }
 
-    val state: StateFlow<GuideUiState> = combine(selectedGroup, clock) { group, now -> group to now }
+    val state: StateFlow<GuideUiState> = combine(selectedGroup, clock, hiddenGroups) { group, now, _ -> group to now }
         .mapLatest { (group, now) -> load(group, now) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), GuideUiState())
 

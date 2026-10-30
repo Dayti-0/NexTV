@@ -73,6 +73,7 @@ class AppContainer(context: Context) {
     val playlistStore = RoomPlaylistStore(database)
     val channelDao = database.channelDao()
     val programmeDao = database.programmeDao()
+    val hiddenGroupDao = database.hiddenGroupDao()
 
     private val cipher = KeystoreSecretCipher()
     val settings = SettingsRepository(appContext, cipher)

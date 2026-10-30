@@ -25,6 +25,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import tv.nextv.app.data.db.GroupVisibilityRow
 import tv.nextv.app.data.settings.GridColumns
 import tv.nextv.app.ui.detail.DetailContent
 import tv.nextv.app.ui.editor.SourceEditorContent
@@ -41,6 +42,7 @@ import tv.nextv.app.ui.player.PlaybackInfoPanel
 import tv.nextv.app.ui.player.ResumePrompt
 import tv.nextv.app.ui.player.ResumePromptCard
 import tv.nextv.app.ui.player.PlayerOverlay
+import tv.nextv.app.ui.settings.ChannelGroupsContent
 import tv.nextv.app.ui.settings.ProxySettingsContent
 import tv.nextv.app.ui.settings.SettingsContent
 import tv.nextv.app.ui.sources.SourcesContent
@@ -325,6 +327,18 @@ abstract class ScreenshotSuite(private val device: String) {
             onEdit = {},
             onToggleScope = { _, _ -> },
             onSave = {},
+            onBack = {},
+        )
+    }
+
+    @Test
+    fun channelGroups() = capture("21_categories_chaines") {
+        ChannelGroupsContent(
+            groups = SampleData.groups.mapIndexed { index, group ->
+                GroupVisibilityRow(group.title, group.count, hidden = index == 2 || index == 4)
+            },
+            onVisibility = { _, _ -> },
+            onShowAll = {},
             onBack = {},
         )
     }

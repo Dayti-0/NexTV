@@ -4,12 +4,15 @@ import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -21,6 +24,7 @@ import tv.nextv.app.data.settings.GridColumns
 import tv.nextv.app.data.update.UpdateState
 import tv.nextv.app.player.DecoderOption
 import tv.nextv.app.player.VideoDecoders
+import tv.nextv.core.model.ContentKind
 import tv.nextv.core.model.PlaylistSource
 import tv.nextv.core.net.DnsProvider
 import tv.nextv.core.net.ProxySettings
@@ -47,20 +51,28 @@ data class SettingsUiState(
     /** Chaînes et affiches par ligne à l'accueil. */
     val gridColumns: GridColumns = GridColumns(),
     val dns: DnsProvider = DnsProvider.SYSTEM,
+    /** Catégories de chaînes masquées dans la playlist active. */
+    val hiddenChannelGroups: Int = 0,
 )
 
 /** @property selected décodeur choisi, `null` : automatique. */
 data class DecoderChoice(val mimeType: String, val options: List<DecoderOption>, val selected: String?)
 
 /** Réglages : playlist active, lecture, guide TV, fiches TMDB et réseau. */
+@OptIn(ExperimentalCoroutinesApi::class)
 class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     private val settings = container.settings
     private val repository = container.sourceRepository
 
-    private val activePlaylist: Flow<Pair<PlaylistSource?, Int>> =
-        combine(repository.sources, settings.activePlaylistId) { sources, id ->
-            sources.firstOrNull { it.id == id } to sources.size
+    private val hiddenChannelGroups: Flow<Int> = settings.activePlaylistId.flatMapLatest { id ->
+        if (id == null) flowOf(0) else container.hiddenGroupDao.observeCount(id, ContentKind.LIVE.name)
+    }
+
+    /** Playlist active, nombre de playlists et catégories de chaînes masquées. */
+    private val activePlaylist: Flow<Triple<PlaylistSource?, Int, Int>> =
+        combine(repository.sources, settings.activePlaylistId, hiddenChannelGroups) { sources, id, hidden ->
+            Triple(sources.firstOrNull { it.id == id }, sources.size, hidden)
         }
 
     /** Relu à chaque fin d'actualisation : le fichier du guide a pu être retéléchargé. */
@@ -99,7 +111,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         guideDownloadedAt,
         preferences,
         decoderChoices,
-    ) { (playlist, count), refreshing, downloadedAt, prefs, decoders ->
+    ) { (playlist, count, hidden), refreshing, downloadedAt, prefs, decoders ->
         val proxy = prefs.proxy
         SettingsUiState(
             loaded = true,
@@ -116,6 +128,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             decoders = decoders,
             gridColumns = prefs.grid,
             dns = prefs.dns,
+            hiddenChannelGroups = hidden,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 

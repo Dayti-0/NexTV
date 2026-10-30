@@ -70,6 +70,9 @@ data class EpgRefRow(val id: Long, val tvgId: String?, val tvgName: String?, val
 
 data class GroupRow(val title: String?, val count: Int)
 
+/** Groupe d'une playlist, masqué ou non (réglages). */
+data class GroupVisibilityRow(val title: String?, val count: Int, val hidden: Boolean)
+
 data class ChannelUrlRow(val id: Long, val streamUrl: String)
 
 /** Chaîne affichée dans les listes (meilleure version), avec le programme en cours s'il est connu. */
@@ -167,20 +170,40 @@ interface ChannelDao {
     @Query("SELECT COUNT(DISTINCT seriesName) FROM channels WHERE sourceId = :sourceId AND kind = 'SERIES'")
     suspend fun seriesCount(sourceId: Long): Int
 
-    /** Groupes d'un type de contenu (chaînes : meilleure version uniquement ; séries : une par série). */
+    /**
+     * Groupes visibles d'un type de contenu (chaînes : meilleure version uniquement ; séries : une
+     * par série). Les groupes masqués n'apparaissent pas.
+     */
     @Query(
         """
         SELECT groupTitle AS title,
             CASE WHEN :kind = 'SERIES' THEN COUNT(DISTINCT seriesName) ELSE COUNT(*) END AS count
         FROM channels
         WHERE sourceId = :sourceId AND kind = :kind AND isPrimary = 1
+          AND IFNULL(groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = :kind)
         GROUP BY groupTitle ORDER BY MIN(position)
         """,
     )
     fun observeGroups(sourceId: Long, kind: String): Flow<List<GroupRow>>
 
+    /** Tous les groupes d'un type de contenu, avec leur visibilité (réglages). */
+    @Query(
+        """
+        SELECT c.groupTitle AS title,
+            CASE WHEN :kind = 'SERIES' THEN COUNT(DISTINCT c.seriesName) ELSE COUNT(*) END AS count,
+            EXISTS (
+                SELECT 1 FROM hidden_groups h
+                WHERE h.sourceId = :sourceId AND h.kind = :kind AND h.title = IFNULL(c.groupTitle, '')
+            ) AS hidden
+        FROM channels c
+        WHERE c.sourceId = :sourceId AND c.kind = :kind AND c.isPrimary = 1
+        GROUP BY c.groupTitle ORDER BY MIN(c.position)
+        """,
+    )
+    fun observeAllGroups(sourceId: Long, kind: String): Flow<List<GroupVisibilityRow>>
+
     /**
-     * Chaînes en direct (meilleure version de chacune).
+     * Chaînes en direct (meilleure version de chacune), hors catégories masquées.
      * @param filterGroup 1 pour ne garder que [group] (`''` = sans groupe), 0 pour tout afficher.
      * @param query texte recherché, déjà échappé pour LIKE (caractère d'échappement `\`).
      */
@@ -198,6 +221,7 @@ interface ChannelDao {
         )
         WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.isPrimary = 1
           AND (:filterGroup = 0 OR IFNULL(c.groupTitle, '') = :group)
+          AND IFNULL(c.groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'LIVE')
           AND (:query = '' OR c.name LIKE '%' || :query || '%' ESCAPE '\')
         ORDER BY c.position
         """,
@@ -296,12 +320,16 @@ interface ChannelDao {
     )
     suspend fun variants(sourceId: Long, variantKey: String): List<VariantRow>
 
-    /** Chaîne suivante (zapping) : meilleure version de la chaîne suivante, dans l'ordre de la playlist. */
+    /**
+     * Chaîne suivante (zapping) : meilleure version de la chaîne suivante, dans l'ordre de la
+     * playlist, hors catégories masquées.
+     */
     @Query(
         """
         SELECT id FROM channels
         WHERE sourceId = :sourceId AND kind = 'LIVE' AND isPrimary = 1 AND position > :position
           AND streamSupport != 'UNSUPPORTED'
+          AND IFNULL(groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'LIVE')
         ORDER BY position ASC LIMIT 1
         """,
     )
@@ -312,6 +340,7 @@ interface ChannelDao {
         SELECT id FROM channels
         WHERE sourceId = :sourceId AND kind = 'LIVE' AND isPrimary = 1 AND position < :position
           AND streamSupport != 'UNSUPPORTED'
+          AND IFNULL(groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'LIVE')
         ORDER BY position DESC LIMIT 1
         """,
     )
@@ -323,6 +352,7 @@ interface ChannelDao {
         SELECT COUNT(*) FROM channels
         WHERE sourceId = :sourceId AND kind = 'LIVE' AND isPrimary = 1 AND position < :position
           AND (:filterGroup = 0 OR IFNULL(groupTitle, '') = :group)
+          AND IFNULL(groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'LIVE')
         """,
     )
     suspend fun indexInList(sourceId: Long, filterGroup: Int, group: String, position: Int): Int
@@ -336,12 +366,13 @@ interface ChannelDao {
     )
     suspend fun primaryOf(sourceId: Long, variantKey: String): ChannelEntity?
 
-    /** Chaînes associées au guide, pour la grille des programmes. */
+    /** Chaînes associées au guide, pour la grille des programmes (hors catégories masquées). */
     @Query(
         """
         SELECT id, name, title, logoUrl, channelNumber, epgChannelId FROM channels
         WHERE sourceId = :sourceId AND kind = 'LIVE' AND isPrimary = 1 AND epgChannelId IS NOT NULL
           AND (:filterGroup = 0 OR IFNULL(groupTitle, '') = :group)
+          AND IFNULL(groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'LIVE')
         ORDER BY position LIMIT :limit
         """,
     )
@@ -379,6 +410,36 @@ interface FavoriteDao {
 
     @Query("UPDATE favorites SET position = :position WHERE id = :id")
     suspend fun setPosition(id: Long, position: Int)
+}
+
+/** Catégories masquées (les favoris restent toujours visibles). */
+@Dao
+interface HiddenGroupDao {
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun hide(group: HiddenGroupEntity)
+
+    @Query("DELETE FROM hidden_groups WHERE sourceId = :sourceId AND kind = :kind AND title = :title")
+    suspend fun show(sourceId: Long, kind: String, title: String)
+
+    @Query("DELETE FROM hidden_groups WHERE sourceId = :sourceId AND kind = :kind")
+    suspend fun showAll(sourceId: Long, kind: String)
+
+    @Query("SELECT EXISTS (SELECT 1 FROM hidden_groups WHERE sourceId = :sourceId AND kind = :kind AND title = :title)")
+    suspend fun isHidden(sourceId: Long, kind: String, title: String): Boolean
+
+    @Query("SELECT title FROM hidden_groups WHERE sourceId = :sourceId AND kind = :kind")
+    fun observeTitles(sourceId: Long, kind: String): Flow<List<String>>
+
+    /** Catégories masquées encore présentes dans la playlist. */
+    @Query(
+        """
+        SELECT COUNT(*) FROM hidden_groups h
+        WHERE h.sourceId = :sourceId AND h.kind = :kind AND EXISTS (
+            SELECT 1 FROM channels c WHERE c.sourceId = h.sourceId AND c.kind = h.kind AND IFNULL(c.groupTitle, '') = h.title
+        )
+        """,
+    )
+    fun observeCount(sourceId: Long, kind: String): Flow<Int>
 }
 
 @Dao

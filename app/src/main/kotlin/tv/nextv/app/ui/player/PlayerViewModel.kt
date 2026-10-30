@@ -380,8 +380,14 @@ class PlayerViewModel(
     fun openMenu() {
         val current = channel ?: return
         viewModelScope.launch {
-            val category = Category.Group(current.groupTitle.orEmpty())
-            val index = container.channelDao.indexInList(current.sourceId, 1, category.title, current.position)
+            val group = current.groupTitle.orEmpty()
+            // Catégorie masquée (chaîne ouverte depuis les favoris) : menu ouvert sur les favoris.
+            val (category, index) = if (container.hiddenGroupDao.isHidden(current.sourceId, ContentKind.LIVE.name, group)) {
+                val favorite = menuFavorites.value.indexOfFirst { it.id == current.id }
+                if (favorite >= 0) Category.Favorites to favorite else Category.All to 0
+            } else {
+                Category.Group(group) to container.channelDao.indexInList(current.sourceId, 1, group, current.position)
+            }
             mutableMenu.value = ChannelMenuState(open = true, category = category, currentChannelId = current.id, initialIndex = index)
         }
     }

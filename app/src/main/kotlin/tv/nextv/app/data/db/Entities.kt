@@ -113,6 +113,23 @@ data class FavoriteEntity(
     val position: Int,
 )
 
+/**
+ * Catégorie masquée (version 4 du schéma). [title] : nom du groupe, `''` pour les éléments sans
+ * groupe ; il ne dépend pas des identifiants de ligne et reste valable après une actualisation.
+ */
+@Entity(
+    tableName = "hidden_groups",
+    primaryKeys = ["sourceId", "kind", "title"],
+    foreignKeys = [
+        ForeignKey(entity = SourceEntity::class, parentColumns = ["id"], childColumns = ["sourceId"], onDelete = ForeignKey.CASCADE),
+    ],
+)
+data class HiddenGroupEntity(
+    val sourceId: Long,
+    val kind: String,
+    val title: String,
+)
+
 /** Fiche TMDB en cache (ou absence de résultat, [found] faux). */
 @Entity(tableName = "tmdb_cache")
 data class TmdbCacheEntity(

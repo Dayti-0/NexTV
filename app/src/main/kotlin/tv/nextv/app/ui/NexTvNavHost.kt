@@ -21,6 +21,7 @@ import tv.nextv.app.ui.editor.SourceEditorViewModel
 import tv.nextv.app.ui.home.HomeScreen
 import tv.nextv.app.ui.player.PlayerScreen
 import tv.nextv.app.ui.player.PlayerViewModel
+import tv.nextv.app.ui.settings.ChannelGroupsScreen
 import tv.nextv.app.ui.settings.ProxySettingsScreen
 import tv.nextv.app.ui.settings.SettingsScreen
 import tv.nextv.app.ui.sources.SourcesScreen
@@ -40,6 +41,7 @@ private object Routes {
     const val SERIES = "series/{$ARG_ITEM}"
     const val SETTINGS = "settings"
     const val PROXY = "proxy"
+    const val CHANNEL_GROUPS = "channel-groups"
 
     fun startup(reload: Boolean = false) = "startup?${StartupViewModel.ARG_RELOAD}=$reload"
     fun editor(sourceId: Long? = null) = "editor?${SourceEditorViewModel.ARG_SOURCE_ID}=${sourceId ?: -1}"
@@ -147,6 +149,7 @@ private fun AppNavHost(navController: NavHostController) {
                 onBack = { navController.popBackStack() },
                 onPlaylists = { navController.navigate(Routes.PLAYLISTS) },
                 onProxy = { navController.navigate(Routes.PROXY) },
+                onChannelGroups = { navController.navigate(Routes.CHANNEL_GROUPS) },
             )
         }
         composable(Routes.PLAYLISTS) {
@@ -173,6 +176,9 @@ private fun AppNavHost(navController: NavHostController) {
         }
         composable(Routes.PROXY) {
             ProxySettingsScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Routes.CHANNEL_GROUPS) {
+            ChannelGroupsScreen(onBack = { navController.popBackStack() })
         }
     }
 }

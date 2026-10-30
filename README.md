@@ -9,6 +9,8 @@ Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3, enti�
   En cas d'échec : réessayer, continuer avec les données enregistrées ou choisir une autre playlist.
 - **Accueil** : sections TV, Films, Séries et Guide TV, avec catégories (groupes de la playlist), recherche et favoris.
   Appui long sur OK : ajouter / retirer des favoris ; « Réorganiser » puis OK et flèches pour les déplacer.
+  Catégories de chaînes masquables (appui long sur une catégorie, ou Réglages › Catégories de chaînes) :
+  leurs chaînes disparaissent des listes, de la recherche, du zapping et du guide ; les favoris restent visibles.
 - **Films et séries** : fiche enrichie par TMDB (synopsis, note, genres, affiche, bande-annonce), saisons et épisodes.
   Une clé d'API TMDB se saisit dans les réglages (ou s'intègre à la compilation, voir plus bas).
 - **Lecture en direct** : bandeau de 5 s au changement de chaîne ou sur OK (programme en cours avec horaires et
