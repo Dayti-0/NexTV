@@ -2,7 +2,7 @@ name: Signing key
 
 # Création, une seule fois, de la clé privée qui signe les versions publiées.
 #  1. Ajouter le secret NEXTV_KEY_PASSPHRASE : mot de passe long (20 caractères ou plus), à conserver.
-#  2. Pousser la branche signing-key/create.
+#  2. Pousser une branche signing-key/… (par exemple signing-key/create ; nouveau nom pour réessayer).
 # La clé est générée sur le serveur de GitHub, chiffrée avec ce mot de passe (AES-256, PBKDF2) et
 # ajoutée au dépôt (app/nextv-release.keystore.enc) sur la branche TARGET_BRANCH. La clé en clair ne
 # quitte jamais le serveur. Une clé existante n'est jamais remplacée : en changer obligerait à
@@ -10,7 +10,7 @@ name: Signing key
 
 on:
   push:
-    branches: ["signing-key/create"]
+    branches: ["signing-key/**"]
 
 permissions:
   contents: write

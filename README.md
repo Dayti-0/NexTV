@@ -134,7 +134,7 @@ Pour garder le code privé, créer un dépôt public `NexTV-releases` (avec un R
 l'application y cherche ses mises à jour (autre nom de dépôt : variable `NEXTV_RELEASES_REPO`).
 
 Signature des versions publiées : clé privée générée une fois par le workflow `Signing key` (secret
-`NEXTV_KEY_PASSPHRASE`, puis pousser la branche `signing-key/create`), stockée chiffrée dans le dépôt
+`NEXTV_KEY_PASSPHRASE`, puis pousser une branche `signing-key/…`), stockée chiffrée dans le dépôt
 (`app/nextv-release.keystore.enc`, AES-256) et déchiffrée à chaque publication. Chaque version s'installe
 par-dessus la précédente en gardant playlists et réglages. Autre possibilité : les secrets `NEXTV_KEYSTORE_BASE64`,
 `NEXTV_KEYSTORE_PASSWORD`, `NEXTV_KEY_ALIAS` et `NEXTV_KEY_PASSWORD`. Sans clé privée, l'APK est signé avec la clé
