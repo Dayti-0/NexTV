@@ -8,6 +8,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -69,7 +70,9 @@ class PlayerFactory(
         val renderers = DefaultRenderersFactory(context)
             .setEnableDecoderFallback(true)
             .setMediaCodecSelector(VideoDecoders.selector(preferredDecoders))
-        val builder = ExoPlayer.Builder(context, renderers).setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
+        val builder = ExoPlayer.Builder(context, renderers)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
+            .setLoadControl(loadControl())
         if (bandwidthMeter != null) builder.setBandwidthMeter(bandwidthMeter)
         return builder.build()
     }
@@ -98,6 +101,19 @@ class PlayerFactory(
         }
     }
 
+    /**
+     * Démarrage et reprise plus rapides que par défaut (2,5 s et 5 s de mémoire tampon) : une chaîne,
+     * ou la version de repli après un blocage, se lance dès 1,5 s de flux reçu.
+     */
+    private fun loadControl(): DefaultLoadControl = DefaultLoadControl.Builder()
+        .setBufferDurationsMs(
+            DefaultLoadControl.DEFAULT_MIN_BUFFER_MS,
+            DefaultLoadControl.DEFAULT_MAX_BUFFER_MS,
+            START_BUFFER_MILLIS,
+            RESUME_BUFFER_MILLIS,
+        )
+        .build()
+
     private fun userAgent(request: PlaybackRequest): String =
         request.stream.headers["User-Agent"]
             ?: request.userAgent?.takeIf { it.isNotBlank() }
@@ -121,3 +137,6 @@ class PlayerFactory(
             .build()
     }
 }
+
+private const val START_BUFFER_MILLIS = 1_500
+private const val RESUME_BUFFER_MILLIS = 3_000

@@ -9,7 +9,8 @@ data class QualityOption(val channelId: Long, val quality: StreamQuality?)
  * Choix automatique de la qualité parmi les versions d'une même chaîne (FHD → HD → SD → LOW).
  *
  * - Erreur de lecture, mise en mémoire tampon prolongée ou répétée : passage à la version
- *   inférieure disponible. Jamais vers une autre chaîne : seules les [options] fournies
+ *   inférieure disponible, en quelques secondes. Le démarrage d'une chaîne a droit à plus de
+ *   temps qu'un blocage en cours de lecture. Jamais vers une autre chaîne : seules les [options] fournies
  *   (versions de la chaîne regardée) sont envisagées.
  * - Trop d'images perdues par le décodeur (l'appareil ne suit pas, typiquement en 4K) : passage
  *   à une qualité inférieure, et plus de retour à cette qualité pour la chaîne en cours.
@@ -29,16 +30,19 @@ class QualitySwitcher(
     decoderCeilingRank: Int? = null,
 ) {
     data class Config(
-        val maxContinuousBufferingMillis: Long = 12_000,
-        val rebufferWindowMillis: Long = 60_000,
-        val maxRebuffersInWindow: Int = 3,
+        /** Blocage en cours de lecture toléré avant de changer de version. */
+        val maxContinuousBufferingMillis: Long = 3_000,
+        /** Démarrage de la version (chargement initial) toléré avant de changer de version. */
+        val maxInitialBufferingMillis: Long = 8_000,
+        val rebufferWindowMillis: Long = 30_000,
+        val maxRebuffersInWindow: Int = 2,
         val stableMillisBeforeUpgrade: Long = 120_000,
         val upgradeHeadroom: Double = 1.4,
         val failureCooldownMillis: Long = 5 * 60_000,
         val maxFailureCooldownMillis: Long = 60 * 60_000,
         /** Images perdues tolérées sur [droppedFramesWindowMillis] avant de juger que l'appareil ne suit pas. */
-        val maxDroppedFramesInWindow: Int = 60,
-        val droppedFramesWindowMillis: Long = 15_000,
+        val maxDroppedFramesInWindow: Int = 30,
+        val droppedFramesWindowMillis: Long = 5_000,
     )
 
     enum class Reason { ERROR, BUFFERING, DECODER, UPGRADE }
@@ -66,6 +70,9 @@ class QualitySwitcher(
     private val cooldownUntil = HashMap<Long, Long>()
     private val rebuffers = ArrayDeque<Long>()
     private var bufferingSince: Long? = null
+
+    /** La version courante a commencé à jouer : les mises en mémoire tampon suivantes sont des blocages. */
+    private var played = false
     private val droppedFrames = ArrayDeque<Pair<Long, Int>>()
 
     /** Rang de qualité que l'appareil n'a pas su décoder : aucune remontée à ce rang ou au-dessus. */
@@ -90,12 +97,13 @@ class QualitySwitcher(
         val now = clock()
         if (bufferingSince == null) {
             bufferingSince = now
-            rebuffers.addLast(now)
+            if (played) rebuffers.addLast(now)
         }
     }
 
     fun onReady() {
         bufferingSince = null
+        played = true
     }
 
     /** La version courante ne peut pas être lue. */
@@ -130,7 +138,8 @@ class QualitySwitcher(
         while (rebuffers.isNotEmpty() && now - rebuffers.first() > config.rebufferWindowMillis) rebuffers.removeFirst()
 
         val buffering = bufferingSince
-        val stalled = buffering != null && now - buffering >= config.maxContinuousBufferingMillis
+        val tolerated = if (played) config.maxContinuousBufferingMillis else config.maxInitialBufferingMillis
+        val stalled = buffering != null && now - buffering >= tolerated
         val unstable = rebuffers.size >= config.maxRebuffersInWindow
         if (stalled || unstable) {
             val target = lower() ?: return Decision.Stay
@@ -163,6 +172,7 @@ class QualitySwitcher(
     private fun switchTo(option: QualityOption, reason: Reason): Decision {
         index = ladder.indexOf(option)
         bufferingSince = null
+        played = false
         rebuffers.clear()
         droppedFrames.clear()
         stableSince = clock()

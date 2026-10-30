@@ -40,14 +40,42 @@ class QualitySwitcherTest {
     }
 
     @Test
-    fun `persistent buffering steps down`() {
+    fun `a slow start steps down after the start allowance`() {
         val switcher = switcher()
         switcher.onBufferingStarted()
         now += 5_000
         assertEquals(QualitySwitcher.Decision.Stay, switcher.evaluate(null))
 
-        now += 8_000
+        now += 3_000
         assertEquals(QualitySwitcher.Decision.Switch(hd, QualitySwitcher.Reason.BUFFERING), switcher.evaluate(null))
+    }
+
+    @Test
+    fun `a stall during playback steps down within seconds`() {
+        val switcher = switcher()
+        switcher.onBufferingStarted()
+        now += 2_000
+        switcher.onReady()
+        now += 60_000
+
+        switcher.onBufferingStarted()
+        now += 2_000
+        assertEquals(QualitySwitcher.Decision.Stay, switcher.evaluate(null))
+        now += 1_000
+        assertEquals(QualitySwitcher.Decision.Switch(hd, QualitySwitcher.Reason.BUFFERING), switcher.evaluate(null))
+    }
+
+    @Test
+    fun `the new version gets the start allowance again`() {
+        val switcher = switcher()
+        switcher.onReady()
+        switcher.onBufferingStarted()
+        now += 3_000
+        assertEquals(QualitySwitcher.Decision.Switch(hd, QualitySwitcher.Reason.BUFFERING), switcher.evaluate(null))
+
+        switcher.onBufferingStarted()
+        now += 5_000
+        assertEquals(QualitySwitcher.Decision.Stay, switcher.evaluate(null))
     }
 
     @Test
@@ -115,10 +143,10 @@ class QualitySwitcherTest {
         val uhdBackup = QualityOption(6, StreamQuality.UHD)
         val switcher = switcher(initial = 5, options = listOf(uhd, uhdBackup, fhd))
 
-        assertEquals(QualitySwitcher.Decision.Stay, switcher.onDroppedFrames(50))
-        now += 5_000
+        assertEquals(QualitySwitcher.Decision.Stay, switcher.onDroppedFrames(20))
+        now += 2_000
         // Une autre version 4K poserait le même problème : passage direct en FHD.
-        assertEquals(QualitySwitcher.Decision.Switch(fhd, QualitySwitcher.Reason.DECODER), switcher.onDroppedFrames(50))
+        assertEquals(QualitySwitcher.Decision.Switch(fhd, QualitySwitcher.Reason.DECODER), switcher.onDroppedFrames(20))
 
         now += 600_000
         assertEquals(QualitySwitcher.Decision.Stay, switcher.evaluate(bandwidthBps = 200_000_000))
@@ -128,8 +156,8 @@ class QualitySwitcherTest {
     fun `dropped frames spread over time are tolerated`() {
         val switcher = switcher()
         repeat(5) {
-            assertEquals(QualitySwitcher.Decision.Stay, switcher.onDroppedFrames(30))
-            now += 20_000
+            assertEquals(QualitySwitcher.Decision.Stay, switcher.onDroppedFrames(20))
+            now += 10_000
         }
     }
 

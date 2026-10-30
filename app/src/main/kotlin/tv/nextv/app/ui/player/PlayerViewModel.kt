@@ -195,6 +195,10 @@ class PlayerViewModel(
     private var autoQuality = true
     private var preferredDecoders: Map<String, String> = emptyMap()
 
+    // Images perdues déjà prises en compte, pour le lecteur courant.
+    private var countedPlayer: ExoPlayer? = null
+    private var countedDroppedFrames = 0
+
     /** Qualité que l'appareil n'a pas su décoder (images perdues), retenue d'une chaîne à l'autre. */
     private var decoderCeilingRank: Int? = null
 
@@ -274,16 +278,25 @@ class PlayerViewModel(
             updateInfo { it.copy(audioDecoder = decoderName) }
         }
 
-        override fun onDroppedVideoFrames(eventTime: AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long) {
-            updateInfo { it.copy(droppedFrames = it.droppedFrames + droppedFrames) }
-            // L'appareil ne suit pas cette qualité (4K sur une petite box…) : version inférieure si elle existe.
-            if (timeshift != null) return
-            val decision = switcher?.onDroppedFrames(droppedFrames)
-            if (decision is QualitySwitcher.Decision.Switch) {
-                decoderCeilingRank = switcher?.decoderCeilingRank
-                switchQuality(decision)
-            }
+    }
+
+    /**
+     * Images perdues depuis le dernier passage, lues sur les compteurs du décodeur (le lecteur ne les
+     * signale lui-même que par lots de 50, trop tard pour réagir vite).
+     */
+    private fun newDroppedFrames(): Int {
+        val player = mutablePlayer.value
+        if (player !== countedPlayer) {
+            countedPlayer = player
+            countedDroppedFrames = 0
         }
+        val counters = player?.videoDecoderCounters ?: return 0
+        counters.ensureUpdated()
+        val total = counters.droppedBufferCount
+        val delta = total - countedDroppedFrames
+        countedDroppedFrames = total
+        if (delta > 0) updateInfo { it.copy(droppedFrames = total) }
+        return delta.coerceAtLeast(0)
     }
 
     /** Met à jour les infos de lecture ; le type de décodeur (matériel ou logiciel) est déduit dès que possible. */
@@ -314,13 +327,23 @@ class PlayerViewModel(
                 delay(PROGRAMME_REFRESH_MILLIS)
             }
         }
-        // Surveillance de la lecture : mise en mémoire tampon prolongée, retour à une meilleure qualité.
+        // Surveillance de la lecture (2 fois par seconde) : blocage, images perdues, retour à une meilleure qualité.
         viewModelScope.launch {
             while (true) {
                 delay(QUALITY_CHECK_MILLIS)
-                val estimate = state.value.bandwidthMbps?.let { (it * 1_000_000).toLong() }
+                val dropped = newDroppedFrames()
                 // Pause ou différé : changer de version ramènerait au direct.
                 if (timeshift != null || state.value.paused || state.value.liveDelayMs > 0) continue
+                // L'appareil ne suit pas cette qualité (4K sur une petite box…) : version inférieure si elle existe.
+                if (dropped > 0) {
+                    val decision = switcher?.onDroppedFrames(dropped)
+                    if (decision is QualitySwitcher.Decision.Switch) {
+                        decoderCeilingRank = switcher?.decoderCeilingRank
+                        switchQuality(decision)
+                        continue
+                    }
+                }
+                val estimate = state.value.bandwidthMbps?.let { (it * 1_000_000).toLong() }
                 val decision = switcher?.evaluate(estimate)
                 if (decision is QualitySwitcher.Decision.Switch) switchQuality(decision)
             }
@@ -835,7 +858,7 @@ class PlayerViewModel(
         private val RECORDABLE_FORMATS = setOf(StreamFormat.PROGRESSIVE, StreamFormat.UNKNOWN)
         private const val TAG = "Player"
         private const val PROGRAMME_REFRESH_MILLIS = 30_000L
-        private const val QUALITY_CHECK_MILLIS = 2_000L
+        private const val QUALITY_CHECK_MILLIS = 500L
         private val HLS_FALLBACK_FORMATS = setOf(StreamFormat.UNKNOWN, StreamFormat.PROGRESSIVE)
         private val HLS_FALLBACK_ERRORS = setOf(
             PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
