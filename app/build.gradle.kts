@@ -127,3 +127,12 @@ dependencies {
     testImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
+
+// Journal par test et durée maximale : un écran qui ne se stabilise pas est identifié au lieu de bloquer la CI.
+tasks.withType<Test>().configureEach {
+    testLogging {
+        events("started", "passed", "skipped", "failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
+    timeout.set(java.time.Duration.ofMinutes(25))
+}

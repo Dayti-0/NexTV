@@ -126,21 +126,24 @@ fun StartupContent(
 
 @Composable
 internal fun AnimatedLogo(animate: Boolean) {
-    val transition = rememberInfiniteTransition(label = "logo")
-    val rotation by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(tween(2_400, easing = LinearEasing)),
-        label = "ring",
-    )
-    val pulse by transition.animateFloat(
-        initialValue = 0.85f,
-        targetValue = 1.15f,
-        animationSpec = infiniteRepeatable(tween(1_600, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "glow",
-    )
-    val ringAngle = if (animate) rotation else 30f
-    val glowScale = if (animate) pulse else 1f
+    // Animation infinie créée seulement si elle est jouée (captures d'écran : image fixe, sans attente infinie).
+    var ringAngle = 30f
+    var glowScale = 1f
+    if (animate) {
+        val transition = rememberInfiniteTransition(label = "logo")
+        ringAngle = transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(tween(2_400, easing = LinearEasing)),
+            label = "ring",
+        ).value
+        glowScale = transition.animateFloat(
+            initialValue = 0.85f,
+            targetValue = 1.15f,
+            animationSpec = infiniteRepeatable(tween(1_600, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+            label = "glow",
+        ).value
+    }
     Box(Modifier.size(168.dp), contentAlignment = Alignment.Center) {
         // Halo lumineux.
         Box(

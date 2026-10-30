@@ -58,6 +58,7 @@ jobs:
             app/build/outputs/apk/release/*.apk
 
   screenshots:
+    timeout-minutes: 30
     name: Screenshots
     runs-on: ubuntu-latest
     permissions:
