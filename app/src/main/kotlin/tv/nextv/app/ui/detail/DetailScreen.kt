@@ -107,11 +107,14 @@ fun DetailScreen(
     )
 }
 
-/** Ouvre la bande-annonce dans l'application YouTube (ou le navigateur). */
+/**
+ * Ouvre la bande-annonce dans une application YouTube (officielle, SmartTube…) ou le navigateur.
+ * Le lien web d'abord : toutes le comprennent, alors que certaines (SmartTube) refusent `vnd.youtube:`.
+ */
 private fun openTrailer(context: Context, key: String): Boolean {
     val intents = listOf(
-        Intent(Intent.ACTION_VIEW, Uri.parse("vnd.youtube:$key")),
         Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=$key")),
+        Intent(Intent.ACTION_VIEW, Uri.parse("vnd.youtube:$key")),
     )
     for (intent in intents) {
         try {
