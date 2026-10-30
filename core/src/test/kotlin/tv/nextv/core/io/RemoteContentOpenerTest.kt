@@ -5,6 +5,7 @@ import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import mockwebserver3.RecordedRequest
+import mockwebserver3.SocketEffect
 import okhttp3.OkHttpClient
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -222,6 +223,21 @@ class RemoteContentOpenerTest {
         assertEquals(RemoteContentOpener.FALLBACK_USER_AGENTS[0], content.userAgent)
         assertEquals("NexTV/1.0", server.takeRequest().headers["User-Agent"])
         assertEquals(RemoteContentOpener.FALLBACK_USER_AGENTS[0], server.takeRequest().headers["User-Agent"])
+    }
+
+    @Test
+    fun `a connection closed without response is retried as a common player`() {
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse =
+                if (request.headers["User-Agent"].orEmpty().startsWith("VLC/")) ok()
+                else MockResponse.Builder().onResponseStart(SocketEffect.CloseSocket()).build()
+        }
+
+        val content = runBlocking { opener.open(SourceLocation.Remote(server.url("/").toString()), OpenRequest(RequestPurpose.PLAYLIST)) }
+        val text = content.use { it.stream.bufferedReader().readText() }
+        assertEquals("#EXTM3U\n", text)
+        assertEquals("NexTV/1.0", server.takeRequest().headers["User-Agent"])
+        assertEquals(RemoteContentOpener.FALLBACK_USER_AGENTS[0], content.userAgent)
     }
 
     @Test

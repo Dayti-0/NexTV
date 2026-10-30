@@ -330,6 +330,7 @@
     <string name="error_proxy_auth_required">Le proxy exige des identifiants valides.</string>
     <string name="error_proxy_failure">Le proxy n’a pas pu joindre le serveur.</string>
     <string name="error_network">Erreur réseau pendant le téléchargement.</string>
+    <string name="error_network_detail">Erreur réseau pendant le téléchargement : connexion coupée (%1$s). Réessayez ; si cela persiste, essayez un autre DNS dans Réglages › Réseau.</string>
     <string name="error_file_not_found">Fichier introuvable : il a peut-être été déplacé ou supprimé.</string>
     <string name="error_permission_denied">Accès au fichier perdu. Sélectionnez-le à nouveau.</string>
     <string name="error_empty">Le contenu reçu est vide.</string>

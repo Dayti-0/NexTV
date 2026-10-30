@@ -43,7 +43,7 @@ fun Resources.describe(error: SourceError): String = when (error) {
     SourceError.ProxyUnreachable -> getString(R.string.error_proxy_unreachable)
     SourceError.ProxyAuthRequired -> getString(R.string.error_proxy_auth_required)
     is SourceError.ProxyFailure -> getString(R.string.error_proxy_failure)
-    is SourceError.Network -> getString(R.string.error_network)
+    is SourceError.Network -> error.type?.let { getString(R.string.error_network_detail, it) } ?: getString(R.string.error_network)
     SourceError.FileNotFound -> getString(R.string.error_file_not_found)
     SourceError.PermissionDenied -> getString(R.string.error_permission_denied)
     SourceError.EmptyContent -> getString(R.string.error_empty)

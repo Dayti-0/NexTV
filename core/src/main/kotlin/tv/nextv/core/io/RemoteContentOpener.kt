@@ -12,13 +12,21 @@ import tv.nextv.core.net.HttpClientProvider
 import tv.nextv.core.net.NetworkErrorMapper
 import tv.nextv.core.net.RemoteUrlValidator
 import tv.nextv.core.net.await
+import java.io.EOFException
 import java.io.IOException
+import java.net.ConnectException
+import java.net.NoRouteToHostException
+import java.net.SocketException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
+import javax.net.ssl.SSLException
 
 /**
  * Ouvre une ressource HTTP(S) via le client adapté à [OpenRequest.purpose].
  *
- * Sans User-Agent choisi pour la source, un refus (HTTP 403) est retenté avec ceux de lecteurs
- * courants : beaucoup de serveurs IPTV n'acceptent que les applications qu'ils connaissent.
+ * Sans User-Agent choisi pour la source, un refus (HTTP 403, ou connexion fermée sans réponse) est
+ * retenté avec ceux de lecteurs courants : beaucoup de serveurs IPTV n'acceptent que les
+ * applications qu'ils connaissent.
  */
 class RemoteContentOpener(
     private val clients: HttpClientProvider,
@@ -49,12 +57,32 @@ class RemoteContentOpener(
         val viaProxy = clients.usesProxy(request.purpose)
         val started = System.nanoTime()
         var attempt = 0
-        var response = execute(builder.header("User-Agent", userAgents[0]), request, url, viaProxy)
-        while (response.code == 403 && attempt < userAgents.lastIndex) {
-            response.close()
-            attempt++
-            logger.info(TAG, "HTTP 403 pour ${request.purpose} $url : nouvel essai en tant que lecteur courant ($attempt)")
-            response = execute(builder.header("User-Agent", userAgents[attempt]), request, url, viaProxy)
+        var response: Response
+        while (true) {
+            val canRetry = attempt < userAgents.lastIndex
+            builder.header("User-Agent", userAgents[attempt])
+            val result = try {
+                clients.client(request.purpose).newCall(builder.build()).await()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: IOException) {
+                if (canRetry && closedWithoutResponse(e)) {
+                    attempt++
+                    logger.info(TAG, "Connexion fermée sans réponse pour ${request.purpose} $url : nouvel essai en tant que lecteur courant ($attempt)")
+                    continue
+                }
+                val error = NetworkErrorMapper.map(e, url.host, viaProxy)
+                logger.warn(TAG, "Échec ${request.purpose} $url : ${error.code}", e)
+                throw SourceException(error, e)
+            }
+            if (result.code == 403 && canRetry) {
+                result.close()
+                attempt++
+                logger.info(TAG, "HTTP 403 pour ${request.purpose} $url : nouvel essai en tant que lecteur courant ($attempt)")
+                continue
+            }
+            response = result
+            break
         }
 
         val elapsedMs = (System.nanoTime() - started) / 1_000_000
@@ -81,16 +109,12 @@ class RemoteContentOpener(
         )
     }
 
-    private suspend fun execute(builder: Request.Builder, request: OpenRequest, url: okhttp3.HttpUrl, viaProxy: Boolean): Response =
-        try {
-            clients.client(request.purpose).newCall(builder.build()).await()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: IOException) {
-            val error = NetworkErrorMapper.map(e, url.host, viaProxy)
-            logger.warn(TAG, "Échec ${request.purpose} $url : ${error.code}", e)
-            throw SourceException(error, e)
-        }
+    /** Le serveur a accepté la connexion puis l'a fermée sans répondre (refus silencieux). */
+    private fun closedWithoutResponse(error: IOException): Boolean = when (error) {
+        is SocketTimeoutException, is UnknownHostException, is ConnectException, is NoRouteToHostException, is SSLException -> false
+        is SocketException, is EOFException -> true
+        else -> error.cause is EOFException || error.message.orEmpty().contains("unexpected end of stream", ignoreCase = true)
+    }
 
     companion object {
         private const val TAG = "RemoteContentOpener"
