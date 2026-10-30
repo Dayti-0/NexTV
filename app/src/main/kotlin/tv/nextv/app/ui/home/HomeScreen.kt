@@ -39,6 +39,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
@@ -70,6 +71,7 @@ import androidx.paging.compose.itemKey
 import kotlinx.coroutines.delay
 import tv.nextv.app.R
 import tv.nextv.app.data.progress.ProgressEntity
+import tv.nextv.app.data.settings.GridColumns
 import tv.nextv.app.data.db.ChannelListRow
 import tv.nextv.app.data.db.GroupRow
 import tv.nextv.app.data.db.MovieRow
@@ -133,6 +135,7 @@ fun HomeScreen(
     val continueMovies by viewModel.continueMovies.collectAsStateWithLifecycle()
     val continueSeries by viewModel.continueSeries.collectAsStateWithLifecycle()
     val now by viewModel.now.collectAsStateWithLifecycle()
+    val gridColumns by viewModel.gridColumns.collectAsStateWithLifecycle()
     val channels = viewModel.channels.collectAsLazyPagingItems()
     val movies = viewModel.movies.collectAsLazyPagingItems()
     val series = viewModel.series.collectAsLazyPagingItems()
@@ -184,6 +187,7 @@ fun HomeScreen(
         guide = { modifier -> sourceId?.let { GuideScreen(it, onPlay, modifier) } },
         continueMovies = continueMovies,
         continueSeries = continueSeries,
+        gridColumns = gridColumns,
     )
 }
 
@@ -209,6 +213,7 @@ fun HomeContent(
     guide: @Composable (Modifier) -> Unit,
     continueMovies: List<ProgressEntity> = emptyList(),
     continueSeries: List<ProgressEntity> = emptyList(),
+    gridColumns: GridColumns = GridColumns(),
 ) {
     val window = rememberWindowInfo()
     // Dernière vignette ouverte : elle reprend le focus au retour sur l'accueil (télécommande).
@@ -243,13 +248,14 @@ fun HomeContent(
                     reorder = reorder,
                     actions = actions,
                     modifier = Modifier.weight(1f),
-                ) { columns ->
+                    gridColumns = gridColumns,
+                ) { grid ->
                     if (resumeItems != null && category == Category.ContinueWatching) {
-                        ContinueBody(resumeItems, columns, window, lastOpened, actions)
+                        ContinueBody(resumeItems, grid, window, lastOpened, actions)
                     } else when (section) {
-                        HomeSection.TV -> TvBody(channels, favoriteChannels, category, favoriteKeys, reorder, now, columns, window, lastOpened, actions)
-                        HomeSection.MOVIES -> MoviesBody(movies, favoriteMovies, category, favoriteKeys, reorder, columns, window, lastOpened, actions)
-                        else -> SeriesBody(series, favoriteSeries, category, favoriteKeys, reorder, columns, window, lastOpened, actions)
+                        HomeSection.TV -> TvBody(channels, favoriteChannels, category, favoriteKeys, reorder, now, grid, window, lastOpened, actions)
+                        HomeSection.MOVIES -> MoviesBody(movies, favoriteMovies, category, favoriteKeys, reorder, grid, window, lastOpened, actions)
+                        else -> SeriesBody(series, favoriteSeries, category, favoriteKeys, reorder, grid, window, lastOpened, actions)
                     }
                 }
             }
@@ -363,7 +369,8 @@ private fun CatalogSection(
     reorder: ReorderState,
     actions: HomeActions,
     modifier: Modifier,
-    body: @Composable (columns: Int) -> Unit,
+    gridColumns: GridColumns,
+    body: @Composable (grid: GridLayout) -> Unit,
 ) {
     val total = groups.sumOf { it.count }
     if (window.isWide) {
@@ -399,7 +406,7 @@ private fun CatalogSection(
                     }
                 }
             }
-            SectionBody(section, category, groups, favoritesCount, resumeCount ?: 0, reorder, window, actions, Modifier.weight(1f), body)
+            SectionBody(section, category, groups, favoritesCount, resumeCount ?: 0, reorder, window, actions, Modifier.weight(1f), gridColumns, body)
         }
     } else {
         Column(modifier.fillMaxSize()) {
@@ -424,7 +431,7 @@ private fun CatalogSection(
                     }
                 }
             }
-            SectionBody(section, category, groups, favoritesCount, resumeCount ?: 0, reorder, window, actions, Modifier.weight(1f), body)
+            SectionBody(section, category, groups, favoritesCount, resumeCount ?: 0, reorder, window, actions, Modifier.weight(1f), gridColumns, body)
         }
     }
 }
@@ -440,7 +447,8 @@ private fun SectionBody(
     window: WindowInfo,
     actions: HomeActions,
     modifier: Modifier,
-    body: @Composable (columns: Int) -> Unit,
+    gridColumns: GridColumns,
+    body: @Composable (grid: GridLayout) -> Unit,
 ) {
     Column(modifier.fillMaxSize()) {
         Row(
@@ -476,16 +484,18 @@ private fun SectionBody(
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val start = if (window.isWide) 28.dp else window.horizontalPadding
             val usable = maxWidth - start - window.horizontalPadding
-            val minCell: Dp = when {
-                section == HomeSection.TV && window.isWide -> 180.dp
-                section == HomeSection.TV -> usable
-                // Affiches : 5 colonnes sur TV pour voir deux rangées à la fois.
-                window.isTv -> 104.dp
-                window.isWide -> 150.dp
-                else -> 108.dp
+            val columns = if (window.isWide) {
+                // TV, tablette : nombre choisi dans les réglages, dans la limite de la largeur.
+                val wanted = if (section == HomeSection.TV) gridColumns.channels else gridColumns.posters
+                val fitting = ((usable + gridSpacing(wanted)) / (MIN_CELL + gridSpacing(wanted))).toInt()
+                wanted.coerceAtMost(fitting).coerceAtLeast(1)
+            } else {
+                // Téléphone : liste des chaînes, affiches d'au moins 108 dp.
+                val minCell = if (section == HomeSection.TV) usable else 108.dp
+                maxOf(1, ((usable + GRID_SPACING) / (minCell + GRID_SPACING)).toInt())
             }
-            val columns = maxOf(1, ((usable + GRID_SPACING) / (minCell + GRID_SPACING)).toInt())
-            body(columns)
+            val spacing = gridSpacing(columns)
+            body(GridLayout(columns, (usable - spacing * (columns - 1)) / columns, spacing))
         }
     }
 }
@@ -550,7 +560,7 @@ private fun TvBody(
     favoriteKeys: Set<String>,
     reorder: ReorderState,
     now: Long,
-    columns: Int,
+    grid: GridLayout,
     window: WindowInfo,
     lastOpened: MutableState<String?>,
     actions: HomeActions,
@@ -580,18 +590,18 @@ private fun TvBody(
         }
         val modifier = Modifier
             .restoreFocus(channel.itemKey, lastOpened)
-            .reorderKeys(moving, columns) { actions.onMove(ContentKind.LIVE, channel.itemKey, it) }
-        if (columns == 1) {
+            .reorderKeys(moving, grid.columns) { actions.onMove(ContentKind.LIVE, channel.itemKey, it) }
+        if (grid.columns == 1) {
             ChannelListItem(channel, now, channel.itemKey in favoriteKeys, onClick, onLongClick, modifier, moving)
         } else {
-            ChannelCard(channel, now, channel.itemKey in favoriteKeys, onClick, onLongClick, modifier, moving)
+            ChannelCard(channel, now, channel.itemKey in favoriteKeys, onClick, onLongClick, modifier, moving, CardSize.of(grid.cellWidth))
         }
     }
     LazyVerticalGrid(
-        columns = GridCells.Fixed(columns),
+        columns = GridCells.Fixed(grid.columns),
         contentPadding = padding,
-        horizontalArrangement = Arrangement.spacedBy(GRID_SPACING),
-        verticalArrangement = Arrangement.spacedBy(if (columns == 1) 2.dp else GRID_SPACING),
+        horizontalArrangement = Arrangement.spacedBy(grid.spacing),
+        verticalArrangement = Arrangement.spacedBy(if (grid.columns == 1) 2.dp else grid.spacing),
         modifier = Modifier.fillMaxSize(),
     ) {
         if (favoritesMode) {
@@ -611,7 +621,7 @@ private fun MoviesBody(
     category: Category,
     favoriteKeys: Set<String>,
     reorder: ReorderState,
-    columns: Int,
+    grid: GridLayout,
     window: WindowInfo,
     lastOpened: MutableState<String?>,
     actions: HomeActions,
@@ -645,15 +655,16 @@ private fun MoviesBody(
             },
             modifier = Modifier
                 .restoreFocus(movie.itemKey, lastOpened)
-                .reorderKeys(moving, columns) { actions.onMove(ContentKind.MOVIE, movie.itemKey, it) },
+                .reorderKeys(moving, grid.columns) { actions.onMove(ContentKind.MOVIE, movie.itemKey, it) },
             moving = moving,
+            compact = grid.cellWidth < COMPACT_POSTER_WIDTH,
         )
     }
     LazyVerticalGrid(
-        columns = GridCells.Fixed(columns),
+        columns = GridCells.Fixed(grid.columns),
         contentPadding = gridPadding(window),
-        horizontalArrangement = Arrangement.spacedBy(GRID_SPACING),
-        verticalArrangement = Arrangement.spacedBy(GRID_SPACING),
+        horizontalArrangement = Arrangement.spacedBy(grid.spacing),
+        verticalArrangement = Arrangement.spacedBy(grid.spacing),
         modifier = Modifier.fillMaxSize(),
     ) {
         if (favoritesMode) {
@@ -673,7 +684,7 @@ private fun SeriesBody(
     category: Category,
     favoriteKeys: Set<String>,
     reorder: ReorderState,
-    columns: Int,
+    grid: GridLayout,
     window: WindowInfo,
     lastOpened: MutableState<String?>,
     actions: HomeActions,
@@ -708,15 +719,16 @@ private fun SeriesBody(
             },
             modifier = Modifier
                 .restoreFocus(show.itemKey, lastOpened)
-                .reorderKeys(moving, columns) { actions.onMove(ContentKind.SERIES, show.itemKey, it) },
+                .reorderKeys(moving, grid.columns) { actions.onMove(ContentKind.SERIES, show.itemKey, it) },
             moving = moving,
+            compact = grid.cellWidth < COMPACT_POSTER_WIDTH,
         )
     }
     LazyVerticalGrid(
-        columns = GridCells.Fixed(columns),
+        columns = GridCells.Fixed(grid.columns),
         contentPadding = gridPadding(window),
-        horizontalArrangement = Arrangement.spacedBy(GRID_SPACING),
-        verticalArrangement = Arrangement.spacedBy(GRID_SPACING),
+        horizontalArrangement = Arrangement.spacedBy(grid.spacing),
+        verticalArrangement = Arrangement.spacedBy(grid.spacing),
         modifier = Modifier.fillMaxSize(),
     ) {
         if (favoritesMode) {
@@ -733,7 +745,7 @@ private fun SeriesBody(
 @Composable
 private fun ContinueBody(
     items: List<ProgressEntity>,
-    columns: Int,
+    grid: GridLayout,
     window: WindowInfo,
     lastOpened: MutableState<String?>,
     actions: HomeActions,
@@ -743,10 +755,10 @@ private fun ContinueBody(
         return
     }
     LazyVerticalGrid(
-        columns = GridCells.Fixed(columns),
+        columns = GridCells.Fixed(grid.columns),
         contentPadding = gridPadding(window),
-        horizontalArrangement = Arrangement.spacedBy(GRID_SPACING),
-        verticalArrangement = Arrangement.spacedBy(GRID_SPACING),
+        horizontalArrangement = Arrangement.spacedBy(grid.spacing),
+        verticalArrangement = Arrangement.spacedBy(grid.spacing),
         modifier = Modifier.fillMaxSize(),
     ) {
         items(items.size, key = { items[it].itemKey }) { index ->
@@ -772,6 +784,7 @@ private fun ContinueBody(
                 onLongClick = { actions.onClearProgress(item.itemKey) },
                 modifier = Modifier.restoreFocus(item.itemKey, lastOpened),
                 progress = if (item.durationMs > 0) item.positionMs.toFloat() / item.durationMs else null,
+                compact = grid.cellWidth < COMPACT_POSTER_WIDTH,
             )
         }
     }
@@ -857,5 +870,22 @@ private fun SearchField(query: String, hint: String, onQueryChange: (String) -> 
 }
 
 private val GRID_SPACING = 16.dp
+
+/** Vignette la plus étroite acceptée, quel que soit le réglage. */
+private val MIN_CELL = 56.dp
+
+/** En dessous, affiche réduite (titre sur une ligne). */
+private val COMPACT_POSTER_WIDTH = 84.dp
+
+/** Grille de l'accueil : colonnes, largeur d'une vignette et espacement. */
+@Immutable
+private data class GridLayout(val columns: Int, val cellWidth: Dp, val spacing: Dp)
+
+/** Espacement resserré quand les vignettes sont nombreuses. */
+private fun gridSpacing(columns: Int): Dp = when {
+    columns >= 8 -> 8.dp
+    columns >= 6 -> 12.dp
+    else -> GRID_SPACING
+}
 private const val NO_GROUP_KEY = "\u0000"
 private const val CHANNELS_REFRESH_MILLIS = 5 * 60_000L

@@ -8,6 +8,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -127,6 +128,9 @@ class AppContainer(context: Context) {
 
     /** Reprise de lecture des films et séries (base distincte, sans migration de celle des playlists). */
     val progress = ProgressRepository(ProgressDatabase.create(appContext))
+
+    /** Playlist transmise par adb, en attente de confirmation dans l'éditeur. */
+    val playlistImport = MutableStateFlow<PlaylistImport?>(null)
 
     fun hasTmdbKey(): Boolean = tmdbKey.value != null || BuildConfig.TMDB_API_KEY.isNotBlank()
 

@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import tv.nextv.app.AppContainer
 import tv.nextv.app.data.progress.ProgressEntity
+import tv.nextv.app.data.settings.GridColumns
 import tv.nextv.app.R
 import tv.nextv.app.data.db.ChannelListRow
 import tv.nextv.app.data.db.GroupRow
@@ -110,6 +111,10 @@ class HomeViewModel(
     }
 
     val now: StateFlow<Long> = clock.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), System.currentTimeMillis())
+
+    /** Chaînes et affiches par ligne (réglages). */
+    val gridColumns: StateFlow<GridColumns> = container.settings.gridColumns
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), GridColumns())
 
     private fun filterFor(target: HomeSection): Flow<Triple<Long, Category, String>> =
         combine(

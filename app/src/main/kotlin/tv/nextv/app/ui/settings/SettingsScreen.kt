@@ -38,6 +38,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -57,6 +62,7 @@ import tv.nextv.app.ui.components.PillStyle
 import tv.nextv.app.ui.components.ScreenHeader
 import tv.nextv.app.ui.components.rememberWindowInfo
 import tv.nextv.app.ui.editor.NexTvTextField
+import tv.nextv.app.data.settings.GridColumns
 import tv.nextv.app.ui.editor.SectionCard
 import tv.nextv.app.ui.editor.ToggleRow
 import tv.nextv.app.ui.theme.NexTvColors
@@ -98,6 +104,7 @@ fun SettingsScreen(onBack: () -> Unit, onPlaylists: () -> Unit, onProxy: () -> U
         onClearTmdbKey = viewModel::clearTmdbKey,
         onProxy = onProxy,
         onCycleDecoder = viewModel::cycleDecoder,
+        onGridColumns = viewModel::setGridColumns,
     )
 }
 
@@ -116,6 +123,7 @@ fun SettingsContent(
     onClearTmdbKey: () -> Unit,
     onProxy: () -> Unit,
     onCycleDecoder: (String) -> Unit = {},
+    onGridColumns: (GridColumns) -> Unit = {},
     now: Long = System.currentTimeMillis(),
 ) {
     val window = rememberWindowInfo()
@@ -180,6 +188,24 @@ fun SettingsContent(
                         )
                         state.decoders.forEach { choice -> DecoderRow(choice) { onCycleDecoder(choice.mimeType) } }
                         if (state.decoders.isNotEmpty()) InfoText(stringResource(R.string.settings_decoder_help))
+                    }
+
+                    // Affichage de l'accueil.
+                    SectionCard(stringResource(R.string.settings_display), icon = NexTvIcons.Grid) {
+                        val grid = state.gridColumns
+                        NumberRow(
+                            title = stringResource(R.string.settings_channel_columns),
+                            value = grid.channels,
+                            range = GridColumns.CHANNELS,
+                            onChange = { onGridColumns(grid.copy(channels = it)) },
+                        )
+                        NumberRow(
+                            title = stringResource(R.string.settings_poster_columns),
+                            value = grid.posters,
+                            range = GridColumns.POSTERS,
+                            onChange = { onGridColumns(grid.copy(posters = it)) },
+                        )
+                        InfoText(stringResource(R.string.settings_columns_help))
                     }
 
                     // Guide TV commun.
@@ -287,21 +313,48 @@ private fun DecoderRow(choice: DecoderChoice, onClick: () -> Unit) {
             selected.name,
         )
     }
+    ValueRow(
+        title = stringResource(if (choice.mimeType == VideoDecoders.HEVC) R.string.settings_decoder_hevc else R.string.settings_decoder_avc),
+        value = value,
+        onClick = onClick,
+        enabled = choice.options.isNotEmpty(),
+    )
+}
+
+/** Nombre réglable : gauche/droite pour diminuer/augmenter, OK passe à la valeur suivante (en boucle). */
+@Composable
+private fun NumberRow(title: String, value: Int, range: IntRange, onChange: (Int) -> Unit) {
+    ValueRow(
+        title = title,
+        value = stringResource(R.string.settings_columns_value, value, range.first, range.last),
+        onClick = { onChange(if (value >= range.last) range.first else value + 1) },
+        modifier = Modifier.onPreviewKeyEvent { event ->
+            val step = when (event.key) {
+                Key.DirectionLeft -> -1
+                Key.DirectionRight -> 1
+                else -> return@onPreviewKeyEvent false
+            }
+            if (event.type == KeyEventType.KeyDown) onChange((value + step).coerceIn(range))
+            true
+        },
+    )
+}
+
+/** Ligne titre + valeur ; OK change la valeur. */
+@Composable
+private fun ValueRow(title: String, value: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
     FocusSurface(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
         color = Color.Transparent,
         focusedColor = MaterialTheme.colorScheme.surfaceContainerHighest,
         focusScale = 1f,
-        enabled = choice.options.isNotEmpty(),
+        enabled = enabled,
     ) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(
-                    stringResource(if (choice.mimeType == VideoDecoders.HEVC) R.string.settings_decoder_hevc else R.string.settings_decoder_avc),
-                    style = MaterialTheme.typography.titleSmall,
-                )
+                Text(title, style = MaterialTheme.typography.titleSmall)
                 Text(value, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text("›", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)

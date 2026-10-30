@@ -44,6 +44,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -55,6 +57,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import tv.nextv.app.R
 import tv.nextv.app.ui.common.appViewModel
@@ -122,6 +125,17 @@ fun SourceEditorContent(
     val resources = LocalContext.current.resources
     fun errorText(field: SourceInputField): String? = state.errors[field]?.let(resources::describe)
 
+    // Playlist transmise par adb : le bouton d'enregistrement est sélectionné, il reste à confirmer.
+    val saveFocus = remember { FocusRequester() }
+    LaunchedEffect(state.imported) {
+        if (!state.imported) return@LaunchedEffect
+        // Le bouton peut ne pas être encore placé à la première image.
+        repeat(5) {
+            if (runCatching { saveFocus.requestFocus() }.isSuccess) return@LaunchedEffect
+            delay(100)
+        }
+    }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -138,6 +152,7 @@ fun SourceEditorContent(
                         icon = Icons.Filled.Check,
                         style = PillStyle.Primary,
                         enabled = !state.saving && !state.loading,
+                        modifier = Modifier.focusRequester(saveFocus),
                     )
                 },
             )

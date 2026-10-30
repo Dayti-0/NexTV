@@ -3,13 +3,18 @@ package tv.nextv.app.ui
 import androidx.activity.compose.LocalActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import kotlinx.coroutines.flow.first
 import tv.nextv.app.MainActivity
+import tv.nextv.app.ui.common.appContainer
 import tv.nextv.app.ui.detail.DetailScreen
 import tv.nextv.app.ui.editor.SourceEditorScreen
 import tv.nextv.app.ui.editor.SourceEditorViewModel
@@ -52,11 +57,19 @@ private const val ARG_ITEM = "itemId"
 @Composable
 fun NexTvNavHost() {
     val navController = rememberNavController()
-    // Appui long sur « Retour » : retour direct à l'accueil, depuis n'importe quel écran.
+    // Double appui sur « Retour » : retour direct à l'accueil, depuis n'importe quel écran.
     val activity = LocalActivity.current as? MainActivity
     DisposableEffect(activity, navController) {
-        activity?.onLongBack = { navController.popBackStack(Routes.HOME, inclusive = false) }
-        onDispose { activity?.onLongBack = null }
+        activity?.onDoubleBack = { navController.popBackStack(Routes.HOME, inclusive = false) }
+        onDispose { activity?.onDoubleBack = null }
+    }
+    // Playlist transmise par adb : éditeur prérempli, après l'écran de démarrage (qui remplace la pile).
+    val container = appContainer()
+    val playlistImport by container.playlistImport.collectAsState()
+    LaunchedEffect(playlistImport) {
+        if (playlistImport == null) return@LaunchedEffect
+        navController.currentBackStackEntryFlow.first { it.destination.route != Routes.STARTUP }
+        navController.navigate(Routes.editor())
     }
     AppNavHost(navController)
 }

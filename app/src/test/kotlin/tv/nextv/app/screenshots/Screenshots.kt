@@ -25,6 +25,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import tv.nextv.app.data.settings.GridColumns
 import tv.nextv.app.ui.detail.DetailContent
 import tv.nextv.app.ui.editor.SourceEditorContent
 import tv.nextv.app.ui.guide.GuideContent
@@ -99,6 +100,11 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
+    fun homeTvDense() = capture("05b_accueil_tv_9_par_ligne") {
+        Home(HomeSection.TV, Category.All, grid = GridColumns(channels = 9))
+    }
+
+    @Test
     fun homeFavorites() = capture("06_accueil_favoris") {
         Home(HomeSection.TV, Category.Favorites, reorder = ReorderState(active = true, movingKey = SampleData.favoriteChannels[1].itemKey))
     }
@@ -111,6 +117,11 @@ abstract class ScreenshotSuite(private val device: String) {
     @Test
     fun homeSeries() = capture("08_accueil_series") {
         Home(HomeSection.SERIES, Category.All)
+    }
+
+    @Test
+    fun homeMoviesDense() = capture("07b_accueil_films_10_par_ligne") {
+        Home(HomeSection.MOVIES, Category.All, grid = GridColumns(posters = 10))
     }
 
     @Test
@@ -316,7 +327,7 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Composable
-    private fun Home(section: HomeSection, category: Category, reorder: ReorderState = ReorderState()) {
+    private fun Home(section: HomeSection, category: Category, reorder: ReorderState = ReorderState(), grid: GridColumns = GridColumns()) {
         val channels = remember { flowOf(PagingData.from(SampleData.channels)) }.collectAsLazyPagingItems()
         val movies = remember { flowOf(PagingData.from(SampleData.movies)) }.collectAsLazyPagingItems()
         val series = remember { flowOf(PagingData.from(SampleData.series)) }.collectAsLazyPagingItems()
@@ -343,6 +354,7 @@ abstract class ScreenshotSuite(private val device: String) {
             actions = HomeActions(),
             continueSeries = SampleData.continueSeries,
             continueMovies = listOf(SampleData.movieProgress),
+            gridColumns = grid,
             guide = { modifier ->
                 GuideContent(
                     state = SampleData.guide,

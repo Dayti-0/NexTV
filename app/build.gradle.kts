@@ -30,6 +30,14 @@ android {
     }
 
     signingConfigs {
+        // Clé de test fixe (dépôt privé) pour les versions de test et de debug : chaque version
+        // s'installe par-dessus la précédente, sans désinstaller ni perdre playlists et réglages.
+        getByName("debug") {
+            storeFile = file("nextv-test.keystore")
+            storePassword = "nextv-test"
+            keyAlias = "nextv-test"
+            keyPassword = "nextv-test"
+        }
         if (releaseKeystorePath != null) {
             create("release") {
                 storeFile = file(releaseKeystorePath)
@@ -45,7 +53,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Sans clé de publication, l'APK est signé avec la clé de debug : installable pour les tests.
+            // Sans clé de publication (secrets CI), l'APK est signé avec la clé de test du dépôt.
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }

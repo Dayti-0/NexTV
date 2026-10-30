@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -34,6 +35,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
@@ -64,6 +66,27 @@ fun FavoriteStar(modifier: Modifier = Modifier) {
 /** Libellé de qualité (« FHD », « 4K »…). */
 fun qualityLabel(quality: String?): String? = StreamQuality.entries.firstOrNull { it.name == quality }?.label
 
+/** Taille d'une vignette de chaîne, selon sa largeur (nombre de chaînes par ligne). */
+enum class CardSize {
+    /** Logo, numéro, qualité, programme en cours et progression. */
+    LARGE,
+
+    /** Logo réduit, mêmes informations. */
+    MEDIUM,
+
+    /** Logo et nom seulement, avec la progression. */
+    SMALL,
+    ;
+
+    companion object {
+        fun of(width: Dp): CardSize = when {
+            width >= 150.dp -> LARGE
+            width >= 100.dp -> MEDIUM
+            else -> SMALL
+        }
+    }
+}
+
 @Composable
 fun ChannelCard(
     channel: ChannelListRow,
@@ -73,48 +96,67 @@ fun ChannelCard(
     onLongClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
     moving: Boolean = false,
+    size: CardSize = CardSize.LARGE,
 ) {
+    val small = size == CardSize.SMALL
     FocusSurface(
         onClick = onClick,
         onLongClick = onLongClick,
         modifier = modifier.movingOutline(moving),
         shape = MaterialTheme.shapes.medium,
-        focusScale = 1.06f,
+        focusScale = if (small) 1.1f else 1.06f,
     ) {
         Column {
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .aspectRatio(16f / 9f)
+                    // Moins haute en taille moyenne : plus de rangées visibles.
+                    .aspectRatio(if (size == CardSize.MEDIUM) 2f else 16f / 9f)
                     .background(MaterialTheme.colorScheme.surfaceContainerHigh),
                 contentAlignment = Alignment.Center,
             ) {
-                ChannelLogo(channel.logoUrl, channel.title, Modifier.size(64.dp), monogramSize = 22.dp)
-                Row(Modifier.align(Alignment.TopStart).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    channel.channelNumber?.let { Badge(it) }
-                    qualityLabel(channel.quality)?.let { Badge(it, color = NexTvColors.Primary) }
+                when (size) {
+                    CardSize.LARGE -> ChannelLogo(channel.logoUrl, channel.title, Modifier.size(64.dp), monogramSize = 22.dp)
+                    CardSize.MEDIUM -> ChannelLogo(channel.logoUrl, channel.title, Modifier.size(42.dp), monogramSize = 15.dp)
+                    CardSize.SMALL -> ChannelLogo(channel.logoUrl, channel.title, Modifier.fillMaxHeight(0.7f).aspectRatio(1f), monogramSize = 11.dp)
                 }
-                Row(Modifier.align(Alignment.TopEnd).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    SupportBadge(channel.streamSupport)
-                    if (isFavorite) FavoriteStar()
+                if (!small) {
+                    Row(Modifier.align(Alignment.TopStart).padding(6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        channel.channelNumber?.let { Badge(it) }
+                        qualityLabel(channel.quality)?.let { Badge(it, color = NexTvColors.Primary) }
+                    }
+                }
+                Row(Modifier.align(Alignment.TopEnd).padding(if (small) 3.dp else 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (!small) SupportBadge(channel.streamSupport)
+                    if (isFavorite) FavoriteStar(if (small) Modifier.size(16.dp) else Modifier)
                 }
             }
-            Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(channel.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Column(
+                Modifier.padding(horizontal = if (small) 6.dp else 10.dp, vertical = if (small) 5.dp else 8.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
                 Text(
-                    channel.nowTitle ?: stringResource(R.string.channels_no_epg),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (channel.nowTitle != null) MaterialTheme.colorScheme.onSurfaceVariant else NexTvColors.TextMuted,
+                    channel.title,
+                    style = if (small) MaterialTheme.typography.labelMedium else MaterialTheme.typography.titleSmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (!small) {
+                    Text(
+                        channel.nowTitle ?: stringResource(R.string.channels_no_epg),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (channel.nowTitle != null) MaterialTheme.colorScheme.onSurfaceVariant else NexTvColors.TextMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 val start = channel.nowStart
                 val stop = channel.nowStop
                 if (start != null && stop != null) {
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(if (small) 1.dp else 4.dp))
                     LiveProgress(start, stop, now)
                 } else {
-                    Spacer(Modifier.height(7.dp))
+                    Spacer(Modifier.height(if (small) 4.dp else 7.dp))
                 }
             }
         }
@@ -191,6 +233,8 @@ fun PosterCard(
     moving: Boolean = false,
     /** Part déjà regardée (reprise de lecture), barre en bas de l'affiche. */
     progress: Float? = null,
+    /** Affiche étroite (nombreuses par ligne) : titre sur une ligne, sans sous-titre. */
+    compact: Boolean = false,
 ) {
     FocusSurface(
         onClick = onClick,
@@ -202,13 +246,24 @@ fun PosterCard(
         Column {
             Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f)) {
                 PosterImage(title, imageUrl, Modifier.fillMaxSize())
-                if (isFavorite) FavoriteStar(Modifier.align(Alignment.TopEnd).padding(8.dp))
-                progress?.let { LiveProgress(0, 1_000, (it * 1_000).toLong(), Modifier.align(Alignment.BottomCenter).padding(8.dp)) }
+                val inset = if (compact) 4.dp else 8.dp
+                if (isFavorite) FavoriteStar(Modifier.align(Alignment.TopEnd).padding(inset).then(if (compact) Modifier.size(16.dp) else Modifier))
+                progress?.let { LiveProgress(0, 1_000, (it * 1_000).toLong(), Modifier.align(Alignment.BottomCenter).padding(inset)) }
             }
-            Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
-                Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                subtitle?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            if (compact) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 5.dp),
+                )
+            } else {
+                Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                    Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    subtitle?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                    }
                 }
             }
         }

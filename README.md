@@ -20,6 +20,16 @@ Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3, enti�
   remonte quand le débit mesuré le permet. Jamais de bascule vers une autre chaîne ; désactivable dans les réglages.
 - **Guide TV** : grille chaînes × horaires avec repère de l'heure actuelle et programme en cours mis en valeur ;
   OK ouvre la fiche du programme (horaires, durée, description) avec « Regarder ». Un créneau sans donnée reste vide.
+- **Affichage** : nombre de chaînes (3 à 9) et d'affiches (4 à 10) par ligne réglable sur TV et tablette.
+- **Retour à l'accueil** : double appui rapide sur Retour, depuis n'importe quel écran.
+- **Ajout d'une playlist depuis un ordinateur** (adb), pour éviter la saisie à la télécommande : l'éditeur s'ouvre
+  prérempli, il reste à confirmer avec OK.
+
+  ```
+  adb shell "am start -n tv.nextv.app/.MainActivity --es url 'http://exemple.com/playlist.m3u' --es name 'Ma playlist'"
+  ```
+
+  Paramètres facultatifs : `--es user '…' --es password '…'` pour les identifiants.
 
 ## Sources prises en charge
 
@@ -114,4 +124,6 @@ Clé TMDB : le secret facultatif `NEXTV_TMDB_API_KEY` l'intègre à l'APK (une c
 
 Signature : définir dans les secrets du dépôt `NEXTV_KEYSTORE_BASE64` (keystore encodé en base64),
 `NEXTV_KEYSTORE_PASSWORD`, `NEXTV_KEY_ALIAS` et `NEXTV_KEY_PASSWORD`. En leur absence, l'APK est signé avec
-une clé de test temporaire : il s'installe, mais chaque nouvelle version impose de désinstaller la précédente.
+la clé de test du dépôt (`app/nextv-test.keystore`, aussi utilisée en debug) : chaque version s'installe par-dessus
+la précédente (`adb install -r`) en gardant playlists et réglages. Clé à remplacer par les secrets si le dépôt
+devient public.

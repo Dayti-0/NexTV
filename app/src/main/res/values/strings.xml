@@ -227,6 +227,11 @@
     <string name="settings_manage_playlists">Gérer les playlists (%1$d)</string>
     <string name="settings_playlist_updated">Playlist actualisée : %1$d entrées</string>
     <string name="settings_playback">Lecture</string>
+    <string name="settings_display">Affichage de l’accueil</string>
+    <string name="settings_channel_columns">Chaînes par ligne</string>
+    <string name="settings_poster_columns">Films et séries par ligne</string>
+    <string name="settings_columns_value">%1$d (de %2$d à %3$d)</string>
+    <string name="settings_columns_help">Gauche / droite pour changer le nombre, sur TV et tablette. Plus il y en a, plus les vignettes sont petites et plus on en voit à la fois.</string>
     <string name="settings_auto_quality">Qualité automatique</string>
     <string name="settings_auto_quality_help">Passe en qualité inférieure (FHD → HD → SD → LOW) si la connexion faiblit, puis revient à la meilleure dès que possible. Seules les versions de la même chaîne présentes dans la playlist sont utilisées.</string>
     <string name="settings_decoder_hevc">Décodeur H.265 / HEVC (4K)</string>

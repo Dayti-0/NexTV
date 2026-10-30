@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -49,6 +50,8 @@ data class EditorState(
     val errors: Map<SourceInputField, SourceError> = emptyMap(),
     val saving: Boolean = false,
     val saved: SaveOutcome? = null,
+    /** Prérempli par une commande adb : il ne reste qu'à confirmer. */
+    val imported: Boolean = false,
 ) {
     val isNew get() = sourceId == null
 }
@@ -67,7 +70,21 @@ class SourceEditorViewModel(
 
     init {
         val id = handle.get<Long>(ARG_SOURCE_ID)?.takeIf { it > 0 }
-        if (id != null) load(id)
+        if (id != null) {
+            load(id)
+        } else {
+            container.playlistImport.getAndUpdate { null }?.let { import ->
+                mutableState.update {
+                    it.copy(
+                        name = import.name ?: Uri.parse(import.url).host.orEmpty(),
+                        url = import.url,
+                        username = import.username.orEmpty(),
+                        password = import.password.orEmpty(),
+                        imported = true,
+                    )
+                }
+            }
+        }
     }
 
     private fun load(id: Long) {

@@ -16,9 +16,11 @@ import kotlinx.coroutines.launch
 import tv.nextv.app.AppContainer
 import tv.nextv.app.BuildConfig
 import tv.nextv.app.RefreshController
+import tv.nextv.app.data.settings.GridColumns
 import tv.nextv.app.player.DecoderOption
 import tv.nextv.app.player.VideoDecoders
 import tv.nextv.core.model.PlaylistSource
+import tv.nextv.core.net.ProxySettings
 
 data class SettingsUiState(
     val loaded: Boolean = false,
@@ -38,6 +40,8 @@ data class SettingsUiState(
     val version: String = "",
     /** Décodeurs vidéo proposés par l'appareil et choix de l'utilisateur, par codec. */
     val decoders: List<DecoderChoice> = emptyList(),
+    /** Chaînes et affiches par ligne à l'accueil. */
+    val gridColumns: GridColumns = GridColumns(),
 )
 
 /** @property selected décodeur choisi, `null` : automatique. */
@@ -68,11 +72,14 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             VideoDecoders.CHOOSABLE.map { mime -> DecoderChoice(mime, available[mime].orEmpty(), preferred[mime]) }
         }
 
+    private data class Preferences(val autoQuality: Boolean, val tmdbKeySaved: Boolean, val proxy: ProxySettings, val grid: GridColumns)
+
     private val preferences = combine(
         settings.autoQuality,
         settings.tmdbApiKey,
         settings.proxySettings,
-    ) { autoQuality, tmdbKey, proxy -> Triple(autoQuality, tmdbKey != null, proxy) }
+        settings.gridColumns,
+    ) { autoQuality, tmdbKey, proxy, grid -> Preferences(autoQuality, tmdbKey != null, proxy, grid) }
 
     val state: StateFlow<SettingsUiState> = combine(
         activePlaylist,
@@ -80,20 +87,22 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         guideDownloadedAt,
         preferences,
         decoderChoices,
-    ) { (playlist, count), refreshing, downloadedAt, (autoQuality, tmdbKeySaved, proxy), decoders ->
+    ) { (playlist, count), refreshing, downloadedAt, prefs, decoders ->
+        val proxy = prefs.proxy
         SettingsUiState(
             loaded = true,
             playlist = playlist,
             playlistCount = count,
             refreshing = playlist != null && playlist.id in refreshing,
-            autoQuality = autoQuality,
-            tmdbKeySaved = tmdbKeySaved,
+            autoQuality = prefs.autoQuality,
+            tmdbKeySaved = prefs.tmdbKeySaved,
             tmdbBuiltIn = BuildConfig.TMDB_API_KEY.isNotBlank(),
             guideDownloadedAt = downloadedAt,
             proxyEnabled = proxy.enabled,
             proxyAddress = proxy.host.takeIf { proxy.enabled && it.isNotBlank() }?.let { "$it:${proxy.port}" },
             version = BuildConfig.VERSION_NAME,
             decoders = decoders,
+            gridColumns = prefs.grid,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
@@ -120,6 +129,10 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         val values = listOf<String?>(null) + choice.options.map { it.name }
         val next = values[(values.indexOf(choice.selected).coerceAtLeast(0) + 1) % values.size]
         viewModelScope.launch { settings.setPreferredDecoder(mimeType, next) }
+    }
+
+    fun setGridColumns(columns: GridColumns) {
+        viewModelScope.launch { settings.setGridColumns(columns) }
     }
 
     fun saveTmdbKey(key: String) {

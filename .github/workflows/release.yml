@@ -6,7 +6,8 @@ name: Release
 #  - lancer le workflow à la main (onglet Actions) avec la version voulue.
 # Le tag est créé par la publication s'il n'existe pas encore.
 # Signature : définir les secrets NEXTV_KEYSTORE_BASE64, NEXTV_KEYSTORE_PASSWORD, NEXTV_KEY_ALIAS
-# et NEXTV_KEY_PASSWORD. Sans eux, l'APK est signé avec une clé de test temporaire.
+# et NEXTV_KEY_PASSWORD. Sans eux, l'APK est signé avec la clé de test du dépôt (app/nextv-test.keystore),
+# la même d'une version à l'autre : mise à jour sans désinstaller.
 # Fiches films/séries : le secret facultatif NEXTV_TMDB_API_KEY intègre une clé TMDB à l'APK.
 
 on:
@@ -87,7 +88,7 @@ jobs:
           if [ -n "$KEYSTORE_BASE64" ]; then
             SIGNING="Signé avec la clé de publication du projet."
           else
-            SIGNING="⚠️ Version de test signée avec une clé temporaire : désinstallez la version précédente avant d'installer celle-ci."
+            SIGNING="Version de test signée avec la clé de test du dépôt : elle s'installe par-dessus la précédente (à partir de la 0.2.2 ; une seule désinstallation nécessaire en venant d'une version plus ancienne)."
           fi
           cat > notes.md <<NOTES
           Version ${VERSION} de NexTV (Android 7.0+, téléphone, tablette et Android TV).
@@ -96,8 +97,13 @@ jobs:
           - Démarrage direct sur la dernière playlist, avec progression réelle du chargement
           - Accueil TV, Films, Séries et Guide TV, favoris (appui long sur OK) réorganisables
           - Fiches films et séries enrichies par TMDB (clé d'API à saisir dans les réglages)
-          - Lecteur : bandeau de 5 s avec programme et débit, zapping haut/bas, liste des chaînes sur « Retour »
-          - Qualité automatique FHD → HD → SD → LOW entre les versions de la playlist (désactivable)
+          - Lecteur : bandeau avec heure, programme et débit, zapping haut/bas, liste des chaînes sur « Retour » (catégories avec gauche/droite)
+          - Pause du direct (OK) avec affichage du retard sur le direct, retour au direct avec droite
+          - Reprise de lecture des films et séries (catégorie « Reprendre la lecture », bouton sur les fiches)
+          - Qualité automatique FHD → HD → SD → LOW entre les versions de la playlist (désactivable), baisse si l'appareil perd des images
+          - Infos de lecture (touche Info/Menu) et choix du décodeur vidéo matériel ou logiciel
+          - Nombre de chaînes et d'affiches par ligne réglable ; double appui sur « Retour » pour revenir à l'accueil
+          - Ajout d'une playlist depuis un ordinateur : adb shell "am start -n tv.nextv.app/.MainActivity --es url 'ADRESSE'"
           - Guide TV xmltvfr.fr téléchargé, mis en cache et actualisé automatiquement
           - Playlists M3U/M3U8 distantes ou locales, protégées par identifiants (chiffrés, masqués dans les journaux)
           - Proxy HTTP/SOCKS pour les playlists, le guide et les flux

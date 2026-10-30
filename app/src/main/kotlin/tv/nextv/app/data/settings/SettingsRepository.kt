@@ -91,6 +91,23 @@ class SettingsRepository(
         }
     }
 
+    /** Éléments par ligne des grilles de l'accueil (TV, tablette). */
+    val gridColumns: Flow<GridColumns> = dataStore.data
+        .map { prefs ->
+            GridColumns(
+                channels = (prefs[CHANNEL_COLUMNS] ?: GridColumns.DEFAULT_CHANNELS).coerceIn(GridColumns.CHANNELS),
+                posters = (prefs[POSTER_COLUMNS] ?: GridColumns.DEFAULT_POSTERS).coerceIn(GridColumns.POSTERS),
+            )
+        }
+        .distinctUntilChanged()
+
+    suspend fun setGridColumns(columns: GridColumns) {
+        dataStore.edit { prefs ->
+            prefs[CHANNEL_COLUMNS] = columns.channels.coerceIn(GridColumns.CHANNELS)
+            prefs[POSTER_COLUMNS] = columns.posters.coerceIn(GridColumns.POSTERS)
+        }
+    }
+
     /** Clé TMDB saisie par l'utilisateur (chiffrée sur l'appareil). */
     val tmdbApiKey: Flow<String?> = dataStore.data
         .map { prefs -> prefs[TMDB_KEY]?.let(cipher::decrypt) }
@@ -135,6 +152,18 @@ class SettingsRepository(
         val ACTIVE_PLAYLIST = longPreferencesKey("active_playlist")
         val AUTO_QUALITY = booleanPreferencesKey("auto_quality")
         val TMDB_KEY = stringPreferencesKey("tmdb_key")
+        val CHANNEL_COLUMNS = intPreferencesKey("channel_columns")
+        val POSTER_COLUMNS = intPreferencesKey("poster_columns")
         const val DECODER_PREFIX = "decoder_"
+    }
+}
+
+/** Éléments par ligne des grilles de l'accueil sur TV et tablette (le téléphone garde sa disposition). */
+data class GridColumns(val channels: Int = DEFAULT_CHANNELS, val posters: Int = DEFAULT_POSTERS) {
+    companion object {
+        val CHANNELS = 3..9
+        val POSTERS = 4..10
+        const val DEFAULT_CHANNELS = 5
+        const val DEFAULT_POSTERS = 6
     }
 }
