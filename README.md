@@ -14,9 +14,12 @@ Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3, enti�
   Catégorie « Récentes » : les 30 dernières chaînes regardées.
   Catégories de chaînes masquables (appui long sur une catégorie, ou Réglages › Catégories de chaînes) :
   leurs chaînes disparaissent des listes, de la recherche, du zapping et du guide ; les favoris restent visibles.
+  Un code parental à 4 chiffres (Réglages › Affichage) peut protéger leur réaffichage.
 - **Foot** : matchs des 8 prochains jours par compétition (Ligue 1, Premier League, Liga, Serie A, Bundesliga, Ligue
   des champions, Ligue Europa, Ligue Conférence, équipes nationales), par jour, avec les écussons et la chaîne de la
-  playlist qui les diffuse ; OK pour regarder, appui long pour la fiche du programme. La liste vient de
+  playlist qui les diffuse ; score en direct pendant les matchs (actualisé toutes les 2 min), classement des
+  championnats, « Mes équipes » pour les équipes suivies. OK pour regarder, appui long pour la fiche du match
+  (« Me prévenir », suivre chaque équipe). La liste vient de
   [football-data.org](https://www.football-data.org) (clé gratuite, Réglages › Matchs de foot, ou secret CI
   `NEXTV_FOOTBALL_API_KEY`) et le guide TV donne la chaîne ; sans clé, et pour les compétitions hors de l'offre
   gratuite, les matchs viennent du guide seul (vrais matchs uniquement, avec les deux équipes, hors autres sports et
@@ -27,6 +30,12 @@ Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3, enti�
   progression, programme suivant, qualité, débit mesuré en Mbit/s) ; haut / bas pour zapper ; Retour ouvre la liste
   des chaînes à gauche sans couper la lecture (catégories avec gauche / droite, chaînes avec haut / bas, OK pour
   lancer, appui long sur OK pour la fiche du programme avec sa description), un second Retour la ferme.
+  Touche Menu : piste audio, sous-titres, format de l'image (adapté, étiré, agrandi) ; ⏪ ou « chaîne précédente »
+  de la télécommande : retour à la dernière chaîne regardée. Option « Démarrer sur la dernière chaîne » (Réglages ›
+  Lecture). Chaque chaîne démarre sur la qualité qui a fonctionné la dernière fois.
+- **Serveurs de secours** (éditeur de playlist, lien ou compte Xtream) : autres adresses du même fournisseur ; si le
+  serveur principal ne répond pas, la playlist et les flux passent par elles avec les mêmes identifiants. Les
+  comptes Xtream affichent leur abonnement dans les réglages (actif, date de fin, connexions simultanées).
 - **Qualité automatique** : quand une chaîne existe en plusieurs versions dans la playlist (« FHD », « HD », « SD »,
   « LOW » dans le nom), la lecture descend d'un cran en cas d'erreur ou de mise en mémoire tampon persistante, puis
   remonte d'un cran : dès que le débit mesuré le justifie, sinon à l'essai après 1 min 30 de lecture stable (le débit
@@ -35,8 +44,15 @@ Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3, enti�
   autre chaîne ; désactivable dans les réglages.
   Chaque catégorie affiche toutes ses chaînes dans l'ordre de la playlist (TF1 SD dans « FR TV SD »…) ; « Toutes »,
   la recherche et le zapping n'en gardent qu'une ligne par chaîne, sa meilleure version visible.
-- **Guide TV** : grille chaînes × horaires avec repère de l'heure actuelle et programme en cours mis en valeur ;
-  OK ouvre la fiche du programme (horaires, durée, description) avec « Regarder ». Un créneau sans donnée reste vide.
+- **Guide TV** : grille chaînes × horaires depuis la veille, avec repère de l'heure actuelle et programme en cours
+  mis en valeur ; OK ouvre la fiche du programme (horaires, durée, description) avec « Regarder » et « Me prévenir »
+  (bandeau 5 min avant le début : OK pour regarder, Retour pour fermer). Un créneau sans donnée reste vide.
+- **Replay** (comptes Xtream dont le serveur enregistre les chaînes) : les programmes passés disponibles portent
+  l'icône ↺ dans le guide ; « Revoir » les lit depuis l'enregistrement du serveur (avance / retour comme un film),
+  « Depuis le début » relance le programme en cours.
+- **Sauvegarde** (Réglages › Sauvegarde) : playlists avec leurs identifiants, favoris, catégories masquées et
+  réglages dans un fichier JSON, à restaurer après une réinstallation ou sur un autre appareil (sans sélecteur de
+  fichiers, comme sur Fire TV, le fichier va dans le dossier de l'application).
 - **Affichage** : nombre de chaînes (3 à 9) et d'affiches (4 à 10) par ligne réglable sur TV et tablette.
 - **Retour à l'accueil** : double appui rapide sur Retour, depuis n'importe quel écran.
 - **Ajout d'une playlist depuis un ordinateur** (adb), pour éviter la saisie à la télécommande : l'éditeur s'ouvre

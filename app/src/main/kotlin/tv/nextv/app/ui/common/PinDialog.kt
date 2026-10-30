@@ -45,6 +45,14 @@ const val PIN_LENGTH = 4
  */
 @Composable
 fun PinDialog(title: String, message: String?, error: String?, onPin: (String) -> Unit, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss) {
+        PinPad(title, message, error, onPin, onDismiss)
+    }
+}
+
+/** Contenu de [PinDialog]. */
+@Composable
+fun PinPad(title: String, message: String?, error: String?, onPin: (String) -> Unit, onDismiss: () -> Unit) {
     var digits by remember { mutableStateOf("") }
     fun type(digit: Char) {
         if (digits.length >= PIN_LENGTH) return
@@ -58,47 +66,45 @@ fun PinDialog(title: String, message: String?, error: String?, onPin: (String) -
     }
     val firstKey = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { firstKey.requestFocus() } }
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = MaterialTheme.shapes.extraLarge,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            modifier = Modifier
-                .widthIn(max = 420.dp)
-                .onPreviewKeyEvent { event ->
-                    val digit = DIGIT_KEYS[event.key] ?: return@onPreviewKeyEvent false
-                    if (event.type == KeyEventType.KeyUp) type(digit)
-                    true
-                },
-        ) {
-            Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Filled.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                Text(title, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
-                message?.let {
-                    Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+    Surface(
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier
+            .widthIn(max = 420.dp)
+            .onPreviewKeyEvent { event ->
+                val digit = DIGIT_KEYS[event.key] ?: return@onPreviewKeyEvent false
+                if (event.type == KeyEventType.KeyUp) type(digit)
+                true
+            },
+    ) {
+        Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(Icons.Filled.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Text(title, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
+            message?.let {
+                Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                repeat(PIN_LENGTH) { index ->
+                    Box(
+                        Modifier
+                            .size(16.dp)
+                            .background(if (index < digits.length) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, CircleShape),
+                    )
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    repeat(PIN_LENGTH) { index ->
-                        Box(
-                            Modifier
-                                .size(16.dp)
-                                .background(if (index < digits.length) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, CircleShape),
-                        )
-                    }
-                }
-                error?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error) }
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    listOf("123", "456", "789").forEach { row ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            row.forEach { digit ->
-                                PinKey(digit.toString(), if (digit == '1') Modifier.focusRequester(firstKey) else Modifier) { type(digit) }
-                            }
+            }
+            error?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error) }
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                listOf("123", "456", "789").forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        row.forEach { digit ->
+                            PinKey(digit.toString(), if (digit == '1') Modifier.focusRequester(firstKey) else Modifier) { type(digit) }
                         }
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        PinKey("⌫") { digits = digits.dropLast(1) }
-                        PinKey("0") { type('0') }
-                        PinKey("✕", onClick = onDismiss)
-                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    PinKey("⌫") { digits = digits.dropLast(1) }
+                    PinKey("0") { type('0') }
+                    PinKey("✕", onClick = onDismiss)
                 }
             }
         }

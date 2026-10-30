@@ -43,6 +43,12 @@ import tv.nextv.app.ui.player.ResumePrompt
 import tv.nextv.app.ui.player.ResumePromptCard
 import tv.nextv.app.ui.player.PlayerOverlay
 import tv.nextv.app.ui.football.FootballContent
+import tv.nextv.app.ui.football.StandingsState
+import tv.nextv.app.ui.common.PinPad
+import tv.nextv.app.ui.common.ReminderBanner
+import tv.nextv.app.data.settings.Reminder
+import tv.nextv.app.ui.guide.GuideProgramme
+import tv.nextv.core.football.Competition
 import tv.nextv.app.ui.settings.ChannelGroupsContent
 import tv.nextv.app.ui.settings.ProxySettingsContent
 import tv.nextv.app.ui.settings.SettingsContent
@@ -149,6 +155,49 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
+    fun footballStandings() = capture("09c_foot_classement") {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+            FootballContent(
+                SampleData.football,
+                competition = Competition.LIGUE_1,
+                onCompetition = {},
+                onPlay = {},
+                favoriteTeams = setOf("Olympique de Marseille"),
+                standings = StandingsState.Loaded(SampleData.standings),
+                showStandings = true,
+            )
+        }
+    }
+
+    @Test
+    fun programmeReplay() = capture("10b_programme_replay") {
+        val channel = SampleData.guide.channels[7].copy(catchupDays = 7)
+        val programme = GuideProgramme(
+            "Journal de 13 h",
+            SampleData.NOW - 4 * 60 * 60_000L,
+            SampleData.NOW - 3 * 60 * 60_000L - 20 * 60_000L,
+            description = "Le point sur l'actualité de la mi-journée.",
+            category = "Information",
+        )
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background.copy(alpha = 0.9f)), contentAlignment = Alignment.Center) {
+            Box(Modifier.widthIn(max = 560.dp).padding(24.dp)) {
+                ProgrammeSheetContent(channel, programme, SampleData.NOW, onWatch = {}, onDismiss = {}, onReplay = {})
+            }
+        }
+    }
+
+    @Test
+    fun programmeReminder() = capture("10c_programme_rappel") {
+        val channel = SampleData.guide.channels[7]
+        val programme = channel.programmes.first { it.startMillis > SampleData.NOW }
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background.copy(alpha = 0.9f)), contentAlignment = Alignment.Center) {
+            Box(Modifier.widthIn(max = 560.dp).padding(24.dp)) {
+                ProgrammeSheetContent(channel, programme, SampleData.NOW, onWatch = {}, onDismiss = {}, reminded = true, onRemind = {})
+            }
+        }
+    }
+
+    @Test
     fun programme() = capture("10_programme") {
         val channel = SampleData.guide.channels[7]
         val programme = channel.programmes.first { it.startMillis <= SampleData.NOW && it.stopMillis > SampleData.NOW }
@@ -230,6 +279,20 @@ abstract class ScreenshotSuite(private val device: String) {
         FakeVideo()
         val state = SampleData.player.copy(paused = true, pausedAtMillis = SampleData.NOW - 83_000, qualityNotice = null)
         PlayerOverlay(state = state, now = SampleData.NOW, visible = true, showTouchControls = device == "phone", onBack = {}, onZap = {}, onRetry = {})
+    }
+
+    @Test
+    fun reminder() = capture("13e_rappel") {
+        FakeVideo()
+        Box(Modifier.fillMaxSize()) {
+            ReminderBanner(
+                Reminder("match", SampleData.NOW + 4 * 60_000L, "PSG – Marseille", channelId = 1, channelName = "Canal+ Sport"),
+                now = SampleData.NOW,
+                onWatch = {},
+                onDismiss = {},
+                modifier = Modifier.align(Alignment.TopEnd).padding(24.dp),
+            )
+        }
     }
 
     @Test
@@ -351,6 +414,13 @@ abstract class ScreenshotSuite(private val device: String) {
             onSave = {},
             onBack = {},
         )
+    }
+
+    @Test
+    fun parentalPin() = capture("21b_code_parental") {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background.copy(alpha = 0.9f)), contentAlignment = Alignment.Center) {
+            PinPad("Choisir un code parental", "4 chiffres, demandés pour réafficher les catégories masquées.", null, onPin = {}, onDismiss = {})
+        }
     }
 
     @Test

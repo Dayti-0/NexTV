@@ -4,6 +4,8 @@ import tv.nextv.app.ui.football.FootballMatch
 import tv.nextv.app.ui.home.ChannelPreview
 import tv.nextv.app.ui.football.FootballUiState
 import tv.nextv.core.football.Competition
+import tv.nextv.core.football.Standing
+import tv.nextv.core.football.Team
 import tv.nextv.app.data.catalog.MetadataState
 import tv.nextv.app.data.progress.ProgressEntity
 import tv.nextv.app.data.db.ChannelListRow
@@ -405,9 +407,36 @@ object SampleData {
                     GuideProgramme("Football : ${competition.label}", start, start + 115 * MINUTE, teams, "Match de ${competition.label}.", "Football")
                 },
                 otherChannels = if (index == 0) 2 else 0,
+                homeScore = if (index == 0) 1 else null,
+                awayScore = if (index == 0) 0 else null,
             )
         },
     )
+
+    /** Classement de Ligue 1. */
+    val standings = listOf(
+        "Paris Saint-Germain FC" to "PSG",
+        "Olympique de Marseille" to "Marseille",
+        "AS Monaco FC" to "Monaco",
+        "Lille OSC" to "Lille",
+        "Racing Club de Lens" to "Lens",
+        "Olympique Lyonnais" to "Lyon",
+        "OGC Nice" to "Nice",
+        "Stade Rennais FC 1901" to "Rennes",
+    ).mapIndexed { index, (name, short) ->
+        val won = 8 - index
+        val draw = index % 3
+        Standing(
+            position = index + 1,
+            team = Team(name, short, null, null),
+            played = 10,
+            won = won,
+            draw = draw,
+            lost = 10 - won - draw,
+            goalDifference = 16 - 4 * index,
+            points = 3 * won + draw,
+        )
+    }
 
     val editor = EditorState(
         name = "Bouquet Maison",
