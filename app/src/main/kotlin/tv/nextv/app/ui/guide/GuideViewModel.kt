@@ -24,6 +24,8 @@ data class GuideProgramme(
     val subtitle: String? = null,
     val description: String? = null,
     val category: String? = null,
+    /** Année de production, si le guide l'indique. */
+    val year: Int? = null,
 )
 
 @Immutable
@@ -94,7 +96,7 @@ class GuideViewModel(
                 number = row.channelNumber,
                 logoUrl = row.logoUrl,
                 programmes = programmes[row.epgChannelId].orEmpty().map {
-                    GuideProgramme(it.title, it.startMillis, it.stopMillis, it.subtitle, it.description, it.category)
+                    GuideProgramme(it.title, it.startMillis, it.stopMillis, it.subtitle, it.description, it.category, it.year)
                 },
             )
         }

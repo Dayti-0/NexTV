@@ -246,7 +246,8 @@ private fun ProgrammeDetails(highlighted: Pair<GuideChannel, GuideProgramme>?, n
 private fun ProgrammeDetailsText(channel: GuideChannel, programme: GuideProgramme, now: Long) {
     Text(
         "${channel.name}  ·  ${timeRange(programme.startMillis, programme.stopMillis)}  ·  ${duration(programme)}" +
-            (programme.category?.let { "  ·  $it" } ?: ""),
+            (programme.category?.let { "  ·  $it" } ?: "") +
+            (programme.year?.let { "  ·  $it" } ?: ""),
         style = MaterialTheme.typography.labelLarge,
         color = if (programme.isLive(now)) NexTvColors.Live else MaterialTheme.colorScheme.primary,
         maxLines = 1,
@@ -466,7 +467,10 @@ fun ProgrammeSheetContent(
             }
             Text(programme.title, style = MaterialTheme.typography.headlineSmall)
             programme.subtitle?.let { Text(it, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            programme.category?.let { Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary) }
+            // Genre et année de production, quand le guide les indique.
+            listOfNotNull(programme.category, programme.year?.toString()).joinToString("  ·  ").takeIf { it.isNotEmpty() }?.let {
+                Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            }
             if (programme.isLive(now)) LiveProgress(programme.startMillis, programme.stopMillis, now)
             Text(
                 programme.description ?: stringResource(R.string.guide_no_description),

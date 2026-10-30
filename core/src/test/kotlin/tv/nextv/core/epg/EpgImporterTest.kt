@@ -120,4 +120,18 @@ class EpgImporterTest {
         assertEquals("arteHD".lowercase(), EpgImporter.normalizeName("  Arté  H.D "))
         assertEquals(EpgImporter.normalizeName("France 2"), EpgImporter.normalizeName("FRANCE-2"))
     }
+
+    @Test
+    fun `production year is read from the date element`() {
+        val xml = """
+            <tv>
+              <programme start="20240101120000 +0000" stop="20240101130000 +0000" channel="a"><title>Film</title><date>1999</date></programme>
+              <programme start="20240101130000 +0000" stop="20240101140000 +0000" channel="a"><title>Doc</title><date>20230514</date></programme>
+              <programme start="20240101140000 +0000" stop="20240101150000 +0000" channel="a"><title>Sans date</title><date>bientôt</date></programme>
+            </tv>
+        """.trimIndent()
+        val reader = XmltvReader(xml.byteInputStream()) { KXmlParser() }
+        val years = generateSequence { reader.next() }.filterIsInstance<XmltvProgramme>().map { it.year }.toList()
+        assertEquals(listOf(1999, 2023, null), years)
+    }
 }

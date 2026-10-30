@@ -58,6 +58,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.withTimeoutOrNull
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -359,15 +361,10 @@ private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Mo
                 if (state.paused) StatusPill(stringResource(R.string.player_paused), NexTvColors.Warning, Modifier.align(Alignment.CenterVertically))
                 if (delay >= 1_000) {
                     StatusPill(stringResource(R.string.player_delay, formatClock(delay)), NexTvColors.Warning, Modifier.align(Alignment.CenterVertically))
-                } else if (!state.paused) {
-                    StatusPill(stringResource(R.string.player_live), NexTvColors.Live, Modifier.align(Alignment.CenterVertically))
                 }
             }
             state.quality?.let { Badge(it, Modifier.align(Alignment.CenterVertically), color = NexTvColors.Primary) }
             state.bandwidthMbps?.let { SpeedLabel(it, Modifier.align(Alignment.CenterVertically)) }
-        }
-        if (state.sourceName.isNotEmpty()) {
-            Text(state.sourceName, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f))
         }
         state.now?.let { programme ->
             Text(programme.title, style = MaterialTheme.typography.titleLarge, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -418,8 +415,9 @@ private fun SpeedLabel(mbps: Double, modifier: Modifier = Modifier) {
 }
 
 /**
- * Menu latéral des chaînes : catégories en haut (gauche/droite), chaînes en dessous (haut/bas),
- * OK lance la chaîne. La lecture continue derrière.
+ * Menu latéral des chaînes : gauche/droite change de catégorie, haut/bas parcourt les chaînes,
+ * OK lance la chaîne. Le focus reste dans la liste (en-tête et catégories : toucher seulement).
+ * La lecture continue derrière.
  */
 @Composable
 fun ChannelMenu(
@@ -436,15 +434,40 @@ fun ChannelMenu(
     val window = rememberWindowInfo()
     val listState = rememberLazyListState()
     val currentFocus = remember { FocusRequester() }
+    val firstFocus = remember { FocusRequester() }
+    val panelFocus = remember { FocusRequester() }
+    val chipsState = rememberLazyListState()
     val favoritesMode = menu.category == Category.Favorites
+    val categories = remember(groups) { listOf(Category.Favorites, Category.All) + groups.map { Category.Group(it.title.orEmpty()) } }
+    var categoryChanges by remember { mutableIntStateOf(0) }
+
+    /** Vrai quand la liste affichée correspond à la catégorie choisie. */
+    fun listReady(category: Category): Boolean = if (category == Category.Favorites) {
+        favorites.isNotEmpty()
+    } else {
+        channels.itemCount > 0 && (category !is Category.Group || channels.peek(0)?.groupTitle.orEmpty() == category.title)
+    }
 
     // À l'ouverture : chaîne en cours visible et sélectionnée.
     LaunchedEffect(menu.open) {
         if (!menu.open) return@LaunchedEffect
-        if (!favoritesMode) snapshotFlow { channels.itemCount }.first { it > 0 }
+        val category = menu.category
+        withTimeoutOrNull(LIST_WAIT_MILLIS) { snapshotFlow { listReady(category) }.first { it } }
         runCatching { listState.scrollToItem(menu.initialIndex) }
         delay(50)
-        runCatching { currentFocus.requestFocus() }
+        if (runCatching { currentFocus.requestFocus() }.isFailure && runCatching { firstFocus.requestFocus() }.isFailure) {
+            runCatching { panelFocus.requestFocus() }
+        }
+    }
+    // Catégorie changée (gauche/droite) : pastille visible, focus sur la première chaîne.
+    LaunchedEffect(categoryChanges) {
+        if (categoryChanges == 0) return@LaunchedEffect
+        val category = menu.category
+        runCatching { chipsState.animateScrollToItem(categories.indexOf(category).coerceAtLeast(0)) }
+        val ready = withTimeoutOrNull(LIST_WAIT_MILLIS) { snapshotFlow { listReady(category) }.first { it } } != null
+        runCatching { listState.scrollToItem(0) }
+        delay(50)
+        if (!ready || runCatching { firstFocus.requestFocus() }.isFailure) runCatching { panelFocus.requestFocus() }
     }
 
     AnimatedVisibility(
@@ -458,6 +481,21 @@ fun ChannelMenu(
                     .then(if (window.isWide) Modifier.width(480.dp) else Modifier.fillMaxWidth(0.88f))
                     .fillMaxHeight()
                     .background(Color(0xF20A0E14))
+                    .onPreviewKeyEvent { event ->
+                        if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                        val step = when (event.key) {
+                            Key.DirectionLeft -> -1
+                            Key.DirectionRight -> 1
+                            else -> return@onPreviewKeyEvent false
+                        }
+                        val index = categories.indexOf(menu.category).coerceAtLeast(0)
+                        onCategory(categories[(index + step + categories.size) % categories.size])
+                        categoryChanges++
+                        true
+                    }
+                    // Repli si la catégorie est vide : gauche/droite continuent de fonctionner.
+                    .focusRequester(panelFocus)
+                    .focusable()
                     .statusBarsPadding()
                     .padding(top = 20.dp),
             ) {
@@ -466,10 +504,18 @@ fun ChannelMenu(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(stringResource(R.string.player_channel_list), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                    IconAction(Icons.Filled.Info, stringResource(R.string.player_info_title), onInfo)
-                    PillButton(stringResource(R.string.player_home), onHome, icon = Icons.Filled.Home, style = PillStyle.Ghost)
+                    IconAction(Icons.Filled.Info, stringResource(R.string.player_info_title), onInfo, modifier = Modifier.focusProperties { canFocus = false })
+                    PillButton(
+                        stringResource(R.string.player_home),
+                        onHome,
+                        icon = Icons.Filled.Home,
+                        style = PillStyle.Ghost,
+                        modifier = Modifier.focusProperties { canFocus = false },
+                    )
                 }
+                // Catégories : gauche/droite depuis la liste (pas de focus ici), toucher sur écran tactile.
                 LazyRow(
+                    state = chipsState,
                     contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
@@ -482,14 +528,16 @@ fun ChannelMenu(
                         }
                     }
                 }
-                val rowFor: @Composable (ChannelListRow) -> Unit = { channel ->
+                val rowFor: @Composable (Int, ChannelListRow) -> Unit = { index, channel ->
                     val current = channel.id == menu.currentChannelId
                     MenuChannelRow(
                         channel = channel,
                         current = current,
                         now = now,
                         onClick = { onPlay(channel.id) },
-                        modifier = if (current) Modifier.focusRequester(currentFocus) else Modifier,
+                        modifier = Modifier
+                            .then(if (current) Modifier.focusRequester(currentFocus) else Modifier)
+                            .then(if (index == 0) Modifier.focusRequester(firstFocus) else Modifier),
                     )
                 }
                 LazyColumn(
@@ -509,10 +557,10 @@ fun ChannelMenu(
                                 )
                             }
                         }
-                        items(favorites, key = { it.id }) { rowFor(it) }
+                        items(favorites.size, key = { favorites[it].id }) { index -> rowFor(index, favorites[index]) }
                     } else {
                         items(count = channels.itemCount, key = channels.itemKey { it.id }) { index ->
-                            channels[index]?.let { rowFor(it) }
+                            channels[index]?.let { rowFor(index, it) }
                         }
                     }
                 }
@@ -531,6 +579,8 @@ fun ChannelMenu(
 private fun MenuChip(name: String, selected: Boolean, star: Boolean = false, onClick: () -> Unit) {
     FocusSurface(
         onClick = onClick,
+        // Jamais de focus : les catégories se changent avec gauche/droite depuis la liste.
+        modifier = Modifier.focusProperties { canFocus = false },
         shape = CircleShape,
         color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
         focusedColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -723,3 +773,6 @@ fun ResumePromptCard(prompt: ResumePrompt, onAnswer: (Boolean) -> Unit, modifier
         }
     }
 }
+
+/** Attente maximale de la liste d'une catégorie avant de placer le focus. */
+private const val LIST_WAIT_MILLIS = 3_000L

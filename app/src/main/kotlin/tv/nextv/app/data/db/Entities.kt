@@ -158,6 +158,8 @@ data class ProgrammeEntity(
     val subtitle: String?,
     val description: String?,
     val category: String?,
+    /** Année de production (version 3 du schéma). */
+    val year: Int? = null,
 )
 
 /** Identifiants chiffrés (AES-GCM, clé dans l'Android Keystore). */

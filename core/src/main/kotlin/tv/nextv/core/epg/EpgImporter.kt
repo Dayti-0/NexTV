@@ -92,6 +92,7 @@ class EpgImporter(
                 subtitle = programme.subtitle,
                 description = programme.description,
                 category = programme.category,
+                year = programme.year,
             )
             covered += id
             if (batch.size >= options.batchSize) {

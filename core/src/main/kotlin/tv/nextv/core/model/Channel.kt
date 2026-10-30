@@ -69,4 +69,6 @@ data class Programme(
     val subtitle: String? = null,
     val description: String? = null,
     val category: String? = null,
+    /** Année de production, si le guide l'indique. */
+    val year: Int? = null,
 )

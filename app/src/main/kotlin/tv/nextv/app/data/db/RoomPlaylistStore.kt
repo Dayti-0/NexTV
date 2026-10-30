@@ -152,6 +152,7 @@ class RoomPlaylistStore(private val database: NexTvDatabase) : PlaylistStore {
                         subtitle = it.subtitle,
                         description = it.description,
                         category = it.category,
+                        year = it.year,
                     )
                 },
             )

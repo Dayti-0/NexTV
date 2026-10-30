@@ -23,6 +23,8 @@ data class XmltvProgramme(
     val subtitle: String? = null,
     val description: String? = null,
     val category: String? = null,
+    /** Année de production (`<date>`), si le guide l'indique. */
+    val year: Int? = null,
 ) : XmltvItem
 
 /**
@@ -106,12 +108,15 @@ class XmltvReader(
         var subtitle: String? = null
         var description: String? = null
         var category: String? = null
+        var year: Int? = null
         forEachChild { name ->
             when (name) {
                 "title" -> readText().let { if (title.isNullOrEmpty()) title = it }
                 "sub-title" -> readText().let { if (subtitle.isNullOrEmpty()) subtitle = it }
                 "desc" -> readText().let { if (description.isNullOrEmpty()) description = it }
                 "category" -> readText().let { if (category.isNullOrEmpty()) category = it }
+                // « 2019 », « 20190314 »… : seule une année plausible est retenue.
+                "date" -> readText().take(4).toIntOrNull()?.takeIf { it in 1880..2100 }?.let { year = it }
                 else -> skipElement()
             }
         }
@@ -126,6 +131,7 @@ class XmltvReader(
             subtitle = subtitle?.takeIf { it.isNotEmpty() }?.take(MAX_TITLE_LENGTH),
             description = description?.takeIf { it.isNotEmpty() }?.take(MAX_DESCRIPTION_LENGTH),
             category = category?.takeIf { it.isNotEmpty() }?.take(MAX_TITLE_LENGTH),
+            year = year,
         )
     }
 
