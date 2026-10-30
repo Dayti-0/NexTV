@@ -1,24 +1,15 @@
 package tv.nextv.app.ui
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.activity.compose.LocalActivity
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
+import androidx.compose.runtime.DisposableEffect
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import tv.nextv.app.MainActivity
 import tv.nextv.app.ui.detail.DetailScreen
 import tv.nextv.app.ui.editor.SourceEditorScreen
 import tv.nextv.app.ui.editor.SourceEditorViewModel
@@ -61,30 +52,13 @@ private const val ARG_ITEM = "itemId"
 @Composable
 fun NexTvNavHost() {
     val navController = rememberNavController()
-    var longBack by remember { mutableStateOf(false) }
-    // Appui long sur « Retour » (touche répétée) : retour direct à l'accueil, depuis n'importe quel écran.
-    Box(
-        Modifier.fillMaxSize().onPreviewKeyEvent { event ->
-            if (event.key != Key.Back) return@onPreviewKeyEvent false
-            when {
-                event.type == KeyEventType.KeyDown && event.nativeKeyEvent.repeatCount > 0 -> {
-                    if (!longBack) {
-                        longBack = true
-                        navController.popBackStack(Routes.HOME, inclusive = false)
-                    }
-                    true
-                }
-                // Le relâchement qui suit ne doit pas déclencher un « Retour » de plus.
-                event.type == KeyEventType.KeyUp && longBack -> {
-                    longBack = false
-                    true
-                }
-                else -> false
-            }
-        },
-    ) {
-        AppNavHost(navController)
+    // Appui long sur « Retour » : retour direct à l'accueil, depuis n'importe quel écran.
+    val activity = LocalActivity.current as? MainActivity
+    DisposableEffect(activity, navController) {
+        activity?.onLongBack = { navController.popBackStack(Routes.HOME, inclusive = false) }
+        onDispose { activity?.onLongBack = null }
     }
+    AppNavHost(navController)
 }
 
 @Composable

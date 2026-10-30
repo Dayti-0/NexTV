@@ -58,11 +58,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import kotlinx.coroutines.withTimeoutOrNull
-import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
@@ -87,6 +87,7 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import tv.nextv.app.R
 import tv.nextv.app.data.db.ChannelListRow
 import tv.nextv.app.data.db.GroupRow
@@ -203,6 +204,8 @@ fun PlayerScreen(onBack: () -> Unit) {
                 }
             },
             update = { view ->
+                // Pause et différé : la dernière image reste affichée pendant le changement de lecteur.
+                view.setKeepContentOnPlayerReset(state.paused || state.liveDelayMs > 0)
                 view.player = player
                 // Direct : pas de barre de lecture, OK affiche le bandeau. Film / épisode : commandes Media3.
                 view.useController = !state.isLive
@@ -440,6 +443,8 @@ fun ChannelMenu(
     val favoritesMode = menu.category == Category.Favorites
     val categories = remember(groups) { listOf(Category.Favorites, Category.All) + groups.map { Category.Group(it.title.orEmpty()) } }
     var categoryChanges by remember { mutableIntStateOf(0) }
+    var focusPlaced by remember { mutableStateOf(false) }
+    var panelFocused by remember { mutableStateOf(false) }
 
     /** Vrai quand la liste affichée correspond à la catégorie choisie. */
     fun listReady(category: Category): Boolean = if (category == Category.Favorites) {
@@ -450,6 +455,7 @@ fun ChannelMenu(
 
     // À l'ouverture : chaîne en cours visible et sélectionnée.
     LaunchedEffect(menu.open) {
+        focusPlaced = false
         if (!menu.open) return@LaunchedEffect
         val category = menu.category
         withTimeoutOrNull(LIST_WAIT_MILLIS) { snapshotFlow { listReady(category) }.first { it } }
@@ -458,6 +464,13 @@ fun ChannelMenu(
         if (runCatching { currentFocus.requestFocus() }.isFailure && runCatching { firstFocus.requestFocus() }.isFailure) {
             runCatching { panelFocus.requestFocus() }
         }
+        focusPlaced = true
+    }
+    // Chaîne sélectionnée retirée par le rechargement de la liste : le focus revient dans le menu.
+    LaunchedEffect(menu.open, focusPlaced, panelFocused) {
+        if (!menu.open || !focusPlaced || panelFocused) return@LaunchedEffect
+        delay(FOCUS_RECOVERY_MILLIS)
+        if (runCatching { firstFocus.requestFocus() }.isFailure) runCatching { panelFocus.requestFocus() }
     }
     // Catégorie changée (gauche/droite) : pastille visible, focus sur la première chaîne.
     LaunchedEffect(categoryChanges) {
@@ -493,6 +506,7 @@ fun ChannelMenu(
                         categoryChanges++
                         true
                     }
+                    .onFocusChanged { panelFocused = it.hasFocus }
                     // Repli si la catégorie est vide : gauche/droite continuent de fonctionner.
                     .focusRequester(panelFocus)
                     .focusable()
@@ -776,3 +790,4 @@ fun ResumePromptCard(prompt: ResumePrompt, onAnswer: (Boolean) -> Unit, modifier
 
 /** Attente maximale de la liste d'une catégorie avant de placer le focus. */
 private const val LIST_WAIT_MILLIS = 3_000L
+private const val FOCUS_RECOVERY_MILLIS = 150L

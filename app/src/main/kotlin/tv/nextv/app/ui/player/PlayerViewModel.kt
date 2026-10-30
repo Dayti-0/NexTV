@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -163,6 +164,7 @@ class PlayerViewModel(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val menuChannels: Flow<PagingData<ChannelListRow>> = combine(sourceId, mutableMenu) { id, menu -> id to menu.category }
+        .distinctUntilChanged()
         .flatMapLatest { (id, category) ->
             if (id == null || category == Category.Favorites) {
                 emptyFlow()
@@ -317,7 +319,8 @@ class PlayerViewModel(
             while (true) {
                 delay(QUALITY_CHECK_MILLIS)
                 val estimate = state.value.bandwidthMbps?.let { (it * 1_000_000).toLong() }
-                if (timeshift != null) continue
+                // Pause ou différé : changer de version ramènerait au direct.
+                if (timeshift != null || state.value.paused || state.value.liveDelayMs > 0) continue
                 val decision = switcher?.evaluate(estimate)
                 if (decision is QualitySwitcher.Decision.Switch) switchQuality(decision)
             }
@@ -586,6 +589,9 @@ class PlayerViewModel(
         // Flux continu (MPEG-TS…) : le serveur le coupe si on cesse de le lire. Il est donc
         // enregistré pendant la pause, puis relu depuis l'enregistrement.
         if (timeshift == null && playback != null && !playingAsHls && playback.stream.format in RECORDABLE_FORMATS) {
+            // Le lecteur libère d'abord sa connexion (l'image reste affichée) : beaucoup de
+            // fournisseurs n'acceptent qu'une connexion à la fois.
+            player.stop()
             val buffer = TimeshiftBuffer(File(context.cacheDir, TIMESHIFT_FILE), timeshiftLimit())
             val call = container.playerFactory.liveCall(playback)
             timeshift = buffer
