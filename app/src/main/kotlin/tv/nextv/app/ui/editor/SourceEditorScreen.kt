@@ -6,6 +6,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -13,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
@@ -63,6 +66,7 @@ import tv.nextv.app.R
 import tv.nextv.app.ui.common.appViewModel
 import tv.nextv.app.ui.common.describe
 import tv.nextv.app.ui.components.FocusSurface
+import tv.nextv.core.net.UserAgents
 import tv.nextv.app.ui.components.fieldKeyboardOptions
 import tv.nextv.app.ui.components.RemoteTextField
 import tv.nextv.app.ui.components.openKeyboardOnOk
@@ -221,13 +225,7 @@ fun SourceEditorContent(
                                 icon = Icons.Filled.Lock,
                             ) {
                                 CredentialsFields(state, onEdit, errorText(SourceInputField.USERNAME))
-                                NexTvTextField(
-                                    value = state.userAgent,
-                                    onValueChange = { value -> onEdit { it.copy(userAgent = value) } },
-                                    label = stringResource(R.string.editor_user_agent),
-                                    error = errorText(SourceInputField.USER_AGENT),
-                                    help = stringResource(R.string.editor_user_agent_help),
-                                )
+                                UserAgentFields(state, onEdit, errorText(SourceInputField.USER_AGENT))
                             }
                         }
 
@@ -243,6 +241,68 @@ fun SourceEditorContent(
                 }
             }
         }
+    }
+}
+
+private enum class UserAgentChoice { AUTO, VLC, BROWSER, CUSTOM }
+
+/** Identité annoncée au serveur : automatique, VLC, navigateur, ou saisie libre. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun UserAgentFields(state: EditorState, onEdit: ((EditorState) -> EditorState) -> Unit, error: String?) {
+    val choice = when {
+        state.customUserAgent -> UserAgentChoice.CUSTOM
+        state.userAgent.isBlank() -> UserAgentChoice.AUTO
+        state.userAgent == UserAgents.VLC -> UserAgentChoice.VLC
+        state.userAgent == UserAgents.BROWSER -> UserAgentChoice.BROWSER
+        else -> UserAgentChoice.CUSTOM
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(stringResource(R.string.editor_user_agent), style = MaterialTheme.typography.titleSmall)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            UserAgentChoice.entries.forEach { option ->
+                val label = when (option) {
+                    UserAgentChoice.AUTO -> R.string.editor_user_agent_auto
+                    UserAgentChoice.VLC -> R.string.editor_user_agent_vlc
+                    UserAgentChoice.BROWSER -> R.string.editor_user_agent_browser
+                    UserAgentChoice.CUSTOM -> R.string.editor_user_agent_custom
+                }
+                ChoiceChip(stringResource(label), selected = option == choice) {
+                    onEdit {
+                        when (option) {
+                            UserAgentChoice.AUTO -> it.copy(userAgent = "", customUserAgent = false)
+                            UserAgentChoice.VLC -> it.copy(userAgent = UserAgents.VLC, customUserAgent = false)
+                            UserAgentChoice.BROWSER -> it.copy(userAgent = UserAgents.BROWSER, customUserAgent = false)
+                            UserAgentChoice.CUSTOM -> it.copy(customUserAgent = true)
+                        }
+                    }
+                }
+            }
+        }
+        Text(stringResource(R.string.editor_user_agent_help), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (choice == UserAgentChoice.CUSTOM) {
+            NexTvTextField(
+                value = state.userAgent,
+                onValueChange = { value -> onEdit { it.copy(userAgent = value) } },
+                label = stringResource(R.string.editor_user_agent_custom_field),
+                error = error,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChoiceChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    FocusSurface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
+        focusedColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+        contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+        selected = selected,
+        focusScale = 1.05f,
+    ) {
+        Text(label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp))
     }
 }
 

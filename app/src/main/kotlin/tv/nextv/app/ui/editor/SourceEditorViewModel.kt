@@ -22,6 +22,7 @@ import tv.nextv.core.repository.CredentialsChange
 import tv.nextv.core.repository.InvalidSourceInputException
 import tv.nextv.core.repository.SourceInput
 import tv.nextv.core.repository.SourceInputField
+import tv.nextv.core.net.UserAgents
 
 enum class LocationMode { URL, FILE }
 
@@ -47,6 +48,8 @@ data class EditorState(
     val hasStoredCredentials: Boolean = false,
     val removeStoredCredentials: Boolean = false,
     val userAgent: String = "",
+    /** User-Agent saisi à la main (et non automatique, VLC ou navigateur). */
+    val customUserAgent: Boolean = false,
     val errors: Map<SourceInputField, SourceError> = emptyMap(),
     val saving: Boolean = false,
     val saved: SaveOutcome? = null,
@@ -104,6 +107,7 @@ class SourceEditorViewModel(
                     document = source.location as? SourceLocation.LocalDocument,
                     hasStoredCredentials = source.hasCredentials,
                     userAgent = source.userAgent.orEmpty(),
+                    customUserAgent = source.userAgent.let { !it.isNullOrBlank() && it != UserAgents.VLC && it != UserAgents.BROWSER },
                 )
             }
         }

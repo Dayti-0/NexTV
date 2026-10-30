@@ -11,6 +11,7 @@ import tv.nextv.core.net.AuthScope
 import tv.nextv.core.net.HttpClientProvider
 import tv.nextv.core.net.NetworkErrorMapper
 import tv.nextv.core.net.RemoteUrlValidator
+import tv.nextv.core.net.UserAgents
 import tv.nextv.core.net.await
 import java.io.EOFException
 import java.io.IOException
@@ -120,9 +121,6 @@ class RemoteContentOpener(
         private const val TAG = "RemoteContentOpener"
 
         /** Essayés dans l'ordre après un refus : lecteur VLC, puis navigateur. */
-        val FALLBACK_USER_AGENTS = listOf(
-            "VLC/3.0.20 LibVLC/3.0.20",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
-        )
+        val FALLBACK_USER_AGENTS = listOf(UserAgents.VLC, UserAgents.BROWSER)
     }
 }

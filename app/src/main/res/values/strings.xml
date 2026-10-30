@@ -66,8 +66,13 @@
     <string name="editor_credentials_remove">Supprimer les identifiants enregistrés</string>
     <string name="editor_username">Nom d’utilisateur</string>
     <string name="editor_password">Mot de passe</string>
-    <string name="editor_user_agent">User-Agent (facultatif)</string>
-    <string name="editor_user_agent_help">Certains serveurs exigent un User-Agent précis.</string>
+    <string name="editor_user_agent">Se présenter au serveur comme</string>
+    <string name="editor_user_agent_auto">Automatique</string>
+    <string name="editor_user_agent_vlc">VLC</string>
+    <string name="editor_user_agent_browser">Navigateur</string>
+    <string name="editor_user_agent_custom">Personnalisé</string>
+    <string name="editor_user_agent_custom_field">User-Agent</string>
+    <string name="editor_user_agent_help">Certains serveurs n’acceptent que des applications connues. Automatique : NexTV, puis VLC et navigateur si le serveur refuse. Si la playlist ne se charge pas, choisissez VLC ou Navigateur.</string>
     <string name="editor_save_and_load">Enregistrer et charger</string>
 
     <!-- Chaînes -->
