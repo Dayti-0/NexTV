@@ -7,6 +7,7 @@ import tv.nextv.core.model.EpgSettings
 import tv.nextv.core.model.SourceLocation
 import tv.nextv.core.model.SourceType
 import tv.nextv.core.net.RemoteUrlValidator
+import tv.nextv.core.source.Mirrors
 
 /** Saisie de l'utilisateur pour créer ou modifier une source. */
 data class SourceInput(
@@ -16,6 +17,8 @@ data class SourceInput(
     val epg: EpgSettings = EpgSettings(),
     val userAgent: String? = null,
     val credentials: CredentialsChange = CredentialsChange.Keep,
+    /** Serveurs de secours (une adresse par serveur). */
+    val mirrors: List<String> = emptyList(),
 )
 
 sealed interface CredentialsChange {
@@ -27,7 +30,7 @@ sealed interface CredentialsChange {
     data class Replace(val credentials: Credentials) : CredentialsChange
 }
 
-enum class SourceInputField { NAME, LOCATION, EPG_LOCATION, USER_AGENT, USERNAME }
+enum class SourceInputField { NAME, LOCATION, EPG_LOCATION, USER_AGENT, USERNAME, MIRRORS }
 
 data class InputProblem(val field: SourceInputField, val error: SourceError)
 
@@ -104,6 +107,11 @@ object SourceInputValidator {
             }
         }
 
+        val mirrors = input.mirrors.map { it.trim() }.filter { it.isNotEmpty() }.map { it to Mirrors.normalize(it) }
+        if (mirrors.any { it.second == null }) {
+            problems += InputProblem(SourceInputField.MIRRORS, SourceError.InvalidUrl(InvalidUrlReason.MALFORMED))
+        }
+
         if (problems.isNotEmpty()) return Result.Invalid(problems)
         return Result.Valid(
             input.copy(
@@ -112,6 +120,7 @@ object SourceInputValidator {
                 epg = input.epg.copy(location = epgLocation),
                 userAgent = userAgent,
                 credentials = credentials,
+                mirrors = mirrors.mapNotNull { it.second }.distinct(),
             ),
         )
     }

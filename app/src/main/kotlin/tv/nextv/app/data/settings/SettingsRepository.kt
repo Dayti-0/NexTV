@@ -161,6 +161,27 @@ class SettingsRepository(
 
     private fun recentKey(sourceId: Long) = stringPreferencesKey(RECENT_PREFIX + sourceId)
 
+    /**
+     * Qualité qui a joué sans problème pour chaque chaîne d'une playlist (clé de version → nom de
+     * [tv.nextv.core.model.StreamQuality]) : la lecture suivante commence directement par elle.
+     */
+    suspend fun workingQuality(sourceId: Long, variantKey: String): String? =
+        dataStore.data.first()[qualityKey(sourceId)]?.lineSequence()
+            ?.firstOrNull { it.substringBefore('\t') == variantKey }
+            ?.substringAfter('\t', "")
+            ?.takeIf { it.isNotEmpty() }
+
+    suspend fun rememberWorkingQuality(sourceId: Long, variantKey: String, quality: String) {
+        if (variantKey.isEmpty() || '\t' in variantKey || '\n' in variantKey) return
+        val key = qualityKey(sourceId)
+        dataStore.edit { prefs ->
+            val others = prefs[key]?.lineSequence()?.filter { it.isNotEmpty() && it.substringBefore('\t') != variantKey }?.toList().orEmpty()
+            prefs[key] = (listOf("$variantKey\t$quality") + others).take(MAX_REMEMBERED_QUALITIES).joinToString("\n")
+        }
+    }
+
+    private fun qualityKey(sourceId: Long) = stringPreferencesKey(QUALITY_PREFIX + sourceId)
+
     /** Résolution des noms (DNS du système ou résolveur public en DNS sur HTTPS). */
     val dnsProvider: Flow<DnsProvider> = dataStore.data
         .map { prefs -> prefs[DNS_PROVIDER]?.let { name -> DnsProvider.entries.firstOrNull { it.name == name } } ?: DnsProvider.SYSTEM }
@@ -242,6 +263,8 @@ class SettingsRepository(
         const val DECODER_PREFIX = "decoder_"
         const val RECENT_PREFIX = "recent_channels_"
         const val MAX_RECENT_CHANNELS = 30
+        const val QUALITY_PREFIX = "working_quality_"
+        const val MAX_REMEMBERED_QUALITIES = 300
     }
 }
 

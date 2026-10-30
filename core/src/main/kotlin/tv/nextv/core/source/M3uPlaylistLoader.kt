@@ -34,6 +34,7 @@ import tv.nextv.core.net.RequestPurpose
 import tv.nextv.core.stream.StreamUrlInspector
 import java.io.InputStreamReader
 import java.nio.charset.CodingErrorAction
+import kotlin.coroutines.coroutineContext
 
 /**
  * Chargeur des playlists M3U / M3U8, distantes ou locales.
@@ -52,25 +53,49 @@ class M3uPlaylistLoader(
 
     override val type = SourceType.M3U
 
+    /**
+     * Charge la playlist depuis son adresse, puis, si ce serveur ne répond pas, depuis chacun de ses
+     * serveurs de secours ([PlaylistSource.mirrors]). En cas d'échec partout, l'erreur du premier
+     * serveur est signalée.
+     */
     override suspend fun load(source: PlaylistSource, credentials: Credentials?, progress: ProgressListener?): LoadedPlaylist =
         withContext(ioDispatcher) {
-            val context = coroutineContext
-            val request = OpenRequest(RequestPurpose.PLAYLIST, credentials, userAgent = source.userAgent)
-            progress?.onProgress(LoadProgress(LoadStep.PLAYLIST, 0, null))
-            opener.open(source.location, request).use { content ->
-                ContentPipeline.mapReadErrors(usesProxy(RequestPurpose.PLAYLIST)) {
-                    read(source, content, progress) { context.ensureActive() }
-                }.copy(userAgent = content.userAgent)
+            var firstError: SourceException? = null
+            for (location in Mirrors.locations(source.location, source.mirrors)) {
+                try {
+                    return@withContext loadFrom(source, location, credentials, progress)
+                } catch (e: SourceException) {
+                    if (!Mirrors.isServerProblem(e.error)) throw e
+                    if (firstError == null) firstError = e
+                }
             }
+            throw checkNotNull(firstError)
         }
+
+    private suspend fun loadFrom(
+        source: PlaylistSource,
+        location: SourceLocation,
+        credentials: Credentials?,
+        progress: ProgressListener?,
+    ): LoadedPlaylist {
+        val context = coroutineContext
+        val request = OpenRequest(RequestPurpose.PLAYLIST, credentials, userAgent = source.userAgent)
+        progress?.onProgress(LoadProgress(LoadStep.PLAYLIST, 0, null))
+        return opener.open(location, request).use { content ->
+            ContentPipeline.mapReadErrors(usesProxy(RequestPurpose.PLAYLIST)) {
+                read(source, location, content, progress) { context.ensureActive() }
+            }.copy(userAgent = content.userAgent)
+        }
+    }
 
     private fun read(
         source: PlaylistSource,
+        location: SourceLocation,
         content: OpenedContent,
         progress: ProgressListener?,
         checkCancelled: () -> Unit,
     ): LoadedPlaylist {
-        val remote = source.location as? SourceLocation.Remote
+        val remote = location as? SourceLocation.Remote
         if (remote != null && ContentSniffer.isMediaContentType(content.contentType)) {
             return singleStream(source, remote, formatFromContentType(content.contentType))
         }

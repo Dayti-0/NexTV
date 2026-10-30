@@ -215,8 +215,8 @@
     <string name="player_aspect_fill">Étiré (plein écran)</string>
     <string name="player_aspect_zoom">Agrandi (bords coupés)</string>
     <string name="player_more">Plus</string>
-    <string name="player_previous_channel">Chaîne précédente</string>
-    <string name="player_options_hint_live">Menu ≡ : options · ⏪ : chaîne précédente</string>
+    <string name="player_last_channel">Dernière chaîne regardée</string>
+    <string name="player_options_hint_live">Menu ≡ : options · ⏪ : dernière chaîne regardée</string>
     <string name="player_options_hint">Menu ≡ : options</string>
     <string name="player_channel_list">Chaînes</string>
     <string name="player_paused">En pause</string>

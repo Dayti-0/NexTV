@@ -399,7 +399,7 @@ fun PlayerOptionsPanel(
                 }
 
                 OptionsSection(stringResource(R.string.player_more))
-                if (isLive) OptionRow(stringResource(R.string.player_previous_channel), selected = false, onClick = onPreviousChannel)
+                if (isLive) OptionRow(stringResource(R.string.player_last_channel), selected = false, onClick = onPreviousChannel)
                 OptionRow(stringResource(R.string.player_info_title), selected = infoVisible, onClick = onToggleInfo)
                 Text(
                     stringResource(if (isLive) R.string.player_options_hint_live else R.string.player_options_hint),

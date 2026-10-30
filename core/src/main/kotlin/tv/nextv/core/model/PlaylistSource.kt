@@ -19,6 +19,11 @@ data class PlaylistSource(
     val createdAtMillis: Long = 0,
     val updatedAtMillis: Long = 0,
     val status: SourceStatus = SourceStatus(),
+    /**
+     * Serveurs de secours (« http://hôte:port ») : mêmes identifiants, autre adresse du fournisseur.
+     * Essayés quand le serveur de la playlist ne répond pas, pour la playlist comme pour les flux.
+     */
+    val mirrors: List<String> = emptyList(),
 )
 
 /**

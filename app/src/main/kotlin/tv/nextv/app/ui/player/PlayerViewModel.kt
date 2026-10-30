@@ -69,6 +69,8 @@ import tv.nextv.core.stream.QualityOption
 import tv.nextv.core.stream.QualitySwitcher
 import java.util.Locale
 
+private const val WORKING_QUALITY_MILLIS = 60_000L
+
 /** Piste audio ou de sous-titres proposée dans les options du lecteur. */
 data class TrackChoice(val groupIndex: Int, val trackIndex: Int, val label: String, val language: String?, val selected: Boolean)
 
@@ -406,6 +408,21 @@ class PlayerViewModel(
         }
     }
 
+    private var workingQualityJob: Job? = null
+
+    /** Version qui joue sans erreur une minute durant : la chaîne commencera par elle la prochaine fois. */
+    private fun rememberWhenStable(variant: ChannelEntity) {
+        workingQualityJob?.cancel()
+        val quality = variant.quality
+        if (switcher == null || quality == null || variant.kind != ContentKind.LIVE.name || variant.variantKey.isEmpty()) return
+        workingQualityJob = viewModelScope.launch {
+            delay(WORKING_QUALITY_MILLIS)
+            if (playing?.id == variant.id && state.value.error == null) {
+                container.settings.rememberWorkingQuality(variant.sourceId, variant.variantKey, quality)
+            }
+        }
+    }
+
     /** Langue audio et sous-titres choisis en dernier, essayés en premier. */
     private fun ExoPlayer.applyTrackPreferences() {
         trackSelectionParameters = trackSelectionParameters.buildUpon()
@@ -590,7 +607,18 @@ class PlayerViewModel(
         val variants = if (isLive && primary.variantKey.isNotEmpty()) dao.variants(primary.sourceId, primary.variantKey) else emptyList()
         val options = variants.filter { it.streamSupport != StreamSupport.UNSUPPORTED.name }
             .map { QualityOption(it.id, StreamQuality.entries.firstOrNull { q -> q.name == it.quality }) }
-        val startId = if (options.any { it.channelId == requested.id }) requested.id else options.firstOrNull()?.channelId ?: requested.id
+        // Chaîne ouverte sur sa meilleure version : départ par la qualité qui a fonctionné la dernière fois.
+        val remembered = if (autoQuality && requested.isPrimary && options.size > 1) {
+            container.settings.workingQuality(primary.sourceId, primary.variantKey)?.let { name -> StreamQuality.entries.firstOrNull { it.name == name } }
+        } else {
+            null
+        }
+        val rememberedStart = remembered?.let { quality ->
+            val rank = StreamQuality.rankOf(quality)
+            options.sortedByDescending { StreamQuality.rankOf(it.quality) }.firstOrNull { StreamQuality.rankOf(it.quality) <= rank }?.channelId
+        }
+        val startId = rememberedStart
+            ?: if (options.any { it.channelId == requested.id }) requested.id else options.firstOrNull()?.channelId ?: requested.id
         switcher = if (options.size > 1) {
             QualitySwitcher(
                 options,
@@ -630,6 +658,7 @@ class PlayerViewModel(
     private suspend fun playVariant(variant: ChannelEntity, notice: String?) {
         stopTimeshift()
         playing = variant
+        rememberWhenStable(variant)
         val stream = variant.toStream()
         mutableState.update {
             it.copy(

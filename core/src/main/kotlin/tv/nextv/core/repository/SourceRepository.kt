@@ -114,6 +114,7 @@ class SourceRepository(
                 hasCredentials = credentials != null,
                 createdAtMillis = now,
                 updatedAtMillis = now,
+                mirrors = valid.mirrors,
             ),
         )
         if (credentials != null) {
@@ -153,6 +154,7 @@ class SourceRepository(
             userAgent = valid.userAgent,
             hasCredentials = hasCredentials,
             updatedAtMillis = clock(),
+            mirrors = valid.mirrors,
         )
         store.updateSourceDefinition(updated)
         releaseUnusedDocuments(listOfNotNull(existing.location, existing.epg.location))
