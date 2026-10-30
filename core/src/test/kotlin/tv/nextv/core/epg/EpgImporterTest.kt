@@ -32,7 +32,7 @@ class EpgImporterTest {
           <channel id="arte.fr"><display-name>ARTE</display-name></channel>
           <channel id="m6.fr"><display-name>M6</display-name></channel>
           <programme start="20240101110000 +0000" stop="20240101130000 +0000" channel="tf1.fr">
-            <title lang="fr">Journal &amp; météo</title><desc>Infos <b>du</b> jour</desc><category>News</category>
+            <title lang="fr">Journal &amp; météo</title><desc>Infos <b>du</b> jour</desc><category>News</category><category>Météo</category><category>news</category>
           </programme>
           <programme start="20240101130000 +0000" stop="20240101140000 +0000" channel="TF1.FR"><title>Film</title></programme>
           <programme start="20240101120000 +0100" channel="france2.fr"><title>Sans fin 1</title></programme>
@@ -62,7 +62,7 @@ class EpgImporterTest {
 
         val news = programmes.first { it.title == "Journal & météo" }
         assertEquals("Infos du jour", news.description)
-        assertEquals("News", news.category)
+        assertEquals("News, Météo", news.category)
         assertEquals("tf1.fr", news.epgChannelId)
     }
 

@@ -117,6 +117,8 @@ fun SettingsScreen(onBack: () -> Unit, onPlaylists: () -> Unit, onProxy: () -> U
         onAutoQuality = viewModel::setAutoQuality,
         onSaveTmdbKey = viewModel::saveTmdbKey,
         onClearTmdbKey = viewModel::clearTmdbKey,
+        onSaveFootballKey = viewModel::saveFootballKey,
+        onClearFootballKey = viewModel::clearFootballKey,
         onProxy = onProxy,
         onChannelGroups = onChannelGroups,
         onCycleDecoder = viewModel::cycleDecoder,
@@ -149,6 +151,8 @@ fun SettingsContent(
     onSaveTmdbKey: (String) -> Unit,
     onClearTmdbKey: () -> Unit,
     onProxy: () -> Unit,
+    onSaveFootballKey: (String) -> Unit = {},
+    onClearFootballKey: () -> Unit = {},
     onChannelGroups: () -> Unit = {},
     onCycleDecoder: (String) -> Unit = {},
     onGridColumns: (GridColumns) -> Unit = {},
@@ -319,6 +323,45 @@ fun SettingsContent(
                             )
                             if (state.tmdbKeySaved) {
                                 PillButton(stringResource(R.string.settings_tmdb_remove), onClearTmdbKey, icon = Icons.Filled.Delete, style = PillStyle.Ghost)
+                            }
+                        }
+                    }
+
+                    // Matchs de la section Foot.
+                    SectionCard(
+                        stringResource(R.string.settings_football),
+                        subtitle = stringResource(R.string.settings_football_help),
+                        icon = NexTvIcons.Football,
+                    ) {
+                        var key by rememberSaveable { mutableStateOf("") }
+                        InfoText(
+                            stringResource(
+                                when {
+                                    state.footballKeySaved -> R.string.settings_tmdb_saved
+                                    state.footballBuiltIn -> R.string.settings_tmdb_builtin
+                                    else -> R.string.settings_football_missing
+                                },
+                            ),
+                        )
+                        NexTvTextField(
+                            value = key,
+                            onValueChange = { key = it.trim() },
+                            label = stringResource(R.string.settings_football_key),
+                            keyboardType = KeyboardType.Password,
+                            visualTransformation = PasswordVisualTransformation(),
+                        )
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            PillButton(
+                                stringResource(R.string.settings_tmdb_save),
+                                {
+                                    onSaveFootballKey(key)
+                                    key = ""
+                                },
+                                icon = Icons.Filled.Check,
+                                enabled = key.isNotBlank(),
+                            )
+                            if (state.footballKeySaved) {
+                                PillButton(stringResource(R.string.settings_tmdb_remove), onClearFootballKey, icon = Icons.Filled.Delete, style = PillStyle.Ghost)
                             }
                         }
                     }

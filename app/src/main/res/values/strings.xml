@@ -157,7 +157,11 @@
     <string name="football_today">Aujourd’hui</string>
     <string name="football_tomorrow">Demain</string>
     <string name="football_empty_title">Aucun match trouvé</string>
-    <string name="football_empty_message">Pas de match de Ligue 1, de Premier League ni de Ligue des champions dans le guide des 8 prochains jours, sur les chaînes de la playlist. Le guide se met à jour dans Réglages › Guide TV.</string>
+    <string name="football_empty_message">Pas de match dans les 8 prochains jours pour cette compétition.</string>
+    <string name="football_no_channel">Pas trouvé dans le guide</string>
+    <string name="football_notice_no_key">Matchs trouvés dans le guide TV. Pour la liste complète, ajoutez une clé football-data.org (Réglages › Matchs de foot).</string>
+    <string name="football_notice_invalid_key">Clé football-data.org refusée (Réglages › Matchs de foot) : matchs trouvés dans le guide TV.</string>
+    <string name="football_notice_unavailable">football-data.org ne répond pas : matchs trouvés dans le guide TV.</string>
     <string name="favorite_removed">« %1$s » retiré des favoris</string>
     <string name="category_hide">Masquer</string>
     <string name="category_hide_title">Masquer « %1$s » ?</string>
@@ -289,6 +293,10 @@
     <string name="settings_tmdb_key">Clé d’API v3 ou jeton de lecture v4</string>
     <string name="settings_tmdb_save">Enregistrer la clé</string>
     <string name="settings_tmdb_remove">Supprimer la clé</string>
+    <string name="settings_football">Matchs de foot (football-data.org)</string>
+    <string name="settings_football_help">La liste des matchs de la section Foot vient de football-data.org ; le guide TV sert à trouver la chaîne qui les diffuse. Clé gratuite sur football-data.org (« Get your free API key », reçue par e-mail).</string>
+    <string name="settings_football_missing">Aucune clé : seuls les matchs trouvés dans le guide TV apparaissent.</string>
+    <string name="settings_football_key">Clé d’API football-data.org</string>
     <string name="settings_proxy_on">Proxy activé : %1$s</string>
     <string name="settings_proxy_off">Aucun proxy : connexions directes.</string>
     <string name="settings_network">Réseau</string>
@@ -374,6 +382,10 @@
     <string name="error_too_large">Contenu trop volumineux (limite : %1$d Mo).</string>
     <string name="error_unknown">Erreur inattendue.</string>
 
+    <plurals name="football_other_channels">
+        <item quantity="one">+%d autre chaîne</item>
+        <item quantity="other">+%d autres chaînes</item>
+    </plurals>
     <plurals name="channel_groups_hidden">
         <item quantity="one">%d masquée</item>
         <item quantity="other">%d masquées</item>

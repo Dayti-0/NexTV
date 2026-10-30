@@ -41,6 +41,9 @@ data class SettingsUiState(
     val tmdbKeySaved: Boolean = false,
     /** Clé TMDB fournie à la compilation, utilisée à défaut de clé saisie. */
     val tmdbBuiltIn: Boolean = false,
+    /** Clé football-data.org saisie dans les réglages (jamais affichée), ou fournie à la compilation. */
+    val footballKeySaved: Boolean = false,
+    val footballBuiltIn: Boolean = false,
     /** Dernier téléchargement du guide commun (xmltvfr.fr). */
     val guideDownloadedAt: Long? = null,
     val proxyEnabled: Boolean = false,
@@ -95,6 +98,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         val autoQuality: Boolean,
         val channelPreview: Boolean,
         val tmdbKeySaved: Boolean,
+        val footballKeySaved: Boolean,
         val proxy: ProxySettings,
         val grid: GridColumns,
         val dns: DnsProvider,
@@ -102,11 +106,13 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     private val preferences = combine(
         combine(settings.autoQuality, settings.channelPreview) { autoQuality, preview -> autoQuality to preview },
-        settings.tmdbApiKey,
+        combine(settings.tmdbApiKey, settings.footballApiKey) { tmdb, football -> (tmdb != null) to (football != null) },
         settings.proxySettings,
         settings.gridColumns,
         settings.dnsProvider,
-    ) { (autoQuality, preview), tmdbKey, proxy, grid, dns -> Preferences(autoQuality, preview, tmdbKey != null, proxy, grid, dns) }
+    ) { (autoQuality, preview), (tmdbKey, footballKey), proxy, grid, dns ->
+        Preferences(autoQuality, preview, tmdbKey, footballKey, proxy, grid, dns)
+    }
 
     val state: StateFlow<SettingsUiState> = combine(
         activePlaylist,
@@ -124,6 +130,8 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             autoQuality = prefs.autoQuality,
             tmdbKeySaved = prefs.tmdbKeySaved,
             tmdbBuiltIn = BuildConfig.TMDB_API_KEY.isNotBlank(),
+            footballKeySaved = prefs.footballKeySaved,
+            footballBuiltIn = BuildConfig.FOOTBALL_API_KEY.isNotBlank(),
             guideDownloadedAt = downloadedAt,
             proxyEnabled = proxy.enabled,
             proxyAddress = proxy.host.takeIf { proxy.enabled && it.isNotBlank() }?.let { "$it:${proxy.port}" },
@@ -183,6 +191,14 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     fun setGridColumns(columns: GridColumns) {
         viewModelScope.launch { settings.setGridColumns(columns) }
+    }
+
+    fun saveFootballKey(key: String) {
+        viewModelScope.launch { settings.setFootballApiKey(key) }
+    }
+
+    fun clearFootballKey() {
+        viewModelScope.launch { settings.setFootballApiKey(null) }
     }
 
     fun saveTmdbKey(key: String) {

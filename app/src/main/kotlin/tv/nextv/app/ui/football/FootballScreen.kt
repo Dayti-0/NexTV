@@ -2,6 +2,7 @@ package tv.nextv.app.ui.football
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -18,7 +19,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -26,25 +26,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.mapLatest
-import kotlinx.coroutines.flow.stateIn
-import tv.nextv.app.AppContainer
 import tv.nextv.app.R
 import tv.nextv.app.ui.common.appViewModel
 import tv.nextv.app.ui.components.ChannelLogo
@@ -53,69 +40,15 @@ import tv.nextv.app.ui.components.FocusSurface
 import tv.nextv.app.ui.components.LiveProgress
 import tv.nextv.app.ui.components.StatusPill
 import tv.nextv.app.ui.components.rememberWindowInfo
-import tv.nextv.app.ui.guide.GuideChannel
-import tv.nextv.app.ui.guide.GuideProgramme
 import tv.nextv.app.ui.guide.ProgrammeSheet
 import tv.nextv.app.ui.theme.NexTvColors
 import tv.nextv.app.ui.theme.NexTvIcons
-import tv.nextv.core.epg.Competition
-import tv.nextv.core.epg.FootballMatches
-import tv.nextv.core.model.ContentKind
+import tv.nextv.core.football.Competition
 import java.text.DateFormat
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
-
-/** Match trouvé dans le guide, avec la chaîne qui le diffuse. */
-@Immutable
-data class FootballMatch(val competition: Competition, val channel: GuideChannel, val programme: GuideProgramme)
-
-data class FootballUiState(
-    val loading: Boolean = true,
-    val now: Long = 0,
-    val matches: List<FootballMatch> = emptyList(),
-)
-
-/** Matchs à venir (et en cours) des compétitions suivies, d'après le guide des programmes. */
-@OptIn(ExperimentalCoroutinesApi::class)
-class FootballViewModel(private val container: AppContainer, private val sourceId: Long) : ViewModel() {
-
-    /** `null` : toutes les compétitions. */
-    val competition = MutableStateFlow<Competition?>(null)
-
-    private val clock = flow {
-        while (true) {
-            emit(System.currentTimeMillis())
-            delay(REFRESH_MILLIS)
-        }
-    }
-
-    val state: StateFlow<FootballUiState> =
-        combine(clock, container.hiddenGroupDao.observeTitles(sourceId, ContentKind.LIVE.name)) { now, _ -> now }
-            .mapLatest { now -> load(now) }
-            .flowOn(Dispatchers.Default)
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FootballUiState())
-
-    private suspend fun load(now: Long): FootballUiState {
-        val matches = container.programmeDao.footballCandidates(sourceId, now, now + WINDOW_MILLIS).mapNotNull { row ->
-            val competition = FootballMatches.competitionOf(row.title, row.subtitle, row.category, row.description) ?: return@mapNotNull null
-            FootballMatch(
-                competition = competition,
-                channel = GuideChannel(row.channelId, row.channelTitle.ifBlank { row.channelName }, null, row.logoUrl, emptyList()),
-                programme = GuideProgramme(row.title, row.startMillis, row.stopMillis, row.subtitle, row.description, row.category, row.year),
-            )
-        }
-        return FootballUiState(loading = false, now = now, matches = matches)
-    }
-
-    private companion object {
-        const val REFRESH_MILLIS = 60_000L
-
-        /** Le guide couvre en général une semaine. */
-        const val WINDOW_MILLIS = 8 * 24 * 60 * 60_000L
-    }
-}
 
 /** Section « Foot » de l'accueil. */
 @Composable
@@ -134,7 +67,7 @@ fun FootballScreen(sourceId: Long, onPlay: (Long) -> Unit, modifier: Modifier = 
 
 /**
  * Compétitions à gauche (en haut sur écran étroit), matchs par jour à droite.
- * OK : regarder la chaîne ; appui long : fiche du match (description du guide).
+ * OK : regarder la chaîne ; appui long : fiche du programme (description du guide).
  */
 @Composable
 fun FootballContent(
@@ -155,11 +88,20 @@ fun FootballContent(
             EmptyState(
                 icon = NexTvIcons.Football,
                 title = stringResource(R.string.football_empty_title),
-                message = stringResource(R.string.football_empty_message),
+                message = listOfNotNull(stringResource(R.string.football_empty_message), state.notice?.let { noticeText(it) }).joinToString("\n\n"),
                 modifier = listModifier,
             )
         } else {
-            MatchList(shown, state.now, window.horizontalPadding, compact = !window.isWide, onPlay, onDetails = { details = it }, modifier = listModifier)
+            MatchList(
+                matches = shown,
+                now = state.now,
+                notice = state.notice,
+                horizontalPadding = window.horizontalPadding,
+                compact = !window.isWide,
+                onPlay = onPlay,
+                onDetails = { details = it },
+                modifier = listModifier,
+            )
         }
     }
 
@@ -175,7 +117,9 @@ fun FootballContent(
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 items(choices) { choice ->
-                    CompetitionItem(competitionLabel(choice), count(choice), choice == competition) { onCompetition(choice) }
+                    CompetitionItem(competitionLabel(choice), count(choice), choice?.let(::competitionColor), choice == competition) {
+                        onCompetition(choice)
+                    }
                 }
             }
             list(Modifier.weight(1f))
@@ -194,14 +138,16 @@ fun FootballContent(
         }
     }
 
-    details?.let { match ->
+    val shownDetails = details
+    val channel = shownDetails?.channel
+    if (shownDetails != null && channel != null) {
         ProgrammeSheet(
-            channel = match.channel,
-            programme = match.programme,
+            channel = channel,
+            programme = shownDetails.programme,
             now = state.now,
             onWatch = {
                 details = null
-                onPlay(match.channel.id)
+                onPlay(channel.id)
             },
             onDismiss = { details = null },
         )
@@ -212,18 +158,29 @@ fun FootballContent(
 private fun MatchList(
     matches: List<FootballMatch>,
     now: Long,
+    notice: FootballNotice?,
     horizontalPadding: Dp,
     compact: Boolean,
     onPlay: (Long) -> Unit,
     onDetails: (FootballMatch) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val days = remember(matches) { matches.groupBy { dayStart(it.programme.startMillis) } }
+    val days = remember(matches) { matches.groupBy { dayStart(it.kickoffMillis) } }
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = if (compact) horizontalPadding else 28.dp, end = horizontalPadding, top = 8.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
+        if (notice != null) {
+            item(key = "notice") {
+                Text(
+                    noticeText(notice),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
+        }
         days.forEach { (day, dayMatches) ->
             item(key = "day-$day") {
                 Text(
@@ -233,8 +190,15 @@ private fun MatchList(
                     modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
                 )
             }
-            items(dayMatches, key = { "${it.channel.id}-${it.programme.startMillis}" }) { match ->
-                MatchRow(match, now, compact, onClick = { onPlay(match.channel.id) }, onLongClick = { onDetails(match) })
+            items(dayMatches, key = { it.key }) { match ->
+                val channel = match.channel
+                MatchRow(
+                    match = match,
+                    now = now,
+                    compact = compact,
+                    onClick = { if (channel != null) onPlay(channel.id) },
+                    onLongClick = { if (channel != null) onDetails(match) },
+                )
             }
         }
     }
@@ -242,7 +206,6 @@ private fun MatchList(
 
 @Composable
 private fun MatchRow(match: FootballMatch, now: Long, compact: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
-    val live = match.programme.startMillis <= now && match.programme.stopMillis > now
     FocusSurface(
         onClick = onClick,
         onLongClick = onLongClick,
@@ -251,59 +214,88 @@ private fun MatchRow(match: FootballMatch, now: Long, compact: Boolean, onClick:
         color = MaterialTheme.colorScheme.surfaceContainer,
         focusScale = 1.01f,
     ) {
-        if (compact) CompactMatch(match, now, live) else WideMatch(match, now, live)
+        if (compact) CompactMatch(match, now) else WideMatch(match, now)
     }
 }
 
 /** TV, tablette : heure, affiche et chaîne sur une ligne. */
 @Composable
-private fun WideMatch(match: FootballMatch, now: Long, live: Boolean) {
-    val programme = match.programme
+private fun WideMatch(match: FootballMatch, now: Long) {
+    val live = match.isLive(now)
     Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         Column(Modifier.width(120.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(timeOf(programme.startMillis), style = MaterialTheme.typography.titleLarge)
+            Text(timeOf(match.kickoffMillis), style = MaterialTheme.typography.titleLarge)
             if (live) StatusPill(stringResource(R.string.player_live), NexTvColors.Live)
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(match.competition.label, style = MaterialTheme.typography.labelLarge, color = competitionColor(match.competition))
-            // Le sous-titre porte en général l'affiche (« Paris SG / Marseille ») ; le titre (« Football : Ligue 1 »)
-            // n'est montré qu'à défaut.
-            Text(
-                programme.subtitle ?: programme.title,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (live) LiveProgress(programme.startMillis, programme.stopMillis, now, Modifier.padding(top = 4.dp))
+            Teams(match, large = true)
+            if (live) LiveProgress(match.kickoffMillis, match.endMillis, now, Modifier.padding(top = 4.dp))
         }
-        Row(Modifier.width(220.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ChannelLogo(match.channel.logoUrl, match.channel.name, Modifier.size(width = 56.dp, height = 38.dp), monogramSize = 13.dp)
-            Text(match.channel.name, style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Row(Modifier.width(240.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            ChannelInfo(match, logoWidth = 56.dp)
         }
     }
 }
 
 /** Écran étroit (téléphone) : heure et compétition, affiche, puis chaîne, les uns sous les autres. */
 @Composable
-private fun CompactMatch(match: FootballMatch, now: Long, live: Boolean) {
-    val programme = match.programme
+private fun CompactMatch(match: FootballMatch, now: Long) {
+    val live = match.isLive(now)
     Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(timeOf(programme.startMillis), style = MaterialTheme.typography.titleMedium)
+            Text(timeOf(match.kickoffMillis), style = MaterialTheme.typography.titleMedium)
             if (live) StatusPill(stringResource(R.string.player_live), NexTvColors.Live)
             Text(match.competition.label, style = MaterialTheme.typography.labelLarge, color = competitionColor(match.competition), maxLines = 1)
         }
-        Text(programme.subtitle ?: programme.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        if (live) LiveProgress(programme.startMillis, programme.stopMillis, now)
+        Teams(match, large = false)
+        if (live) LiveProgress(match.kickoffMillis, match.endMillis, now)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ChannelLogo(match.channel.logoUrl, match.channel.name, Modifier.size(width = 40.dp, height = 28.dp), monogramSize = 11.dp)
-            Text(match.channel.name, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            ChannelInfo(match, logoWidth = 40.dp)
+        }
+    }
+}
+
+/** L'affiche en clair, avec les écussons quand football-data.org les fournit : « PSG – Marseille ». */
+@Composable
+private fun Teams(match: FootballMatch, large: Boolean) {
+    val crest = if (large) 30.dp else 24.dp
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        match.homeCrest?.let { ChannelLogo(it, match.home, Modifier.size(crest), monogramSize = 10.dp) }
+        Text(
+            match.label,
+            style = if (large) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+        match.awayCrest?.let { ChannelLogo(it, match.away, Modifier.size(crest), monogramSize = 10.dp) }
+    }
+}
+
+/** Chaîne de la playlist qui diffuse le match (et combien d'autres), ou son absence du guide. */
+@Composable
+private fun ChannelInfo(match: FootballMatch, logoWidth: Dp) {
+    val channel = match.channel
+    if (channel == null) {
+        Text(stringResource(R.string.football_no_channel), style = MaterialTheme.typography.labelLarge, color = NexTvColors.TextMuted, maxLines = 2)
+    } else {
+        ChannelLogo(channel.logoUrl, channel.name, Modifier.size(width = logoWidth, height = logoWidth * 0.68f), monogramSize = 12.dp)
+        Column {
+            Text(channel.name, style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (match.otherChannels > 0) {
+                Text(
+                    LocalContext.current.resources.getQuantityString(R.plurals.football_other_channels, match.otherChannels, match.otherChannels),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun CompetitionItem(name: String, count: Int, selected: Boolean, onClick: () -> Unit) {
+private fun CompetitionItem(name: String, count: Int, color: Color?, selected: Boolean, onClick: () -> Unit) {
     FocusSurface(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
@@ -311,7 +303,12 @@ private fun CompetitionItem(name: String, count: Int, selected: Boolean, onClick
         color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
         focusScale = 1.02f,
     ) {
-        Row(Modifier.padding(horizontal = 14.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            if (color != null) Box(Modifier.size(10.dp).background(color, CircleShape))
             Text(name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             Text(count.toString(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -335,10 +332,25 @@ private fun CompetitionChip(name: String, selected: Boolean, onClick: () -> Unit
 @Composable
 private fun competitionLabel(competition: Competition?): String = competition?.label ?: stringResource(R.string.football_all)
 
+@Composable
+private fun noticeText(notice: FootballNotice): String = stringResource(
+    when (notice) {
+        FootballNotice.NO_KEY -> R.string.football_notice_no_key
+        FootballNotice.INVALID_KEY -> R.string.football_notice_invalid_key
+        FootballNotice.UNAVAILABLE -> R.string.football_notice_unavailable
+    },
+)
+
 private fun competitionColor(competition: Competition): Color = when (competition) {
-    Competition.LIGUE_1 -> NexTvColors.Primary
-    Competition.PREMIER_LEAGUE -> NexTvColors.Warning
-    Competition.CHAMPIONS_LEAGUE -> NexTvColors.Live
+    Competition.LIGUE_1 -> Color(0xFF5C9DFF)
+    Competition.PREMIER_LEAGUE -> Color(0xFFC792EA)
+    Competition.LA_LIGA -> Color(0xFFFF8A65)
+    Competition.SERIE_A -> Color(0xFF4DD0E1)
+    Competition.BUNDESLIGA -> Color(0xFFFF6B6B)
+    Competition.CHAMPIONS_LEAGUE -> Color(0xFFE3E8F2)
+    Competition.EUROPA_LEAGUE -> Color(0xFFFFB347)
+    Competition.CONFERENCE_LEAGUE -> Color(0xFF6BD89A)
+    Competition.NATIONAL_TEAMS -> Color(0xFFFFD54F)
 }
 
 private fun timeOf(millis: Long): String = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(millis))

@@ -156,6 +156,22 @@ class SettingsRepository(
         }
     }
 
+    /** Clé football-data.org saisie par l'utilisateur (chiffrée sur l'appareil). */
+    val footballApiKey: Flow<String?> = dataStore.data
+        .map { prefs -> prefs[FOOTBALL_KEY]?.let(cipher::decrypt) }
+        .distinctUntilChanged()
+
+    suspend fun setFootballApiKey(key: String?) {
+        val encrypted = key?.trim()?.takeIf { it.isNotEmpty() }?.let(cipher::encrypt)
+        dataStore.edit { prefs ->
+            if (encrypted != null) {
+                prefs[FOOTBALL_KEY] = encrypted
+            } else {
+                prefs.remove(FOOTBALL_KEY)
+            }
+        }
+    }
+
     suspend fun saveProxySettings(settings: ProxySettings) {
         val encryptedCredentials = settings.credentials?.let(cipher::encryptCredentials)
         dataStore.edit { prefs ->
@@ -184,6 +200,7 @@ class SettingsRepository(
         val ACTIVE_PLAYLIST = longPreferencesKey("active_playlist")
         val AUTO_QUALITY = booleanPreferencesKey("auto_quality")
         val TMDB_KEY = stringPreferencesKey("tmdb_key")
+        val FOOTBALL_KEY = stringPreferencesKey("football_key")
         val CHANNEL_COLUMNS = intPreferencesKey("channel_columns")
         val DNS_PROVIDER = stringPreferencesKey("dns_provider")
         val POSTER_COLUMNS = intPreferencesKey("poster_columns")

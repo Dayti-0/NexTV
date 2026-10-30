@@ -14,8 +14,13 @@ Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3, enti�
   Catégorie « Récentes » : les 30 dernières chaînes regardées.
   Catégories de chaînes masquables (appui long sur une catégorie, ou Réglages › Catégories de chaînes) :
   leurs chaînes disparaissent des listes, de la recherche, du zapping et du guide ; les favoris restent visibles.
-- **Foot** : matchs de Ligue 1, de Premier League et de Ligue des champions des 8 prochains jours trouvés dans
-  le guide, par jour, avec la chaîne qui les diffuse ; OK pour regarder, appui long pour la fiche du match.
+- **Foot** : matchs des 8 prochains jours par compétition (Ligue 1, Premier League, Liga, Serie A, Bundesliga, Ligue
+  des champions, Ligue Europa, Ligue Conférence, équipes nationales), par jour, avec les écussons et la chaîne de la
+  playlist qui les diffuse ; OK pour regarder, appui long pour la fiche du programme. La liste vient de
+  [football-data.org](https://www.football-data.org) (clé gratuite, Réglages › Matchs de foot, ou secret CI
+  `NEXTV_FOOTBALL_API_KEY`) et le guide TV donne la chaîne ; sans clé, et pour les compétitions hors de l'offre
+  gratuite, les matchs viennent du guide seul (vrais matchs uniquement, avec les deux équipes, hors autres sports et
+  football féminin).
 - **Films et séries** : fiche enrichie par TMDB (synopsis, note, genres, affiche, bande-annonce), saisons et épisodes.
   Une clé d'API TMDB se saisit dans les réglages (ou s'intègre à la compilation, voir plus bas).
 - **Lecture en direct** : bandeau de 5 s au changement de chaîne ou sur OK (programme en cours avec horaires et
@@ -137,6 +142,7 @@ contient aussi `NexTV.apk` : lien permanent vers la dernière version,
 de l'application Downloader (Fire TV) créé sur go.aftvnews.com.
 
 Clé TMDB : le secret facultatif `NEXTV_TMDB_API_KEY` l'intègre à l'APK (une clé saisie dans les réglages reste prioritaire).
+Clé football-data.org (section Foot) : le secret facultatif `NEXTV_FOOTBALL_API_KEY`, de la même façon.
 
 Mises à jour depuis l'application : elles lisent les versions publiées du dépôt (lecture anonyme, dépôt public).
 Pour garder le code privé, créer un dépôt public `NexTV-releases` (avec un README) et le secret

@@ -564,8 +564,9 @@ interface ProgrammeDao {
     suspend fun inWindow(sourceId: Long, epgChannelIds: List<String>, from: Long, to: Long): List<ProgrammeEntity>
 
     /**
-     * Programmes de football possibles (titre, sous-titre ou genre) entre [from] et [to], sur les
-     * chaînes visibles ; le tri fin est fait par [tv.nextv.core.epg.FootballMatches].
+     * Programmes sportifs ou de football possibles (genre, titre ou sous-titre) entre [from] et [to],
+     * sur les chaînes visibles ; le tri fin est fait par [tv.nextv.core.football.FootballMatches] et
+     * [tv.nextv.core.football.BroadcastFinder].
      */
     @Query(
         """
@@ -580,8 +581,11 @@ interface ProgrammeDao {
             ORDER BY c2.qualityRank DESC, c2.position LIMIT 1
         )
         WHERE p.sourceId = :sourceId AND p.stopMillis > :from AND p.startMillis < :to
-          AND (p.title LIKE '%ligue%' OR p.title LIKE '%league%' OR p.title LIKE '%foot%'
-            OR p.subtitle LIKE '%ligue%' OR p.subtitle LIKE '%league%' OR p.category LIKE '%foot%')
+          AND (p.category LIKE '%sport%' OR p.category LIKE '%foot%'
+            OR p.title LIKE '%foot%' OR p.title LIKE '%ligue%' OR p.title LIKE '%league%' OR p.title LIKE '%liga%'
+            OR p.title LIKE '%serie a%' OR p.title LIKE '%uefa%' OR p.title LIKE '%coupe%' OR p.title LIKE '% / %'
+            OR p.title LIKE '% vs%' OR p.subtitle LIKE '%ligue%' OR p.subtitle LIKE '%league%' OR p.subtitle LIKE '%liga%'
+            OR p.subtitle LIKE '% / %')
         ORDER BY p.startMillis, c.position
         """,
     )

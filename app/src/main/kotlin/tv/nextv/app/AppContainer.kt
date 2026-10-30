@@ -40,6 +40,7 @@ import tv.nextv.core.io.RemoteContentOpener
 import tv.nextv.core.log.Logger
 import tv.nextv.core.log.RedactingLogger
 import tv.nextv.core.log.Redactor
+import tv.nextv.core.football.FootballDataClient
 import tv.nextv.core.meta.TmdbClient
 import tv.nextv.core.net.HttpClientProvider
 import tv.nextv.core.net.NetworkSettings
@@ -126,6 +127,17 @@ class AppContainer(context: Context) {
             apiKey = { tmdbKey.value ?: BuildConfig.TMDB_API_KEY.takeIf { it.isNotBlank() } },
             logger = logger,
         ),
+    )
+
+    /** Clé football-data.org : celle saisie dans les réglages, sinon celle fournie à la compilation (secret CI). */
+    private val footballKey: StateFlow<String?> = settings.footballApiKey
+        .stateIn(applicationScope, SharingStarted.Eagerly, null)
+
+    /** Matchs à venir de la section Foot (football-data.org, résultats gardés 30 min). */
+    val footballData = FootballDataClient(
+        clients = httpClients,
+        apiKey = { footballKey.value ?: BuildConfig.FOOTBALL_API_KEY.takeIf { it.isNotBlank() } },
+        logger = logger,
     )
 
     val favorites = FavoritesRepository(database)

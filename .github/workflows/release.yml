@@ -11,6 +11,7 @@ name: Release
 #  - ou les secrets NEXTV_KEYSTORE_BASE64, NEXTV_KEYSTORE_PASSWORD, NEXTV_KEY_ALIAS et NEXTV_KEY_PASSWORD.
 # Sans l'un ni l'autre, l'APK est signé avec la clé de test du dépôt (app/nextv-test.keystore).
 # Fiches films/séries : le secret facultatif NEXTV_TMDB_API_KEY intègre une clé TMDB à l'APK.
+# Section Foot : le secret facultatif NEXTV_FOOTBALL_API_KEY intègre une clé football-data.org.
 # Mises à jour depuis l'application : elles lisent les versions publiées de ce dépôt (il doit être public).
 # Pour garder le code privé : créer un dépôt public NexTV-releases (avec un README) et le secret
 # NEXTV_RELEASES_TOKEN (jeton d'accès en écriture au contenu de ce dépôt) ; les APK y sont alors aussi
@@ -105,6 +106,8 @@ jobs:
           NEXTV_KEY_PASSWORD: ${{ secrets.NEXTV_KEY_PASSWORD || secrets.NEXTV_KEY_PASSPHRASE }}
           # Clé TMDB facultative intégrée à l'APK (sinon, elle se saisit dans les réglages).
           NEXTV_TMDB_API_KEY: ${{ secrets.NEXTV_TMDB_API_KEY }}
+          # Clé football-data.org facultative (section Foot), intégrée de la même façon.
+          NEXTV_FOOTBALL_API_KEY: ${{ secrets.NEXTV_FOOTBALL_API_KEY }}
         run: |
           ./gradlew :app:assembleRelease --stacktrace \
             -Pnextv.versionName="$VERSION" \
@@ -128,7 +131,9 @@ jobs:
 
           **Fonctionnalités**
           - Démarrage direct sur la dernière playlist, avec progression réelle du chargement
-          - Accueil TV, Films, Séries et Guide TV, favoris (appui long sur OK) réorganisables
+          - Accueil TV, Films, Séries, Guide TV et Foot, favoris (appui long sur OK) réorganisables, chaînes récentes
+          - Section TV : aperçu vidéo et programme de la chaîne sélectionnée ; catégories masquables
+          - Foot : matchs à venir (Ligue 1, Premier League, Liga, Serie A, Bundesliga, coupes d'Europe, équipes nationales) avec la chaîne qui les diffuse
           - Fiches films et séries enrichies par TMDB (clé d'API à saisir dans les réglages)
           - Lecteur : bandeau avec heure, programme et débit, zapping haut/bas, liste des chaînes sur « Retour » (catégories avec gauche/droite)
           - Pause du direct (OK) avec affichage du retard sur le direct, retour au direct avec droite
@@ -139,7 +144,7 @@ jobs:
           - Ajout d'une playlist depuis un ordinateur : adb shell "am start -n tv.nextv.app/.MainActivity --es url 'ADRESSE'"
           - Mise à jour depuis les réglages (versions publiées publiquement sur GitHub)
           - Guide TV xmltvfr.fr téléchargé, mis en cache et actualisé automatiquement
-          - Playlists M3U/M3U8 distantes ou locales, protégées par identifiants (chiffrés, masqués dans les journaux)
+          - Playlists M3U/M3U8 distantes ou locales, ou compte Xtream Codes (serveur, identifiant, mot de passe)
           - Proxy HTTP/SOCKS pour les playlists, le guide et les flux
 
           **Installation** : téléchargez \`${APK}\`, autorisez l'installation depuis des sources inconnues puis ouvrez le fichier.

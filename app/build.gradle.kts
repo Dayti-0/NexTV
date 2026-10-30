@@ -28,6 +28,9 @@ android {
         // Clé TMDB optionnelle fournie à la compilation (secret CI) ; l'utilisateur peut aussi la saisir.
         val tmdbKey = providers.environmentVariable("NEXTV_TMDB_API_KEY").orNull.orEmpty()
         buildConfigField("String", "TMDB_API_KEY", "\"${tmdbKey.replace("\"", "")}\"")
+        // Clé football-data.org optionnelle (secret CI) pour la section Foot ; elle peut aussi se saisir dans les réglages.
+        val footballKey = providers.environmentVariable("NEXTV_FOOTBALL_API_KEY").orNull.orEmpty()
+        buildConfigField("String", "FOOTBALL_API_KEY", "\"${footballKey.replace("\"", "")}\"")
 
         // Dépôt GitHub dont les versions publiées servent de mises à jour (lecture anonyme : dépôt public).
         val updateRepository = providers.gradleProperty("nextv.updateRepo").orNull ?: "Dayti-0/NexTV"

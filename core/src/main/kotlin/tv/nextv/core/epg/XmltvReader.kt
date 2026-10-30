@@ -107,14 +107,17 @@ class XmltvReader(
         var title: String? = null
         var subtitle: String? = null
         var description: String? = null
-        var category: String? = null
+        // Tous les genres (« Sport, Football ») : le premier seul est souvent trop vague.
+        val categories = mutableListOf<String>()
         var year: Int? = null
         forEachChild { name ->
             when (name) {
                 "title" -> readText().let { if (title.isNullOrEmpty()) title = it }
                 "sub-title" -> readText().let { if (subtitle.isNullOrEmpty()) subtitle = it }
                 "desc" -> readText().let { if (description.isNullOrEmpty()) description = it }
-                "category" -> readText().let { if (category.isNullOrEmpty()) category = it }
+                "category" -> readText().takeIf { it.isNotEmpty() }?.let { text ->
+                    if (categories.none { it.equals(text, ignoreCase = true) }) categories += text
+                }
                 // « 2019 », « 20190314 »… : seule une année plausible est retenue.
                 "date" -> readText().take(4).toIntOrNull()?.takeIf { it in 1880..2100 }?.let { year = it }
                 else -> skipElement()
@@ -130,7 +133,7 @@ class XmltvReader(
             title = finalTitle.take(MAX_TITLE_LENGTH),
             subtitle = subtitle?.takeIf { it.isNotEmpty() }?.take(MAX_TITLE_LENGTH),
             description = description?.takeIf { it.isNotEmpty() }?.take(MAX_DESCRIPTION_LENGTH),
-            category = category?.takeIf { it.isNotEmpty() }?.take(MAX_TITLE_LENGTH),
+            category = categories.joinToString(", ").takeIf { it.isNotEmpty() }?.take(MAX_TITLE_LENGTH),
             year = year,
         )
     }
