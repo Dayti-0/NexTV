@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -13,6 +14,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import tv.nextv.app.MainActivity
 import tv.nextv.app.ui.common.appContainer
 import tv.nextv.app.ui.detail.DetailScreen
@@ -78,6 +80,8 @@ fun NexTvNavHost() {
 
 @Composable
 private fun AppNavHost(navController: NavHostController) {
+    val container = appContainer()
+    val scope = rememberCoroutineScope()
     NavHost(navController = navController, startDestination = Routes.STARTUP) {
         composable(
             Routes.STARTUP,
@@ -89,7 +93,11 @@ private fun AppNavHost(navController: NavHostController) {
             ),
         ) {
             StartupScreen(
-                onHome = { navController.restartAt(Routes.HOME) },
+                onHome = {
+                    navController.restartAt(Routes.HOME)
+                    // Réglage « Démarrer sur la dernière chaîne » : lecture directe, l'accueil reste derrière.
+                    scope.launch { container.lastChannelToResume()?.let { navController.navigate(Routes.player(it)) } }
+                },
                 onWelcome = { navController.restartAt(Routes.WELCOME) },
                 onChoosePlaylist = { navController.navigate(Routes.PLAYLISTS) },
             )

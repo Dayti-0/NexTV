@@ -124,6 +124,7 @@ fun SettingsScreen(onBack: () -> Unit, onPlaylists: () -> Unit, onProxy: () -> U
         onCycleDecoder = viewModel::cycleDecoder,
         onGridColumns = viewModel::setGridColumns,
         onChannelPreview = viewModel::setChannelPreview,
+        onStartOnLastChannel = viewModel::setStartOnLastChannel,
         onCycleDns = viewModel::cycleDns,
         update = update,
         onCheckUpdate = viewModel::checkUpdate,
@@ -157,6 +158,7 @@ fun SettingsContent(
     onCycleDecoder: (String) -> Unit = {},
     onGridColumns: (GridColumns) -> Unit = {},
     onChannelPreview: (Boolean) -> Unit = {},
+    onStartOnLastChannel: (Boolean) -> Unit = {},
     onCycleDns: () -> Unit = {},
     update: UpdateState = UpdateState.Idle,
     onCheckUpdate: () -> Unit = {},
@@ -223,6 +225,12 @@ fun SettingsContent(
                             description = stringResource(R.string.settings_auto_quality_help),
                             checked = state.autoQuality,
                             onChange = onAutoQuality,
+                        )
+                        ToggleRow(
+                            title = stringResource(R.string.settings_start_last_channel),
+                            description = stringResource(R.string.settings_start_last_channel_help),
+                            checked = state.startOnLastChannel,
+                            onChange = onStartOnLastChannel,
                         )
                         state.decoders.forEach { choice -> DecoderRow(choice) { onCycleDecoder(choice.mimeType) } }
                         if (state.decoders.isNotEmpty()) InfoText(stringResource(R.string.settings_decoder_help))

@@ -12,9 +12,12 @@ import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import androidx.paging.map
+import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.ExoPlayer
@@ -31,6 +34,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -44,6 +48,7 @@ import tv.nextv.app.data.db.ChannelListRow
 import tv.nextv.app.data.db.GroupRow
 import tv.nextv.app.data.progress.ProgressEntity
 import tv.nextv.app.data.progress.ProgressRepository
+import tv.nextv.app.data.settings.AspectMode
 import tv.nextv.app.player.PlaybackRequest
 import tv.nextv.app.player.toStream
 import tv.nextv.app.player.TimeshiftBuffer
@@ -62,6 +67,15 @@ import tv.nextv.core.model.StreamSupport
 import tv.nextv.core.net.RequestPurpose
 import tv.nextv.core.stream.QualityOption
 import tv.nextv.core.stream.QualitySwitcher
+import java.util.Locale
+
+/** Piste audio ou de sous-titres proposée dans les options du lecteur. */
+data class TrackChoice(val groupIndex: Int, val trackIndex: Int, val label: String, val language: String?, val selected: Boolean)
+
+/** Pistes du flux en cours : plusieurs langues audio, sous-titres. */
+data class PlayerTracks(val audio: List<TrackChoice> = emptyList(), val subtitles: List<TrackChoice> = emptyList()) {
+    val subtitlesOff: Boolean get() = subtitles.none { it.selected }
+}
 
 /** Programme affiché dans le bandeau du lecteur. */
 data class PlayerProgramme(val title: String, val startMillis: Long, val stopMillis: Long)
@@ -97,6 +111,8 @@ data class PlayerUiState(
     val liveDelayMs: Long = 0,
     /** Film ou épisode déjà commencé : choix entre reprendre et recommencer. */
     val resumePrompt: ResumePrompt? = null,
+    /** Pistes audio et sous-titres du flux en cours. */
+    val tracks: PlayerTracks = PlayerTracks(),
 )
 
 /**
@@ -210,6 +226,14 @@ class PlayerViewModel(
     private var autoQuality = true
     private var preferredDecoders: Map<String, String> = emptyMap()
 
+    /** Langues choisies en dernier (audio ; sous-titres, `null` : désactivés), proposées en premier. */
+    private var audioLanguage: String? = null
+    private var subtitleLanguage: String? = null
+
+    /** Format de l'image (réglage commun à toutes les lectures). */
+    val aspectMode: StateFlow<AspectMode> = container.settings.aspectMode
+        .stateIn(viewModelScope, SharingStarted.Eagerly, AspectMode.FIT)
+
     // Images perdues déjà prises en compte, pour le lecteur courant.
     private var countedPlayer: ExoPlayer? = null
     private var countedDroppedFrames = 0
@@ -240,6 +264,10 @@ class PlayerViewModel(
         }
 
         override fun onPlayerError(error: PlaybackException) = handleError(error)
+
+        override fun onTracksChanged(tracks: Tracks) {
+            mutableState.update { it.copy(tracks = describeTracks(tracks)) }
+        }
     }
 
     private val analytics = object : AnalyticsListener {
@@ -335,6 +363,12 @@ class PlayerViewModel(
         viewModelScope.launch {
             container.settings.preferredDecoders.collect { preferredDecoders = it }
         }
+        viewModelScope.launch {
+            container.settings.audioLanguage.collect { audioLanguage = it }
+        }
+        viewModelScope.launch {
+            container.settings.subtitleLanguage.collect { subtitleLanguage = it }
+        }
         load(channelId)
         viewModelScope.launch {
             while (true) {
@@ -369,6 +403,92 @@ class PlayerViewModel(
                 delay(PROGRESS_SAVE_MILLIS)
                 saveProgress()
             }
+        }
+    }
+
+    /** Langue audio et sous-titres choisis en dernier, essayés en premier. */
+    private fun ExoPlayer.applyTrackPreferences() {
+        trackSelectionParameters = trackSelectionParameters.buildUpon()
+            .setPreferredAudioLanguage(audioLanguage)
+            .setPreferredTextLanguage(subtitleLanguage)
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, subtitleLanguage == null)
+            .build()
+    }
+
+    private fun describeTracks(tracks: Tracks): PlayerTracks {
+        val audio = mutableListOf<TrackChoice>()
+        val subtitles = mutableListOf<TrackChoice>()
+        tracks.groups.forEachIndexed { groupIndex, group ->
+            val target = when (group.type) {
+                C.TRACK_TYPE_AUDIO -> audio
+                C.TRACK_TYPE_TEXT -> subtitles
+                else -> return@forEachIndexed
+            }
+            for (trackIndex in 0 until group.length) {
+                if (!group.isTrackSupported(trackIndex)) continue
+                val format = group.getTrackFormat(trackIndex)
+                val language = format.language?.takeIf { it.isNotBlank() && it != C.LANGUAGE_UNDETERMINED }
+                target += TrackChoice(groupIndex, trackIndex, trackLabel(format, language, target.size + 1), language, group.isTrackSelected(trackIndex))
+            }
+        }
+        return PlayerTracks(audio, subtitles)
+    }
+
+    /** « Français · 5.1 », « Anglais », « Piste 2 ». */
+    private fun trackLabel(format: Format, language: String?, position: Int): String {
+        val languageName = language?.let { code ->
+            Locale.forLanguageTag(code).getDisplayLanguage(Locale.FRENCH).takeIf { it.isNotBlank() && it != code } ?: code
+        }?.replaceFirstChar { it.titlecase(Locale.FRENCH) }
+        val name = format.label?.takeIf { it.isNotBlank() && !it.equals(languageName, ignoreCase = true) }
+        val channels = when (format.channelCount) {
+            1 -> "mono"
+            2 -> "stéréo"
+            6 -> "5.1"
+            8 -> "7.1"
+            else -> null
+        }
+        val title = listOfNotNull(languageName, name).joinToString(" · ").ifEmpty { resources.getString(R.string.player_track, position) }
+        return listOfNotNull(title, channels).joinToString(" · ")
+    }
+
+    fun selectAudio(choice: TrackChoice) {
+        val player = mutablePlayer.value ?: return
+        val group = player.currentTracks.groups.getOrNull(choice.groupIndex) ?: return
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, choice.trackIndex))
+            .build()
+        audioLanguage = choice.language ?: audioLanguage
+        choice.language?.let { viewModelScope.launch { container.settings.setAudioLanguage(it) } }
+    }
+
+    /** [choice] `null` : sous-titres désactivés. */
+    fun selectSubtitles(choice: TrackChoice?) {
+        val player = mutablePlayer.value ?: return
+        val builder = player.trackSelectionParameters.buildUpon()
+        if (choice == null) {
+            builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+        } else {
+            val group = player.currentTracks.groups.getOrNull(choice.groupIndex) ?: return
+            builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, choice.trackIndex))
+        }
+        player.trackSelectionParameters = builder.build()
+        subtitleLanguage = choice?.language
+        viewModelScope.launch { container.settings.setSubtitleLanguage(choice?.language) }
+    }
+
+    fun setAspectMode(mode: AspectMode) {
+        viewModelScope.launch { container.settings.setAspectMode(mode) }
+    }
+
+    /** Chaîne regardée juste avant celle-ci (touche « chaîne précédente », ⏪). */
+    fun previousChannel() {
+        val current = listed ?: return
+        if (current.kind != ContentKind.LIVE.name) return
+        viewModelScope.launch {
+            val key = container.settings.recentChannels(current.sourceId).first().firstOrNull { it != current.itemKey } ?: return@launch
+            val id = container.channelDao.primaryIdByKey(current.sourceId, key) ?: return@launch
+            load(id)
         }
     }
 
@@ -568,6 +688,7 @@ class PlayerViewModel(
         mutableState.update { it.copy(info = PlaybackInfo()) }
         playingAsHls = forceHls || playbackRequest.stream.format == StreamFormat.HLS
         val player = container.playerFactory.create(playbackRequest, bandwidthMeter, preferredDecoders).apply {
+            applyTrackPreferences()
             addListener(listener)
             addAnalyticsListener(analytics)
             val item = container.playerFactory.mediaItem(playbackRequest.stream, forceHls)
@@ -691,6 +812,7 @@ class PlayerViewModel(
         releasePlayer()
         playingTimeshift = true
         val player = container.playerFactory.create(playbackRequest, bandwidthMeter, preferredDecoders).apply {
+            applyTrackPreferences()
             addListener(listener)
             addAnalyticsListener(analytics)
             setMediaSource(container.playerFactory.timeshiftSource(buffer))

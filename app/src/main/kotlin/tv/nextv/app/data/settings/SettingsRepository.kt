@@ -109,6 +109,36 @@ class SettingsRepository(
         }
     }
 
+    /** Format de l'image dans le lecteur. */
+    val aspectMode: Flow<AspectMode> = dataStore.data
+        .map { prefs -> prefs[ASPECT_MODE]?.let { name -> AspectMode.entries.firstOrNull { it.name == name } } ?: AspectMode.FIT }
+        .distinctUntilChanged()
+
+    suspend fun setAspectMode(mode: AspectMode) {
+        dataStore.edit { it[ASPECT_MODE] = mode.name }
+    }
+
+    /** Langue audio choisie en dernier (« fr », « en »…), proposée en premier aux lectures suivantes. */
+    val audioLanguage: Flow<String?> = dataStore.data.map { it[AUDIO_LANGUAGE] }.distinctUntilChanged()
+
+    suspend fun setAudioLanguage(language: String?) {
+        dataStore.edit { prefs -> if (language != null) prefs[AUDIO_LANGUAGE] = language else prefs.remove(AUDIO_LANGUAGE) }
+    }
+
+    /** Langue des sous-titres choisie en dernier ; `null` : sous-titres désactivés. */
+    val subtitleLanguage: Flow<String?> = dataStore.data.map { it[SUBTITLE_LANGUAGE] }.distinctUntilChanged()
+
+    suspend fun setSubtitleLanguage(language: String?) {
+        dataStore.edit { prefs -> if (language != null) prefs[SUBTITLE_LANGUAGE] = language else prefs.remove(SUBTITLE_LANGUAGE) }
+    }
+
+    /** Au lancement, lecture directe de la dernière chaîne regardée (comme une télévision). */
+    val startOnLastChannel: Flow<Boolean> = dataStore.data.map { it[START_ON_LAST_CHANNEL] ?: false }.distinctUntilChanged()
+
+    suspend fun setStartOnLastChannel(enabled: Boolean) {
+        dataStore.edit { it[START_ON_LAST_CHANNEL] = enabled }
+    }
+
     /** Aperçu vidéo (sans le son) de la chaîne sélectionnée à l'accueil. */
     val channelPreview: Flow<Boolean> = dataStore.data.map { it[CHANNEL_PREVIEW] ?: true }.distinctUntilChanged()
 
@@ -205,11 +235,18 @@ class SettingsRepository(
         val DNS_PROVIDER = stringPreferencesKey("dns_provider")
         val POSTER_COLUMNS = intPreferencesKey("poster_columns")
         val CHANNEL_PREVIEW = booleanPreferencesKey("channel_preview")
+        val ASPECT_MODE = stringPreferencesKey("aspect_mode")
+        val AUDIO_LANGUAGE = stringPreferencesKey("audio_language")
+        val SUBTITLE_LANGUAGE = stringPreferencesKey("subtitle_language")
+        val START_ON_LAST_CHANNEL = booleanPreferencesKey("start_on_last_channel")
         const val DECODER_PREFIX = "decoder_"
         const val RECENT_PREFIX = "recent_channels_"
         const val MAX_RECENT_CHANNELS = 30
     }
 }
+
+/** Format de l'image : adaptée à l'écran (bandes noires), étirée, ou agrandie (bords coupés). */
+enum class AspectMode { FIT, FILL, ZOOM }
 
 /** Éléments par ligne des grilles de l'accueil sur TV et tablette (le téléphone garde sa disposition). */
 data class GridColumns(val channels: Int = DEFAULT_CHANNELS, val posters: Int = DEFAULT_POSTERS) {

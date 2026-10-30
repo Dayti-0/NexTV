@@ -426,6 +426,10 @@ interface ChannelDao {
     )
     suspend fun indexInList(sourceId: Long, filterGroup: Int, group: String, position: Int): Int
 
+    /** Meilleure version d'une chaîne désignée par sa clé (chaîne précédente, dernière chaîne regardée). */
+    @Query("SELECT id FROM channels WHERE sourceId = :sourceId AND kind = 'LIVE' AND isPrimary = 1 AND itemKey = :itemKey LIMIT 1")
+    suspend fun primaryIdByKey(sourceId: Long, itemKey: String): Long?
+
     /** Nombre de chaînes de la liste « Toutes ». */
     @Query("SELECT COUNT(*) FROM channels c WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND $NOT_HIDDEN AND $BEST_VISIBLE")
     fun observeListedCount(sourceId: Long): Flow<Int>

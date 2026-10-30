@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -157,6 +158,22 @@ class AppContainer(context: Context) {
     val playlistImport = MutableStateFlow<PlaylistImport?>(null)
 
     fun hasTmdbKey(): Boolean = tmdbKey.value != null || BuildConfig.TMDB_API_KEY.isNotBlank()
+
+    /** La dernière chaîne a déjà été relancée à l'ouverture (une seule fois par lancement). */
+    private var lastChannelResumed = false
+
+    /**
+     * Dernière chaîne regardée, à relancer à l'ouverture de l'application si le réglage est actif
+     * (une seule fois par lancement : pas après le rechargement d'une playlist).
+     */
+    suspend fun lastChannelToResume(): Long? {
+        if (lastChannelResumed) return null
+        lastChannelResumed = true
+        if (!settings.startOnLastChannel.first()) return null
+        val sourceId = settings.activePlaylistId.first() ?: return null
+        val key = settings.recentChannels(sourceId).first().firstOrNull() ?: return null
+        return channelDao.primaryIdByKey(sourceId, key)
+    }
 
     /** Applique les réglages enregistrés, prépare le masquage des secrets et les actualisations périodiques. */
     fun start() {

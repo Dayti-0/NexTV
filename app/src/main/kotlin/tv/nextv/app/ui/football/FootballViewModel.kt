@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -77,27 +78,46 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
     /** `null` : toutes les compétitions. */
     val competition = MutableStateFlow<Competition?>(null)
 
-    /** Matchs calculés (guide et football-data.org) : travail lourd, refait toutes les 15 min au plus. */
-    private class Snapshot(val hidden: List<String>, val loadedAt: Long, val matches: List<FootballMatch>, val notice: FootballNotice?)
+    /** Programmes susceptibles de diffuser un match, et matchs que le guide annonce seul. */
+    private class GuideData(val rows: List<BroadcastRow>, val fixtures: List<FootballMatch>)
 
-    private var lastSnapshot: Snapshot? = null
+    /** Matchs prêts à afficher pour un guide et une réponse de football-data.org donnés. */
+    private class Assembled(val matches: List<FootballMatch>, val notice: FootballNotice?)
 
-    private val reloads = flow {
+    private var cachedGuide: Pair<Any, GuideData>? = null
+    private var cachedAssembly: Triple<GuideData, FootballDataResult, Assembled>? = null
+
+    /**
+     * Ce qui change le résultat du guide : playlist ou guide rechargés (environ toutes les 12 h),
+     * catégories masquées ou réaffichées. Rien d'autre ne relance le calcul.
+     */
+    private val guideVersion: Flow<Any> = combine(
+        container.playlistStore.observeSource(sourceId)
+            .map { source -> source?.status?.let { it.lastSuccessAtMillis to it.epg.lastSuccessAtMillis } }
+            .distinctUntilChanged(),
+        container.hiddenGroupDao.observeTitles(sourceId, ContentKind.LIVE.name),
+    ) { version, hidden -> version to hidden }
+
+    // Jamais annulé par le changement suivant (conflate + map) : un appareil lent finit toujours son calcul.
+    private val guide: Flow<GuideData> = guideVersion
+        .conflate()
+        .map { version -> cachedGuide?.takeIf { it.first == version }?.second ?: loadGuide().also { cachedGuide = version to it } }
+
+    /** Réponse de football-data.org, redemandée toutes les 30 min (le client la garde ce temps-là). */
+    private val api: Flow<FootballDataResult> = flow {
         while (true) {
-            emit(Unit)
-            delay(RELOAD_MILLIS)
+            val now = System.currentTimeMillis()
+            emit(container.footballData.matches(now, now + WINDOW_MILLIS))
+            delay(API_REFRESH_MILLIS)
         }
+    }.distinctUntilChanged()
+
+    private val assembled: Flow<Assembled> = combine(guide, api) { guide, api ->
+        cachedAssembly?.takeIf { it.first === guide && it.second == api }?.third
+            ?: assemble(guide, api).also { cachedAssembly = Triple(guide, api, it) }
     }
 
-    // Jamais annulé par la demande suivante (conflate + map) : un appareil lent finit toujours son calcul.
-    private val snapshots: Flow<Snapshot> =
-        combine(reloads, container.hiddenGroupDao.observeTitles(sourceId, ContentKind.LIVE.name)) { _, hidden -> hidden }
-            .conflate()
-            .map { hidden ->
-                lastSnapshot?.takeIf { it.hidden == hidden && System.currentTimeMillis() - it.loadedAt < RELOAD_MILLIS }
-                    ?: load(hidden).also { lastSnapshot = it }
-            }
-
+    /** Toutes les 30 s, seuls les matchs terminés disparaissent (aucun recalcul). */
     private val clock = flow {
         while (true) {
             emit(System.currentTimeMillis())
@@ -106,13 +126,13 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
     }
 
     val state: StateFlow<FootballUiState> =
-        combine(snapshots, clock) { snapshot, now ->
-            FootballUiState(loading = false, now = now, matches = snapshot.matches.filter { it.endMillis > now }, notice = snapshot.notice)
+        combine(assembled, clock) { result, now ->
+            FootballUiState(loading = false, now = now, matches = result.matches.filter { it.endMillis > now }, notice = result.notice)
         }
             .flowOn(Dispatchers.Default)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FootballUiState())
 
-    private suspend fun load(hidden: List<String>): Snapshot {
+    private suspend fun loadGuide(): GuideData {
         val now = System.currentTimeMillis()
         // Chaîne qui diffuse les programmes de chaque identifiant du guide : sa meilleure version visible.
         val channels = HashMap<String, EpgChannelRow>()
@@ -123,10 +143,14 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
         val rows = container.programmeDao.footballCandidates(sourceId, now, now + WINDOW_MILLIS).mapNotNull { programme ->
             channels[programme.epgChannelId]?.let { BroadcastRow(it, programme) }
         }
-        val api = container.footballData.matches(now, now + WINDOW_MILLIS)
+        return GuideData(rows, guideMatches(rows))
+    }
+
+    private fun assemble(guide: GuideData, api: FootballDataResult): Assembled {
         val matches = when (api) {
-            is FootballDataResult.Success -> apiMatches(api.matches, rows, now) + guideMatches(rows) { it.apiId == null }
-            is FootballDataResult.Failed -> guideMatches(rows) { true }
+            is FootballDataResult.Success ->
+                apiMatches(api.matches, guide.rows, System.currentTimeMillis()) + guide.fixtures.filter { it.competition.apiId == null }
+            is FootballDataResult.Failed -> guide.fixtures
         }
         val notice = when ((api as? FootballDataResult.Failed)?.error) {
             null -> null
@@ -134,11 +158,11 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
             FootballDataError.INVALID_KEY -> FootballNotice.INVALID_KEY
             else -> FootballNotice.UNAVAILABLE
         }
-        return Snapshot(hidden, now, matches.sortedWith(compareBy({ it.kickoffMillis }, { it.competition.ordinal })), notice)
+        return Assembled(matches.sortedWith(compareBy({ it.kickoffMillis }, { it.competition.ordinal })), notice)
     }
 
     private companion object {
-        const val RELOAD_MILLIS = 15 * 60_000L
+        const val API_REFRESH_MILLIS = 30 * 60_000L
         const val TICK_MILLIS = 30_000L
 
         /** Le guide couvre en général une semaine. */
@@ -190,14 +214,14 @@ private fun apiMatches(matches: List<ScheduledMatch>, rows: List<BroadcastRow>, 
 }
 
 /**
- * Matchs trouvés dans le guide seul, pour les compétitions [include]. Une affiche diffusée sur
+ * Matchs trouvés dans le guide seul. Une affiche diffusée sur
  * plusieurs chaînes, en deux mi-temps ou rediffusée ne fait qu'une ligne, à sa première diffusion ;
  * les diffusions de nuit et du matin (rediffusions) sont écartées.
  */
-private fun guideMatches(rows: List<BroadcastRow>, include: (Competition) -> Boolean): List<FootballMatch> {
+private fun guideMatches(rows: List<BroadcastRow>): List<FootballMatch> {
     val found = rows.mapNotNull { row ->
         FootballMatches.fixtureOf(row.title, row.subtitle, row.category, row.description)
-            ?.takeIf { include(it.competition) && isMatchHour(row.startMillis) }
+            ?.takeIf { isMatchHour(row.startMillis) }
             ?.let { row to it }
     }
     return found.groupBy { (_, fixture) -> fixture.competition to simplify(fixture.label) }.values.map { group ->

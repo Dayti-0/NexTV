@@ -30,11 +30,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -83,6 +86,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
@@ -93,6 +97,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import tv.nextv.app.R
 import tv.nextv.app.data.db.ChannelListRow
 import tv.nextv.app.data.db.GroupRow
+import tv.nextv.app.data.settings.AspectMode
 import tv.nextv.app.ui.common.appViewModel
 import tv.nextv.app.ui.components.Badge
 import tv.nextv.app.ui.components.ChannelLogo
@@ -130,6 +135,8 @@ fun PlayerScreen(onBack: () -> Unit) {
     var bannerTrigger by remember { mutableIntStateOf(0) }
     var bannerVisible by remember { mutableStateOf(true) }
     var infoVisible by rememberSaveable { mutableStateOf(false) }
+    var optionsVisible by rememberSaveable { mutableStateOf(false) }
+    val aspect by viewModel.aspectMode.collectAsStateWithLifecycle()
     val rootFocus = remember { FocusRequester() }
     // Pendant une pause du direct, chaque seconde (retard sur le direct affiché) ; sinon toutes les 5 s.
     val now by produceState(System.currentTimeMillis(), state.paused) {
@@ -160,13 +167,19 @@ fun PlayerScreen(onBack: () -> Unit) {
     BackHandler(enabled = !menu.open && state.isLive) { viewModel.openMenu() }
     // Déclaré en dernier : prioritaire, « Retour » ferme d'abord le panneau d'infos.
     BackHandler(enabled = infoVisible && !menu.open) { infoVisible = false }
+    // Options de lecture (touche Menu) : fermées en premier.
+    BackHandler(enabled = optionsVisible) { optionsVisible = false }
+    // Options refermées : le lecteur reprend les touches de la télécommande.
+    LaunchedEffect(optionsVisible) {
+        if (!optionsVisible && !menu.open && state.isLive) runCatching { rootFocus.requestFocus() }
+    }
 
     Box(
         Modifier
             .fillMaxSize()
             .background(Color.Black)
             .onPreviewKeyEvent { event ->
-                if (event.type != KeyEventType.KeyDown || menu.open || state.resumePrompt != null) return@onPreviewKeyEvent false
+                if (event.type != KeyEventType.KeyDown || menu.open || optionsVisible || state.resumePrompt != null) return@onPreviewKeyEvent false
                 val delayed = state.paused || state.liveDelayMs > 0
                 when (event.key) {
                     Key.ChannelUp -> true.also { viewModel.zap(+1) }
@@ -191,7 +204,10 @@ fun PlayerScreen(onBack: () -> Unit) {
                     }
                     // Différé : retour au direct.
                     Key.DirectionRight, Key.MediaFastForward -> (state.isLive && delayed).also { if (it) viewModel.backToLive() }
-                    Key.Info, Key.Menu -> true.also { infoVisible = !infoVisible }
+                    Key.Info -> true.also { infoVisible = !infoVisible }
+                    Key.Menu -> true.also { optionsVisible = true }
+                    // Chaîne regardée juste avant (⏪, ou touche dédiée de certaines télécommandes).
+                    Key.MediaRewind, Key.LastChannel -> state.isLive.also { if (it) viewModel.previousChannel() }
                     Key.Guide -> true.also { bannerTrigger++ }
                     else -> false
                 }
@@ -211,6 +227,11 @@ fun PlayerScreen(onBack: () -> Unit) {
                 // Pause et différé : la dernière image reste affichée pendant le changement de lecteur.
                 view.setKeepContentOnPlayerReset(state.paused || state.liveDelayMs > 0)
                 view.player = player
+                view.resizeMode = when (aspect) {
+                    AspectMode.FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    AspectMode.FILL -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+                    AspectMode.ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                }
                 // Direct : pas de barre de lecture, OK affiche le bandeau. Film / épisode : commandes Media3.
                 view.useController = !state.isLive
                 // Film / épisode : focus sur le lecteur (commandes Media3), sans le reprendre à ses commandes.
@@ -234,7 +255,28 @@ fun PlayerScreen(onBack: () -> Unit) {
 
         PlaybackInfoPanel(
             state = state,
-            visible = infoVisible && !menu.open,
+            visible = infoVisible && !menu.open && !optionsVisible,
+            modifier = Modifier.align(Alignment.TopEnd),
+        )
+
+        PlayerOptionsPanel(
+            visible = optionsVisible && !menu.open,
+            tracks = state.tracks,
+            aspect = aspect,
+            isLive = state.isLive,
+            infoVisible = infoVisible,
+            onAudio = viewModel::selectAudio,
+            onSubtitles = viewModel::selectSubtitles,
+            onAspect = viewModel::setAspectMode,
+            onPreviousChannel = {
+                optionsVisible = false
+                viewModel.previousChannel()
+            },
+            onToggleInfo = {
+                infoVisible = !infoVisible
+                optionsVisible = false
+            },
+            onDismiss = { optionsVisible = false },
             modifier = Modifier.align(Alignment.TopEnd),
         )
 
@@ -268,6 +310,137 @@ fun PlayerScreen(onBack: () -> Unit) {
                 },
                 onDismiss = viewModel::hideProgramme,
             )
+        }
+    }
+}
+
+/**
+ * Options de lecture (touche Menu) : piste audio, sous-titres, format de l'image, chaîne
+ * précédente et infos de lecture.
+ */
+@Composable
+fun PlayerOptionsPanel(
+    visible: Boolean,
+    tracks: PlayerTracks,
+    aspect: AspectMode,
+    isLive: Boolean,
+    infoVisible: Boolean,
+    onAudio: (TrackChoice) -> Unit,
+    onSubtitles: (TrackChoice?) -> Unit,
+    onAspect: (AspectMode) -> Unit,
+    onPreviousChannel: () -> Unit,
+    onToggleInfo: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = modifier) {
+        val firstFocus = remember { FocusRequester() }
+        LaunchedEffect(Unit) {
+            delay(50)
+            runCatching { firstFocus.requestFocus() }
+        }
+        Surface(
+            color = Color.Black.copy(alpha = 0.85f),
+            contentColor = Color.White,
+            shape = MaterialTheme.shapes.large,
+            modifier = Modifier
+                .statusBarsPadding()
+                .padding(24.dp)
+                .width(420.dp)
+                .onPreviewKeyEvent { event ->
+                    // Menu referme les options, comme Retour.
+                    if (event.type == KeyEventType.KeyDown && event.key == Key.Menu) true.also { onDismiss() } else false
+                },
+        ) {
+            Column(
+                Modifier.padding(vertical = 16.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(stringResource(R.string.player_options), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
+
+                OptionsSection(stringResource(R.string.player_audio))
+                if (tracks.audio.size <= 1) {
+                    OptionsNote(tracks.audio.firstOrNull()?.label ?: stringResource(R.string.player_single_track))
+                } else {
+                    tracks.audio.forEachIndexed { index, track ->
+                        OptionRow(
+                            track.label,
+                            selected = track.selected,
+                            modifier = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier,
+                        ) { onAudio(track) }
+                    }
+                }
+
+                OptionsSection(stringResource(R.string.player_subtitles))
+                if (tracks.subtitles.isEmpty()) {
+                    OptionsNote(stringResource(R.string.player_no_subtitles))
+                } else {
+                    OptionRow(
+                        stringResource(R.string.player_subtitles_off),
+                        selected = tracks.subtitlesOff,
+                        modifier = if (tracks.audio.size <= 1) Modifier.focusRequester(firstFocus) else Modifier,
+                    ) { onSubtitles(null) }
+                    tracks.subtitles.forEach { track -> OptionRow(track.label, selected = track.selected) { onSubtitles(track) } }
+                }
+
+                OptionsSection(stringResource(R.string.player_aspect))
+                AspectMode.entries.forEachIndexed { index, mode ->
+                    val label = when (mode) {
+                        AspectMode.FIT -> R.string.player_aspect_fit
+                        AspectMode.FILL -> R.string.player_aspect_fill
+                        AspectMode.ZOOM -> R.string.player_aspect_zoom
+                    }
+                    val first = index == 0 && tracks.audio.size <= 1 && tracks.subtitles.isEmpty()
+                    OptionRow(
+                        stringResource(label),
+                        selected = mode == aspect,
+                        modifier = if (first) Modifier.focusRequester(firstFocus) else Modifier,
+                    ) { onAspect(mode) }
+                }
+
+                OptionsSection(stringResource(R.string.player_more))
+                if (isLive) OptionRow(stringResource(R.string.player_previous_channel), selected = false, onClick = onPreviousChannel)
+                OptionRow(stringResource(R.string.player_info_title), selected = infoVisible, onClick = onToggleInfo)
+                Text(
+                    stringResource(if (isLive) R.string.player_options_hint_live else R.string.player_options_hint),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun OptionsSection(title: String) {
+    Text(
+        title,
+        style = MaterialTheme.typography.labelLarge,
+        color = NexTvColors.Primary,
+        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 2.dp),
+    )
+}
+
+@Composable
+private fun OptionsNote(text: String) {
+    Text(text, style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.7f), modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp))
+}
+
+@Composable
+private fun OptionRow(label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    FocusSurface(
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth().padding(horizontal = 8.dp),
+        shape = MaterialTheme.shapes.small,
+        color = Color.Transparent,
+        focusedColor = Color.White.copy(alpha = 0.16f),
+        contentColor = Color.White,
+        focusScale = 1f,
+    ) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(label, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            if (selected) Icon(Icons.Filled.Check, contentDescription = null, tint = NexTvColors.Primary, modifier = Modifier.size(20.dp))
         }
     }
 }

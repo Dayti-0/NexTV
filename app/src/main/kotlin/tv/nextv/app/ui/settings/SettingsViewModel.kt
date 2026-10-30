@@ -58,6 +58,8 @@ data class SettingsUiState(
     val hiddenChannelGroups: Int = 0,
     /** Aperçu vidéo de la chaîne sélectionnée à l'accueil. */
     val channelPreview: Boolean = true,
+    /** Lecture directe de la dernière chaîne regardée à l'ouverture. */
+    val startOnLastChannel: Boolean = false,
 )
 
 /** @property selected décodeur choisi, `null` : automatique. */
@@ -97,6 +99,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
     private data class Preferences(
         val autoQuality: Boolean,
         val channelPreview: Boolean,
+        val startOnLastChannel: Boolean,
         val tmdbKeySaved: Boolean,
         val footballKeySaved: Boolean,
         val proxy: ProxySettings,
@@ -105,13 +108,15 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
     )
 
     private val preferences = combine(
-        combine(settings.autoQuality, settings.channelPreview) { autoQuality, preview -> autoQuality to preview },
+        combine(settings.autoQuality, settings.channelPreview, settings.startOnLastChannel) { autoQuality, preview, startLast ->
+            Triple(autoQuality, preview, startLast)
+        },
         combine(settings.tmdbApiKey, settings.footballApiKey) { tmdb, football -> (tmdb != null) to (football != null) },
         settings.proxySettings,
         settings.gridColumns,
         settings.dnsProvider,
-    ) { (autoQuality, preview), (tmdbKey, footballKey), proxy, grid, dns ->
-        Preferences(autoQuality, preview, tmdbKey, footballKey, proxy, grid, dns)
+    ) { (autoQuality, preview, startLast), (tmdbKey, footballKey), proxy, grid, dns ->
+        Preferences(autoQuality, preview, startLast, tmdbKey, footballKey, proxy, grid, dns)
     }
 
     val state: StateFlow<SettingsUiState> = combine(
@@ -141,6 +146,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             dns = prefs.dns,
             hiddenChannelGroups = hidden,
             channelPreview = prefs.channelPreview,
+            startOnLastChannel = prefs.startOnLastChannel,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
@@ -183,6 +189,10 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         val values = DnsProvider.entries
         val next = values[(values.indexOf(state.value.dns) + 1) % values.size]
         viewModelScope.launch { settings.setDnsProvider(next) }
+    }
+
+    fun setStartOnLastChannel(enabled: Boolean) {
+        viewModelScope.launch { settings.setStartOnLastChannel(enabled) }
     }
 
     fun setChannelPreview(enabled: Boolean) {
