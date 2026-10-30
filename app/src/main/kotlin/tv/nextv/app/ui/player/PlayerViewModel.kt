@@ -134,6 +134,8 @@ data class ChannelMenuState(
     val open: Boolean = false,
     val category: Category = Category.All,
     val currentChannelId: Long = 0,
+    /** Chaîne en cours, quelle que soit la version affichée par la liste. */
+    val currentItemKey: String? = null,
     /** Rang de la chaîne en cours dans la liste affichée (focus initial). */
     val initialIndex: Int = 0,
 )
@@ -149,6 +151,8 @@ class PlayerViewModel(
     private var channelId: Long = checkNotNull(handle.get<Long>(ARG_CHANNEL_ID))
     /** Chaîne affichée (meilleure version), base du zapping. */
     private var channel: ChannelEntity? = null
+    /** Ligne choisie dans les listes (une version précise : celle de sa catégorie). */
+    private var listed: ChannelEntity? = null
     /** Version effectivement lue (peut différer de [channel] après un changement de qualité). */
     private var playing: ChannelEntity? = null
     private val resources = context.resources
@@ -364,31 +368,40 @@ class PlayerViewModel(
 
     /** Chaîne suivante (+1) ou précédente (-1) de la playlist, en boucle. */
     fun zap(direction: Int) {
-        val current = channel ?: return
+        val current = listed ?: return
         if (current.kind != ContentKind.LIVE.name) return
         viewModelScope.launch {
             val dao = container.channelDao
+            // Ordre de la liste « Toutes » : depuis la place de la chaîne en cours dans cette liste.
+            val position = current.variantKey.takeIf { it.isNotEmpty() }?.let { dao.listedPosition(current.sourceId, it) } ?: current.position
             val target = if (direction > 0) {
-                dao.nextChannelId(current.sourceId, current.position) ?: dao.nextChannelId(current.sourceId, -1)
+                dao.nextChannelId(current.sourceId, position) ?: dao.nextChannelId(current.sourceId, -1)
             } else {
-                dao.previousChannelId(current.sourceId, current.position) ?: dao.previousChannelId(current.sourceId, Int.MAX_VALUE)
+                dao.previousChannelId(current.sourceId, position) ?: dao.previousChannelId(current.sourceId, Int.MAX_VALUE)
             }
             if (target != null && target != current.id) load(target)
         }
     }
 
     fun openMenu() {
-        val current = channel ?: return
+        val current = listed ?: return
         viewModelScope.launch {
+            val dao = container.channelDao
             val group = current.groupTitle.orEmpty()
             // Catégorie masquée (chaîne ouverte depuis les favoris) : menu ouvert sur les favoris.
             val (category, index) = if (container.hiddenGroupDao.isHidden(current.sourceId, ContentKind.LIVE.name, group)) {
-                val favorite = menuFavorites.value.indexOfFirst { it.id == current.id }
-                if (favorite >= 0) Category.Favorites to favorite else Category.All to 0
+                val favorite = menuFavorites.value.indexOfFirst { it.itemKey == current.itemKey }
+                if (favorite >= 0) Category.Favorites to favorite else Category.All to dao.indexInList(current.sourceId, 0, "", current.position)
             } else {
-                Category.Group(group) to container.channelDao.indexInList(current.sourceId, 1, group, current.position)
+                Category.Group(group) to dao.indexInList(current.sourceId, 1, group, current.position)
             }
-            mutableMenu.value = ChannelMenuState(open = true, category = category, currentChannelId = current.id, initialIndex = index)
+            mutableMenu.value = ChannelMenuState(
+                open = true,
+                category = category,
+                currentChannelId = current.id,
+                currentItemKey = current.itemKey,
+                initialIndex = index,
+            )
         }
     }
 
@@ -402,7 +415,7 @@ class PlayerViewModel(
 
     fun playFromMenu(id: Long) {
         closeMenu()
-        if (id != channel?.id) load(id)
+        if (id != listed?.id) load(id)
     }
 
     private fun load(id: Long) {
@@ -425,6 +438,7 @@ class PlayerViewModel(
         // Pour l'affichage et le zapping : la meilleure version de la chaîne.
         val primary = if (isLive && requested.variantKey.isNotEmpty()) dao.primaryOf(requested.sourceId, requested.variantKey) ?: requested else requested
         channel = primary
+        listed = requested
         sourceId.value = primary.sourceId
         val source = container.sourceRepository.getSource(primary.sourceId)
 
@@ -584,7 +598,7 @@ class PlayerViewModel(
             load(channelId)
         } else {
             // Nouvel essai complet : toutes les versions redeviennent candidates.
-            load(channel?.id ?: variant.id)
+            load(listed?.id ?: variant.id)
         }
     }
 

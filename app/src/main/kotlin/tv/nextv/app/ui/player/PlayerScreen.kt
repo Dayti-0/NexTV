@@ -547,7 +547,7 @@ fun ChannelMenu(
                     }
                 }
                 val rowFor: @Composable (Int, ChannelListRow) -> Unit = { index, channel ->
-                    val current = channel.id == menu.currentChannelId
+                    val current = channel.id == menu.currentChannelId || channel.itemKey == menu.currentItemKey
                     MenuChannelRow(
                         channel = channel,
                         current = current,

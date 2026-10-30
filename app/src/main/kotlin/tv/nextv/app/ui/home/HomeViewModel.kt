@@ -115,6 +115,11 @@ class HomeViewModel(
         }
     }
 
+    /** Chaînes de la liste « Toutes » (une ligne par chaîne, catégories masquées exclues). */
+    val channelCount: StateFlow<Int?> = sourceId.flatMapLatest { id ->
+        if (id == null) flowOf(null) else dao.observeListedCount(id)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
     val favoriteKeys: StateFlow<Set<String>> = sourceId.flatMapLatest { id ->
         if (id == null) flowOf(emptySet()) else container.favorites.observeKeys(id).map { it.toSet() }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())

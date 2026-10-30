@@ -9,6 +9,35 @@ import androidx.room.Update
 import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 
+/*
+ * Une chaîne peut exister en plusieurs versions (FHD, HD, SD…), souvent rangées dans des catégories
+ * différentes. Une catégorie affiche chacune de ses chaînes (sa meilleure version dans la catégorie) ;
+ * « Toutes », la recherche, le zapping et le guide n'affichent qu'une ligne par chaîne : sa meilleure
+ * version hors catégories masquées. Fragments SQL partagés, la ligne examinée étant `c`.
+ */
+
+/** Groupe de `c` non masqué. */
+private const val NOT_HIDDEN =
+    "IFNULL(c.groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'LIVE')"
+
+/** `b` : autre version de la même chaîne, mieux classée que `c` (qualité, puis ordre de la playlist). */
+private const val BETTER_VERSION =
+    "b.sourceId = c.sourceId AND b.kind = 'LIVE' AND b.variantKey = c.variantKey AND b.variantKey != '' " +
+        "AND (b.qualityRank > c.qualityRank OR (b.qualityRank = c.qualityRank AND b.position < c.position))"
+
+/** `c` : meilleure version de la chaîne dans sa catégorie. */
+private const val BEST_IN_GROUP =
+    "NOT EXISTS (SELECT 1 FROM channels b WHERE $BETTER_VERSION AND IFNULL(b.groupTitle, '') = IFNULL(c.groupTitle, ''))"
+
+/** `c` : meilleure version de la chaîne hors catégories masquées. */
+private const val BEST_VISIBLE =
+    "NOT EXISTS (SELECT 1 FROM channels b WHERE $BETTER_VERSION " +
+        "AND IFNULL(b.groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'LIVE'))"
+
+/** `c` affichée dans la liste : catégorie `:group` si `:filterGroup` vaut 1, sinon toutes. */
+private const val LISTED =
+    "$NOT_HIDDEN AND CASE WHEN :filterGroup = 1 THEN IFNULL(c.groupTitle, '') = :group AND $BEST_IN_GROUP ELSE $BEST_VISIBLE END"
+
 @Dao
 interface SourceDao {
     @Query("SELECT * FROM sources ORDER BY name COLLATE NOCASE, id")
@@ -171,17 +200,18 @@ interface ChannelDao {
     suspend fun seriesCount(sourceId: Long): Int
 
     /**
-     * Groupes visibles d'un type de contenu (chaînes : meilleure version uniquement ; séries : une
-     * par série). Les groupes masqués n'apparaissent pas.
+     * Groupes visibles d'un type de contenu (chaînes : une ligne par chaîne de la catégorie ; séries :
+     * une par série). Les groupes masqués n'apparaissent pas.
      */
     @Query(
         """
-        SELECT groupTitle AS title,
-            CASE WHEN :kind = 'SERIES' THEN COUNT(DISTINCT seriesName) ELSE COUNT(*) END AS count
-        FROM channels
-        WHERE sourceId = :sourceId AND kind = :kind AND isPrimary = 1
-          AND IFNULL(groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = :kind)
-        GROUP BY groupTitle ORDER BY MIN(position)
+        SELECT c.groupTitle AS title,
+            CASE WHEN :kind = 'SERIES' THEN COUNT(DISTINCT c.seriesName) ELSE COUNT(*) END AS count
+        FROM channels c
+        WHERE c.sourceId = :sourceId AND c.kind = :kind
+          AND CASE WHEN :kind = 'LIVE' THEN $BEST_IN_GROUP ELSE c.isPrimary = 1 END
+          AND IFNULL(c.groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = :kind)
+        GROUP BY c.groupTitle ORDER BY MIN(c.position)
         """,
     )
     fun observeGroups(sourceId: Long, kind: String): Flow<List<GroupRow>>
@@ -196,14 +226,16 @@ interface ChannelDao {
                 WHERE h.sourceId = :sourceId AND h.kind = :kind AND h.title = IFNULL(c.groupTitle, '')
             ) AS hidden
         FROM channels c
-        WHERE c.sourceId = :sourceId AND c.kind = :kind AND c.isPrimary = 1
+        WHERE c.sourceId = :sourceId AND c.kind = :kind
+          AND CASE WHEN :kind = 'LIVE' THEN $BEST_IN_GROUP ELSE c.isPrimary = 1 END
         GROUP BY c.groupTitle ORDER BY MIN(c.position)
         """,
     )
     fun observeAllGroups(sourceId: Long, kind: String): Flow<List<GroupVisibilityRow>>
 
     /**
-     * Chaînes en direct (meilleure version de chacune), hors catégories masquées.
+     * Chaînes en direct, hors catégories masquées : toutes les chaînes de la catégorie [group], ou
+     * une ligne par chaîne (sa meilleure version visible).
      * @param filterGroup 1 pour ne garder que [group] (`''` = sans groupe), 0 pour tout afficher.
      * @param query texte recherché, déjà échappé pour LIKE (caractère d'échappement `\`).
      */
@@ -219,9 +251,7 @@ interface ChannelDao {
               AND p2.startMillis <= :now AND p2.stopMillis > :now
             ORDER BY p2.startMillis DESC LIMIT 1
         )
-        WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.isPrimary = 1
-          AND (:filterGroup = 0 OR IFNULL(c.groupTitle, '') = :group)
-          AND IFNULL(c.groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'LIVE')
+        WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND $LISTED
           AND (:query = '' OR c.name LIKE '%' || :query || '%' ESCAPE '\')
         ORDER BY c.position
         """,
@@ -321,41 +351,51 @@ interface ChannelDao {
     suspend fun variants(sourceId: Long, variantKey: String): List<VariantRow>
 
     /**
-     * Chaîne suivante (zapping) : meilleure version de la chaîne suivante, dans l'ordre de la
-     * playlist, hors catégories masquées.
+     * Chaîne suivante (zapping), dans l'ordre de la liste « Toutes » : meilleure version visible de
+     * la chaîne suivante.
      */
     @Query(
         """
-        SELECT id FROM channels
-        WHERE sourceId = :sourceId AND kind = 'LIVE' AND isPrimary = 1 AND position > :position
-          AND streamSupport != 'UNSUPPORTED'
-          AND IFNULL(groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'LIVE')
-        ORDER BY position ASC LIMIT 1
+        SELECT c.id FROM channels c
+        WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.position > :position
+          AND c.streamSupport != 'UNSUPPORTED' AND $NOT_HIDDEN AND $BEST_VISIBLE
+        ORDER BY c.position ASC LIMIT 1
         """,
     )
     suspend fun nextChannelId(sourceId: Long, position: Int): Long?
 
     @Query(
         """
-        SELECT id FROM channels
-        WHERE sourceId = :sourceId AND kind = 'LIVE' AND isPrimary = 1 AND position < :position
-          AND streamSupport != 'UNSUPPORTED'
-          AND IFNULL(groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'LIVE')
-        ORDER BY position DESC LIMIT 1
+        SELECT c.id FROM channels c
+        WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.position < :position
+          AND c.streamSupport != 'UNSUPPORTED' AND $NOT_HIDDEN AND $BEST_VISIBLE
+        ORDER BY c.position DESC LIMIT 1
         """,
     )
     suspend fun previousChannelId(sourceId: Long, position: Int): Long?
 
+    /** Place d'une chaîne dans la liste « Toutes » (sa meilleure version visible), point de départ du zapping. */
+    @Query(
+        """
+        SELECT c.position FROM channels c
+        WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.variantKey = :variantKey AND $NOT_HIDDEN
+        ORDER BY c.qualityRank DESC, c.position LIMIT 1
+        """,
+    )
+    suspend fun listedPosition(sourceId: Long, variantKey: String): Int?
+
     /** Rang d'une chaîne dans sa liste (pour placer le focus du menu des chaînes). */
     @Query(
         """
-        SELECT COUNT(*) FROM channels
-        WHERE sourceId = :sourceId AND kind = 'LIVE' AND isPrimary = 1 AND position < :position
-          AND (:filterGroup = 0 OR IFNULL(groupTitle, '') = :group)
-          AND IFNULL(groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'LIVE')
+        SELECT COUNT(*) FROM channels c
+        WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.position < :position AND $LISTED
         """,
     )
     suspend fun indexInList(sourceId: Long, filterGroup: Int, group: String, position: Int): Int
+
+    /** Nombre de chaînes de la liste « Toutes ». */
+    @Query("SELECT COUNT(*) FROM channels c WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND $NOT_HIDDEN AND $BEST_VISIBLE")
+    fun observeListedCount(sourceId: Long): Flow<Int>
 
     /** Meilleure version de la chaîne (pour l'affichage et le zapping). */
     @Query(
@@ -369,11 +409,9 @@ interface ChannelDao {
     /** Chaînes associées au guide, pour la grille des programmes (hors catégories masquées). */
     @Query(
         """
-        SELECT id, name, title, logoUrl, channelNumber, epgChannelId FROM channels
-        WHERE sourceId = :sourceId AND kind = 'LIVE' AND isPrimary = 1 AND epgChannelId IS NOT NULL
-          AND (:filterGroup = 0 OR IFNULL(groupTitle, '') = :group)
-          AND IFNULL(groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'LIVE')
-        ORDER BY position LIMIT :limit
+        SELECT c.id, c.name, c.title, c.logoUrl, c.channelNumber, c.epgChannelId FROM channels c
+        WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.epgChannelId IS NOT NULL AND $LISTED
+        ORDER BY c.position LIMIT :limit
         """,
     )
     suspend fun guideChannels(sourceId: Long, filterGroup: Int, group: String, limit: Int): List<GuideChannelRow>

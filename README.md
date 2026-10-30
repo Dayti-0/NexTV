@@ -20,6 +20,8 @@ Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3, enti�
 - **Qualité automatique** : quand une chaîne existe en plusieurs versions dans la playlist (« FHD », « HD », « SD »,
   « LOW » dans le nom), la lecture descend d'un cran en cas d'erreur ou de mise en mémoire tampon persistante, puis
   remonte quand le débit mesuré le permet. Jamais de bascule vers une autre chaîne ; désactivable dans les réglages.
+  Chaque catégorie affiche toutes ses chaînes dans l'ordre de la playlist (TF1 SD dans « FR TV SD »…) ; « Toutes »,
+  la recherche et le zapping n'en gardent qu'une ligne par chaîne, sa meilleure version visible.
 - **Guide TV** : grille chaînes × horaires avec repère de l'heure actuelle et programme en cours mis en valeur ;
   OK ouvre la fiche du programme (horaires, durée, description) avec « Regarder ». Un créneau sans donnée reste vide.
 - **Affichage** : nombre de chaînes (3 à 9) et d'affiches (4 à 10) par ligne réglable sur TV et tablette.

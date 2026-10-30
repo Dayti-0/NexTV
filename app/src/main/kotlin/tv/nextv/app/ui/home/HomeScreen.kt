@@ -146,6 +146,7 @@ fun HomeScreen(
     val continueSeries by viewModel.continueSeries.collectAsStateWithLifecycle()
     val now by viewModel.now.collectAsStateWithLifecycle()
     val gridColumns by viewModel.gridColumns.collectAsStateWithLifecycle()
+    val channelCount by viewModel.channelCount.collectAsStateWithLifecycle()
     val channels = viewModel.channels.collectAsLazyPagingItems()
     val movies = viewModel.movies.collectAsLazyPagingItems()
     val series = viewModel.series.collectAsLazyPagingItems()
@@ -200,6 +201,7 @@ fun HomeScreen(
         continueMovies = continueMovies,
         continueSeries = continueSeries,
         gridColumns = gridColumns,
+        channelCount = channelCount,
     )
 
     pendingHide?.let { title ->
@@ -245,6 +247,8 @@ fun HomeContent(
     continueMovies: List<ProgressEntity> = emptyList(),
     continueSeries: List<ProgressEntity> = emptyList(),
     gridColumns: GridColumns = GridColumns(),
+    /** Chaînes de la liste « Toutes » (une ligne par chaîne) ; `null` : somme des catégories. */
+    channelCount: Int? = null,
 ) {
     val window = rememberWindowInfo()
     // Dernière vignette ouverte : elle reprend le focus au retour sur l'accueil (télécommande).
@@ -274,6 +278,8 @@ fun HomeContent(
                     section = section,
                     window = window,
                     groups = groups,
+                    // Une chaîne peut figurer dans plusieurs catégories (une par qualité) : compte à part.
+                    allCount = channelCount?.takeIf { section == HomeSection.TV } ?: groups.sumOf { it.count },
                     category = category,
                     query = query,
                     favoritesCount = favoritesCount,
@@ -396,6 +402,7 @@ private fun CatalogSection(
     section: HomeSection,
     window: WindowInfo,
     groups: List<GroupRow>,
+    allCount: Int,
     category: Category,
     query: String,
     favoritesCount: Int,
@@ -408,7 +415,6 @@ private fun CatalogSection(
     focusedItem: FocusedItem?,
     body: @Composable (grid: GridLayout) -> Unit,
 ) {
-    val total = groups.sumOf { it.count }
     // Chaînes : appui long sur une catégorie pour la masquer.
     val hide: (String) -> (() -> Unit)? = { title -> if (section == HomeSection.TV) ({ actions.onHideCategory(title) }) else null }
     if (window.isWide) {
@@ -435,7 +441,7 @@ private fun CatalogSection(
                             }
                         }
                     }
-                    item { CategoryItem(allLabel(section), total, category == Category.All) { actions.onCategory(Category.All) } }
+                    item { CategoryItem(allLabel(section), allCount, category == Category.All) { actions.onCategory(Category.All) } }
                     items(groups, key = { it.title ?: NO_GROUP_KEY }) { group ->
                         val title = group.title.orEmpty()
                         CategoryItem(
@@ -449,7 +455,7 @@ private fun CatalogSection(
                     }
                 }
             }
-            SectionBody(section, category, groups, favoritesCount, resumeCount ?: 0, reorder, window, actions, Modifier.weight(1f), gridColumns, focusedItem, body)
+            SectionBody(section, category, groups, allCount, favoritesCount, resumeCount ?: 0, reorder, window, actions, Modifier.weight(1f), gridColumns, focusedItem, body)
         }
     } else {
         Column(modifier.fillMaxSize()) {
@@ -474,7 +480,7 @@ private fun CatalogSection(
                     }
                 }
             }
-            SectionBody(section, category, groups, favoritesCount, resumeCount ?: 0, reorder, window, actions, Modifier.weight(1f), gridColumns, focusedItem, body)
+            SectionBody(section, category, groups, allCount, favoritesCount, resumeCount ?: 0, reorder, window, actions, Modifier.weight(1f), gridColumns, focusedItem, body)
         }
     }
 }
@@ -484,6 +490,7 @@ private fun SectionBody(
     section: HomeSection,
     category: Category,
     groups: List<GroupRow>,
+    allCount: Int,
     favoritesCount: Int,
     resumeCount: Int,
     reorder: ReorderState,
@@ -504,7 +511,7 @@ private fun SectionBody(
                 val count = when (category) {
                     Category.Favorites -> favoritesCount
                     Category.ContinueWatching -> resumeCount
-                    Category.All -> groups.sumOf { it.count }
+                    Category.All -> allCount
                     is Category.Group -> groups.firstOrNull { it.title.orEmpty() == category.title }?.count ?: 0
                 }
                 Text(itemCount(section, count), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
