@@ -1,5 +1,6 @@
 package tv.nextv.app.ui.components
 
+import android.content.pm.PackageManager
 import android.content.res.Configuration
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
@@ -48,6 +49,15 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -77,6 +87,36 @@ fun rememberWindowInfo(): WindowInfo {
     val configuration = LocalConfiguration.current
     val isTv = (configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) == Configuration.UI_MODE_TYPE_TELEVISION
     return remember(isTv, configuration.screenWidthDp) { WindowInfo(isTv, configuration.screenWidthDp) }
+}
+
+// --- Champs de saisie à la télécommande -------------------------------------------------------------
+
+/**
+ * Appareil piloté à la télécommande (TV, ou box qui ne se déclare pas comme TV mais n'a pas d'écran
+ * tactile) : le clavier ne s'ouvre qu'avec OK, jamais en passant simplement sur un champ.
+ */
+@Composable
+fun rememberKeyboardOnOkOnly(): Boolean {
+    val context = LocalContext.current
+    val isTv = rememberWindowInfo().isTv
+    return remember(isTv) { isTv || !context.packageManager.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN) }
+}
+
+/** Options de clavier d'un champ : à la télécommande, pas d'ouverture automatique quand il reçoit le focus. */
+@Composable
+fun fieldKeyboardOptions(keyboardType: KeyboardType = KeyboardType.Text): KeyboardOptions =
+    KeyboardOptions(keyboardType = keyboardType, showKeyboardOnFocus = !rememberKeyboardOnOkOnly())
+
+/** À la télécommande, OK (centre de la croix ou Entrée) ouvre le clavier du champ qui a le focus. */
+@Composable
+fun Modifier.openKeyboardOnOk(): Modifier {
+    if (!rememberKeyboardOnOkOnly()) return this
+    val keyboard = LocalSoftwareKeyboardController.current
+    return onPreviewKeyEvent { event ->
+        val isOk = event.key == Key.DirectionCenter || event.key == Key.Enter || event.key == Key.NumPadEnter
+        if (isOk && event.type == KeyEventType.KeyUp) keyboard?.show()
+        isOk
+    }
 }
 
 // --- Surfaces sensibles au focus (télécommande) ---------------------------------------------------

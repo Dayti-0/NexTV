@@ -77,6 +77,8 @@ import tv.nextv.app.ui.common.channelCount
 import tv.nextv.app.ui.components.BrandMark
 import tv.nextv.app.ui.components.EmptyState
 import tv.nextv.app.ui.components.FocusSurface
+import tv.nextv.app.ui.components.fieldKeyboardOptions
+import tv.nextv.app.ui.components.openKeyboardOnOk
 import tv.nextv.app.ui.components.IconAction
 import tv.nextv.app.ui.components.PillButton
 import tv.nextv.app.ui.components.WindowInfo
@@ -754,7 +756,8 @@ private fun SearchField(query: String, hint: String, onQueryChange: (String) -> 
             unfocusedBorderColor = Color.Transparent,
             focusedBorderColor = MaterialTheme.colorScheme.primary,
         ),
-        modifier = modifier.fillMaxWidth(),
+        keyboardOptions = fieldKeyboardOptions(),
+        modifier = modifier.fillMaxWidth().openKeyboardOnOk(),
     )
 }
 

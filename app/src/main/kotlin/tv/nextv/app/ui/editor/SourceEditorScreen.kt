@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -61,6 +60,8 @@ import tv.nextv.app.R
 import tv.nextv.app.ui.common.appViewModel
 import tv.nextv.app.ui.common.describe
 import tv.nextv.app.ui.components.FocusSurface
+import tv.nextv.app.ui.components.fieldKeyboardOptions
+import tv.nextv.app.ui.components.openKeyboardOnOk
 import tv.nextv.app.ui.components.IconAction
 import tv.nextv.app.ui.components.PillButton
 import tv.nextv.app.ui.components.PillStyle
@@ -369,12 +370,12 @@ fun NexTvTextField(
         singleLine = true,
         isError = error != null,
         supportingText = (error ?: help)?.let { text -> @Composable { Text(text) } },
-        keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+        keyboardOptions = fieldKeyboardOptions(keyboardType),
         visualTransformation = visualTransformation,
         trailingIcon = trailing,
         shape = MaterialTheme.shapes.medium,
         colors = nexTvTextFieldColors(),
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().openKeyboardOnOk(),
     )
 }
 
