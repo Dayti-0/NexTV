@@ -49,6 +49,8 @@ data class EditorState(
     val server: String = "",
     val xtreamUsername: String = "",
     val xtreamPassword: String = "",
+    /** Serveurs de secours, séparés par des virgules. */
+    val mirrors: String = "",
     val documentPersisted: Boolean = true,
     val username: String = "",
     val password: String = "",
@@ -131,6 +133,7 @@ class SourceEditorViewModel(
                     server = account?.server.orEmpty(),
                     xtreamUsername = account?.username.orEmpty(),
                     xtreamPassword = account?.password.orEmpty(),
+                    mirrors = source.mirrors.joinToString(", "),
                     document = source.location as? SourceLocation.LocalDocument,
                     hasStoredCredentials = source.hasCredentials,
                     userAgent = source.userAgent.orEmpty(),
@@ -193,6 +196,7 @@ class SourceEditorViewModel(
             epg = EpgSettings(location = null, useHeaderUrls = false),
             userAgent = current.userAgent,
             credentials = credentials,
+            mirrors = if (current.mode == LocationMode.FILE) emptyList() else current.mirrors.split(',', ';', ' ', '\n').filter { it.isNotBlank() },
         )
 
         mutableState.update { it.copy(saving = true, errors = emptyMap()) }

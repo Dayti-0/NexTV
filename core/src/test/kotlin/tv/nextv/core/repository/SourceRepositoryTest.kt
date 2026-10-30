@@ -239,6 +239,28 @@ class SourceRepositoryTest {
     }
 
     @Test
+    fun `backup servers are normalised and an invalid one is rejected`() = runBlocking {
+        val url = server.url("/list.m3u").toString()
+        val id = repository.add(
+            SourceInput(
+                name = "A",
+                location = SourceLocation.Remote(url),
+                mirrors = listOf(" r56mail.top ", "http://backup.example:8080/get.php?username=u", "r56mail.top", ""),
+            ),
+        )
+
+        assertEquals(listOf("http://r56mail.top", "http://backup.example:8080"), store.source(id).mirrors)
+        // Le dernier chargement a réussi (jamais tenté ici) : changer les secours ne recharge pas.
+        assertFalse(repository.update(id, SourceInput(name = "A", location = SourceLocation.Remote(url))))
+        assertEquals(emptyList<String>(), store.source(id).mirrors)
+
+        val error = runCatching {
+            runBlocking { repository.update(id, SourceInput(name = "A", location = SourceLocation.Remote(url), mirrors = listOf("pas une adresse"))) }
+        }.exceptionOrNull() as InvalidSourceInputException
+        assertEquals(listOf(SourceInputField.MIRRORS), error.problems.map { it.field })
+    }
+
+    @Test
     fun `delete removes credentials and releases unused local documents`() = runBlocking {
         val shared = SourceLocation.LocalDocument("content://docs/shared.m3u", "shared.m3u")
         val first = repository.add(SourceInput(name = "1", location = shared))

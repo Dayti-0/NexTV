@@ -247,6 +247,22 @@ fun SourceEditorContent(
                                 UserAgentFields(state, onEdit, errorText(SourceInputField.USER_AGENT))
                             }
                         }
+                        if (state.mode != LocationMode.FILE) {
+                            SectionCard(
+                                stringResource(R.string.editor_section_mirrors),
+                                subtitle = stringResource(R.string.editor_mirrors_help),
+                                icon = NexTvIcons.Cloud,
+                            ) {
+                                NexTvTextField(
+                                    value = state.mirrors,
+                                    onValueChange = { value -> onEdit { it.copy(mirrors = value) } },
+                                    label = stringResource(R.string.editor_mirrors),
+                                    placeholder = "http://serveur2.com:8080, http://serveur3.net",
+                                    error = errorText(SourceInputField.MIRRORS),
+                                    keyboardType = KeyboardType.Uri,
+                                )
+                            }
+                        }
 
                         PillButton(
                             stringResource(if (state.isNew) R.string.editor_save_and_load else R.string.action_save),

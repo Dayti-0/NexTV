@@ -126,7 +126,8 @@ class SourceRepository(
     }
 
     /**
-     * @return vrai si le contenu doit être rechargé (emplacement, guide, User-Agent ou identifiants modifiés).
+     * @return vrai si le contenu doit être rechargé (emplacement, guide, User-Agent ou identifiants
+     * modifiés, ou serveurs de secours changés alors que le dernier chargement a échoué).
      * @throws InvalidSourceInputException
      * @throws NoSuchElementException si la source n'existe pas.
      */
@@ -164,7 +165,8 @@ class SourceRepository(
             existing.userAgent != updated.userAgent ||
             existing.type != updated.type ||
             change is CredentialsChange.Replace ||
-            existing.hasCredentials != hasCredentials
+            existing.hasCredentials != hasCredentials ||
+            (existing.mirrors != updated.mirrors && existing.status.error != null)
     }
 
     suspend fun delete(id: Long) {

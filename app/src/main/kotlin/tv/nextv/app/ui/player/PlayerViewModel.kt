@@ -60,11 +60,13 @@ import tv.nextv.app.ui.guide.GuideChannel
 import tv.nextv.app.ui.guide.GuideProgramme
 import tv.nextv.app.ui.home.Category
 import tv.nextv.core.model.ContentKind
+import tv.nextv.core.model.PlaylistSource
 import tv.nextv.core.model.SourceLocation
 import tv.nextv.core.model.StreamFormat
 import tv.nextv.core.model.StreamQuality
 import tv.nextv.core.model.StreamSupport
 import tv.nextv.core.net.RequestPurpose
+import tv.nextv.core.source.Mirrors
 import tv.nextv.core.stream.QualityOption
 import tv.nextv.core.stream.QualitySwitcher
 import java.util.Locale
@@ -249,6 +251,16 @@ class PlayerViewModel(
     private var playingTimeshift = false
     private var playingAsHls = false
 
+    // Serveurs de secours de la playlist.
+    /** Serveurs de la playlist en cours (principal puis secours), vide sans serveur de secours. */
+    private var serverRoots: List<String> = emptyList()
+
+    /** Même flux sur les autres serveurs, essayés si celui-ci ne répond pas. */
+    private var backupUrls: List<String> = emptyList()
+
+    /** Dernier serveur qui a répondu (playlist, racine) : les chaînes suivantes commencent par lui. */
+    private var workingServer: Pair<Long, String>? = null
+
     // Reprise de lecture des films et épisodes.
     private var resumeMode: String = handle.get<String>(ARG_RESUME) ?: RESUME_ASK
     private var startPositionMs = 0L
@@ -259,7 +271,10 @@ class PlayerViewModel(
         override fun onPlaybackStateChanged(playbackState: Int) {
             when (playbackState) {
                 Player.STATE_BUFFERING -> switcher?.onBufferingStarted()
-                Player.STATE_READY -> switcher?.onReady()
+                Player.STATE_READY -> {
+                    switcher?.onReady()
+                    rememberServer()
+                }
                 Player.STATE_ENDED -> onEnded()
             }
             mutableState.update { it.copy(buffering = playbackState == Player.STATE_BUFFERING) }
@@ -674,8 +689,13 @@ class PlayerViewModel(
             return
         }
         val source = container.sourceRepository.getSource(variant.sourceId)
+        serverRoots = source?.let(::serverRootsOf).orEmpty()
+        val url = workingServer?.takeIf { it.first == variant.sourceId }
+            ?.let { (_, root) -> stream.url.takeIf { Mirrors.alternatives(it, serverRoots).isNotEmpty() }?.let { Mirrors.rewrite(it, root) } }
+            ?: stream.url
+        backupUrls = Mirrors.alternatives(url, serverRoots)
         request = PlaybackRequest(
-            stream = stream,
+            stream = stream.copy(url = url),
             userAgent = source?.userAgent,
             credentials = container.sourceRepository.credentialsFor(variant.sourceId),
             credentialsOrigin = (source?.location as? SourceLocation.Remote)?.url,
@@ -754,6 +774,15 @@ class PlayerViewModel(
             start(forceHls = true)
             return
         }
+        if (error.errorCode in SERVER_ERRORS && backupUrls.isNotEmpty()) {
+            // Serveur injoignable : même flux sur un serveur de secours de la playlist.
+            container.logger.info(TAG, "Serveur injoignable (${error.errorCodeName}), essai d'un serveur de secours")
+            request = playbackRequest.copy(stream = playbackRequest.stream.copy(url = backupUrls.first()))
+            backupUrls = backupUrls.drop(1)
+            mutableState.update { it.copy(qualityNotice = resources.getString(R.string.player_backup_server)) }
+            start(forceHls = playingAsHls)
+            return
+        }
         container.logger.warn(TAG, "Lecture impossible (${error.errorCodeName}) : ${playbackRequest.stream.url}", error)
         // Autre version de la même chaîne, de qualité inférieure, si elle existe.
         val decision = switcher?.onError()
@@ -764,6 +793,22 @@ class PlayerViewModel(
         val viaProxy = container.httpClients.usesProxy(RequestPurpose.STREAM) &&
             format != StreamFormat.RTSP && format != StreamFormat.UDP
         mutableState.update { it.copy(buffering = false, error = resources.describePlaybackError(error, viaProxy)) }
+    }
+
+    /** Serveur principal de la playlist puis ses serveurs de secours ; vide sans serveur de secours. */
+    private fun serverRootsOf(source: PlaylistSource): List<String> {
+        if (source.mirrors.isEmpty()) return emptyList()
+        val main = (source.location as? SourceLocation.Remote)?.url?.let(Mirrors::normalize)
+        return (listOfNotNull(main) + source.mirrors).distinct()
+    }
+
+    /** Le flux joue : son serveur sert de départ aux chaînes suivantes de la playlist. */
+    private fun rememberServer() {
+        val variant = playing ?: return
+        if (serverRoots.isEmpty() || playingTimeshift) return
+        val url = request?.stream?.url ?: return
+        if (Mirrors.alternatives(url, serverRoots).isEmpty()) return
+        Mirrors.normalize(url)?.let { workingServer = variant.sourceId to it }
     }
 
     fun retry() {
@@ -1056,6 +1101,16 @@ class PlayerViewModel(
         private val HLS_FALLBACK_ERRORS = setOf(
             PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
             PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+        )
+
+        /** Erreurs qui peuvent venir du serveur (injoignable, en panne, bloqué) : un serveur de secours peut répondre. */
+        private val SERVER_ERRORS = setOf(
+            PlaybackException.ERROR_CODE_IO_UNSPECIFIED,
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+            PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE,
+            PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
+            PlaybackException.ERROR_CODE_TIMEOUT,
         )
     }
 }

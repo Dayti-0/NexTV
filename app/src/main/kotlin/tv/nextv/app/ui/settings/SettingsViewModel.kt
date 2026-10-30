@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.launch
 import tv.nextv.app.AppContainer
 import tv.nextv.app.BuildConfig
@@ -26,8 +28,11 @@ import tv.nextv.app.player.DecoderOption
 import tv.nextv.app.player.VideoDecoders
 import tv.nextv.core.model.ContentKind
 import tv.nextv.core.model.PlaylistSource
+import tv.nextv.core.model.SourceLocation
 import tv.nextv.core.net.DnsProvider
 import tv.nextv.core.net.ProxySettings
+import tv.nextv.core.source.XtreamAccount
+import tv.nextv.core.source.XtreamAccountInfo
 import tv.nextv.core.update.AppRelease
 
 data class SettingsUiState(
@@ -61,6 +66,16 @@ data class SettingsUiState(
     /** Lecture directe de la dernière chaîne regardée à l'ouverture. */
     val startOnLastChannel: Boolean = false,
 )
+
+/** Abonnement Xtream de la playlist active. */
+sealed interface AccountState {
+    data object Loading : AccountState
+
+    data class Loaded(val info: XtreamAccountInfo) : AccountState
+
+    /** Le serveur n'a pas répondu. */
+    data object Unavailable : AccountState
+}
 
 /** @property selected décodeur choisi, `null` : automatique. */
 data class DecoderChoice(val mimeType: String, val options: List<DecoderOption>, val selected: String?)
@@ -149,6 +164,20 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             startOnLastChannel = prefs.startOnLastChannel,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
+
+    /** Abonnement de la playlist active si c'est un compte Xtream, demandé au serveur à l'ouverture des réglages. */
+    val account: StateFlow<AccountState?> = activePlaylist
+        .map { (playlist, _, _) -> playlist?.takeIf { (it.location as? SourceLocation.Remote)?.url?.let(XtreamAccount::parse) != null } }
+        .distinctUntilChanged { old, new -> old?.id == new?.id && old?.location == new?.location && old?.mirrors == new?.mirrors }
+        .transformLatest { playlist ->
+            if (playlist == null) {
+                emit(null)
+            } else {
+                emit(AccountState.Loading)
+                emit(container.xtreamApi.accountInfo(playlist)?.let(AccountState::Loaded) ?: AccountState.Unavailable)
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /** Mise à jour de l'application. */
     val update: StateFlow<UpdateState> = container.updater.state

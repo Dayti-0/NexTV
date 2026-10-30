@@ -38,6 +38,8 @@ data class SourceEntity(
     val epgErrorDetail: String? = null,
     /** Génération de programmes actuellement visible (voir [ProgrammeEntity.generation]). */
     val epgGeneration: Long = 0,
+    /** Serveurs de secours (« http://hôte:port ») séparés par des retours à la ligne. */
+    val mirrors: String = "",
 )
 
 @Entity(

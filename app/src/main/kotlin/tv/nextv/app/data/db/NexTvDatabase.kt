@@ -17,7 +17,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         TmdbCacheEntity::class,
         HiddenGroupEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = false,
 )
 abstract class NexTvDatabase : RoomDatabase() {
@@ -48,9 +48,16 @@ abstract class NexTvDatabase : RoomDatabase() {
             }
         }
 
+        /** Serveurs de secours des playlists : nouvelle colonne, les données existantes sont conservées. */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE sources ADD COLUMN mirrors TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun create(context: Context): NexTvDatabase =
             Room.databaseBuilder(context.applicationContext, NexTvDatabase::class.java, "nextv.db")
-                .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 // Versions de test antérieures (1) : les données sont rechargées depuis la playlist.
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()

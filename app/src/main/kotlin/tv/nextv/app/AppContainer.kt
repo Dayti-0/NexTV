@@ -49,6 +49,7 @@ import tv.nextv.core.repository.RefreshResult
 import tv.nextv.core.repository.SourceRepository
 import tv.nextv.core.source.M3uPlaylistLoader
 import tv.nextv.core.source.PlaylistLoaderRegistry
+import tv.nextv.core.source.XtreamApi
 import tv.nextv.core.update.UpdateChecker
 import java.io.File
 
@@ -140,6 +141,9 @@ class AppContainer(context: Context) {
         apiKey = { footballKey.value ?: BuildConfig.FOOTBALL_API_KEY.takeIf { it.isNotBlank() } },
         logger = logger,
     )
+
+    /** Abonnement des comptes Xtream Codes (date de fin, connexions simultanées). */
+    val xtreamApi = XtreamApi(httpClients, logger)
 
     val favorites = FavoritesRepository(database)
 

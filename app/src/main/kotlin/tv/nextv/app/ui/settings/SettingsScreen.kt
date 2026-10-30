@@ -75,6 +75,8 @@ import tv.nextv.app.ui.theme.NexTvIcons
 import tv.nextv.core.epg.HttpEpgFeedProvider
 import tv.nextv.core.net.DnsProvider
 import tv.nextv.core.repository.RefreshResult
+import java.text.DateFormat
+import java.util.Date
 import java.util.Locale
 
 @Composable
@@ -82,6 +84,7 @@ fun SettingsScreen(onBack: () -> Unit, onPlaylists: () -> Unit, onProxy: () -> U
     val viewModel = appViewModel { container, _ -> SettingsViewModel(container) }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val update by viewModel.update.collectAsStateWithLifecycle()
+    val account by viewModel.account.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val resources = context.resources
     val snackbar = remember { SnackbarHostState() }
@@ -109,6 +112,7 @@ fun SettingsScreen(onBack: () -> Unit, onPlaylists: () -> Unit, onProxy: () -> U
 
     SettingsContent(
         state = state,
+        account = account,
         snackbarHostState = snackbar,
         onBack = onBack,
         onPlaylists = onPlaylists,
@@ -164,6 +168,7 @@ fun SettingsContent(
     onCheckUpdate: () -> Unit = {},
     onInstallUpdate: (AppRelease) -> Unit = {},
     onAllowInstall: () -> Unit = {},
+    account: AccountState? = null,
     now: Long = System.currentTimeMillis(),
 ) {
     val window = rememberWindowInfo()
@@ -198,6 +203,7 @@ fun SettingsContent(
                                 ).joinToString("  ·  "),
                             )
                             status.error?.let { ErrorText(resources.describe(it)) }
+                            account?.let { AccountText(it, now) }
                             if (state.refreshing) LinearProgressIndicator(Modifier.fillMaxWidth(), color = NexTvColors.Live)
                         }
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -567,6 +573,51 @@ private fun ValueRow(title: String, value: String, onClick: () -> Unit, modifier
         }
     }
 }
+
+/** Abonnement Xtream : état, date de fin et connexions simultanées. */
+@Composable
+private fun AccountText(account: AccountState, now: Long) {
+    when (account) {
+        AccountState.Loading -> InfoText(stringResource(R.string.settings_account_checking))
+        AccountState.Unavailable -> InfoText(stringResource(R.string.settings_account_unavailable))
+        is AccountState.Loaded -> {
+            val info = account.info
+            val resources = LocalContext.current.resources
+            when {
+                !info.authenticated -> ErrorText(stringResource(R.string.settings_account_refused))
+                !info.active -> ErrorText(
+                    stringResource(
+                        R.string.settings_account_inactive,
+                        when (info.status?.lowercase(Locale.ROOT)) {
+                            "expired" -> stringResource(R.string.settings_account_expired)
+                            "banned" -> stringResource(R.string.settings_account_banned)
+                            "disabled" -> stringResource(R.string.settings_account_disabled)
+                            else -> info.status.orEmpty()
+                        },
+                    ),
+                )
+                else -> {
+                    val expires = info.expiresAtMillis
+                    val text = listOfNotNull(
+                        stringResource(if (info.trial) R.string.settings_account_trial else R.string.settings_account_active),
+                        expires?.let { stringResource(R.string.settings_account_until, DateFormat.getDateInstance(DateFormat.LONG).format(Date(it))) }
+                            ?: stringResource(R.string.settings_account_unlimited),
+                        info.maxConnections?.takeIf { it > 0 }?.let { resources.getQuantityString(R.plurals.settings_account_connections, it, it) },
+                    ).joinToString("  ·  ")
+                    // Fin dans moins d'une semaine : en évidence.
+                    val soon = expires != null && expires - now < ACCOUNT_WARNING_MILLIS
+                    Text(
+                        text,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (soon) NexTvColors.Warning else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private const val ACCOUNT_WARNING_MILLIS = 7 * 24 * 60 * 60_000L
 
 @Composable
 private fun InfoText(text: String) {

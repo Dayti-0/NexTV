@@ -54,6 +54,7 @@ class RoomPlaylistStore(private val database: NexTvDatabase) : PlaylistStore {
                     userAgent = definition.userAgent,
                     hasCredentials = definition.hasCredentials,
                     updatedAt = definition.updatedAt,
+                    mirrors = definition.mirrors,
                 ),
             )
         }
@@ -223,6 +224,7 @@ class RoomPlaylistStore(private val database: NexTvDatabase) : PlaylistStore {
                         error = entity.epgErrorCode?.let { SourceError.decode(it, entity.epgErrorDetail) },
                     ),
                 ),
+                mirrors = entity.mirrors.split('\n').filter { it.isNotBlank() },
             )
         }
 
@@ -244,6 +246,7 @@ class RoomPlaylistStore(private val database: NexTvDatabase) : PlaylistStore {
                 hasCredentials = source.hasCredentials,
                 createdAt = source.createdAtMillis,
                 updatedAt = source.updatedAtMillis,
+                mirrors = source.mirrors.joinToString("\n"),
             )
         }
 

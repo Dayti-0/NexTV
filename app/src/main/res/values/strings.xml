@@ -58,6 +58,9 @@
     <string name="editor_xtream_username">Identifiant</string>
     <string name="editor_xtream_username_missing">Indiquez l’identifiant.</string>
     <string name="editor_section_connection">Connexion</string>
+    <string name="editor_section_mirrors">Serveurs de secours (facultatif)</string>
+    <string name="editor_mirrors_help">Autres adresses du même fournisseur, séparées par des virgules. Si le serveur principal ne répond pas, la playlist et les chaînes passent par elles avec les mêmes identifiants.</string>
+    <string name="editor_mirrors">Adresses des serveurs de secours</string>
     <string name="editor_mode_file_short">Fichier</string>
     <string name="editor_mode_file_hint">Fichier .m3u de l’appareil</string>
     <string name="editor_url">URL de la playlist M3U/M3U8</string>
@@ -216,6 +219,7 @@
     <string name="player_aspect_zoom">Agrandi (bords coupés)</string>
     <string name="player_more">Plus</string>
     <string name="player_last_channel">Dernière chaîne regardée</string>
+    <string name="player_backup_server">Serveur principal injoignable : lecture par un serveur de secours</string>
     <string name="player_options_hint_live">Menu ≡ : options · ⏪ : dernière chaîne regardée</string>
     <string name="player_options_hint">Menu ≡ : options</string>
     <string name="player_channel_list">Chaînes</string>
@@ -270,6 +274,17 @@
     <string name="settings_playlist">Playlist</string>
     <string name="settings_no_playlist">Aucune playlist active.</string>
     <string name="settings_updated">mise à jour %1$s</string>
+    <string name="settings_account_checking">Abonnement : vérification…</string>
+    <string name="settings_account_unavailable">Abonnement : le serveur n’a pas répondu.</string>
+    <string name="settings_account_refused">Abonnement : identifiant ou mot de passe refusé par le serveur.</string>
+    <string name="settings_account_inactive">Abonnement %1$s.</string>
+    <string name="settings_account_expired">expiré</string>
+    <string name="settings_account_banned">suspendu</string>
+    <string name="settings_account_disabled">désactivé</string>
+    <string name="settings_account_active">Abonnement actif</string>
+    <string name="settings_account_trial">Abonnement d’essai</string>
+    <string name="settings_account_until">jusqu’au %1$s</string>
+    <string name="settings_account_unlimited">sans date de fin</string>
     <string name="settings_manage_playlists">Gérer les playlists (%1$d)</string>
     <string name="settings_playlist_updated">Playlist actualisée : %1$d entrées</string>
     <string name="settings_playback">Lecture</string>
@@ -407,6 +422,10 @@
     <plurals name="channel_groups_hidden">
         <item quantity="one">%d masquée</item>
         <item quantity="other">%d masquées</item>
+    </plurals>
+    <plurals name="settings_account_connections">
+        <item quantity="one">%d connexion simultanée</item>
+        <item quantity="other">%d connexions simultanées</item>
     </plurals>
     <plurals name="channels_count">
         <item quantity="one">%d chaîne</item>
