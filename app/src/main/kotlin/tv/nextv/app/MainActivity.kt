@@ -51,8 +51,10 @@ class MainActivity : ComponentActivity() {
      * (L'appui long est souvent réservé par le système, par exemple pour fermer l'application.)
      *
      * `Activity.dispatchKeyEvent` est public ; seule sa redéfinition dans androidx est marquée interne.
+     * Le retour prédictif est désactivé (manifeste) et la touche aboutit aux mêmes callbacks
+     * (OnBackPressedDispatcher) que le geste.
      */
-    @SuppressLint("RestrictedApi")
+    @SuppressLint("RestrictedApi", "GestureBackNavigation")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.keyCode != KeyEvent.KEYCODE_BACK) return super.dispatchKeyEvent(event)
         when (event.action) {
