@@ -44,37 +44,36 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Double appui rapide sur « Retour » : le premier agit normalement, le second ramène à l'accueil.
-     * Intercepté ici plutôt que dans Compose : indépendant de l'élément qui a le focus.
+     * « Retour » va directement à la navigation (menus, écran précédent) : sans cela, Compose s'en
+     * sert d'abord pour faire remonter le focus vers un élément parent, et un appui semble ignoré.
+     *
+     * Double appui rapide : le premier agit normalement, le second ramène à l'accueil.
      * (L'appui long est souvent réservé par le système, par exemple pour fermer l'application.)
      *
      * `Activity.dispatchKeyEvent` est public ; seule sa redéfinition dans androidx est marquée interne.
      */
     @SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        val action = onDoubleBack
-        if (event.keyCode == KeyEvent.KEYCODE_BACK && action != null) {
-            when (event.action) {
-                KeyEvent.ACTION_DOWN -> when {
-                    doubleBack -> return true
-                    event.repeatCount == 0 && event.eventTime - lastBackUpTime <= DOUBLE_BACK_MILLIS -> {
-                        doubleBack = true
-                        lastBackUpTime = 0
-                        action()
-                        return true
-                    }
+        if (event.keyCode != KeyEvent.KEYCODE_BACK) return super.dispatchKeyEvent(event)
+        when (event.action) {
+            KeyEvent.ACTION_DOWN -> {
+                val toHome = onDoubleBack
+                if (toHome != null && !doubleBack && event.repeatCount == 0 && event.eventTime - lastBackUpTime <= DOUBLE_BACK_MILLIS) {
+                    doubleBack = true
+                    lastBackUpTime = 0
+                    toHome()
                 }
-                KeyEvent.ACTION_UP -> {
-                    // Le relâchement du second appui ne doit pas déclencher un « Retour » de plus.
-                    if (doubleBack) {
-                        doubleBack = false
-                        return true
-                    }
+            }
+            KeyEvent.ACTION_UP -> when {
+                // Relâchement du second appui : pas de « Retour » de plus.
+                doubleBack -> doubleBack = false
+                !event.isCanceled -> {
                     lastBackUpTime = event.eventTime
+                    onBackPressedDispatcher.onBackPressed()
                 }
             }
         }
-        return super.dispatchKeyEvent(event)
+        return true
     }
 
     private companion object {
