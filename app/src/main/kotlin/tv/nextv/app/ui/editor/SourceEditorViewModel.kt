@@ -8,6 +8,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -23,9 +24,14 @@ import tv.nextv.core.repository.SourceInputField
 
 enum class LocationMode { URL, FILE }
 
-enum class EpgMode { NONE, URL, FILE }
+/** Suite à donner à l'enregistrement. */
+enum class SaveOutcome {
+    /** Playlist active (nouvelle ou modifiée) : la recharger avec l'écran de démarrage. */
+    RELOAD,
 
-enum class PickTarget { PLAYLIST, EPG }
+    /** Retour à l'écran précédent (une éventuelle actualisation continue en arrière-plan). */
+    CLOSE,
+}
 
 data class EditorState(
     val loading: Boolean = false,
@@ -40,14 +46,9 @@ data class EditorState(
     val hasStoredCredentials: Boolean = false,
     val removeStoredCredentials: Boolean = false,
     val userAgent: String = "",
-    val epgMode: EpgMode = EpgMode.NONE,
-    val epgUrl: String = "",
-    val epgDocument: SourceLocation.LocalDocument? = null,
-    val epgDocumentPersisted: Boolean = true,
-    val useHeaderEpg: Boolean = true,
     val errors: Map<SourceInputField, SourceError> = emptyMap(),
     val saving: Boolean = false,
-    val saved: Boolean = false,
+    val saved: SaveOutcome? = null,
 ) {
     val isNew get() = sourceId == null
 }
@@ -77,7 +78,6 @@ class SourceEditorViewModel(
                 mutableState.update { it.copy(loading = false, sourceId = null) }
                 return@launch
             }
-            val epg = source.epg.location
             mutableState.update {
                 it.copy(
                     loading = false,
@@ -87,14 +87,6 @@ class SourceEditorViewModel(
                     document = source.location as? SourceLocation.LocalDocument,
                     hasStoredCredentials = source.hasCredentials,
                     userAgent = source.userAgent.orEmpty(),
-                    epgMode = when (epg) {
-                        null -> EpgMode.NONE
-                        is SourceLocation.Remote -> EpgMode.URL
-                        is SourceLocation.LocalDocument -> EpgMode.FILE
-                    },
-                    epgUrl = (epg as? SourceLocation.Remote)?.url.orEmpty(),
-                    epgDocument = epg as? SourceLocation.LocalDocument,
-                    useHeaderEpg = source.epg.useHeaderUrls,
                 )
             }
         }
@@ -105,20 +97,18 @@ class SourceEditorViewModel(
     }
 
     /** Document choisi avec le sélecteur du système : autorisation persistante et nom d'affichage. */
-    fun onDocumentPicked(uri: Uri, target: PickTarget) {
+    fun onDocumentPicked(uri: Uri) {
         viewModelScope.launch {
             val (persisted, name) = withContext(Dispatchers.IO) { documents.persist(uri) to documents.displayName(uri) }
             val document = SourceLocation.LocalDocument(uri.toString(), name)
             pickedDocuments += document
             mutableState.update { state ->
-                when (target) {
-                    PickTarget.PLAYLIST -> state.copy(
-                        document = document,
-                        documentPersisted = persisted,
-                        name = state.name.ifBlank { name?.substringBeforeLast('.').orEmpty() },
-                    )
-                    PickTarget.EPG -> state.copy(epgDocument = document, epgDocumentPersisted = persisted)
-                }.copy(errors = emptyMap())
+                state.copy(
+                    document = document,
+                    documentPersisted = persisted,
+                    name = state.name.ifBlank { name?.substringBeforeLast('.').orEmpty() },
+                    errors = emptyMap(),
+                )
             }
         }
     }
@@ -137,15 +127,11 @@ class SourceEditorViewModel(
             current.removeStoredCredentials -> CredentialsChange.Remove
             else -> CredentialsChange.Keep
         }
-        val epgLocation = when (current.epgMode) {
-            EpgMode.NONE -> null
-            EpgMode.URL -> SourceLocation.Remote(current.epgUrl)
-            EpgMode.FILE -> current.epgDocument ?: SourceLocation.LocalDocument("")
-        }
         val input = SourceInput(
             name = current.name,
             location = location,
-            epg = EpgSettings(location = epgLocation, useHeaderUrls = current.useHeaderEpg),
+            // Le guide des programmes est commun à toutes les playlists (xmltvfr.fr).
+            epg = EpgSettings(location = null, useHeaderUrls = false),
             userAgent = current.userAgent,
             credentials = credentials,
         )
@@ -154,12 +140,23 @@ class SourceEditorViewModel(
         viewModelScope.launch {
             try {
                 val id = current.sourceId
-                if (id == null) {
-                    container.refreshController.refresh(repository.add(input))
-                } else if (repository.update(id, input)) {
-                    container.refreshController.refresh(id)
+                val outcome = if (id == null) {
+                    // Une playlist ajoutée devient la playlist active et se charge aussitôt.
+                    container.settings.setActivePlaylist(repository.add(input))
+                    SaveOutcome.RELOAD
+                } else {
+                    val changed = repository.update(id, input)
+                    val active = container.settings.activePlaylistId.first()
+                    when {
+                        changed && id == active -> SaveOutcome.RELOAD
+                        changed -> {
+                            container.refreshController.refresh(id)
+                            SaveOutcome.CLOSE
+                        }
+                        else -> SaveOutcome.CLOSE
+                    }
                 }
-                mutableState.update { it.copy(saving = false, saved = true) }
+                mutableState.update { it.copy(saving = false, saved = outcome) }
             } catch (e: InvalidSourceInputException) {
                 mutableState.update { state -> state.copy(saving = false, errors = e.problems.associate { it.field to it.error }) }
             }

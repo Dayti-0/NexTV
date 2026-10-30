@@ -6,11 +6,19 @@ import android.util.Xml
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
+import tv.nextv.app.data.catalog.FavoritesRepository
+import tv.nextv.app.data.catalog.MetadataRepository
 import tv.nextv.app.data.db.NexTvDatabase
 import tv.nextv.app.data.db.RoomPlaylistStore
 import tv.nextv.app.data.local.AndroidDocumentAccess
@@ -21,17 +29,20 @@ import tv.nextv.app.data.settings.SettingsRepository
 import tv.nextv.app.player.PlayerFactory
 import tv.nextv.core.epg.EpgImporter
 import tv.nextv.core.epg.EpgLoader
+import tv.nextv.core.epg.HttpEpgFeedProvider
 import tv.nextv.core.io.CompositeContentOpener
 import tv.nextv.core.io.RemoteContentOpener
 import tv.nextv.core.log.Logger
 import tv.nextv.core.log.RedactingLogger
 import tv.nextv.core.log.Redactor
+import tv.nextv.core.meta.TmdbClient
 import tv.nextv.core.net.HttpClientProvider
 import tv.nextv.core.net.NetworkSettings
 import tv.nextv.core.repository.RefreshResult
 import tv.nextv.core.repository.SourceRepository
 import tv.nextv.core.source.M3uPlaylistLoader
 import tv.nextv.core.source.PlaylistLoaderRegistry
+import java.io.File
 
 /** Assemblage manuel des dépendances de l'application. */
 class AppContainer(context: Context) {
@@ -68,6 +79,14 @@ class AppContainer(context: Context) {
         ),
     )
 
+    /** Guide des programmes commun à toutes les playlists, mis en cache sur l'appareil. */
+    val epgFeed = HttpEpgFeedProvider(
+        clients = httpClients,
+        url = HttpEpgFeedProvider.XMLTV_FR_URL.toHttpUrl(),
+        directory = File(appContext.filesDir, "epg"),
+        logger = logger,
+    )
+
     val sourceRepository = SourceRepository(
         store = playlistStore,
         credentialStore = EncryptedCredentialStore(database.credentialDao(), cipher, logger),
@@ -82,13 +101,31 @@ class AppContainer(context: Context) {
         redactor = redactor,
         logger = logger,
         documentAccess = documentAccess,
+        epgFeed = epgFeed,
     )
 
     val refreshController = RefreshController(applicationScope, sourceRepository)
 
     val playerFactory = PlayerFactory(appContext, httpClients)
 
-    /** Applique les réglages enregistrés et prépare le masquage des secrets. */
+    /** Clé TMDB : celle saisie dans les réglages, sinon celle fournie à la compilation (secret CI). */
+    private val tmdbKey: StateFlow<String?> = settings.tmdbApiKey
+        .stateIn(applicationScope, SharingStarted.Eagerly, null)
+
+    val metadata = MetadataRepository(
+        database = database,
+        client = TmdbClient(
+            clients = httpClients,
+            apiKey = { tmdbKey.value ?: BuildConfig.TMDB_API_KEY.takeIf { it.isNotBlank() } },
+            logger = logger,
+        ),
+    )
+
+    val favorites = FavoritesRepository(database)
+
+    fun hasTmdbKey(): Boolean = tmdbKey.value != null || BuildConfig.TMDB_API_KEY.isNotBlank()
+
+    /** Applique les réglages enregistrés, prépare le masquage des secrets et les actualisations périodiques. */
     fun start() {
         applicationScope.launch {
             settings.proxySettings.collect { proxy ->
@@ -99,7 +136,37 @@ class AppContainer(context: Context) {
                 httpClients.update(proxySettings = proxy)
             }
         }
+        applicationScope.launch {
+            settings.tmdbApiKey.collect { redactor.registerSecret(it) }
+        }
+        redactor.registerSecret(BuildConfig.TMDB_API_KEY.takeIf { it.isNotBlank() })
         applicationScope.launch { sourceRepository.registerStoredSecrets() }
+
+        // Actualisations automatiques tant que l'application tourne (les TV restent souvent allumées).
+        applicationScope.launch {
+            delay(PERIODIC_FIRST_DELAY_MILLIS)
+            var elapsed = 0L
+            while (true) {
+                val active = settings.activePlaylistId.firstOrNull()
+                if (active != null) {
+                    if (elapsed % PLAYLIST_REFRESH_MILLIS == 0L && elapsed > 0) {
+                        refreshController.refresh(active)
+                    } else {
+                        // Ne retélécharge le guide que s'il a plus de 12 h.
+                        refreshController.refreshEpg(active)
+                    }
+                }
+                delay(PERIODIC_CHECK_MILLIS)
+                elapsed += PERIODIC_CHECK_MILLIS
+            }
+        }
+    }
+
+    private companion object {
+        const val HOUR = 60 * 60_000L
+        const val PERIODIC_FIRST_DELAY_MILLIS = 3 * HOUR
+        const val PERIODIC_CHECK_MILLIS = 3 * HOUR
+        const val PLAYLIST_REFRESH_MILLIS = 12 * HOUR
     }
 }
 
@@ -120,8 +187,8 @@ class RefreshController(
         scope.launch { mutableEvents.emit(Event(sourceId, repository.refresh(sourceId))) }
     }
 
-    fun refreshEpg(sourceId: Long) {
-        scope.launch { mutableEvents.emit(Event(sourceId, repository.refreshEpg(sourceId), epgOnly = true)) }
+    fun refreshEpg(sourceId: Long, force: Boolean = false) {
+        scope.launch { mutableEvents.emit(Event(sourceId, repository.refreshEpg(sourceId, force), epgOnly = true)) }
     }
 
     fun refreshAll() {

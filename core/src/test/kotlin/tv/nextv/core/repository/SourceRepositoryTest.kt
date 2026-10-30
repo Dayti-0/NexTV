@@ -274,6 +274,57 @@ class SourceRepositoryTest {
         assertTrue(credentials.values.isEmpty())
     }
 
+    @Test
+    fun `shared guide is imported once and again only when it changes`() = runBlocking {
+        route("/list.m3u", playlistWithEpg("/ignored.xml"))
+        val guideFile = java.io.File.createTempFile("guide", ".xml.gz").apply { writeBytes(gzip(guide)); deleteOnExit() }
+        var feedUpdatedAt = now - 1_000
+        var obtained = 0
+        val feed = object : tv.nextv.core.epg.EpgFeedProvider {
+            override suspend fun obtain(force: Boolean, progress: tv.nextv.core.io.ProgressListener?): tv.nextv.core.epg.EpgFeed {
+                obtained++
+                return tv.nextv.core.epg.EpgFeed(guideFile, feedUpdatedAt, now)
+            }
+
+            override fun cached() = null
+        }
+        val logger = RedactingLogger(captured, redactor)
+        val opener = CompositeContentOpener(
+            listOf(RemoteContentOpener(HttpClientProvider(logger = logger), logger), FakeDocumentOpener(documents)),
+        )
+        val withFeed = SourceRepository(
+            store = store,
+            credentialStore = credentials,
+            loaders = PlaylistLoaderRegistry(listOf(M3uPlaylistLoader(opener))),
+            epgLoader = EpgLoader(opener, EpgImporter({ KXmlParser() }, clock = { now })),
+            redactor = redactor,
+            logger = logger,
+            clock = { now },
+            epgFeed = feed,
+        )
+        val steps = mutableListOf<tv.nextv.core.io.LoadStep>()
+        val id = withFeed.add(SourceInput(name = "IPTV", location = SourceLocation.Remote(server.url("/list.m3u").toString())))
+
+        val first = withFeed.refresh(id) { steps += it.step } as RefreshResult.Success
+        assertEquals(2, first.epg.programmeCount)
+        assertEquals(
+            listOf(tv.nextv.core.io.LoadStep.PLAYLIST, tv.nextv.core.io.LoadStep.SAVING, tv.nextv.core.io.LoadStep.EPG_IMPORT),
+            steps.distinct(),
+        )
+        assertTrue(server.takeRequestPaths().none { it == "/ignored.xml" }) // le guide de l'en-tête est ignoré
+
+        // Guide inchangé : pas de réimport.
+        store.programmes.remove(id)
+        withFeed.refreshEpg(id)
+        assertEquals(null, store.programmes[id])
+
+        // Guide mis à jour : réimport.
+        feedUpdatedAt = now + 1
+        withFeed.refreshEpg(id)
+        assertEquals(2, store.programmes[id]?.size)
+        assertEquals(3, obtained)
+    }
+
     private suspend fun SourceRepository.sourcesSnapshot() = store.getSources()
 
     private fun MockWebServer.takeRequestPaths(): List<String> =

@@ -1,7 +1,7 @@
 package tv.nextv.core.io
 
 /** Nature probable d'un contenu, déduite de ses premiers octets. */
-enum class ContentKind {
+enum class DetectedContent {
     EMPTY,
     TEXT,
     HTML,
@@ -24,20 +24,20 @@ object ContentSniffer {
     private const val TS_PACKET_SIZE = 188
     private const val TS_SYNC_BYTE = 0x47
 
-    fun sniff(head: ByteArray, charset: DetectedCharset): ContentKind {
-        if (head.size <= charset.bomLength) return ContentKind.EMPTY
-        if (isMpegTs(head) || isMp4(head)) return ContentKind.MEDIA
-        if (charset.bomLength == 0 && looksBinary(head)) return ContentKind.BINARY
+    fun sniff(head: ByteArray, charset: DetectedCharset): DetectedContent {
+        if (head.size <= charset.bomLength) return DetectedContent.EMPTY
+        if (isMpegTs(head) || isMp4(head)) return DetectedContent.MEDIA
+        if (charset.bomLength == 0 && looksBinary(head)) return DetectedContent.BINARY
 
         val text = decode(head, charset).trimStart()
-        if (text.isEmpty()) return ContentKind.EMPTY
+        if (text.isEmpty()) return DetectedContent.EMPTY
         val lower = text.take(1024).lowercase()
         return when {
             lower.startsWith("<!doctype html") || lower.startsWith("<html") ||
-                (lower.startsWith("<") && ("<html" in lower || "<body" in lower)) -> ContentKind.HTML
-            lower.startsWith("<") -> ContentKind.XML
-            lower.startsWith("{") || lower.startsWith("[{") || lower.startsWith("[]") -> ContentKind.JSON
-            else -> ContentKind.TEXT
+                (lower.startsWith("<") && ("<html" in lower || "<body" in lower)) -> DetectedContent.HTML
+            lower.startsWith("<") -> DetectedContent.XML
+            lower.startsWith("{") || lower.startsWith("[{") || lower.startsWith("[]") -> DetectedContent.JSON
+            else -> DetectedContent.TEXT
         }
     }
 

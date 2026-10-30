@@ -2,6 +2,7 @@ package tv.nextv.core.source
 
 import tv.nextv.core.error.SourceError
 import tv.nextv.core.error.SourceException
+import tv.nextv.core.io.ProgressListener
 import tv.nextv.core.model.Channel
 import tv.nextv.core.model.Credentials
 import tv.nextv.core.model.PlaylistSource
@@ -25,8 +26,11 @@ data class LoadedPlaylist(
 interface PlaylistLoader {
     val type: SourceType
 
-    /** @throws SourceException */
-    suspend fun load(source: PlaylistSource, credentials: Credentials?): LoadedPlaylist
+    /**
+     * @param progress avancement réel (octets reçus / taille annoncée), si demandé.
+     * @throws SourceException
+     */
+    suspend fun load(source: PlaylistSource, credentials: Credentials?, progress: ProgressListener? = null): LoadedPlaylist
 }
 
 class PlaylistLoaderRegistry(loaders: Iterable<PlaylistLoader>) {

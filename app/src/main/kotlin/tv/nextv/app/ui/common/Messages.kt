@@ -2,6 +2,8 @@ package tv.nextv.app.ui.common
 
 import android.content.res.Resources
 import android.text.format.DateUtils
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
 import tv.nextv.app.R
 import tv.nextv.core.error.InvalidUrlReason
 import tv.nextv.core.error.SourceError
@@ -83,3 +85,8 @@ fun Resources.describe(location: SourceLocation, redactor: Redactor): String = w
 
 fun relativeTime(millis: Long, now: Long = System.currentTimeMillis()): String =
     DateUtils.getRelativeTimeSpanString(millis, now, DateUtils.MINUTE_IN_MILLIS).toString()
+
+/** « 1 chaîne », « 42 chaînes ». */
+@Composable
+fun channelCount(count: Int): String =
+    LocalContext.current.resources.getQuantityString(R.plurals.channels_count, count, count)

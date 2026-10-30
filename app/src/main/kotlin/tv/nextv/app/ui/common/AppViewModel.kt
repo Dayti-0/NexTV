@@ -16,9 +16,13 @@ fun appContainer(): AppContainer = (LocalContext.current.applicationContext as N
 
 /** ViewModel construit à partir du conteneur de l'application et des arguments de navigation. */
 @Composable
-inline fun <reified VM : ViewModel> appViewModel(crossinline create: (AppContainer, SavedStateHandle) -> VM): VM {
+inline fun <reified VM : ViewModel> appViewModel(
+    key: String? = null,
+    crossinline create: (AppContainer, SavedStateHandle) -> VM,
+): VM {
     val container = appContainer()
     return viewModel(
+        key = key,
         factory = viewModelFactory {
             initializer { create(container, createSavedStateHandle()) }
         },

@@ -1,10 +1,13 @@
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.time.Duration
 
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.roborazzi)
 }
 
 // Clé de publication fournie par l'environnement (secrets CI) ; jamais versionnée.
@@ -19,7 +22,11 @@ android {
         minSdk = 24
         targetSdk = 36
         versionCode = providers.gradleProperty("nextv.versionCode").orNull?.toIntOrNull() ?: 1
-        versionName = providers.gradleProperty("nextv.versionName").orNull ?: "0.1.0"
+        versionName = providers.gradleProperty("nextv.versionName").orNull ?: "0.2.0"
+
+        // Clé TMDB optionnelle fournie à la compilation (secret CI) ; l'utilisateur peut aussi la saisir.
+        val tmdbKey = providers.environmentVariable("NEXTV_TMDB_API_KEY").orNull.orEmpty()
+        buildConfigField("String", "TMDB_API_KEY", "\"${tmdbKey.replace("\"", "")}\"")
     }
 
     signingConfigs {
@@ -51,6 +58,13 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    testOptions {
+        unitTests {
+            // Robolectric rend les écrans avec les vraies ressources (captures d'écran Roborazzi).
+            isIncludeAndroidResources = true
+        }
     }
 
     packaging {
@@ -105,4 +119,22 @@ dependencies {
 
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
+
+    // Captures d'écran : ./gradlew :app:recordRoborazziDebug
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
+}
+
+// Journal par test et durée maximale : un écran qui ne se stabilise pas est identifié au lieu de bloquer la CI.
+tasks.withType<Test>().configureEach {
+    testLogging {
+        events("started", "passed", "skipped", "failed")
+        exceptionFormat = TestExceptionFormat.FULL
+    }
+    timeout.set(Duration.ofMinutes(25))
 }

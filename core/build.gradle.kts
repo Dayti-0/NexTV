@@ -22,11 +22,13 @@ kotlin {
 dependencies {
     api(libs.kotlinx.coroutines.core)
     api(libs.okhttp)
-    // L'API XmlPull est fournie par le framework Android ; on ne l'embarque pas.
+    // Les API XmlPull et org.json sont fournies par le framework Android ; on ne les embarque pas.
     compileOnly(libs.xmlpull)
+    compileOnly(libs.orgjson)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
     testImplementation(libs.kxml2)
+    testImplementation(libs.orgjson)
 }

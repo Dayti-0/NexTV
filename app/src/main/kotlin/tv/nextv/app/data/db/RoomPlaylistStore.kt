@@ -6,6 +6,8 @@ import kotlinx.coroutines.flow.map
 import tv.nextv.core.epg.EpgChannelRef
 import tv.nextv.core.error.SourceError
 import tv.nextv.core.model.Channel
+import tv.nextv.core.model.ContentKind
+import tv.nextv.core.model.StreamQuality
 import tv.nextv.core.model.EpgSettings
 import tv.nextv.core.model.EpgStatus
 import tv.nextv.core.model.PlaylistSource
@@ -71,8 +73,11 @@ class RoomPlaylistStore(private val database: NexTvDatabase) : PlaylistStore {
             // L'association EPG des chaînes inchangées survit au rechargement de la playlist.
             val previous = channelDao.epgAssignments(sourceId).associate { assignmentKey(it.tvgId, it.name) to it.epgChannelId }
             channelDao.deleteForSource(sourceId)
+            val variants = VariantInfo.compute(channels)
             channels.chunked(BATCH_SIZE).forEach { batch ->
-                channelDao.insertAll(batch.map { toEntity(sourceId, it, previous[assignmentKey(it.tvgId, it.name)]) })
+                channelDao.insertAll(
+                    batch.map { toEntity(sourceId, it, previous[assignmentKey(it.tvgId, it.name)], variants.getValue(it.position)) },
+                )
             }
         }
     }
@@ -209,7 +214,7 @@ class RoomPlaylistStore(private val database: NexTvDatabase) : PlaylistStore {
             )
         }
 
-        private fun toEntity(sourceId: Long, channel: Channel, epgChannelId: String?) = ChannelEntity(
+        private fun toEntity(sourceId: Long, channel: Channel, epgChannelId: String?, variant: VariantInfo) = ChannelEntity(
             sourceId = sourceId,
             position = channel.position,
             name = channel.name,
@@ -224,6 +229,18 @@ class RoomPlaylistStore(private val database: NexTvDatabase) : PlaylistStore {
             streamSupport = channel.stream.support.name,
             streamIssues = channel.stream.issues.joinToString(",") { it.name },
             epgChannelId = epgChannelId,
+            kind = channel.kind.name,
+            title = channel.title,
+            variantKey = channel.variantKey,
+            quality = channel.quality?.name,
+            year = channel.year,
+            seriesName = channel.episode?.seriesName,
+            season = channel.episode?.season,
+            episode = channel.episode?.episode,
+            qualityRank = StreamQuality.rankOf(channel.quality),
+            isPrimary = variant.primary,
+            variantCount = variant.count,
+            itemKey = ItemKeys.of(channel),
         )
 
         private fun encode(location: SourceLocation): Triple<String, String, String?> = when (location) {
@@ -238,4 +255,37 @@ class RoomPlaylistStore(private val database: NexTvDatabase) : PlaylistStore {
             else -> null
         }
     }
+}
+
+/** Version affichée (la meilleure qualité, puis la première dans la playlist) et nombre de versions. */
+internal data class VariantInfo(val primary: Boolean, val count: Int) {
+    companion object {
+        /** @return informations par position de chaîne dans la playlist. */
+        fun compute(channels: List<Channel>): Map<Int, VariantInfo> {
+            val result = HashMap<Int, VariantInfo>(channels.size)
+            val groups = channels.groupBy { channel ->
+                if (channel.kind == ContentKind.LIVE && channel.variantKey.isNotEmpty()) channel.variantKey else "\u0000${channel.position}"
+            }
+            for (group in groups.values) {
+                val best = group.maxWith(compareBy<Channel> { StreamQuality.rankOf(it.quality) }.thenByDescending { it.position })
+                group.forEach { result[it.position] = VariantInfo(primary = it === best, count = group.size) }
+            }
+            return result
+        }
+    }
+}
+
+/** Clés stables des favoris et du cache TMDB. */
+object ItemKeys {
+    fun of(channel: Channel): String = when (channel.kind) {
+        ContentKind.LIVE -> "live:" + channel.variantKey.ifEmpty { normalize(channel.name) }
+        ContentKind.MOVIE -> "movie:" + normalize(channel.title) + ":" + (channel.year ?: "")
+        ContentKind.SERIES -> "series:" + normalize(channel.episode?.seriesName ?: channel.title)
+    }
+
+    private fun normalize(text: String): String =
+        java.text.Normalizer.normalize(text.lowercase(), java.text.Normalizer.Form.NFD)
+            .replace(Regex("\\p{Mn}+"), "")
+            .replace(Regex("[^a-z0-9]+"), " ")
+            .trim()
 }

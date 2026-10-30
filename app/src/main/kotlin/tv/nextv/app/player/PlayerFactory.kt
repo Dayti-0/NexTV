@@ -9,6 +9,7 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import tv.nextv.core.model.Credentials
 import tv.nextv.core.model.StreamDescriptor
@@ -43,7 +44,10 @@ class PlayerFactory(
     private val clients: HttpClientProvider,
 ) {
 
-    fun create(request: PlaybackRequest): ExoPlayer {
+    /** Mesure du débit réel des téléchargements du flux (voir [create]). */
+    fun newBandwidthMeter(): DefaultBandwidthMeter = DefaultBandwidthMeter.Builder(context).build()
+
+    fun create(request: PlaybackRequest, bandwidthMeter: DefaultBandwidthMeter? = null): ExoPlayer {
         val baseClient = clients.client(RequestPurpose.STREAM)
         val origin = request.credentialsOrigin?.toHttpUrlOrNull()
         val client = if (request.credentials != null && origin != null) {
@@ -63,9 +67,9 @@ class PlayerFactory(
             .setDefaultRequestProperties(headers - "User-Agent")
         val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
 
-        return ExoPlayer.Builder(context)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
-            .build()
+        val builder = ExoPlayer.Builder(context).setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
+        if (bandwidthMeter != null) builder.setBandwidthMeter(bandwidthMeter)
+        return builder.build()
     }
 
     /** @param forceHls traiter le flux comme du HLS (seconde tentative pour une URL sans extension). */

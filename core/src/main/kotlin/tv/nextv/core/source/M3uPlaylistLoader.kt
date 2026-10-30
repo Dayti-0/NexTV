@@ -4,9 +4,14 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import tv.nextv.core.catalog.ContentClassifier
+import tv.nextv.core.catalog.QualityParser
 import tv.nextv.core.error.SourceError
 import tv.nextv.core.error.SourceException
-import tv.nextv.core.io.ContentKind
+import tv.nextv.core.io.DetectedContent
+import tv.nextv.core.io.LoadProgress
+import tv.nextv.core.io.LoadStep
+import tv.nextv.core.io.ProgressListener
 import tv.nextv.core.io.ContentOpener
 import tv.nextv.core.io.ContentSniffer
 import tv.nextv.core.io.OpenRequest
@@ -17,6 +22,7 @@ import tv.nextv.core.m3u.LineTooLongException
 import tv.nextv.core.m3u.M3uEntry
 import tv.nextv.core.m3u.M3uParser
 import tv.nextv.core.model.Channel
+import tv.nextv.core.model.ContentKind as ModelContentKind
 import tv.nextv.core.model.Credentials
 import tv.nextv.core.model.PlaylistSource
 import tv.nextv.core.model.SourceLocation
@@ -46,32 +52,41 @@ class M3uPlaylistLoader(
 
     override val type = SourceType.M3U
 
-    override suspend fun load(source: PlaylistSource, credentials: Credentials?): LoadedPlaylist =
+    override suspend fun load(source: PlaylistSource, credentials: Credentials?, progress: ProgressListener?): LoadedPlaylist =
         withContext(ioDispatcher) {
             val context = coroutineContext
             val request = OpenRequest(RequestPurpose.PLAYLIST, credentials, userAgent = source.userAgent)
+            progress?.onProgress(LoadProgress(LoadStep.PLAYLIST, 0, null))
             opener.open(source.location, request).use { content ->
                 ContentPipeline.mapReadErrors(usesProxy(RequestPurpose.PLAYLIST)) {
-                    read(source, content) { context.ensureActive() }
+                    read(source, content, progress) { context.ensureActive() }
                 }
             }
         }
 
-    private fun read(source: PlaylistSource, content: OpenedContent, checkCancelled: () -> Unit): LoadedPlaylist {
+    private fun read(
+        source: PlaylistSource,
+        content: OpenedContent,
+        progress: ProgressListener?,
+        checkCancelled: () -> Unit,
+    ): LoadedPlaylist {
         val remote = source.location as? SourceLocation.Remote
         if (remote != null && ContentSniffer.isMediaContentType(content.contentType)) {
             return singleStream(source, remote, formatFromContentType(content.contentType))
         }
 
-        val input = ContentPipeline.prepare(content, limits)
+        val total = content.contentLength
+        val input = ContentPipeline.prepare(content, limits, progress?.let { listener ->
+            { bytes: Long -> listener.onProgress(LoadProgress(LoadStep.PLAYLIST, bytes, total)) }
+        })
         val head = Streams.peek(input, ContentSniffer.SNIFF_SIZE)
         val charset = TextCharsets.detect(head, content.contentType)
         when (ContentSniffer.sniff(head, charset)) {
-            ContentKind.EMPTY -> throw SourceException(SourceError.EmptyContent)
-            ContentKind.HTML -> throw SourceException(SourceError.HtmlInsteadOfContent)
-            ContentKind.XML, ContentKind.JSON, ContentKind.BINARY -> throw SourceException(SourceError.NotAPlaylist)
-            ContentKind.MEDIA -> return singleStream(source, remote ?: throw SourceException(SourceError.NotAPlaylist), StreamFormat.PROGRESSIVE)
-            ContentKind.TEXT -> Unit
+            DetectedContent.EMPTY -> throw SourceException(SourceError.EmptyContent)
+            DetectedContent.HTML -> throw SourceException(SourceError.HtmlInsteadOfContent)
+            DetectedContent.XML, DetectedContent.JSON, DetectedContent.BINARY -> throw SourceException(SourceError.NotAPlaylist)
+            DetectedContent.MEDIA -> return singleStream(source, remote ?: throw SourceException(SourceError.NotAPlaylist), StreamFormat.PROGRESSIVE)
+            DetectedContent.TEXT -> Unit
         }
 
         val decoder = charset.charset.newDecoder()
@@ -113,6 +128,8 @@ class M3uPlaylistLoader(
             ?: attributes["tvg-name"]?.takeIf { it.isNotBlank() }
             ?: stream.url.substringBefore('?').trimEnd('/').substringAfterLast('/').takeIf { it.isNotBlank() }
             ?: "#${position + 1}"
+        val classification = ContentClassifier.classify(name, stream.url, entry.group, attributes)
+        val quality = if (classification.kind == ModelContentKind.LIVE) QualityParser.parse(name) else null
         return Channel(
             position = position,
             name = name,
@@ -122,6 +139,12 @@ class M3uPlaylistLoader(
             tvgId = attributes["tvg-id"]?.takeIf { it.isNotBlank() },
             tvgName = attributes["tvg-name"]?.takeIf { it.isNotBlank() },
             channelNumber = attributes["tvg-chno"]?.takeIf { it.isNotBlank() },
+            kind = classification.kind,
+            title = quality?.baseName ?: classification.title,
+            variantKey = quality?.variantKey.orEmpty(),
+            quality = quality?.quality,
+            year = classification.year,
+            episode = classification.episode,
         )
     }
 
@@ -136,6 +159,7 @@ class M3uPlaylistLoader(
             position = 0,
             name = source.name,
             stream = if (stream.format == StreamFormat.UNKNOWN) stream.copy(format = format) else stream,
+            variantKey = QualityParser.parse(source.name).variantKey,
         )
         return LoadedPlaylist(listOf(channel), warnings = setOf(SourceWarning.SINGLE_STREAM))
     }

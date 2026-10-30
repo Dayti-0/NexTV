@@ -10,10 +10,14 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import tv.nextv.core.epg.EpgFeedProvider
 import tv.nextv.core.epg.EpgLoader
 import tv.nextv.core.error.SourceError
 import tv.nextv.core.error.SourceException
+import tv.nextv.core.io.LoadProgress
+import tv.nextv.core.io.LoadStep
 import tv.nextv.core.io.OpenRequest
+import tv.nextv.core.io.ProgressListener
 import tv.nextv.core.log.Logger
 import tv.nextv.core.log.Redactor
 import tv.nextv.core.model.Credentials
@@ -50,6 +54,11 @@ class SourceRepository(
     private val logger: Logger = Logger.None,
     private val documentAccess: DocumentAccess = DocumentAccess.None,
     private val clock: () -> Long = System::currentTimeMillis,
+    /**
+     * Guide commun à toutes les playlists (téléchargé et mis en cache). S'il est fourni, il remplace
+     * les guides configurés par playlist ou annoncés par leur en-tête.
+     */
+    private val epgFeed: EpgFeedProvider? = null,
 ) {
 
     val sources: Flow<List<PlaylistSource>> = store.observeSources()
@@ -156,14 +165,17 @@ class SourceRepository(
         locks.remove(id)
     }
 
-    /** Recharge la playlist puis, si demandé, le guide EPG. */
-    suspend fun refresh(id: Long, includeEpg: Boolean = true): RefreshResult = withRefreshLock(id) {
+    /**
+     * Recharge la playlist puis, si demandé, le guide EPG.
+     * @param progress avancement réel de chaque étape (octets reçus, chaînes enregistrées…).
+     */
+    suspend fun refresh(id: Long, includeEpg: Boolean = true, progress: ProgressListener? = null): RefreshResult = withRefreshLock(id) {
         val source = store.getSource(id) ?: return@withRefreshLock RefreshResult.NotFound
         val credentials = if (source.hasCredentials) credentialStore.get(id)?.also(::registerSecrets) else null
         val attemptAt = clock()
 
         val loaded = try {
-            loaders.get(source.type).load(source, credentials)
+            loaders.get(source.type).load(source, credentials, progress)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -173,7 +185,9 @@ class SourceRepository(
             return@withRefreshLock RefreshResult.Failure(error)
         }
 
+        progress?.onProgress(LoadProgress(LoadStep.SAVING, 0, loaded.channels.size.toLong()))
         store.replaceChannels(id, loaded.channels)
+        progress?.onProgress(LoadProgress(LoadStep.SAVING, loaded.channels.size.toLong(), loaded.channels.size.toLong()))
         var status = source.status.copy(
             lastAttemptAtMillis = attemptAt,
             lastSuccessAtMillis = clock(),
@@ -186,17 +200,29 @@ class SourceRepository(
         logger.info(TAG, "Source $id : ${loaded.channels.size} chaînes, avertissements ${loaded.warnings}")
 
         if (includeEpg) {
-            status = status.copy(epg = importEpg(source, credentials, loaded.epgUrls, status.epg).status)
+            val epg = importEpg(source, credentials, loaded.epgUrls, status.epg, channelsChanged = true, force = false, progress = progress)
+            status = status.copy(epg = epg.status)
             store.updateStatus(id, status)
         }
         RefreshResult.Success(loaded.channels.size, loaded.warnings, status.epg)
     }
 
-    /** Recharge uniquement le guide EPG, avec les URL d'en-tête du dernier chargement de la playlist. */
-    suspend fun refreshEpg(id: Long): RefreshResult = withRefreshLock(id) {
+    /**
+     * Met à jour le guide EPG. Avec un guide commun ([epgFeed]), il n'est retéléchargé que s'il est
+     * trop ancien (ou si [force]) et réimporté seulement s'il a changé depuis le dernier import.
+     */
+    suspend fun refreshEpg(id: Long, force: Boolean = false, progress: ProgressListener? = null): RefreshResult = withRefreshLock(id) {
         val source = store.getSource(id) ?: return@withRefreshLock RefreshResult.NotFound
         val credentials = if (source.hasCredentials) credentialStore.get(id)?.also(::registerSecrets) else null
-        val outcome = importEpg(source, credentials, source.status.headerEpgUrls, source.status.epg)
+        val outcome = importEpg(
+            source,
+            credentials,
+            source.status.headerEpgUrls,
+            source.status.epg,
+            channelsChanged = false,
+            force = force,
+            progress = progress,
+        )
         val status = source.status.copy(epg = outcome.status)
         store.updateStatus(id, status)
         outcome.failure?.let { RefreshResult.Failure(it) }
@@ -212,7 +238,11 @@ class SourceRepository(
         credentials: Credentials?,
         headerUrls: List<String>,
         previous: EpgStatus,
+        channelsChanged: Boolean,
+        force: Boolean,
+        progress: ProgressListener?,
     ): EpgOutcome {
+        epgFeed?.let { return importFromFeed(it, source, previous, channelsChanged, force, progress) }
         val locations = buildList {
             source.epg.location?.let(::add)
             if (source.epg.useHeaderUrls) {
@@ -246,7 +276,7 @@ class SourceRepository(
         try {
             for (location in locations) {
                 try {
-                    val result = epgLoader.load(location, request, channels, session, excludedEpgIds = covered)
+                    val result = epgLoader.load(location, request, channels, session, excludedEpgIds = covered, progress = progress)
                     result.mapping.forEach { (channelId, epgId) -> mapping.putIfAbsent(channelId, epgId) }
                     covered += result.coveredEpgIds
                     programmes += result.programmeCount
@@ -277,6 +307,52 @@ class SourceRepository(
             error = firstError,
         )
         return EpgOutcome(status, failure = null)
+    }
+
+    private suspend fun importFromFeed(
+        feedProvider: EpgFeedProvider,
+        source: PlaylistSource,
+        previous: EpgStatus,
+        channelsChanged: Boolean,
+        force: Boolean,
+        progress: ProgressListener?,
+    ): EpgOutcome {
+        val attemptAt = clock()
+        val feed = try {
+            feedProvider.obtain(force, progress)
+        } catch (e: SourceException) {
+            logger.warn(TAG, "Guide indisponible pour la source ${source.id} : ${e.error.code}", e)
+            return EpgOutcome(previous.copy(lastAttemptAtMillis = attemptAt, error = e.error), failure = e.error)
+        }
+        val lastImport = previous.lastSuccessAtMillis
+        val upToDate = !channelsChanged && !force && previous.error == null && lastImport != null &&
+            lastImport >= feed.updatedAtMillis && attemptAt - lastImport < EPG_REIMPORT_MILLIS
+        if (upToDate) {
+            progress?.onProgress(LoadProgress(LoadStep.EPG_IMPORT, 1, 1))
+            return EpgOutcome(previous.copy(lastAttemptAtMillis = attemptAt, error = feed.error), failure = null)
+        }
+
+        val session = store.beginEpgImport(source.id)
+        try {
+            val result = epgLoader.importFile(feed.file, store.getEpgChannelRefs(source.id), session, progress = progress)
+            session.commit(result.mapping)
+            logger.info(TAG, "Guide : ${result.programmeCount} programmes, ${result.mapping.size} chaînes associées")
+            val status = EpgStatus(
+                lastAttemptAtMillis = attemptAt,
+                lastSuccessAtMillis = clock(),
+                programmeCount = result.programmeCount,
+                matchedChannelCount = result.mapping.size,
+                error = feed.error,
+            )
+            return EpgOutcome(status, failure = null)
+        } catch (e: SourceException) {
+            withContext(NonCancellable) { session.abort() }
+            logger.warn(TAG, "Import du guide impossible : ${e.error.code}", e)
+            return EpgOutcome(previous.copy(lastAttemptAtMillis = attemptAt, error = e.error), failure = e.error)
+        } catch (e: Throwable) {
+            withContext(NonCancellable) { session.abort() }
+            throw e
+        }
     }
 
     /** @property failure erreur si aucun guide n'a pu être importé (le guide précédent est conservé). */
@@ -325,5 +401,8 @@ class SourceRepository(
 
     private companion object {
         const val TAG = "SourceRepository"
+
+        /** Le guide importé ne couvre qu'une fenêtre de quelques jours : il est réimporté chaque jour. */
+        const val EPG_REIMPORT_MILLIS = 24 * 60 * 60_000L
     }
 }
