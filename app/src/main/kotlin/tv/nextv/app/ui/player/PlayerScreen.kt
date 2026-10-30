@@ -157,7 +157,12 @@ fun PlayerScreen(onBack: () -> Unit) {
                     Key.ChannelDown -> true.also { viewModel.zap(-1) }
                     Key.DirectionUp -> state.isLive.also { if (it) viewModel.zap(+1) }
                     Key.DirectionDown -> state.isLive.also { if (it) viewModel.zap(-1) }
-                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> state.isLive.also { bannerTrigger++ }
+                    // En erreur, OK relance la lecture ; sinon il affiche le bandeau.
+                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> when {
+                        !state.isLive -> false
+                        state.error != null -> true.also { viewModel.retry() }
+                        else -> true.also { bannerTrigger++ }
+                    }
                     Key.Info, Key.Guide -> true.also { bannerTrigger++ }
                     else -> false
                 }

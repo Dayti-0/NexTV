@@ -1,6 +1,25 @@
 # NexTV
 
-Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3.
+Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3, entièrement utilisable à la télécommande.
+
+## Utilisation
+
+- **Démarrage** : la dernière playlist utilisée est rechargée (si elle a plus de 12 h) avec son guide, avec une
+  progression réelle (octets reçus, chaînes enregistrées, guide téléchargé puis importé), puis l'accueil s'ouvre.
+  En cas d'échec : réessayer, continuer avec les données enregistrées ou choisir une autre playlist.
+- **Accueil** : sections TV, Films, Séries et Guide TV, avec catégories (groupes de la playlist), recherche et favoris.
+  Appui long sur OK : ajouter / retirer des favoris ; « Réorganiser » puis OK et flèches pour les déplacer.
+- **Films et séries** : fiche enrichie par TMDB (synopsis, note, genres, affiche, bande-annonce), saisons et épisodes.
+  Une clé d'API TMDB se saisit dans les réglages (ou s'intègre à la compilation, voir plus bas).
+- **Lecture en direct** : bandeau de 5 s au changement de chaîne ou sur OK (programme en cours avec horaires et
+  progression, programme suivant, qualité, débit mesuré en Mbit/s) ; haut / bas pour zapper ; Retour ouvre la liste
+  des chaînes à gauche sans couper la lecture (catégories avec gauche / droite, chaînes avec haut / bas, OK pour
+  lancer), un second Retour la ferme.
+- **Qualité automatique** : quand une chaîne existe en plusieurs versions dans la playlist (« FHD », « HD », « SD »,
+  « LOW » dans le nom), la lecture descend d'un cran en cas d'erreur ou de mise en mémoire tampon persistante, puis
+  remonte quand le débit mesuré le permet. Jamais de bascule vers une autre chaîne ; désactivable dans les réglages.
+- **Guide TV** : grille chaînes × horaires avec repère de l'heure actuelle et programme en cours mis en valeur ;
+  OK ouvre la fiche du programme (horaires, durée, description) avec « Regarder ». Un créneau sans donnée reste vide.
 
 ## Sources prises en charge
 
@@ -10,10 +29,13 @@ Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3.
 | Playlist M3U/M3U8 locale | Fichier choisi avec le sélecteur de fichiers Android (Storage Access Framework), autorisation persistante, relu à chaque actualisation. |
 | Playlist protégée | Authentification HTTP Basic en réponse au défi `401` du serveur ; identifiants chiffrés (Android Keystore), jamais présentés à un autre hôte, masqués dans les journaux. Les identifiants saisis dans l'URL (`http://user:pass@…`) sont extraits et stockés de la même façon. |
 | URL de flux directe | Si l'URL d'une « playlist » renvoie un manifeste HLS ou un flux vidéo (`video/*`, MPEG-TS, MP4), la source devient une chaîne unique. |
-| Guide EPG XMLTV | URL HTTP/HTTPS ou fichier local `.xml` / `.xml.gz` ; guides annoncés par l'en-tête de la playlist (`url-tvg`, `x-tvg-url`) utilisables en plus. |
+| Guide EPG XMLTV | Guide commun téléchargé automatiquement depuis `https://xmltvfr.fr/xmltv/xmltv.xml.gz`, mis en cache sur l'appareil, revalidé (ETag / Last-Modified) au plus tard toutes les 12 h et réimporté seulement s'il a changé. Le cœur sait aussi lire une URL ou un fichier `.xml` / `.xml.gz` propre à une playlist. |
 
-Plusieurs playlists peuvent être enregistrées, puis modifiées, supprimées et actualisées (individuellement, guide seul, ou toutes).
-Un échec d'actualisation conserve les chaînes et le guide précédents ; l'erreur est affichée sur la playlist.
+Plusieurs playlists peuvent être enregistrées, puis modifiées, supprimées et actualisées ; l'une d'elles est la playlist
+active affichée à l'accueil. Un échec d'actualisation conserve les chaînes et le guide précédents ; l'erreur est affichée.
+
+Chaque entrée est classée à l'import en chaîne, film ou épisode de série (groupe, attributs, URL `/movie/` ou `/series/`,
+motifs `S01E02`), et les versions d'une même chaîne (`FHD`, `HD`, `SD`, `LOW`…) sont regroupées.
 
 ### Format M3U
 
@@ -56,7 +78,9 @@ core/   Bibliothèque Kotlin/JVM sans dépendance Android (build Gradle inclus)
   net/         Clients OkHttp par usage, proxy, redirections, authentification par origine, validation d'URL
   m3u/         Analyseur M3U en flux
   epg/         Lecteur XMLTV en flux (XmlPull), association des chaînes, import par lots
-  stream/      Analyse des URL de flux (format, compatibilité, en-têtes)
+  stream/      Analyse des URL de flux (format, compatibilité, en-têtes), choix automatique de la qualité
+  catalog/     Classement chaîne / film / série, détection des versions de qualité
+  meta/        Client TMDB (fiches films et séries)
   source/      PlaylistLoader par type de source + registre
   repository/  SourceRepository (ajout, modification, suppression, actualisation) et interfaces de stockage
   log/         Journalisation avec masquage des secrets
@@ -76,7 +100,8 @@ Points d'extension :
 ./gradlew :app:assembleDebug    # application (SDK Android requis)
 ```
 
-La CI GitHub Actions exécute les tests du cœur, la compilation de l'application (debug et release) et le lint Android.
+La CI GitHub Actions exécute les tests du cœur, la compilation de l'application (debug et release), le lint Android
+et génère des captures d'écran (Roborazzi, téléphone et TV) publiées sur la branche `screenshots`.
 
 ## Publication
 
@@ -84,6 +109,8 @@ Le workflow `Release` se déclenche en poussant un tag `v*` (ex. `git tag v0.1.0
 une branche `release/vX.Y.Z`, ou manuellement depuis l'onglet Actions avec la version voulue.
 Il exécute les tests, construit l'APK release (R8) puis publie une release GitHub avec l'APK et son
 empreinte SHA-256, en créant le tag s'il n'existe pas (versions `v0.*` ou `*-…` publiées en pré-version).
+
+Clé TMDB : le secret facultatif `NEXTV_TMDB_API_KEY` l'intègre à l'APK (une clé saisie dans les réglages reste prioritaire).
 
 Signature : définir dans les secrets du dépôt `NEXTV_KEYSTORE_BASE64` (keystore encodé en base64),
 `NEXTV_KEYSTORE_PASSWORD`, `NEXTV_KEY_ALIAS` et `NEXTV_KEY_PASSWORD`. En leur absence, l'APK est signé avec

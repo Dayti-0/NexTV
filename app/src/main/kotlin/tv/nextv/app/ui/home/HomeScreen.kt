@@ -39,8 +39,12 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -185,6 +189,8 @@ fun HomeContent(
     guide: @Composable (Modifier) -> Unit,
 ) {
     val window = rememberWindowInfo()
+    // Dernière vignette ouverte : elle reprend le focus au retour sur l'accueil (télécommande).
+    val lastOpened = rememberSaveable { mutableStateOf<String?>(null) }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -211,9 +217,9 @@ fun HomeContent(
                     modifier = Modifier.weight(1f),
                 ) { columns ->
                     when (section) {
-                        HomeSection.TV -> TvBody(channels, favoriteChannels, category, favoriteKeys, reorder, now, columns, window, actions)
-                        HomeSection.MOVIES -> MoviesBody(movies, favoriteMovies, category, favoriteKeys, reorder, columns, window, actions)
-                        else -> SeriesBody(series, favoriteSeries, category, favoriteKeys, reorder, columns, window, actions)
+                        HomeSection.TV -> TvBody(channels, favoriteChannels, category, favoriteKeys, reorder, now, columns, window, lastOpened, actions)
+                        HomeSection.MOVIES -> MoviesBody(movies, favoriteMovies, category, favoriteKeys, reorder, columns, window, lastOpened, actions)
+                        else -> SeriesBody(series, favoriteSeries, category, favoriteKeys, reorder, columns, window, lastOpened, actions)
                     }
                 }
             }
@@ -224,7 +230,14 @@ fun HomeContent(
 @Composable
 private fun HomeTopBar(section: HomeSection, sourceName: String, window: WindowInfo, actions: HomeActions) {
     val initialFocus = remember { FocusRequester() }
-    if (window.isTv) LaunchedEffect(Unit) { runCatching { initialFocus.requestFocus() } }
+    // Focus initial sur les onglets au premier affichage seulement (pas au retour d'un autre écran).
+    var initialFocusDone by rememberSaveable { mutableStateOf(false) }
+    if (window.isTv && !initialFocusDone) {
+        LaunchedEffect(Unit) {
+            runCatching { initialFocus.requestFocus() }
+            initialFocusDone = true
+        }
+    }
     Row(
         Modifier.fillMaxWidth().padding(horizontal = window.horizontalPadding, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -479,6 +492,7 @@ private fun TvBody(
     now: Long,
     columns: Int,
     window: WindowInfo,
+    lastOpened: MutableState<String?>,
     actions: HomeActions,
 ) {
     val padding = gridPadding(window)
@@ -496,12 +510,17 @@ private fun TvBody(
         val onClick = if (inFavorites && reorder.active) {
             { actions.onPick(channel.itemKey) }
         } else {
-            { actions.onPlayChannel(channel.id) }
+            {
+                lastOpened.value = channel.itemKey
+                actions.onPlayChannel(channel.id)
+            }
         }
         val onLongClick = if (reorder.active) null else {
             { actions.onToggleFavorite(ContentKind.LIVE, channel.itemKey, channel.title, channel.logoUrl) }
         }
-        val modifier = Modifier.reorderKeys(moving, columns) { actions.onMove(ContentKind.LIVE, channel.itemKey, it) }
+        val modifier = Modifier
+            .restoreFocus(channel.itemKey, lastOpened)
+            .reorderKeys(moving, columns) { actions.onMove(ContentKind.LIVE, channel.itemKey, it) }
         if (columns == 1) {
             ChannelListItem(channel, now, channel.itemKey in favoriteKeys, onClick, onLongClick, modifier, moving)
         } else {
@@ -534,6 +553,7 @@ private fun MoviesBody(
     reorder: ReorderState,
     columns: Int,
     window: WindowInfo,
+    lastOpened: MutableState<String?>,
     actions: HomeActions,
 ) {
     val favoritesMode = category == Category.Favorites
@@ -555,12 +575,17 @@ private fun MoviesBody(
             onClick = if (inFavorites && reorder.active) {
                 { actions.onPick(movie.itemKey) }
             } else {
-                { actions.onOpenMovie(movie.id) }
+                {
+                    lastOpened.value = movie.itemKey
+                    actions.onOpenMovie(movie.id)
+                }
             },
             onLongClick = if (reorder.active) null else {
                 { actions.onToggleFavorite(ContentKind.MOVIE, movie.itemKey, movie.title, movie.logoUrl) }
             },
-            modifier = Modifier.reorderKeys(moving, columns) { actions.onMove(ContentKind.MOVIE, movie.itemKey, it) },
+            modifier = Modifier
+                .restoreFocus(movie.itemKey, lastOpened)
+                .reorderKeys(moving, columns) { actions.onMove(ContentKind.MOVIE, movie.itemKey, it) },
             moving = moving,
         )
     }
@@ -590,6 +615,7 @@ private fun SeriesBody(
     reorder: ReorderState,
     columns: Int,
     window: WindowInfo,
+    lastOpened: MutableState<String?>,
     actions: HomeActions,
 ) {
     val resources = LocalContext.current.resources
@@ -612,12 +638,17 @@ private fun SeriesBody(
             onClick = if (inFavorites && reorder.active) {
                 { actions.onPick(show.itemKey) }
             } else {
-                { actions.onOpenSeries(show.id) }
+                {
+                    lastOpened.value = show.itemKey
+                    actions.onOpenSeries(show.id)
+                }
             },
             onLongClick = if (reorder.active) null else {
                 { actions.onToggleFavorite(ContentKind.SERIES, show.itemKey, show.title, show.logoUrl) }
             },
-            modifier = Modifier.reorderKeys(moving, columns) { actions.onMove(ContentKind.SERIES, show.itemKey, it) },
+            modifier = Modifier
+                .restoreFocus(show.itemKey, lastOpened)
+                .reorderKeys(moving, columns) { actions.onMove(ContentKind.SERIES, show.itemKey, it) },
             moving = moving,
         )
     }
@@ -636,6 +667,21 @@ private fun SeriesBody(
             }
         }
     }
+}
+
+/**
+ * Rend le focus à la vignette [key] si c'est la dernière ouverte, puis oublie cette dernière :
+ * faire défiler la grille ensuite ne déplace plus le focus.
+ */
+@Composable
+private fun Modifier.restoreFocus(key: String, lastOpened: MutableState<String?>): Modifier {
+    if (lastOpened.value != key) return this
+    val requester = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        runCatching { requester.requestFocus() }
+        lastOpened.value = null
+    }
+    return focusRequester(requester)
 }
 
 private fun gridPadding(window: WindowInfo) = PaddingValues(
