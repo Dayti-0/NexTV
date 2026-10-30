@@ -11,6 +11,7 @@ import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
+import androidx.paging.map
 import androidx.media3.common.Format
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -32,6 +33,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -124,6 +126,9 @@ data class PlaybackInfo(
     val droppedFrames: Int = 0,
 )
 
+/** Chaîne du menu, avec la catégorie dont elle provient : la liste affichée correspond-elle au choix ? */
+data class MenuChannel(val category: Category, val row: ChannelListRow)
+
 /** Menu latéral des chaînes, ouvert par « Retour » pendant la lecture. */
 data class ChannelMenuState(
     val open: Boolean = false,
@@ -163,7 +168,7 @@ class PlayerViewModel(
         if (id == null) flowOf(emptyList()) else container.channelDao.observeGroups(id, ContentKind.LIVE.name)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val menuChannels: Flow<PagingData<ChannelListRow>> = combine(sourceId, mutableMenu) { id, menu -> id to menu.category }
+    val menuChannels: Flow<PagingData<MenuChannel>> = combine(sourceId, mutableMenu) { id, menu -> id to menu.category }
         .distinctUntilChanged()
         .flatMapLatest { (id, category) ->
             if (id == null || category == Category.Favorites) {
@@ -177,7 +182,7 @@ class PlayerViewModel(
                         query = "",
                         now = System.currentTimeMillis(),
                     )
-                }.flow
+                }.flow.map { data -> data.map { MenuChannel(category, it) } }
             }
         }
         .cachedIn(viewModelScope)

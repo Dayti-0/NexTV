@@ -35,6 +35,7 @@ import tv.nextv.app.ui.home.HomeActions
 import tv.nextv.app.ui.home.HomeContent
 import tv.nextv.app.ui.home.HomeSection
 import tv.nextv.app.ui.home.ReorderState
+import tv.nextv.app.ui.player.MenuChannel
 import tv.nextv.app.ui.player.ChannelMenu
 import tv.nextv.app.ui.player.PlaybackInfoPanel
 import tv.nextv.app.ui.player.ResumePrompt
@@ -229,7 +230,9 @@ abstract class ScreenshotSuite(private val device: String) {
     @Test
     fun playerMenu() = capture("14_lecteur_menu") {
         FakeVideo()
-        val channels = remember { flowOf(PagingData.from(SampleData.channels)) }.collectAsLazyPagingItems()
+        val channels = remember {
+            flowOf(PagingData.from(SampleData.channels.map { MenuChannel(SampleData.menu.category, it) }))
+        }.collectAsLazyPagingItems()
         ChannelMenu(
             menu = SampleData.menu,
             groups = SampleData.groups,

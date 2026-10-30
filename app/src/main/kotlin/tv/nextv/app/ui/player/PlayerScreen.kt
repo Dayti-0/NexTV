@@ -9,6 +9,8 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,6 +58,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -426,7 +429,7 @@ private fun SpeedLabel(mbps: Double, modifier: Modifier = Modifier) {
 fun ChannelMenu(
     menu: ChannelMenuState,
     groups: List<GroupRow>,
-    channels: LazyPagingItems<ChannelListRow>,
+    channels: LazyPagingItems<MenuChannel>,
     favorites: List<ChannelListRow>,
     now: Long,
     onCategory: (Category) -> Unit,
@@ -446,18 +449,16 @@ fun ChannelMenu(
     var focusPlaced by remember { mutableStateOf(false) }
     var panelFocused by remember { mutableStateOf(false) }
 
-    /** Vrai quand la liste affichée correspond à la catégorie choisie. */
-    fun listReady(category: Category): Boolean = if (category == Category.Favorites) {
-        favorites.isNotEmpty()
-    } else {
-        channels.itemCount > 0 && (category !is Category.Group || channels.peek(0)?.groupTitle.orEmpty() == category.title)
-    }
+    /** Vrai quand la liste affichée est celle de la catégorie choisie (et pas encore la précédente). */
+    fun listReady(category: Category): Boolean =
+        category == Category.Favorites || (channels.itemCount > 0 && channels.peek(0)?.category == category)
 
     // À l'ouverture : chaîne en cours visible et sélectionnée.
     LaunchedEffect(menu.open) {
         focusPlaced = false
         if (!menu.open) return@LaunchedEffect
         val category = menu.category
+        chipsState.reveal(categories.indexOf(category))
         withTimeoutOrNull(LIST_WAIT_MILLIS) { snapshotFlow { listReady(category) }.first { it } }
         runCatching { listState.scrollToItem(menu.initialIndex) }
         delay(50)
@@ -472,15 +473,18 @@ fun ChannelMenu(
         delay(FOCUS_RECOVERY_MILLIS)
         if (runCatching { firstFocus.requestFocus() }.isFailure) runCatching { panelFocus.requestFocus() }
     }
-    // Catégorie changée (gauche/droite) : pastille visible, focus sur la première chaîne.
+    // Catégorie changée (gauche/droite) : un seul déplacement, une fois la nouvelle liste prête.
+    // En attendant, le focus reste sur le panneau : aucune ligne de l'ancienne liste en surbrillance,
+    // et la rangée des catégories ne défile que si la pastille choisie sort de l'écran.
     LaunchedEffect(categoryChanges) {
         if (categoryChanges == 0) return@LaunchedEffect
         val category = menu.category
-        runCatching { chipsState.animateScrollToItem(categories.indexOf(category).coerceAtLeast(0)) }
-        val ready = withTimeoutOrNull(LIST_WAIT_MILLIS) { snapshotFlow { listReady(category) }.first { it } } != null
+        runCatching { panelFocus.requestFocus() }
+        chipsState.reveal(categories.indexOf(category))
+        withTimeoutOrNull(LIST_WAIT_MILLIS) { snapshotFlow { listReady(category) }.first { it } } ?: return@LaunchedEffect
         runCatching { listState.scrollToItem(0) }
-        delay(50)
-        if (!ready || runCatching { firstFocus.requestFocus() }.isFailure) runCatching { panelFocus.requestFocus() }
+        withFrameNanos { }
+        runCatching { firstFocus.requestFocus() }
     }
 
     AnimatedVisibility(
@@ -573,8 +577,8 @@ fun ChannelMenu(
                         }
                         items(favorites.size, key = { favorites[it].id }) { index -> rowFor(index, favorites[index]) }
                     } else {
-                        items(count = channels.itemCount, key = channels.itemKey { it.id }) { index ->
-                            channels[index]?.let { rowFor(index, it) }
+                        items(count = channels.itemCount, key = channels.itemKey { it.row.id }) { index ->
+                            channels[index]?.let { rowFor(index, it.row) }
                         }
                     }
                 }
@@ -791,3 +795,18 @@ fun ResumePromptCard(prompt: ResumePrompt, onAnswer: (Boolean) -> Unit, modifier
 /** Attente maximale de la liste d'une catégorie avant de placer le focus. */
 private const val LIST_WAIT_MILLIS = 3_000L
 private const val FOCUS_RECOVERY_MILLIS = 150L
+
+/** Fait défiler la rangée juste assez pour que l'élément [index] soit entièrement visible, sans animation. */
+private suspend fun LazyListState.reveal(index: Int) {
+    if (index < 0) return
+    val info = layoutInfo
+    val item = info.visibleItemsInfo.firstOrNull { it.index == index }
+    val end = info.viewportEndOffset - info.afterContentPadding
+    runCatching {
+        when {
+            item == null -> scrollToItem((index - 1).coerceAtLeast(0))
+            item.offset < 0 -> scrollBy(item.offset.toFloat())
+            item.offset + item.size > end -> scrollBy((item.offset + item.size - end).toFloat())
+        }
+    }
+}
