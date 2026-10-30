@@ -110,8 +110,8 @@ fun ChannelCard(
             Box(
                 Modifier
                     .fillMaxWidth()
-                    // Moins haute en taille moyenne : plus de rangées visibles.
-                    .aspectRatio(if (size == CardSize.MEDIUM) 2.4f else 16f / 9f)
+                    // Moyenne : moins haute que 16:9, mais assez pour le favori et le badge empilés.
+                    .aspectRatio(if (size == CardSize.MEDIUM) 2f else 16f / 9f)
                     .background(MaterialTheme.colorScheme.surfaceContainerHigh),
                 contentAlignment = Alignment.Center,
             ) {
