@@ -59,7 +59,7 @@ fun FavoriteStar(modifier: Modifier = Modifier) {
         modifier.size(24.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.55f)),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(Icons.Filled.Star, contentDescription = null, tint = NexTvColors.Warning, modifier = Modifier.size(16.dp))
+        Icon(Icons.Filled.Star, contentDescription = null, tint = NexTvColors.Warning, modifier = Modifier.fillMaxSize(0.68f))
     }
 }
 
@@ -116,31 +116,57 @@ fun ChannelCard(
                 contentAlignment = Alignment.Center,
             ) {
                 when (size) {
-                    CardSize.LARGE -> ChannelLogo(channel.logoUrl, channel.title, Modifier.size(64.dp), monogramSize = 22.dp)
-                    CardSize.MEDIUM -> ChannelLogo(channel.logoUrl, channel.title, Modifier.size(42.dp), monogramSize = 15.dp)
-                    CardSize.SMALL -> ChannelLogo(channel.logoUrl, channel.title, Modifier.fillMaxHeight(0.7f).aspectRatio(1f), monogramSize = 11.dp)
-                }
-                if (!small) {
-                    Row(Modifier.align(Alignment.TopStart).padding(6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        channel.channelNumber?.let { Badge(it) }
-                        qualityLabel(channel.quality)?.let { Badge(it, color = NexTvColors.Primary) }
+                    CardSize.LARGE -> {
+                        ChannelLogo(channel.logoUrl, channel.title, Modifier.size(64.dp), monogramSize = 22.dp)
+                        Row(Modifier.align(Alignment.TopStart).padding(6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            channel.channelNumber?.let { Badge(it) }
+                            qualityLabel(channel.quality)?.let { Badge(it, color = NexTvColors.Primary) }
+                        }
+                        Row(Modifier.align(Alignment.TopEnd).padding(6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            SupportBadge(channel.streamSupport)
+                            if (isFavorite) FavoriteStar()
+                        }
                     }
-                }
-                Row(Modifier.align(Alignment.TopEnd).padding(if (small) 3.dp else 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    if (!small) SupportBadge(channel.streamSupport)
-                    if (isFavorite) FavoriteStar(if (small) Modifier.size(16.dp) else Modifier)
+                    // Logo à gauche, favori et qualité (ou lecture limitée) à droite : rien ne se chevauche.
+                    CardSize.MEDIUM -> Row(
+                        Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        ChannelLogo(channel.logoUrl, channel.title, Modifier.size(38.dp), monogramSize = 14.dp)
+                        Spacer(Modifier.weight(1f))
+                        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            if (isFavorite) FavoriteStar(Modifier.size(18.dp))
+                            if (channel.streamSupport != StreamSupport.SUPPORTED.name) {
+                                SupportBadge(channel.streamSupport)
+                            } else {
+                                qualityLabel(channel.quality)?.let { Badge(it, color = NexTvColors.Primary) }
+                            }
+                        }
+                    }
+                    CardSize.SMALL -> {
+                        ChannelLogo(channel.logoUrl, channel.title, Modifier.fillMaxHeight(0.6f).aspectRatio(1f), monogramSize = 10.dp)
+                        if (isFavorite) FavoriteStar(Modifier.align(Alignment.TopEnd).padding(3.dp).size(14.dp))
+                    }
                 }
             }
             Column(
                 Modifier.padding(horizontal = if (small) 6.dp else 10.dp, vertical = if (small) 5.dp else 8.dp),
                 verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
-                Text(
-                    channel.title,
-                    style = if (small) MaterialTheme.typography.labelMedium else MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // Numéro devant le nom quand il n'a pas sa place sur le logo.
+                    if (size == CardSize.MEDIUM) {
+                        channel.channelNumber?.let {
+                            Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    Text(
+                        channel.title,
+                        style = if (small) MaterialTheme.typography.labelMedium else MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 if (!small) {
                     Text(
                         channel.nowTitle ?: stringResource(R.string.channels_no_epg),
@@ -245,7 +271,7 @@ fun PosterCard(
     ) {
         Column {
             Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f)) {
-                PosterImage(title, imageUrl, Modifier.fillMaxSize())
+                PosterImage(title, imageUrl, Modifier.fillMaxSize(), compact)
                 val inset = if (compact) 4.dp else 8.dp
                 if (isFavorite) FavoriteStar(Modifier.align(Alignment.TopEnd).padding(inset).then(if (compact) Modifier.size(16.dp) else Modifier))
                 progress?.let { LiveProgress(0, 1_000, (it * 1_000).toLong(), Modifier.align(Alignment.BottomCenter).padding(inset)) }
@@ -272,20 +298,20 @@ fun PosterCard(
 
 /** Image d'affiche, ou dégradé avec le titre si aucune image n'est disponible. */
 @Composable
-fun PosterImage(title: String, imageUrl: String?, modifier: Modifier = Modifier) {
+fun PosterImage(title: String, imageUrl: String?, modifier: Modifier = Modifier, compact: Boolean = false) {
     var loaded by remember(imageUrl) { mutableStateOf(false) }
     val (start, end) = NexTvColors.swatchFor(title)
     Box(modifier.background(Brush.linearGradient(listOf(start.copy(alpha = 0.75f), end.copy(alpha = 0.55f), Color(0xFF111827)))), contentAlignment = Alignment.Center) {
         if (!loaded) {
             Text(
                 title,
-                style = MaterialTheme.typography.titleMedium,
+                style = if (compact) MaterialTheme.typography.labelMedium else MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = Color.White,
                 textAlign = TextAlign.Center,
                 maxLines = 4,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(12.dp),
+                modifier = Modifier.padding(if (compact) 5.dp else 12.dp),
             )
         }
         if (imageUrl != null) {
