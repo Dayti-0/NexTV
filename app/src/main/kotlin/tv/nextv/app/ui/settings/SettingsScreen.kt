@@ -73,6 +73,7 @@ import tv.nextv.app.ui.editor.ToggleRow
 import tv.nextv.app.ui.theme.NexTvColors
 import tv.nextv.app.ui.theme.NexTvIcons
 import tv.nextv.core.epg.HttpEpgFeedProvider
+import tv.nextv.core.net.DnsProvider
 import tv.nextv.core.repository.RefreshResult
 import java.util.Locale
 
@@ -119,6 +120,7 @@ fun SettingsScreen(onBack: () -> Unit, onPlaylists: () -> Unit, onProxy: () -> U
         onProxy = onProxy,
         onCycleDecoder = viewModel::cycleDecoder,
         onGridColumns = viewModel::setGridColumns,
+        onCycleDns = viewModel::cycleDns,
         update = update,
         onCheckUpdate = viewModel::checkUpdate,
         onInstallUpdate = viewModel::installUpdate,
@@ -147,6 +149,7 @@ fun SettingsContent(
     onProxy: () -> Unit,
     onCycleDecoder: (String) -> Unit = {},
     onGridColumns: (GridColumns) -> Unit = {},
+    onCycleDns: () -> Unit = {},
     update: UpdateState = UpdateState.Idle,
     onCheckUpdate: () -> Unit = {},
     onInstallUpdate: (AppRelease) -> Unit = {},
@@ -162,7 +165,7 @@ fun SettingsContent(
         Column(Modifier.fillMaxSize().padding(padding)) {
             ScreenHeader(
                 title = stringResource(R.string.settings_title),
-                modifier = Modifier.padding(start = window.horizontalPadding - 12.dp, end = window.horizontalPadding, top = 12.dp, bottom = 8.dp),
+                modifier = Modifier.padding(start = window.horizontalPadding - 12.dp, end = window.horizontalPadding, top = window.topPadding, bottom = 8.dp),
                 navigation = { IconAction(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back), onBack) },
             )
             Box(Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()), contentAlignment = Alignment.TopCenter) {
@@ -300,7 +303,13 @@ fun SettingsContent(
                     }
 
                     // Réseau.
-                    SectionCard(stringResource(R.string.proxy_section), icon = NexTvIcons.Cloud) {
+                    SectionCard(stringResource(R.string.settings_network), icon = NexTvIcons.Cloud) {
+                        ValueRow(
+                            title = stringResource(R.string.settings_dns),
+                            value = dnsLabel(state.dns),
+                            onClick = onCycleDns,
+                        )
+                        InfoText(stringResource(R.string.settings_dns_help))
                         InfoText(
                             if (state.proxyEnabled) {
                                 stringResource(R.string.settings_proxy_on, state.proxyAddress.orEmpty())
@@ -431,6 +440,20 @@ private fun ReleaseInfo(release: AppRelease, installed: String) {
 }
 
 private fun megabytes(bytes: Long): String = String.format(Locale.FRANCE, "%.1f", bytes / 1_000_000.0)
+
+@Composable
+private fun dnsLabel(dns: DnsProvider): String = when (dns) {
+    DnsProvider.SYSTEM -> stringResource(R.string.settings_dns_system)
+    else -> stringResource(
+        R.string.settings_dns_public,
+        when (dns) {
+            DnsProvider.QUAD9 -> "Quad9"
+            DnsProvider.CLOUDFLARE -> "Cloudflare"
+            else -> "Google"
+        },
+        dns.addresses.take(2).joinToString(" / "),
+    )
+}
 
 /** Nombre réglable : gauche/droite pour diminuer/augmenter, OK passe à la valeur suivante (en boucle). */
 @Composable

@@ -111,7 +111,7 @@ fun ChannelCard(
                 Modifier
                     .fillMaxWidth()
                     // Moins haute en taille moyenne : plus de rangées visibles.
-                    .aspectRatio(if (size == CardSize.MEDIUM) 2f else 16f / 9f)
+                    .aspectRatio(if (size == CardSize.MEDIUM) 2.4f else 16f / 9f)
                     .background(MaterialTheme.colorScheme.surfaceContainerHigh),
                 contentAlignment = Alignment.Center,
             ) {
@@ -129,10 +129,10 @@ fun ChannelCard(
                     }
                     // Logo à gauche, favori et qualité (ou lecture limitée) à droite : rien ne se chevauche.
                     CardSize.MEDIUM -> Row(
-                        Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 6.dp),
+                        Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        ChannelLogo(channel.logoUrl, channel.title, Modifier.size(38.dp), monogramSize = 14.dp)
+                        ChannelLogo(channel.logoUrl, channel.title, Modifier.size(34.dp), monogramSize = 13.dp)
                         Spacer(Modifier.weight(1f))
                         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             if (isFavorite) FavoriteStar(Modifier.size(18.dp))
@@ -150,21 +150,29 @@ fun ChannelCard(
                 }
             }
             Column(
-                Modifier.padding(horizontal = if (small) 6.dp else 10.dp, vertical = if (small) 5.dp else 8.dp),
+                Modifier.padding(horizontal = if (size == CardSize.LARGE) 10.dp else 6.dp, vertical = if (small) 5.dp else 8.dp),
                 verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                     // Numéro devant le nom quand il n'a pas sa place sur le logo.
                     if (size == CardSize.MEDIUM) {
                         channel.channelNumber?.let {
-                            Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                it,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.alignByBaseline(),
+                            )
                         }
                     }
+                    // Nom sur deux lignes (hauteur fixe : vignettes alignées) ; complet en haut à droite.
                     Text(
                         channel.title,
-                        style = if (small) MaterialTheme.typography.labelMedium else MaterialTheme.typography.titleSmall,
-                        maxLines = 1,
+                        style = if (small) MaterialTheme.typography.labelSmall else MaterialTheme.typography.titleSmall,
+                        maxLines = 2,
+                        minLines = 2,
                         overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.alignByBaseline(),
                     )
                 }
                 if (!small) {

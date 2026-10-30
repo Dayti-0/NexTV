@@ -162,7 +162,7 @@ fun SourcesContent(
             ScreenHeader(
                 title = stringResource(R.string.sources_title),
                 subtitle = stringResource(R.string.sources_subtitle),
-                modifier = Modifier.padding(start = window.horizontalPadding - 12.dp, end = window.horizontalPadding, top = 12.dp, bottom = 8.dp),
+                modifier = Modifier.padding(start = window.horizontalPadding - 12.dp, end = window.horizontalPadding, top = window.topPadding, bottom = 8.dp),
                 navigation = { IconAction(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back), onBack) },
                 actions = {
                     if (state.items.isNotEmpty()) {

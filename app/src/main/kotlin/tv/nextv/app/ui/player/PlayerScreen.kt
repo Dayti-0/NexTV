@@ -511,7 +511,7 @@ fun ChannelMenu(
                     .focusRequester(panelFocus)
                     .focusable()
                     .statusBarsPadding()
-                    .padding(top = 20.dp),
+                    .padding(top = if (window.isTv) window.topPadding else 20.dp),
             ) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 24.dp),

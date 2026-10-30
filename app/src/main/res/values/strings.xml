@@ -258,6 +258,11 @@
     <string name="settings_tmdb_remove">Supprimer la clé</string>
     <string name="settings_proxy_on">Proxy activé : %1$s</string>
     <string name="settings_proxy_off">Aucun proxy : connexions directes.</string>
+    <string name="settings_network">Réseau</string>
+    <string name="settings_dns">DNS (résolution des adresses)</string>
+    <string name="settings_dns_system">Celui de l’appareil (fournisseur d’accès)</string>
+    <string name="settings_dns_public">%1$s (%2$s), chiffré</string>
+    <string name="settings_dns_help">OK pour changer. Si une playlist charge en 4G mais pas sur la box, le DNS du fournisseur d’accès la bloque peut-être : choisissez Quad9. Le DNS choisi sert à tout (playlists, guide, chaînes, images).</string>
     <string name="settings_proxy_configure">Configurer le proxy</string>
     <string name="settings_version">NexTV version %1$s</string>
     <string name="settings_update">Mise à jour</string>
@@ -308,8 +313,8 @@
     <string name="error_unsupported_scheme">Le protocole « %1$s » n’est pas pris en charge ici (HTTP ou HTTPS uniquement).</string>
     <string name="error_unsupported_source_type">Type de source non pris en charge par cette version.</string>
     <string name="error_timeout">Le serveur ne répond pas (délai dépassé).</string>
-    <string name="error_unknown_host">Serveur introuvable : %1$s. Vérifiez l’adresse et la connexion.</string>
-    <string name="error_connection_failed">Connexion au serveur impossible.</string>
+    <string name="error_unknown_host">Serveur introuvable : %1$s. Vérifiez l’adresse et la connexion. Si elle fonctionne sur un autre réseau (4G), choisissez le DNS Quad9 dans Réglages › Réseau.</string>
+    <string name="error_connection_failed">Connexion au serveur impossible. Si la playlist fonctionne sur un autre réseau (4G), choisissez le DNS Quad9 dans Réglages › Réseau.</string>
     <string name="error_tls">Connexion sécurisée impossible (certificat invalide ou non reconnu).</string>
     <string name="error_too_many_redirects">Trop de redirections (boucle probable).</string>
     <string name="error_unsupported_redirect">Le serveur redirige vers une adresse non prise en charge.</string>

@@ -22,6 +22,7 @@ import tv.nextv.app.data.update.UpdateState
 import tv.nextv.app.player.DecoderOption
 import tv.nextv.app.player.VideoDecoders
 import tv.nextv.core.model.PlaylistSource
+import tv.nextv.core.net.DnsProvider
 import tv.nextv.core.net.ProxySettings
 import tv.nextv.core.update.AppRelease
 
@@ -45,6 +46,7 @@ data class SettingsUiState(
     val decoders: List<DecoderChoice> = emptyList(),
     /** Chaînes et affiches par ligne à l'accueil. */
     val gridColumns: GridColumns = GridColumns(),
+    val dns: DnsProvider = DnsProvider.SYSTEM,
 )
 
 /** @property selected décodeur choisi, `null` : automatique. */
@@ -75,14 +77,21 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             VideoDecoders.CHOOSABLE.map { mime -> DecoderChoice(mime, available[mime].orEmpty(), preferred[mime]) }
         }
 
-    private data class Preferences(val autoQuality: Boolean, val tmdbKeySaved: Boolean, val proxy: ProxySettings, val grid: GridColumns)
+    private data class Preferences(
+        val autoQuality: Boolean,
+        val tmdbKeySaved: Boolean,
+        val proxy: ProxySettings,
+        val grid: GridColumns,
+        val dns: DnsProvider,
+    )
 
     private val preferences = combine(
         settings.autoQuality,
         settings.tmdbApiKey,
         settings.proxySettings,
         settings.gridColumns,
-    ) { autoQuality, tmdbKey, proxy, grid -> Preferences(autoQuality, tmdbKey != null, proxy, grid) }
+        settings.dnsProvider,
+    ) { autoQuality, tmdbKey, proxy, grid, dns -> Preferences(autoQuality, tmdbKey != null, proxy, grid, dns) }
 
     val state: StateFlow<SettingsUiState> = combine(
         activePlaylist,
@@ -106,6 +115,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             version = BuildConfig.VERSION_NAME,
             decoders = decoders,
             gridColumns = prefs.grid,
+            dns = prefs.dns,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
@@ -141,6 +151,13 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         val values = listOf<String?>(null) + choice.options.map { it.name }
         val next = values[(values.indexOf(choice.selected).coerceAtLeast(0) + 1) % values.size]
         viewModelScope.launch { settings.setPreferredDecoder(mimeType, next) }
+    }
+
+    /** Passe au résolveur suivant : système, Quad9, Cloudflare, Google. */
+    fun cycleDns() {
+        val values = DnsProvider.entries
+        val next = values[(values.indexOf(state.value.dns) + 1) % values.size]
+        viewModelScope.launch { settings.setDnsProvider(next) }
     }
 
     fun setGridColumns(columns: GridColumns) {

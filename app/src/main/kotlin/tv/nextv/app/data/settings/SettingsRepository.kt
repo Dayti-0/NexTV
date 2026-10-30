@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import tv.nextv.app.data.security.KeystoreSecretCipher
+import tv.nextv.core.net.DnsProvider
 import tv.nextv.core.net.ProxyScope
 import tv.nextv.core.net.ProxySettings
 import tv.nextv.core.net.ProxyType
@@ -108,6 +109,15 @@ class SettingsRepository(
         }
     }
 
+    /** Résolution des noms (DNS du système ou résolveur public en DNS sur HTTPS). */
+    val dnsProvider: Flow<DnsProvider> = dataStore.data
+        .map { prefs -> prefs[DNS_PROVIDER]?.let { name -> DnsProvider.entries.firstOrNull { it.name == name } } ?: DnsProvider.SYSTEM }
+        .distinctUntilChanged()
+
+    suspend fun setDnsProvider(provider: DnsProvider) {
+        dataStore.edit { it[DNS_PROVIDER] = provider.name }
+    }
+
     /** Clé TMDB saisie par l'utilisateur (chiffrée sur l'appareil). */
     val tmdbApiKey: Flow<String?> = dataStore.data
         .map { prefs -> prefs[TMDB_KEY]?.let(cipher::decrypt) }
@@ -153,6 +163,7 @@ class SettingsRepository(
         val AUTO_QUALITY = booleanPreferencesKey("auto_quality")
         val TMDB_KEY = stringPreferencesKey("tmdb_key")
         val CHANNEL_COLUMNS = intPreferencesKey("channel_columns")
+        val DNS_PROVIDER = stringPreferencesKey("dns_provider")
         val POSTER_COLUMNS = intPreferencesKey("poster_columns")
         const val DECODER_PREFIX = "decoder_"
     }

@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -147,12 +148,12 @@ class AppContainer(context: Context) {
     /** Applique les réglages enregistrés, prépare le masquage des secrets et les actualisations périodiques. */
     fun start() {
         applicationScope.launch {
-            settings.proxySettings.collect { proxy ->
+            combine(settings.proxySettings, settings.dnsProvider, ::Pair).collect { (proxy, dns) ->
                 proxy.credentials?.let {
                     redactor.registerSecret(it.username)
                     redactor.registerSecret(it.password)
                 }
-                httpClients.update(proxySettings = proxy)
+                httpClients.update(proxySettings = proxy, networkSettings = httpClients.networkSettings.copy(dns = dns))
             }
         }
         applicationScope.launch {

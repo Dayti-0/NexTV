@@ -154,7 +154,7 @@ fun DetailContent(
             Backdrop(details?.backdropUrl ?: details?.posterUrl ?: item?.logoUrl)
             LazyColumn(Modifier.fillMaxSize()) {
                 item {
-                    Row(Modifier.padding(start = window.horizontalPadding - 12.dp, top = 12.dp)) {
+                    Row(Modifier.padding(start = window.horizontalPadding - 12.dp, top = window.topPadding)) {
                         IconAction(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back), onBack, tint = Color.White)
                     }
                 }

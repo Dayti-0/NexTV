@@ -1,6 +1,8 @@
 package tv.nextv.app.ui.home
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -60,6 +62,8 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -82,6 +86,7 @@ import tv.nextv.app.ui.components.BrandMark
 import tv.nextv.app.ui.components.EmptyState
 import tv.nextv.app.ui.components.FocusSurface
 import tv.nextv.app.ui.components.fieldKeyboardOptions
+import tv.nextv.app.ui.components.RemoteTextField
 import tv.nextv.app.ui.components.openKeyboardOnOk
 import tv.nextv.app.ui.components.IconAction
 import tv.nextv.app.ui.components.PillButton
@@ -218,6 +223,8 @@ fun HomeContent(
     val window = rememberWindowInfo()
     // Dernière vignette ouverte : elle reprend le focus au retour sur l'accueil (télécommande).
     val lastOpened = rememberSaveable { mutableStateOf<String?>(null) }
+    // Vignette sélectionnée : son nom complet s'affiche en haut à droite (les vignettes le tronquent).
+    val focused = remember(section, category) { mutableStateOf<FocusedItem?>(null) }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -249,13 +256,14 @@ fun HomeContent(
                     actions = actions,
                     modifier = Modifier.weight(1f),
                     gridColumns = gridColumns,
+                    focusedItem = focused.value,
                 ) { grid ->
                     if (resumeItems != null && category == Category.ContinueWatching) {
-                        ContinueBody(resumeItems, grid, window, lastOpened, actions)
+                        ContinueBody(resumeItems, grid, window, lastOpened, actions, focused)
                     } else when (section) {
-                        HomeSection.TV -> TvBody(channels, favoriteChannels, category, favoriteKeys, reorder, now, grid, window, lastOpened, actions)
-                        HomeSection.MOVIES -> MoviesBody(movies, favoriteMovies, category, favoriteKeys, reorder, grid, window, lastOpened, actions)
-                        else -> SeriesBody(series, favoriteSeries, category, favoriteKeys, reorder, grid, window, lastOpened, actions)
+                        HomeSection.TV -> TvBody(channels, favoriteChannels, category, favoriteKeys, reorder, now, grid, window, lastOpened, actions, focused)
+                        HomeSection.MOVIES -> MoviesBody(movies, favoriteMovies, category, favoriteKeys, reorder, grid, window, lastOpened, actions, focused)
+                        else -> SeriesBody(series, favoriteSeries, category, favoriteKeys, reorder, grid, window, lastOpened, actions, focused)
                     }
                 }
             }
@@ -275,7 +283,7 @@ private fun HomeTopBar(section: HomeSection, sourceName: String, window: WindowI
         }
     }
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = window.horizontalPadding, vertical = 12.dp),
+        Modifier.fillMaxWidth().padding(start = window.horizontalPadding, end = window.horizontalPadding, top = window.topPadding, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Écran étroit : logo seul et onglets réduits à leur icône, pour que les quatre sections restent visibles.
@@ -370,6 +378,7 @@ private fun CatalogSection(
     actions: HomeActions,
     modifier: Modifier,
     gridColumns: GridColumns,
+    focusedItem: FocusedItem?,
     body: @Composable (grid: GridLayout) -> Unit,
 ) {
     val total = groups.sumOf { it.count }
@@ -406,7 +415,7 @@ private fun CatalogSection(
                     }
                 }
             }
-            SectionBody(section, category, groups, favoritesCount, resumeCount ?: 0, reorder, window, actions, Modifier.weight(1f), gridColumns, body)
+            SectionBody(section, category, groups, favoritesCount, resumeCount ?: 0, reorder, window, actions, Modifier.weight(1f), gridColumns, focusedItem, body)
         }
     } else {
         Column(modifier.fillMaxSize()) {
@@ -431,7 +440,7 @@ private fun CatalogSection(
                     }
                 }
             }
-            SectionBody(section, category, groups, favoritesCount, resumeCount ?: 0, reorder, window, actions, Modifier.weight(1f), gridColumns, body)
+            SectionBody(section, category, groups, favoritesCount, resumeCount ?: 0, reorder, window, actions, Modifier.weight(1f), gridColumns, focusedItem, body)
         }
     }
 }
@@ -448,6 +457,7 @@ private fun SectionBody(
     actions: HomeActions,
     modifier: Modifier,
     gridColumns: GridColumns,
+    focusedItem: FocusedItem?,
     body: @Composable (grid: GridLayout) -> Unit,
 ) {
     Column(modifier.fillMaxSize()) {
@@ -465,6 +475,7 @@ private fun SectionBody(
                 }
                 Text(itemCount(section, count), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            if (window.isWide && focusedItem != null) FocusedItemLabel(focusedItem, Modifier.weight(1.5f).padding(start = 24.dp, end = 8.dp))
             if (category == Category.Favorites && favoritesCount > 1) {
                 PillButton(
                     stringResource(if (reorder.active) R.string.favorites_reorder_done else R.string.favorites_reorder),
@@ -564,6 +575,7 @@ private fun TvBody(
     window: WindowInfo,
     lastOpened: MutableState<String?>,
     actions: HomeActions,
+    focused: MutableState<FocusedItem?>,
 ) {
     val padding = gridPadding(window)
     val favoritesMode = category == Category.Favorites
@@ -590,6 +602,7 @@ private fun TvBody(
         }
         val modifier = Modifier
             .restoreFocus(channel.itemKey, lastOpened)
+            .showWhenFocused(focused, FocusedItem(listOfNotNull(channel.channelNumber, channel.title).joinToString("  "), channel.nowTitle))
             .reorderKeys(moving, grid.columns) { actions.onMove(ContentKind.LIVE, channel.itemKey, it) }
         if (grid.columns == 1) {
             ChannelListItem(channel, now, channel.itemKey in favoriteKeys, onClick, onLongClick, modifier, moving)
@@ -602,7 +615,7 @@ private fun TvBody(
         contentPadding = padding,
         horizontalArrangement = Arrangement.spacedBy(grid.spacing),
         verticalArrangement = Arrangement.spacedBy(if (grid.columns == 1) 2.dp else grid.spacing),
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().onFocusChanged { if (!it.hasFocus) focused.value = null },
     ) {
         if (favoritesMode) {
             items(favorites.size, key = { favorites[it].itemKey }) { index -> card(favorites[index], true) }
@@ -625,6 +638,7 @@ private fun MoviesBody(
     window: WindowInfo,
     lastOpened: MutableState<String?>,
     actions: HomeActions,
+    focused: MutableState<FocusedItem?>,
 ) {
     val favoritesMode = category == Category.Favorites
     if (favoritesMode && favorites.isEmpty()) {
@@ -655,6 +669,7 @@ private fun MoviesBody(
             },
             modifier = Modifier
                 .restoreFocus(movie.itemKey, lastOpened)
+                .showWhenFocused(focused, FocusedItem(movie.title, movie.year?.toString()))
                 .reorderKeys(moving, grid.columns) { actions.onMove(ContentKind.MOVIE, movie.itemKey, it) },
             moving = moving,
             compact = grid.cellWidth < COMPACT_POSTER_WIDTH,
@@ -665,7 +680,7 @@ private fun MoviesBody(
         contentPadding = gridPadding(window),
         horizontalArrangement = Arrangement.spacedBy(grid.spacing),
         verticalArrangement = Arrangement.spacedBy(grid.spacing),
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().onFocusChanged { if (!it.hasFocus) focused.value = null },
     ) {
         if (favoritesMode) {
             items(favorites.size, key = { favorites[it].itemKey }) { index -> poster(favorites[index], true) }
@@ -688,6 +703,7 @@ private fun SeriesBody(
     window: WindowInfo,
     lastOpened: MutableState<String?>,
     actions: HomeActions,
+    focused: MutableState<FocusedItem?>,
 ) {
     val resources = LocalContext.current.resources
     val favoritesMode = category == Category.Favorites
@@ -719,6 +735,7 @@ private fun SeriesBody(
             },
             modifier = Modifier
                 .restoreFocus(show.itemKey, lastOpened)
+                .showWhenFocused(focused, FocusedItem(show.title, resources.getQuantityString(R.plurals.episodes_count, show.episodeCount, show.episodeCount)))
                 .reorderKeys(moving, grid.columns) { actions.onMove(ContentKind.SERIES, show.itemKey, it) },
             moving = moving,
             compact = grid.cellWidth < COMPACT_POSTER_WIDTH,
@@ -729,7 +746,7 @@ private fun SeriesBody(
         contentPadding = gridPadding(window),
         horizontalArrangement = Arrangement.spacedBy(grid.spacing),
         verticalArrangement = Arrangement.spacedBy(grid.spacing),
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().onFocusChanged { if (!it.hasFocus) focused.value = null },
     ) {
         if (favoritesMode) {
             items(favorites.size, key = { favorites[it].itemKey }) { index -> poster(favorites[index], true) }
@@ -749,6 +766,7 @@ private fun ContinueBody(
     window: WindowInfo,
     lastOpened: MutableState<String?>,
     actions: HomeActions,
+    focused: MutableState<FocusedItem?>,
 ) {
     if (items.isEmpty()) {
         EmptyState(Icons.Filled.PlayArrow, stringResource(R.string.home_continue_empty_title), stringResource(R.string.home_continue_empty))
@@ -759,7 +777,7 @@ private fun ContinueBody(
         contentPadding = gridPadding(window),
         horizontalArrangement = Arrangement.spacedBy(grid.spacing),
         verticalArrangement = Arrangement.spacedBy(grid.spacing),
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().onFocusChanged { if (!it.hasFocus) focused.value = null },
     ) {
         items(items.size, key = { items[it].itemKey }) { index ->
             val item = items[index]
@@ -782,10 +800,35 @@ private fun ContinueBody(
                     actions.onResume(item.channelId)
                 },
                 onLongClick = { actions.onClearProgress(item.itemKey) },
-                modifier = Modifier.restoreFocus(item.itemKey, lastOpened),
+                modifier = Modifier.restoreFocus(item.itemKey, lastOpened).showWhenFocused(focused, FocusedItem(item.title, subtitle)),
                 progress = if (item.durationMs > 0) item.positionMs.toFloat() / item.durationMs else null,
                 compact = grid.cellWidth < COMPACT_POSTER_WIDTH,
             )
+        }
+    }
+}
+
+/** Nom complet et détail de la vignette sélectionnée, affichés en haut à droite de la grille. */
+@Immutable
+private data class FocusedItem(val title: String, val detail: String?)
+
+private fun Modifier.showWhenFocused(focused: MutableState<FocusedItem?>, item: FocusedItem): Modifier =
+    onFocusChanged { if (it.isFocused) focused.value = item }
+
+/** Nom complet (défilant s'il est trop long) et détail : programme en cours, année… */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun FocusedItemLabel(item: FocusedItem, modifier: Modifier = Modifier) {
+    Column(modifier, horizontalAlignment = Alignment.End) {
+        Text(
+            item.title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            modifier = Modifier.basicMarquee(),
+        )
+        item.detail?.let {
+            Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -851,22 +894,25 @@ private fun CategoryChip(name: String, selected: Boolean, star: Boolean = false,
 
 @Composable
 private fun SearchField(query: String, hint: String, onQueryChange: (String) -> Unit, modifier: Modifier = Modifier) {
-    OutlinedTextField(
-        value = query,
-        onValueChange = onQueryChange,
-        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-        placeholder = { Text(hint, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        singleLine = true,
-        shape = CircleShape,
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-            unfocusedBorderColor = Color.Transparent,
-            focusedBorderColor = MaterialTheme.colorScheme.primary,
-        ),
-        keyboardOptions = fieldKeyboardOptions(),
-        modifier = modifier.fillMaxWidth().openKeyboardOnOk(),
-    )
+    RemoteTextField(modifier.fillMaxWidth()) { fieldModifier, interactionSource ->
+        OutlinedTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+            placeholder = { Text(hint, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            singleLine = true,
+            shape = CircleShape,
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                unfocusedBorderColor = Color.Transparent,
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+            ),
+            keyboardOptions = fieldKeyboardOptions(),
+            interactionSource = interactionSource,
+            modifier = fieldModifier.fillMaxWidth().openKeyboardOnOk(),
+        )
+    }
 }
 
 private val GRID_SPACING = 16.dp

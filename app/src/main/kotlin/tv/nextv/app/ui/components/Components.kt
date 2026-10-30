@@ -65,6 +65,15 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import kotlinx.coroutines.awaitCancellation
+import androidx.compose.ui.platform.LocalInputModeManager
+import androidx.compose.ui.input.InputMode
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.foundation.interaction.FocusInteraction
+import androidx.compose.foundation.focusable
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import tv.nextv.app.ui.theme.NexTvColors
@@ -80,6 +89,12 @@ data class WindowInfo(val isTv: Boolean, val widthDp: Int) {
 
     /** Marges latérales : zone de sécurité « overscan » sur TV. */
     val horizontalPadding: Dp get() = if (isTv) 48.dp else if (widthDp >= 600) 24.dp else 16.dp
+
+    /**
+     * Marge du haut des écrans. Sur TV, zone de sécurité « overscan » (27 dp) : beaucoup de
+     * téléviseurs rognent les bords de l'image, et une Fire TV ne le compense pas.
+     */
+    val topPadding: Dp get() = if (isTv) 27.dp else 12.dp
 }
 
 @Composable
@@ -92,14 +107,77 @@ fun rememberWindowInfo(): WindowInfo {
 // --- Champs de saisie à la télécommande -------------------------------------------------------------
 
 /**
- * Appareil piloté à la télécommande (TV, ou box qui ne se déclare pas comme TV mais n'a pas d'écran
- * tactile) : le clavier ne s'ouvre qu'avec OK, jamais en passant simplement sur un champ.
+ * Navigation à la télécommande : TV, appareil sans écran tactile, ou dernière action faite avec des
+ * touches (une box qui se déclare tactile, comme un Raspberry Pi, pilotée à la télécommande). Le
+ * clavier ne s'ouvre alors qu'avec OK, jamais en passant simplement sur un champ.
  */
 @Composable
 fun rememberKeyboardOnOkOnly(): Boolean {
     val context = LocalContext.current
     val isTv = rememberWindowInfo().isTv
-    return remember(isTv) { isTv || !context.packageManager.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN) }
+    val noTouch = remember(isTv) { isTv || !context.packageManager.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN) }
+    return noTouch || LocalInputModeManager.current.inputMode == InputMode.Keyboard
+}
+
+/**
+ * Champ de saisie à la télécommande : en naviguant, le focus s'arrête sur le champ sans l'activer
+ * (il s'affiche sélectionné, le clavier reste fermé) ; OK l'active et ouvre le clavier. Au toucher,
+ * le champ se comporte normalement.
+ *
+ * [field] reçoit le modificateur et la source d'interactions à donner au champ.
+ */
+@Composable
+fun RemoteTextField(
+    modifier: Modifier = Modifier,
+    field: @Composable (fieldModifier: Modifier, interactionSource: MutableInteractionSource) -> Unit,
+) {
+    val remote = rememberKeyboardOnOkOnly()
+    val interactionSource = remember { MutableInteractionSource() }
+    val fieldFocus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    var editing by remember { mutableStateOf(false) }
+    var frameFocused by remember { mutableStateOf(false) }
+    var fieldFocused by remember { mutableStateOf(false) }
+
+    // Cadre sélectionné : le champ prend l'apparence sélectionnée, sans recevoir le focus.
+    LaunchedEffect(frameFocused) {
+        if (!frameFocused) return@LaunchedEffect
+        val focus = FocusInteraction.Focus()
+        interactionSource.emit(focus)
+        try {
+            awaitCancellation()
+        } finally {
+            interactionSource.tryEmit(FocusInteraction.Unfocus(focus))
+        }
+    }
+    LaunchedEffect(editing) {
+        if (!editing) return@LaunchedEffect
+        runCatching { fieldFocus.requestFocus() }
+        keyboard?.show()
+    }
+    Box(
+        modifier
+            .onFocusChanged { frameFocused = it.isFocused }
+            .onPreviewKeyEvent { event ->
+                val isOk = event.key == Key.DirectionCenter || event.key == Key.Enter || event.key == Key.NumPadEnter
+                if (!frameFocused || !isOk) return@onPreviewKeyEvent false
+                if (event.type == KeyEventType.KeyUp) editing = true
+                true
+            }
+            .focusable(enabled = remote),
+    ) {
+        field(
+            Modifier
+                .onFocusChanged { state ->
+                    // Le champ quitté (navigation vers un autre élément) redevient inactif.
+                    if (fieldFocused && !state.isFocused) editing = false
+                    fieldFocused = state.isFocused
+                }
+                .focusRequester(fieldFocus)
+                .focusProperties { canFocus = !remote || editing },
+            interactionSource,
+        )
+    }
 }
 
 /** Options de clavier d'un champ : à la télécommande, pas d'ouverture automatique quand il reçoit le focus. */

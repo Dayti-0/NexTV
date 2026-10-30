@@ -64,6 +64,7 @@ import tv.nextv.app.ui.common.appViewModel
 import tv.nextv.app.ui.common.describe
 import tv.nextv.app.ui.components.FocusSurface
 import tv.nextv.app.ui.components.fieldKeyboardOptions
+import tv.nextv.app.ui.components.RemoteTextField
 import tv.nextv.app.ui.components.openKeyboardOnOk
 import tv.nextv.app.ui.components.IconAction
 import tv.nextv.app.ui.components.PillButton
@@ -143,7 +144,7 @@ fun SourceEditorContent(
         Column(Modifier.fillMaxSize().padding(padding)) {
             ScreenHeader(
                 title = stringResource(if (state.isNew) R.string.editor_title_new else R.string.editor_title_edit),
-                modifier = Modifier.padding(start = window.horizontalPadding - 12.dp, end = window.horizontalPadding, top = 12.dp, bottom = 8.dp),
+                modifier = Modifier.padding(start = window.horizontalPadding - 12.dp, end = window.horizontalPadding, top = window.topPadding, bottom = 8.dp),
                 navigation = { IconAction(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back), onBack) },
                 actions = {
                     PillButton(
@@ -377,21 +378,24 @@ fun NexTvTextField(
     visualTransformation: VisualTransformation = VisualTransformation.None,
     trailing: (@Composable () -> Unit)? = null,
 ) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        label = { Text(label) },
-        placeholder = placeholder?.let { text -> @Composable { Text(text) } },
-        singleLine = true,
-        isError = error != null,
-        supportingText = (error ?: help)?.let { text -> @Composable { Text(text) } },
-        keyboardOptions = fieldKeyboardOptions(keyboardType),
-        visualTransformation = visualTransformation,
-        trailingIcon = trailing,
-        shape = MaterialTheme.shapes.medium,
-        colors = nexTvTextFieldColors(),
-        modifier = modifier.fillMaxWidth().openKeyboardOnOk(),
-    )
+    RemoteTextField(modifier.fillMaxWidth()) { fieldModifier, interactionSource ->
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            label = { Text(label) },
+            placeholder = placeholder?.let { text -> @Composable { Text(text) } },
+            singleLine = true,
+            isError = error != null,
+            supportingText = (error ?: help)?.let { text -> @Composable { Text(text) } },
+            keyboardOptions = fieldKeyboardOptions(keyboardType),
+            visualTransformation = visualTransformation,
+            trailingIcon = trailing,
+            shape = MaterialTheme.shapes.medium,
+            colors = nexTvTextFieldColors(),
+            interactionSource = interactionSource,
+            modifier = fieldModifier.fillMaxWidth().openKeyboardOnOk(),
+        )
+    }
 }
 
 @Composable
