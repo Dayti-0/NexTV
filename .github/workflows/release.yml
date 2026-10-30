@@ -116,6 +116,8 @@ jobs:
           APK="NexTV-${TAG}.apk"
           cp app/build/outputs/apk/release/app-release.apk "$APK"
           sha256sum "$APK" > "$APK.sha256"
+          # Nom fixe : lien stable vers la dernière version (…/releases/latest/download/NexTV.apk).
+          cp "$APK" NexTV.apk
           if [ -n "$PRIVATE_KEY" ]; then
             SIGNING="Signé avec la clé privée du projet : les versions suivantes s'installent par-dessus celle-ci (Réglages › Mise à jour), playlists et réglages conservés. En venant d'une version signée autrement (0.2.1 ou plus ancienne), désinstallez-la d'abord."
           else
@@ -141,6 +143,7 @@ jobs:
           - Proxy HTTP/SOCKS pour les playlists, le guide et les flux
 
           **Installation** : téléchargez \`${APK}\`, autorisez l'installation depuis des sources inconnues puis ouvrez le fichier.
+          Lien permanent vers la dernière version (Fire TV, app Downloader) : https://github.com/${UPDATE_REPO}/releases/latest/download/NexTV.apk
 
           ${SIGNING}
           NOTES
@@ -151,8 +154,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           PRERELEASE=""
-          case "$TAG" in v0.*|*-*) PRERELEASE="--prerelease" ;; esac
-          gh release create "$TAG" "$APK" "$APK.sha256" \
+          case "$TAG" in *-*) PRERELEASE="--prerelease" ;; esac
+          gh release create "$TAG" "$APK" "$APK.sha256" NexTV.apk \
             --target "$GITHUB_SHA" \
             --title "NexTV ${TAG}" \
             --notes-file notes.md \
@@ -164,8 +167,8 @@ jobs:
           GH_TOKEN: ${{ secrets.NEXTV_RELEASES_TOKEN }}
         run: |
           PRERELEASE=""
-          case "$TAG" in v0.*|*-*) PRERELEASE="--prerelease" ;; esac
-          gh release create "$TAG" "$APK" "$APK.sha256" \
+          case "$TAG" in *-*) PRERELEASE="--prerelease" ;; esac
+          gh release create "$TAG" "$APK" "$APK.sha256" NexTV.apk \
             --repo "$RELEASES_REPO" \
             --title "NexTV ${TAG}" \
             --notes-file notes.md \

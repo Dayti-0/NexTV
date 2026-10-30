@@ -121,7 +121,10 @@ et génère des captures d'écran (Roborazzi, téléphone et TV) publiées sur l
 Le workflow `Release` se déclenche en poussant un tag `v*` (ex. `git tag v0.1.0 && git push origin v0.1.0`),
 une branche `release/vX.Y.Z`, ou manuellement depuis l'onglet Actions avec la version voulue.
 Il exécute les tests, construit l'APK release (R8) puis publie une release GitHub avec l'APK et son
-empreinte SHA-256, en créant le tag s'il n'existe pas (versions `v0.*` ou `*-…` publiées en pré-version).
+empreinte SHA-256, en créant le tag s'il n'existe pas (versions `*-…` publiées en pré-version). Chaque version
+contient aussi `NexTV.apk` : lien permanent vers la dernière version,
+`https://github.com/Dayti-0/NexTV/releases/latest/download/NexTV.apk` (dépôt public), utilisable avec un code
+de l'application Downloader (Fire TV) créé sur go.aftvnews.com.
 
 Clé TMDB : le secret facultatif `NEXTV_TMDB_API_KEY` l'intègre à l'APK (une clé saisie dans les réglages reste prioritaire).
 
