@@ -38,6 +38,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
@@ -45,9 +46,11 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import tv.nextv.app.R
+import tv.nextv.app.player.VideoDecoders
 import tv.nextv.app.ui.common.appViewModel
 import tv.nextv.app.ui.common.describe
 import tv.nextv.app.ui.common.relativeTime
+import tv.nextv.app.ui.components.FocusSurface
 import tv.nextv.app.ui.components.IconAction
 import tv.nextv.app.ui.components.PillButton
 import tv.nextv.app.ui.components.PillStyle
@@ -94,6 +97,7 @@ fun SettingsScreen(onBack: () -> Unit, onPlaylists: () -> Unit, onProxy: () -> U
         onSaveTmdbKey = viewModel::saveTmdbKey,
         onClearTmdbKey = viewModel::clearTmdbKey,
         onProxy = onProxy,
+        onCycleDecoder = viewModel::cycleDecoder,
     )
 }
 
@@ -111,6 +115,7 @@ fun SettingsContent(
     onSaveTmdbKey: (String) -> Unit,
     onClearTmdbKey: () -> Unit,
     onProxy: () -> Unit,
+    onCycleDecoder: (String) -> Unit = {},
     now: Long = System.currentTimeMillis(),
 ) {
     val window = rememberWindowInfo()
@@ -173,6 +178,8 @@ fun SettingsContent(
                             checked = state.autoQuality,
                             onChange = onAutoQuality,
                         )
+                        state.decoders.forEach { choice -> DecoderRow(choice) { onCycleDecoder(choice.mimeType) } }
+                        if (state.decoders.isNotEmpty()) InfoText(stringResource(R.string.settings_decoder_help))
                     }
 
                     // Guide TV commun.
@@ -267,6 +274,40 @@ fun SettingsContent(
 
 /** « Il y a 5 minutes » → « il y a 5 minutes », en milieu de phrase. */
 private fun String.lowercaseFirst(): String = replaceFirstChar { it.lowercaseChar() }
+
+/** Décodeur d'un codec : OK passe au choix suivant (automatique, puis chaque décodeur de l'appareil). */
+@Composable
+private fun DecoderRow(choice: DecoderChoice, onClick: () -> Unit) {
+    val selected = choice.options.firstOrNull { it.name == choice.selected }
+    val value = when {
+        choice.options.isEmpty() -> stringResource(R.string.settings_decoder_none)
+        selected == null -> stringResource(R.string.settings_decoder_auto)
+        else -> stringResource(
+            if (selected.hardware) R.string.settings_decoder_hardware else R.string.settings_decoder_software,
+            selected.name,
+        )
+    }
+    FocusSurface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        color = Color.Transparent,
+        focusedColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+        focusScale = 1f,
+        enabled = choice.options.isNotEmpty(),
+    ) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    stringResource(if (choice.mimeType == VideoDecoders.HEVC) R.string.settings_decoder_hevc else R.string.settings_decoder_avc),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(value, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text("›", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
 
 @Composable
 private fun InfoText(text: String) {

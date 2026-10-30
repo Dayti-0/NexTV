@@ -108,4 +108,53 @@ class QualitySwitcherTest {
         assertFalse(switcher(options = listOf(fhd)).isAdaptive)
         assertTrue(switcher().isAdaptive)
     }
+
+    @Test
+    fun `too many dropped frames steps down to a lower quality and never comes back`() {
+        val uhd = QualityOption(5, StreamQuality.UHD)
+        val uhdBackup = QualityOption(6, StreamQuality.UHD)
+        val switcher = switcher(initial = 5, options = listOf(uhd, uhdBackup, fhd))
+
+        assertEquals(QualitySwitcher.Decision.Stay, switcher.onDroppedFrames(50))
+        now += 5_000
+        // Une autre version 4K poserait le même problème : passage direct en FHD.
+        assertEquals(QualitySwitcher.Decision.Switch(fhd, QualitySwitcher.Reason.DECODER), switcher.onDroppedFrames(50))
+
+        now += 600_000
+        assertEquals(QualitySwitcher.Decision.Stay, switcher.evaluate(bandwidthBps = 200_000_000))
+    }
+
+    @Test
+    fun `dropped frames spread over time are tolerated`() {
+        val switcher = switcher()
+        repeat(5) {
+            assertEquals(QualitySwitcher.Decision.Stay, switcher.onDroppedFrames(30))
+            now += 20_000
+        }
+    }
+
+    @Test
+    fun `dropped frames do nothing when automatic quality is off`() {
+        val switcher = switcher(enabled = false)
+
+        assertEquals(QualitySwitcher.Decision.Stay, switcher.onDroppedFrames(500))
+    }
+
+    @Test
+    fun `a limit seen on another channel starts below it`() {
+        val uhd = QualityOption(5, StreamQuality.UHD)
+        val switcher = QualitySwitcher(listOf(uhd, fhd, hd), 5, clock = { now }, decoderCeilingRank = StreamQuality.UHD.rank)
+
+        assertEquals(fhd, switcher.current)
+        now += 600_000
+        assertEquals(QualitySwitcher.Decision.Stay, switcher.evaluate(bandwidthBps = 200_000_000))
+    }
+
+    @Test
+    fun `the limit is ignored when automatic quality is off`() {
+        val uhd = QualityOption(5, StreamQuality.UHD)
+        val switcher = QualitySwitcher(listOf(uhd, fhd), 5, enabled = false, clock = { now }, decoderCeilingRank = StreamQuality.UHD.rank)
+
+        assertEquals(uhd, switcher.current)
+    }
 }

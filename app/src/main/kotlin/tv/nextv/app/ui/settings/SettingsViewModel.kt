@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -15,6 +16,8 @@ import kotlinx.coroutines.launch
 import tv.nextv.app.AppContainer
 import tv.nextv.app.BuildConfig
 import tv.nextv.app.RefreshController
+import tv.nextv.app.player.DecoderOption
+import tv.nextv.app.player.VideoDecoders
 import tv.nextv.core.model.PlaylistSource
 
 data class SettingsUiState(
@@ -33,7 +36,12 @@ data class SettingsUiState(
     val proxyEnabled: Boolean = false,
     val proxyAddress: String? = null,
     val version: String = "",
+    /** Décodeurs vidéo proposés par l'appareil et choix de l'utilisateur, par codec. */
+    val decoders: List<DecoderChoice> = emptyList(),
 )
+
+/** @property selected décodeur choisi, `null` : automatique. */
+data class DecoderChoice(val mimeType: String, val options: List<DecoderOption>, val selected: String?)
 
 /** Réglages : playlist active, lecture, guide TV, fiches TMDB et réseau. */
 class SettingsViewModel(private val container: AppContainer) : ViewModel() {
@@ -51,6 +59,15 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         .map { container.epgFeed.cached()?.fetchedAtMillis }
         .flowOn(Dispatchers.IO)
 
+    /** Liste des décodeurs (interroge le système une fois, hors du fil principal). */
+    private val availableDecoders: Flow<Map<String, List<DecoderOption>>> =
+        flow { emit(VideoDecoders.CHOOSABLE.associateWith { VideoDecoders.list(it) }) }.flowOn(Dispatchers.IO)
+
+    private val decoderChoices: Flow<List<DecoderChoice>> =
+        combine(availableDecoders, settings.preferredDecoders) { available, preferred ->
+            VideoDecoders.CHOOSABLE.map { mime -> DecoderChoice(mime, available[mime].orEmpty(), preferred[mime]) }
+        }
+
     private val preferences = combine(
         settings.autoQuality,
         settings.tmdbApiKey,
@@ -62,7 +79,8 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         repository.refreshing,
         guideDownloadedAt,
         preferences,
-    ) { (playlist, count), refreshing, downloadedAt, (autoQuality, tmdbKeySaved, proxy) ->
+        decoderChoices,
+    ) { (playlist, count), refreshing, downloadedAt, (autoQuality, tmdbKeySaved, proxy), decoders ->
         SettingsUiState(
             loaded = true,
             playlist = playlist,
@@ -75,6 +93,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             proxyEnabled = proxy.enabled,
             proxyAddress = proxy.host.takeIf { proxy.enabled && it.isNotBlank() }?.let { "$it:${proxy.port}" },
             version = BuildConfig.VERSION_NAME,
+            decoders = decoders,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
@@ -93,6 +112,14 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     fun setAutoQuality(enabled: Boolean) {
         viewModelScope.launch { settings.setAutoQuality(enabled) }
+    }
+
+    /** Passe au décodeur suivant pour ce codec : automatique, puis chaque décodeur proposé. */
+    fun cycleDecoder(mimeType: String) {
+        val choice = state.value.decoders.firstOrNull { it.mimeType == mimeType } ?: return
+        val values = listOf<String?>(null) + choice.options.map { it.name }
+        val next = values[(values.indexOf(choice.selected).coerceAtLeast(0) + 1) % values.size]
+        viewModelScope.launch { settings.setPreferredDecoder(mimeType, next) }
     }
 
     fun saveTmdbKey(key: String) {

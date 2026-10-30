@@ -10,9 +10,11 @@ import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
+import androidx.media3.common.Format
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
@@ -38,6 +40,7 @@ import tv.nextv.app.data.db.ChannelListRow
 import tv.nextv.app.data.db.GroupRow
 import tv.nextv.app.data.db.HeaderCodec
 import tv.nextv.app.player.PlaybackRequest
+import tv.nextv.app.player.VideoDecoders
 import tv.nextv.app.player.describePlaybackError
 import tv.nextv.app.ui.common.describe
 import tv.nextv.app.ui.home.Category
@@ -76,6 +79,24 @@ data class PlayerUiState(
     val bandwidthMbps: Double? = null,
     /** Incrémenté à chaque changement de chaîne : le bandeau se réaffiche. */
     val channelVersion: Int = 0,
+    /** Détails techniques de la lecture en cours (panneau « Infos de lecture »). */
+    val info: PlaybackInfo = PlaybackInfo(),
+)
+
+/** Ce que le lecteur décode réellement : formats, décodeurs, images perdues. */
+data class PlaybackInfo(
+    val videoMimeType: String? = null,
+    val width: Int? = null,
+    val height: Int? = null,
+    val frameRate: Float? = null,
+    val videoDecoder: String? = null,
+    /** Vrai : décodeur matériel ; faux : logiciel ; `null` : inconnu. */
+    val hardwareDecoder: Boolean? = null,
+    val audioMimeType: String? = null,
+    val audioChannels: Int? = null,
+    val audioDecoder: String? = null,
+    /** Images perdues depuis le début de la lecture de cette version. */
+    val droppedFrames: Int = 0,
 )
 
 /** Menu latéral des chaînes, ouvert par « Retour » pendant la lecture. */
@@ -146,6 +167,10 @@ class PlayerViewModel(
     private var loadJob: Job? = null
     private var switcher: QualitySwitcher? = null
     private var autoQuality = true
+    private var preferredDecoders: Map<String, String> = emptyMap()
+
+    /** Qualité que l'appareil n'a pas su décoder (images perdues), retenue d'une chaîne à l'autre. */
+    private var decoderCeilingRank: Int? = null
     private val bandwidthMeter: DefaultBandwidthMeter = container.playerFactory.newBandwidthMeter()
 
     private val listener = object : Player.Listener {
@@ -169,11 +194,79 @@ class PlayerViewModel(
         ) {
             mutableState.update { it.copy(bandwidthMbps = bitrateEstimate / 1_000_000.0) }
         }
+
+        override fun onVideoInputFormatChanged(
+            eventTime: AnalyticsListener.EventTime,
+            format: Format,
+            decoderReuseEvaluation: DecoderReuseEvaluation?,
+        ) {
+            updateInfo {
+                it.copy(
+                    videoMimeType = format.sampleMimeType,
+                    width = format.width.takeIf { w -> w > 0 },
+                    height = format.height.takeIf { h -> h > 0 },
+                    frameRate = format.frameRate.takeIf { f -> f > 0f },
+                )
+            }
+        }
+
+        override fun onVideoDecoderInitialized(
+            eventTime: AnalyticsListener.EventTime,
+            decoderName: String,
+            initializedTimestampMs: Long,
+            initializationDurationMs: Long,
+        ) {
+            updateInfo { it.copy(videoDecoder = decoderName) }
+        }
+
+        override fun onAudioInputFormatChanged(
+            eventTime: AnalyticsListener.EventTime,
+            format: Format,
+            decoderReuseEvaluation: DecoderReuseEvaluation?,
+        ) {
+            updateInfo { it.copy(audioMimeType = format.sampleMimeType, audioChannels = format.channelCount.takeIf { c -> c > 0 }) }
+        }
+
+        override fun onAudioDecoderInitialized(
+            eventTime: AnalyticsListener.EventTime,
+            decoderName: String,
+            initializedTimestampMs: Long,
+            initializationDurationMs: Long,
+        ) {
+            updateInfo { it.copy(audioDecoder = decoderName) }
+        }
+
+        override fun onDroppedVideoFrames(eventTime: AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long) {
+            updateInfo { it.copy(droppedFrames = it.droppedFrames + droppedFrames) }
+            // L'appareil ne suit pas cette qualité (4K sur une petite box…) : version inférieure si elle existe.
+            val decision = switcher?.onDroppedFrames(droppedFrames)
+            if (decision is QualitySwitcher.Decision.Switch) {
+                decoderCeilingRank = switcher?.decoderCeilingRank
+                switchQuality(decision)
+            }
+        }
+    }
+
+    /** Met à jour les infos de lecture ; le type de décodeur (matériel ou logiciel) est déduit dès que possible. */
+    private fun updateInfo(transform: (PlaybackInfo) -> PlaybackInfo) {
+        mutableState.update { state ->
+            val info = transform(state.info)
+            val decoder = info.videoDecoder
+            val resolved = if (decoder != null && info.hardwareDecoder == null) {
+                info.copy(hardwareDecoder = VideoDecoders.isHardware(info.videoMimeType, decoder))
+            } else {
+                info
+            }
+            state.copy(info = resolved)
+        }
     }
 
     init {
         viewModelScope.launch {
             container.settings.autoQuality.collect { autoQuality = it }
+        }
+        viewModelScope.launch {
+            container.settings.preferredDecoders.collect { preferredDecoders = it }
         }
         load(channelId)
         viewModelScope.launch {
@@ -257,7 +350,13 @@ class PlayerViewModel(
             .map { QualityOption(it.id, StreamQuality.entries.firstOrNull { q -> q.name == it.quality }) }
         val startId = if (options.any { it.channelId == requested.id }) requested.id else options.firstOrNull()?.channelId ?: requested.id
         switcher = if (options.size > 1) {
-            QualitySwitcher(options, startId, enabled = autoQuality, clock = System::currentTimeMillis)
+            QualitySwitcher(
+                options,
+                startId,
+                enabled = autoQuality,
+                clock = System::currentTimeMillis,
+                decoderCeilingRank = decoderCeilingRank,
+            )
         } else {
             null
         }
@@ -278,7 +377,8 @@ class PlayerViewModel(
             )
         }
         refreshProgrammes()
-        val variant = if (startId == requested.id) requested else dao.get(startId) ?: requested
+        val firstId = switcher?.current?.channelId ?: startId
+        val variant = if (firstId == requested.id) requested else dao.get(firstId) ?: requested
         playVariant(variant, notice = null)
     }
 
@@ -313,7 +413,11 @@ class PlayerViewModel(
 
     private fun switchQuality(decision: QualitySwitcher.Decision.Switch) {
         val notice = resources.getString(
-            if (decision.reason == QualitySwitcher.Reason.UPGRADE) R.string.player_quality_up else R.string.player_quality_down,
+            when (decision.reason) {
+                QualitySwitcher.Reason.UPGRADE -> R.string.player_quality_up
+                QualitySwitcher.Reason.DECODER -> R.string.player_quality_decoder
+                QualitySwitcher.Reason.ERROR, QualitySwitcher.Reason.BUFFERING -> R.string.player_quality_down
+            },
             decision.option.quality?.label ?: resources.getString(R.string.player_quality_unknown),
         )
         container.logger.info(TAG, "Qualité ${decision.reason} → ${decision.option.quality}")
@@ -336,7 +440,8 @@ class PlayerViewModel(
     private fun start(forceHls: Boolean) {
         val playbackRequest = request ?: return
         releasePlayer()
-        val player = container.playerFactory.create(playbackRequest, bandwidthMeter).apply {
+        mutableState.update { it.copy(info = PlaybackInfo()) }
+        val player = container.playerFactory.create(playbackRequest, bandwidthMeter, preferredDecoders).apply {
             addListener(listener)
             addAnalyticsListener(analytics)
             setMediaItem(container.playerFactory.mediaItem(playbackRequest.stream, forceHls))

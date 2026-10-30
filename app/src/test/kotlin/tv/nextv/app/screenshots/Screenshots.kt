@@ -35,6 +35,7 @@ import tv.nextv.app.ui.home.HomeContent
 import tv.nextv.app.ui.home.HomeSection
 import tv.nextv.app.ui.home.ReorderState
 import tv.nextv.app.ui.player.ChannelMenu
+import tv.nextv.app.ui.player.PlaybackInfoPanel
 import tv.nextv.app.ui.player.PlayerOverlay
 import tv.nextv.app.ui.settings.ProxySettingsContent
 import tv.nextv.app.ui.settings.SettingsContent
@@ -166,6 +167,16 @@ abstract class ScreenshotSuite(private val device: String) {
             onZap = {},
             onRetry = {},
         )
+    }
+
+    @Test
+    fun playerInfo() = capture("13b_lecteur_infos") {
+        FakeVideo()
+        val state = SampleData.player.copy(bandwidthMbps = 21.6, quality = "4K", info = SampleData.playbackInfo)
+        PlayerOverlay(state = state, now = SampleData.NOW, visible = false, showTouchControls = false, onBack = {}, onZap = {}, onRetry = {})
+        Box(Modifier.fillMaxSize()) {
+            PlaybackInfoPanel(state = state, visible = true, modifier = Modifier.align(Alignment.TopEnd))
+        }
     }
 
     @Test

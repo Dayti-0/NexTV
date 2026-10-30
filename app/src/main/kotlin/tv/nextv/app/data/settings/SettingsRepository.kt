@@ -67,6 +67,30 @@ class SettingsRepository(
         dataStore.edit { it[AUTO_QUALITY] = enabled }
     }
 
+    /**
+     * Décodeur vidéo choisi par type de flux (`video/hevc`, `video/avc`…) ; absent : choix automatique
+     * (matériel en priorité, repli sur un autre décodeur en cas d'échec).
+     */
+    val preferredDecoders: Flow<Map<String, String>> = dataStore.data
+        .map { prefs ->
+            prefs.asMap().mapNotNull { (key, value) ->
+                val mime = key.name.removePrefix(DECODER_PREFIX).takeIf { key.name.startsWith(DECODER_PREFIX) }
+                if (mime != null && value is String) mime to value else null
+            }.toMap()
+        }
+        .distinctUntilChanged()
+
+    suspend fun setPreferredDecoder(mimeType: String, decoderName: String?) {
+        val key = stringPreferencesKey(DECODER_PREFIX + mimeType)
+        dataStore.edit { prefs ->
+            if (decoderName != null) {
+                prefs[key] = decoderName
+            } else {
+                prefs.remove(key)
+            }
+        }
+    }
+
     /** Clé TMDB saisie par l'utilisateur (chiffrée sur l'appareil). */
     val tmdbApiKey: Flow<String?> = dataStore.data
         .map { prefs -> prefs[TMDB_KEY]?.let(cipher::decrypt) }
@@ -111,5 +135,6 @@ class SettingsRepository(
         val ACTIVE_PLAYLIST = longPreferencesKey("active_playlist")
         val AUTO_QUALITY = booleanPreferencesKey("auto_quality")
         val TMDB_KEY = stringPreferencesKey("tmdb_key")
+        const val DECODER_PREFIX = "decoder_"
     }
 }

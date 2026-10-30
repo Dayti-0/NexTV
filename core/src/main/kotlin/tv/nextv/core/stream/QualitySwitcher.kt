@@ -11,9 +11,14 @@ data class QualityOption(val channelId: Long, val quality: StreamQuality?)
  * - Erreur de lecture, mise en mémoire tampon prolongée ou répétée : passage à la version
  *   inférieure disponible. Jamais vers une autre chaîne : seules les [options] fournies
  *   (versions de la chaîne regardée) sont envisagées.
+ * - Trop d'images perdues par le décodeur (l'appareil ne suit pas, typiquement en 4K) : passage
+ *   à une qualité inférieure, et plus de retour à cette qualité pour la chaîne en cours.
  * - Lecture stable et débit mesuré suffisant : retour progressif à une meilleure version.
  * - Une version en échec n'est réessayée qu'après un délai, doublé à chaque nouvel échec.
  * - Désactivé ([enabled] faux) : aucune bascule, une erreur est simplement signalée.
+ *
+ * @param decoderCeilingRank limite déjà constatée sur cet appareil (autre chaîne) : la lecture
+ * commence directement sous cette qualité si une version le permet.
  */
 class QualitySwitcher(
     options: List<QualityOption>,
@@ -21,6 +26,7 @@ class QualitySwitcher(
     private val enabled: Boolean = true,
     private val config: Config = Config(),
     private val clock: () -> Long = System::currentTimeMillis,
+    decoderCeilingRank: Int? = null,
 ) {
     data class Config(
         val maxContinuousBufferingMillis: Long = 12_000,
@@ -30,9 +36,12 @@ class QualitySwitcher(
         val upgradeHeadroom: Double = 1.4,
         val failureCooldownMillis: Long = 5 * 60_000,
         val maxFailureCooldownMillis: Long = 60 * 60_000,
+        /** Images perdues tolérées sur [droppedFramesWindowMillis] avant de juger que l'appareil ne suit pas. */
+        val maxDroppedFramesInWindow: Int = 60,
+        val droppedFramesWindowMillis: Long = 15_000,
     )
 
-    enum class Reason { ERROR, BUFFERING, UPGRADE }
+    enum class Reason { ERROR, BUFFERING, DECODER, UPGRADE }
 
     sealed interface Decision {
         data object Stay : Decision
@@ -57,6 +66,19 @@ class QualitySwitcher(
     private val cooldownUntil = HashMap<Long, Long>()
     private val rebuffers = ArrayDeque<Long>()
     private var bufferingSince: Long? = null
+    private val droppedFrames = ArrayDeque<Pair<Long, Int>>()
+
+    /** Rang de qualité que l'appareil n'a pas su décoder : aucune remontée à ce rang ou au-dessus. */
+    var decoderCeilingRank: Int? = decoderCeilingRank.takeIf { enabled }
+        private set
+
+    init {
+        val ceiling = this.decoderCeilingRank
+        if (ceiling != null && StreamQuality.rankOf(ladder[index].quality) >= ceiling) {
+            val below = ladder.indexOfFirst { StreamQuality.rankOf(it.quality) < ceiling }
+            if (below >= 0) index = below
+        }
+    }
     private var stableSince: Long = clock()
 
     val current: QualityOption get() = ladder[index]
@@ -83,6 +105,24 @@ class QualitySwitcher(
         return lower()?.let { switchTo(it, Reason.ERROR) } ?: Decision.GiveUp
     }
 
+    /**
+     * Images perdues par le décodeur vidéo (signalées par lots par le lecteur). Au-delà du seuil,
+     * l'appareil ne suit pas cette qualité : passage à une qualité strictement inférieure.
+     */
+    fun onDroppedFrames(count: Int): Decision {
+        if (count <= 0 || !isAdaptive) return Decision.Stay
+        val now = clock()
+        droppedFrames.addLast(now to count)
+        while (droppedFrames.isNotEmpty() && now - droppedFrames.first().first > config.droppedFramesWindowMillis) droppedFrames.removeFirst()
+        if (droppedFrames.sumOf { it.second } < config.maxDroppedFramesInWindow) return Decision.Stay
+
+        val currentRank = StreamQuality.rankOf(current.quality)
+        // Une autre version de même qualité poserait le même problème au décodeur.
+        val target = lower { StreamQuality.rankOf(it.quality) < currentRank } ?: return Decision.Stay
+        decoderCeilingRank = minOf(decoderCeilingRank ?: currentRank, currentRank)
+        return switchTo(target, Reason.DECODER)
+    }
+
     /** À appeler régulièrement pendant la lecture. @param bandwidthBps débit mesuré, en bits/s. */
     fun evaluate(bandwidthBps: Long?): Decision {
         if (!isAdaptive) return Decision.Stay
@@ -107,20 +147,24 @@ class QualitySwitcher(
         return Decision.Stay
     }
 
-    private fun lower(): QualityOption? {
+    private fun lower(accept: (QualityOption) -> Boolean = { true }): QualityOption? {
         val now = clock()
-        return ladder.drop(index + 1).firstOrNull { (cooldownUntil[it.channelId] ?: 0) <= now }
+        return ladder.drop(index + 1).firstOrNull { (cooldownUntil[it.channelId] ?: 0) <= now && accept(it) }
     }
 
     private fun higher(): QualityOption? {
         val now = clock()
-        return ladder.take(index).lastOrNull { (cooldownUntil[it.channelId] ?: 0) <= now }
+        val ceiling = decoderCeilingRank
+        return ladder.take(index).lastOrNull {
+            (cooldownUntil[it.channelId] ?: 0) <= now && (ceiling == null || StreamQuality.rankOf(it.quality) < ceiling)
+        }
     }
 
     private fun switchTo(option: QualityOption, reason: Reason): Decision {
         index = ladder.indexOf(option)
         bufferingSince = null
         rebuffers.clear()
+        droppedFrames.clear()
         stableSince = clock()
         return Decision.Switch(option, reason)
     }

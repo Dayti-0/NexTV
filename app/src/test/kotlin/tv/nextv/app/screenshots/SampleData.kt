@@ -15,6 +15,7 @@ import tv.nextv.app.ui.guide.GuideChannel
 import tv.nextv.app.ui.guide.GuideProgramme
 import tv.nextv.app.ui.guide.GuideUiState
 import tv.nextv.app.ui.player.ChannelMenuState
+import tv.nextv.app.ui.player.PlaybackInfo
 import tv.nextv.app.ui.player.PlayerProgramme
 import tv.nextv.app.ui.player.PlayerUiState
 import tv.nextv.app.ui.settings.ProxyFormState
@@ -285,6 +286,19 @@ object SampleData {
         guideDownloadedAt = NOW - 95 * MINUTE,
         proxyEnabled = false,
         version = "0.2.0",
+    )
+
+    val playbackInfo = PlaybackInfo(
+        videoMimeType = "video/hevc",
+        width = 3840,
+        height = 2160,
+        frameRate = 50f,
+        videoDecoder = "c2.example.hevc.decoder",
+        hardwareDecoder = true,
+        audioMimeType = "audio/eac3",
+        audioChannels = 6,
+        audioDecoder = "c2.android.eac3.decoder",
+        droppedFrames = 37,
     )
 
     val menu = ChannelMenuState(open = true, currentChannelId = 8, initialIndex = 7)

@@ -7,6 +7,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
@@ -47,7 +48,12 @@ class PlayerFactory(
     /** Mesure du débit réel des téléchargements du flux (voir [create]). */
     fun newBandwidthMeter(): DefaultBandwidthMeter = DefaultBandwidthMeter.Builder(context).build()
 
-    fun create(request: PlaybackRequest, bandwidthMeter: DefaultBandwidthMeter? = null): ExoPlayer {
+    /** @param preferredDecoders décodeur choisi par type de flux (réglages), essayé en premier. */
+    fun create(
+        request: PlaybackRequest,
+        bandwidthMeter: DefaultBandwidthMeter? = null,
+        preferredDecoders: Map<String, String> = emptyMap(),
+    ): ExoPlayer {
         val baseClient = clients.client(RequestPurpose.STREAM)
         val origin = request.credentialsOrigin?.toHttpUrlOrNull()
         val client = if (request.credentials != null && origin != null) {
@@ -67,7 +73,11 @@ class PlayerFactory(
             .setDefaultRequestProperties(headers - "User-Agent")
         val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
 
-        val builder = ExoPlayer.Builder(context).setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
+        // Repli automatique sur un autre décodeur si le premier ne démarre pas (box aux décodeurs capricieux).
+        val renderers = DefaultRenderersFactory(context)
+            .setEnableDecoderFallback(true)
+            .setMediaCodecSelector(VideoDecoders.selector(preferredDecoders))
+        val builder = ExoPlayer.Builder(context, renderers).setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
         if (bandwidthMeter != null) builder.setBandwidthMeter(bandwidthMeter)
         return builder.build()
     }

@@ -34,6 +34,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.PlayArrow
@@ -52,6 +53,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -120,6 +122,7 @@ fun PlayerScreen(onBack: () -> Unit) {
     val window = rememberWindowInfo()
     var bannerTrigger by remember { mutableIntStateOf(0) }
     var bannerVisible by remember { mutableStateOf(true) }
+    var infoVisible by rememberSaveable { mutableStateOf(false) }
     val rootFocus = remember { FocusRequester() }
     val now by produceState(System.currentTimeMillis()) {
         while (true) {
@@ -147,6 +150,8 @@ fun PlayerScreen(onBack: () -> Unit) {
     // Premier « Retour » : menu des chaînes (sans interrompre la lecture) ; second : fermeture du menu.
     BackHandler(enabled = menu.open) { viewModel.closeMenu() }
     BackHandler(enabled = !menu.open && state.isLive) { viewModel.openMenu() }
+    // Déclaré en dernier : prioritaire, « Retour » ferme d'abord le panneau d'infos.
+    BackHandler(enabled = infoVisible && !menu.open) { infoVisible = false }
 
     Box(
         Modifier
@@ -165,7 +170,8 @@ fun PlayerScreen(onBack: () -> Unit) {
                         state.error != null -> true.also { viewModel.retry() }
                         else -> true.also { bannerTrigger++ }
                     }
-                    Key.Info, Key.Guide -> true.also { bannerTrigger++ }
+                    Key.Info, Key.Menu -> true.also { infoVisible = !infoVisible }
+                    Key.Guide -> true.also { bannerTrigger++ }
                     else -> false
                 }
             }
@@ -199,6 +205,13 @@ fun PlayerScreen(onBack: () -> Unit) {
             onZap = viewModel::zap,
             onRetry = viewModel::retry,
             onOpenMenu = viewModel::openMenu,
+            onInfo = { infoVisible = !infoVisible },
+        )
+
+        PlaybackInfoPanel(
+            state = state,
+            visible = infoVisible && !menu.open,
+            modifier = Modifier.align(Alignment.TopEnd),
         )
 
         ChannelMenu(
@@ -210,6 +223,10 @@ fun PlayerScreen(onBack: () -> Unit) {
             onCategory = viewModel::selectMenuCategory,
             onPlay = viewModel::playFromMenu,
             onHome = onBack,
+            onInfo = {
+                viewModel.closeMenu()
+                infoVisible = true
+            },
         )
     }
 }
@@ -225,6 +242,7 @@ fun PlayerOverlay(
     onZap: (Int) -> Unit,
     onRetry: () -> Unit,
     onOpenMenu: () -> Unit = {},
+    onInfo: () -> Unit = {},
 ) {
     val window = rememberWindowInfo()
     Box(Modifier.fillMaxSize()) {
@@ -257,6 +275,9 @@ fun PlayerOverlay(
         if (showTouchControls && visible) {
             Box(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(8.dp)) {
                 IconAction(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back), onBack, tint = Color.White)
+            }
+            Box(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(8.dp)) {
+                IconAction(Icons.Filled.Info, stringResource(R.string.player_info_title), onInfo, tint = Color.White)
             }
         }
 
@@ -373,6 +394,7 @@ fun ChannelMenu(
     onCategory: (Category) -> Unit,
     onPlay: (Long) -> Unit,
     onHome: () -> Unit,
+    onInfo: () -> Unit = {},
 ) {
     val window = rememberWindowInfo()
     val listState = rememberLazyListState()
@@ -407,6 +429,7 @@ fun ChannelMenu(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(stringResource(R.string.player_channel_list), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                    IconAction(Icons.Filled.Info, stringResource(R.string.player_info_title), onInfo)
                     PillButton(stringResource(R.string.player_home), onHome, icon = Icons.Filled.Home, style = PillStyle.Ghost)
                 }
                 LazyRow(
@@ -528,3 +551,90 @@ private fun MenuChannelRow(channel: ChannelListRow, current: Boolean, now: Long,
 private const val BANNER_DURATION_MILLIS = 5_000L
 
 private fun timeOf(millis: Long): String = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(millis))
+
+/** Panneau « Infos de lecture » : ce que le lecteur décode réellement (formats, décodeurs, images perdues). */
+@Composable
+fun PlaybackInfoPanel(state: PlayerUiState, visible: Boolean, modifier: Modifier = Modifier) {
+    AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = modifier) {
+        val info = state.info
+        val unknown = stringResource(R.string.player_info_unknown)
+        val video = listOfNotNull(
+            codecLabel(info.videoMimeType),
+            if (info.width != null && info.height != null) "${info.width}×${info.height}" else null,
+            info.frameRate?.let { stringResource(R.string.player_info_fps, formatDecimal(it.toDouble())) },
+        ).joinToString(" · ").ifEmpty { unknown }
+        val decoder = info.videoDecoder?.let { name ->
+            when (info.hardwareDecoder) {
+                true -> stringResource(R.string.settings_decoder_hardware, name)
+                false -> stringResource(R.string.settings_decoder_software, name)
+                null -> name
+            }
+        } ?: unknown
+        val audio = listOfNotNull(codecLabel(info.audioMimeType), info.audioChannels?.let { channelsLabel(it) })
+            .joinToString(" · ").ifEmpty { unknown }
+        Surface(
+            color = Color.Black.copy(alpha = 0.78f),
+            contentColor = Color.White,
+            shape = MaterialTheme.shapes.large,
+            modifier = Modifier.statusBarsPadding().padding(24.dp).widthIn(max = 460.dp),
+        ) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.player_info_title), style = MaterialTheme.typography.titleMedium)
+                InfoLine(stringResource(R.string.player_info_video), video)
+                InfoLine(stringResource(R.string.player_info_decoder), decoder)
+                InfoLine(stringResource(R.string.player_info_audio), audio)
+                info.audioDecoder?.let { InfoLine(stringResource(R.string.player_info_audio_decoder), it) }
+                InfoLine(
+                    stringResource(R.string.player_info_bitrate),
+                    state.bandwidthMbps?.let { stringResource(R.string.player_speed, formatDecimal(it)) } ?: unknown,
+                )
+                InfoLine(stringResource(R.string.player_info_dropped), info.droppedFrames.toString(), warning = info.droppedFrames > 0)
+                InfoLine(stringResource(R.string.player_info_version), state.quality ?: unknown)
+                Text(
+                    stringResource(R.string.player_info_hint),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White.copy(alpha = 0.6f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun InfoLine(label: String, value: String, warning: Boolean = false) {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.65f), modifier = Modifier.width(140.dp))
+        Text(value, style = MaterialTheme.typography.bodyMedium, color = if (warning) NexTvColors.Warning else Color.White)
+    }
+}
+
+private fun formatDecimal(value: Double): String =
+    NumberFormat.getNumberInstance().apply { maximumFractionDigits = 1 }.format(value)
+
+/** Nom lisible d'un format (types MIME de Media3). */
+private fun codecLabel(mimeType: String?): String? = when (mimeType) {
+    null -> null
+    "video/hevc" -> "HEVC (H.265)"
+    "video/avc" -> "H.264 (AVC)"
+    "video/av01" -> "AV1"
+    "video/x-vnd.on2.vp9" -> "VP9"
+    "video/mpeg2" -> "MPEG-2"
+    "audio/ac3" -> "Dolby Digital (AC-3)"
+    "audio/eac3" -> "Dolby Digital Plus (E-AC-3)"
+    "audio/ac4" -> "AC-4"
+    "audio/mp4a-latm" -> "AAC"
+    "audio/mpeg" -> "MP3"
+    "audio/mpeg-L2" -> "MPEG audio"
+    "audio/opus" -> "Opus"
+    "audio/vnd.dts" -> "DTS"
+    else -> mimeType.substringAfter('/')
+}
+
+@Composable
+private fun channelsLabel(count: Int): String = when (count) {
+    1 -> stringResource(R.string.player_info_mono)
+    2 -> stringResource(R.string.player_info_stereo)
+    6 -> "5.1"
+    8 -> "7.1"
+    else -> stringResource(R.string.player_info_channels, count)
+}
