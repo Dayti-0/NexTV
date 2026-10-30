@@ -185,6 +185,14 @@ class SourceRepository(
             return@withRefreshLock RefreshResult.Failure(error)
         }
 
+        // Le serveur n'a accepté qu'un User-Agent de lecteur courant : il est retenu pour la source
+        // (flux compris) et visible dans l'éditeur.
+        val fallbackUserAgent = loaded.userAgent
+        if (fallbackUserAgent != null && source.userAgent.isNullOrBlank()) {
+            store.updateSourceDefinition(source.copy(userAgent = fallbackUserAgent))
+            logger.info(TAG, "Source $id : User-Agent de repli retenu")
+        }
+
         val total = loaded.channels.size.toLong()
         progress?.onProgress(LoadProgress(LoadStep.SAVING, 0, total))
         store.replaceChannels(id, loaded.channels) { saved -> progress?.onProgress(LoadProgress(LoadStep.SAVING, saved.toLong(), total)) }

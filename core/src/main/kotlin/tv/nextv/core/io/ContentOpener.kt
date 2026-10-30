@@ -42,6 +42,8 @@ class OpenedContent(
     val contentType: String? = null,
     val contentLength: Long? = null,
     val displayName: String? = null,
+    /** User-Agent de repli accepté par le serveur, qui refusait celui de l'application (HTTP 403). */
+    val userAgent: String? = null,
     private val onClose: () -> Unit = {},
 ) : Closeable {
     override fun close() {

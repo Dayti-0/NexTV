@@ -60,7 +60,7 @@ class M3uPlaylistLoader(
             opener.open(source.location, request).use { content ->
                 ContentPipeline.mapReadErrors(usesProxy(RequestPurpose.PLAYLIST)) {
                     read(source, content, progress) { context.ensureActive() }
-                }
+                }.copy(userAgent = content.userAgent)
             }
         }
 

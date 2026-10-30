@@ -212,6 +212,46 @@ class RemoteContentOpenerTest {
     }
 
     @Test
+    fun `a refusal is retried as a common player and the accepted user agent is reported`() {
+        server.enqueue(MockResponse.Builder().code(403).build())
+        server.enqueue(ok())
+
+        val content = runBlocking { opener.open(SourceLocation.Remote(server.url("/").toString()), OpenRequest(RequestPurpose.PLAYLIST)) }
+        content.use { assertEquals("#EXTM3U\n", it.stream.bufferedReader().readText()) }
+
+        assertEquals(RemoteContentOpener.FALLBACK_USER_AGENTS[0], content.userAgent)
+        assertEquals("NexTV/1.0", server.takeRequest().headers["User-Agent"])
+        assertEquals(RemoteContentOpener.FALLBACK_USER_AGENTS[0], server.takeRequest().headers["User-Agent"])
+    }
+
+    @Test
+    fun `every fallback is tried before reporting the refusal`() {
+        repeat(1 + RemoteContentOpener.FALLBACK_USER_AGENTS.size) { server.enqueue(MockResponse.Builder().code(403).build()) }
+
+        val error = errorOf { open(server.url("/").toString()) }
+
+        assertEquals(1 + RemoteContentOpener.FALLBACK_USER_AGENTS.size, server.requestCount)
+        assertTrue(error.code, error !is SourceError.HttpStatus || error.status == 403)
+    }
+
+    @Test
+    fun `a user agent chosen for the source is never replaced`() {
+        server.enqueue(MockResponse.Builder().code(403).build())
+
+        errorOf { open(server.url("/").toString(), OpenRequest(RequestPurpose.PLAYLIST, userAgent = "Mon lecteur/1.0")) }
+
+        assertEquals(1, server.requestCount)
+    }
+
+    @Test
+    fun `the default user agent is not reported when it is accepted`() {
+        server.enqueue(ok())
+        val content = runBlocking { opener.open(SourceLocation.Remote(server.url("/").toString()), OpenRequest(RequestPurpose.PLAYLIST)) }
+        content.close()
+        assertNull(content.userAgent)
+    }
+
+    @Test
     fun `logged urls are redacted`() {
         server.enqueue(ok())
 

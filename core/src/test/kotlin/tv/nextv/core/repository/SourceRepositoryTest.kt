@@ -329,4 +329,22 @@ class SourceRepositoryTest {
 
     private fun MockWebServer.takeRequestPaths(): List<String> =
         generateSequence { takeRequest(10, java.util.concurrent.TimeUnit.MILLISECONDS) }.map { it.url.encodedPath }.toList()
+
+    @Test
+    fun `a user agent accepted after a refusal is kept for the source and its streams`() = runBlocking {
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse =
+                if (request.headers["User-Agent"].orEmpty().startsWith("VLC/")) {
+                    MockResponse.Builder().code(200).addHeader("Content-Type", "audio/x-mpegurl").body(playlist.replace("%EPG%", "")).build()
+                } else {
+                    MockResponse.Builder().code(403).build()
+                }
+        }
+        val id = repository.add(SourceInput(name = "IPTV", location = SourceLocation.Remote(server.url("/get.php").toString())))
+
+        val result = repository.refresh(id, includeEpg = false)
+
+        assertTrue(result.toString(), result is RefreshResult.Success)
+        assertEquals(RemoteContentOpener.FALLBACK_USER_AGENTS[0], store.source(id).userAgent)
+    }
 }
