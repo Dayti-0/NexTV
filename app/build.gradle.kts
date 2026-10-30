@@ -10,7 +10,8 @@ plugins {
     alias(libs.plugins.roborazzi)
 }
 
-// Clé de publication fournie par l'environnement (secrets CI) ; jamais versionnée.
+// Clé de publication fournie par l'environnement (CI) : déchiffrée à partir de
+// app/nextv-release.keystore.enc avec le secret NEXTV_KEY_PASSPHRASE, ou décodée des secrets.
 val releaseKeystorePath: String? = providers.environmentVariable("NEXTV_KEYSTORE_FILE").orNull
 
 android {

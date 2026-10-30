@@ -1,0 +1,63 @@
+name: Signing key
+
+# Création, une seule fois, de la clé privée qui signe les versions publiées.
+#  1. Ajouter le secret NEXTV_KEY_PASSPHRASE : mot de passe long (20 caractères ou plus), à conserver.
+#  2. Pousser la branche signing-key/create.
+# La clé est générée sur le serveur de GitHub, chiffrée avec ce mot de passe (AES-256, PBKDF2) et
+# ajoutée au dépôt (app/nextv-release.keystore.enc) sur la branche TARGET_BRANCH. La clé en clair ne
+# quitte jamais le serveur. Une clé existante n'est jamais remplacée : en changer obligerait à
+# désinstaller l'application.
+
+on:
+  push:
+    branches: ["signing-key/create"]
+
+permissions:
+  contents: write
+
+jobs:
+  create:
+    name: Create the release signing key
+    runs-on: ubuntu-latest
+    env:
+      PASSPHRASE: ${{ secrets.NEXTV_KEY_PASSPHRASE }}
+      TARGET_BRANCH: claude/m3u-sources
+    steps:
+      - name: Check the passphrase
+        run: |
+          if [ ${#PASSPHRASE} -lt 16 ]; then
+            echo "::error::Secret NEXTV_KEY_PASSPHRASE absent ou trop court (16 caractères minimum)."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Create and encrypt the key
+        run: |
+          if [ -f app/nextv-release.keystore.enc ]; then
+            echo "::error::Une clé de signature existe déjà : elle n'est pas remplacée."
+            exit 1
+          fi
+          umask 077
+          keytool -genkeypair -keystore "$RUNNER_TEMP/release.jks" -storetype PKCS12 -alias nextv \
+            -keyalg RSA -keysize 4096 -validity 18250 -dname "CN=NexTV" -storepass:env PASSPHRASE
+          echo "Empreinte du certificat :"
+          keytool -list -v -keystore "$RUNNER_TEMP/release.jks" -storepass:env PASSPHRASE | grep "SHA256:"
+          openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt \
+            -in "$RUNNER_TEMP/release.jks" -out app/nextv-release.keystore.enc -pass env:PASSPHRASE
+          rm -f "$RUNNER_TEMP/release.jks"
+
+      - name: Commit the encrypted key
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898900+github-actions[bot]@users.noreply.github.com"
+          git add app/nextv-release.keystore.enc
+          git commit -m "Add the encrypted release signing key"
+          git push origin HEAD:"$TARGET_BRANCH"

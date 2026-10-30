@@ -130,8 +130,9 @@ Pour garder le code privé, créer un dépôt public `NexTV-releases` (avec un R
 `NEXTV_RELEASES_TOKEN` (jeton d'accès en écriture au contenu de ce dépôt) : chaque version y est aussi publiée et
 l'application y cherche ses mises à jour (autre nom de dépôt : variable `NEXTV_RELEASES_REPO`).
 
-Signature : définir dans les secrets du dépôt `NEXTV_KEYSTORE_BASE64` (keystore encodé en base64),
-`NEXTV_KEYSTORE_PASSWORD`, `NEXTV_KEY_ALIAS` et `NEXTV_KEY_PASSWORD`. En leur absence, l'APK est signé avec
-la clé de test du dépôt (`app/nextv-test.keystore`, aussi utilisée en debug) : chaque version s'installe par-dessus
-la précédente (`adb install -r`) en gardant playlists et réglages. Clé à remplacer par les secrets si le dépôt
-devient public.
+Signature des versions publiées : clé privée générée une fois par le workflow `Signing key` (secret
+`NEXTV_KEY_PASSPHRASE`, puis pousser la branche `signing-key/create`), stockée chiffrée dans le dépôt
+(`app/nextv-release.keystore.enc`, AES-256) et déchiffrée à chaque publication. Chaque version s'installe
+par-dessus la précédente en gardant playlists et réglages. Autre possibilité : les secrets `NEXTV_KEYSTORE_BASE64`,
+`NEXTV_KEYSTORE_PASSWORD`, `NEXTV_KEY_ALIAS` et `NEXTV_KEY_PASSWORD`. Sans clé privée, l'APK est signé avec la clé
+de test du dépôt (`app/nextv-test.keystore`, publique, aussi utilisée en debug).

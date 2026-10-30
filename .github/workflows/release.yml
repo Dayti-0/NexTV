@@ -5,9 +5,11 @@ name: Release
 #  - pousser une branche de version : release/v0.1.0 (ou claude/release-v0.1.0)
 #  - lancer le workflow à la main (onglet Actions) avec la version voulue.
 # Le tag est créé par la publication s'il n'existe pas encore.
-# Signature : définir les secrets NEXTV_KEYSTORE_BASE64, NEXTV_KEYSTORE_PASSWORD, NEXTV_KEY_ALIAS
-# et NEXTV_KEY_PASSWORD. Sans eux, l'APK est signé avec la clé de test du dépôt (app/nextv-test.keystore),
-# la même d'une version à l'autre : mise à jour sans désinstaller.
+# Signature, au choix :
+#  - clé privée chiffrée dans le dépôt (app/nextv-release.keystore.enc, créée par le workflow
+#    « Signing key ») et son mot de passe dans le secret NEXTV_KEY_PASSPHRASE ;
+#  - ou les secrets NEXTV_KEYSTORE_BASE64, NEXTV_KEYSTORE_PASSWORD, NEXTV_KEY_ALIAS et NEXTV_KEY_PASSWORD.
+# Sans l'un ni l'autre, l'APK est signé avec la clé de test du dépôt (app/nextv-test.keystore).
 # Fiches films/séries : le secret facultatif NEXTV_TMDB_API_KEY intègre une clé TMDB à l'APK.
 # Mises à jour depuis l'application : elles lisent les versions publiées de ce dépôt (il doit être public).
 # Pour garder le code privé : créer un dépôt public NexTV-releases (avec un README) et le secret
@@ -75,15 +77,32 @@ jobs:
         run: |
           echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
           echo "NEXTV_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          echo "PRIVATE_KEY=1" >> "$GITHUB_ENV"
+
+      # Une fois la clé privée créée, jamais de repli sur la clé de test : la mise à jour serait refusée.
+      - name: Decrypt the release signing key
+        if: env.KEYSTORE_BASE64 == '' && hashFiles('app/nextv-release.keystore.enc') != ''
+        env:
+          PASSPHRASE: ${{ secrets.NEXTV_KEY_PASSPHRASE }}
+        run: |
+          if [ -z "$PASSPHRASE" ]; then
+            echo "::error::Clé de signature chiffrée présente mais secret NEXTV_KEY_PASSPHRASE absent."
+            exit 1
+          fi
+          umask 077
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 \
+            -in app/nextv-release.keystore.enc -out "$RUNNER_TEMP/release.jks" -pass env:PASSPHRASE
+          echo "NEXTV_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          echo "PRIVATE_KEY=1" >> "$GITHUB_ENV"
 
       - name: Test core module
         run: ./gradlew -p core test --stacktrace
 
       - name: Build release APK
         env:
-          NEXTV_KEYSTORE_PASSWORD: ${{ secrets.NEXTV_KEYSTORE_PASSWORD }}
-          NEXTV_KEY_ALIAS: ${{ secrets.NEXTV_KEY_ALIAS }}
-          NEXTV_KEY_PASSWORD: ${{ secrets.NEXTV_KEY_PASSWORD }}
+          NEXTV_KEYSTORE_PASSWORD: ${{ secrets.NEXTV_KEYSTORE_PASSWORD || secrets.NEXTV_KEY_PASSPHRASE }}
+          NEXTV_KEY_ALIAS: ${{ secrets.NEXTV_KEY_ALIAS || 'nextv' }}
+          NEXTV_KEY_PASSWORD: ${{ secrets.NEXTV_KEY_PASSWORD || secrets.NEXTV_KEY_PASSPHRASE }}
           # Clé TMDB facultative intégrée à l'APK (sinon, elle se saisit dans les réglages).
           NEXTV_TMDB_API_KEY: ${{ secrets.NEXTV_TMDB_API_KEY }}
         run: |
@@ -97,8 +116,8 @@ jobs:
           APK="NexTV-${TAG}.apk"
           cp app/build/outputs/apk/release/app-release.apk "$APK"
           sha256sum "$APK" > "$APK.sha256"
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            SIGNING="Signé avec la clé de publication du projet."
+          if [ -n "$PRIVATE_KEY" ]; then
+            SIGNING="Signé avec la clé privée du projet : les versions suivantes s'installent par-dessus celle-ci (Réglages › Mise à jour), playlists et réglages conservés. En venant d'une version signée autrement (0.2.1 ou plus ancienne), désinstallez-la d'abord."
           else
             SIGNING="Version de test signée avec la clé de test du dépôt : elle s'installe par-dessus la précédente (à partir de la 0.2.2 ; une seule désinstallation nécessaire en venant d'une version plus ancienne)."
           fi
