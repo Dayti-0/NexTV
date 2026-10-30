@@ -160,7 +160,10 @@ class AppContainer(context: Context) {
             settings.tmdbApiKey.collect { redactor.registerSecret(it) }
         }
         redactor.registerSecret(BuildConfig.TMDB_API_KEY.takeIf { it.isNotBlank() })
-        applicationScope.launch { sourceRepository.registerStoredSecrets() }
+        applicationScope.launch {
+            sourceRepository.registerStoredSecrets()
+            sourceRepository.cleanStoredNames()
+        }
 
         // Actualisations automatiques tant que l'application tourne (les TV restent souvent allumées).
         applicationScope.launch {

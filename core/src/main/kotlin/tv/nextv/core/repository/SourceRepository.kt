@@ -77,6 +77,17 @@ class SourceRepository(
         }
     }
 
+    /** Au démarrage : noms enregistrés qui sont des adresses (avec identifiants) réduits au nom du serveur. */
+    suspend fun cleanStoredNames() {
+        for (source in store.getSources()) {
+            val name = SourceInputValidator.sanitizeName(source.name)
+            if (name.isNotEmpty() && name != source.name) {
+                store.updateSourceDefinition(source.copy(name = name))
+                logger.info(TAG, "Source ${source.id} : adresse utilisée comme nom remplacée par le nom du serveur")
+            }
+        }
+    }
+
     suspend fun getSource(id: Long): PlaylistSource? = store.getSource(id)
 
     /** Identifiants d'une source, pour l'authentification des flux lors de la lecture. */

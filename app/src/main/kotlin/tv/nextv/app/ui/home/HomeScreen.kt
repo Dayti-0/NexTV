@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -305,13 +306,14 @@ private fun HomeTopBar(section: HomeSection, sourceName: String, window: WindowI
             }
         }
         if (window.isWide && sourceName.isNotEmpty()) {
+            // Largeur limitée : un nom très long ne doit jamais masquer les onglets.
             Text(
                 sourceName,
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = 12.dp),
+                modifier = Modifier.padding(horizontal = 12.dp).widthIn(max = 220.dp),
             )
         }
         IconAction(Icons.Filled.Settings, stringResource(R.string.settings_title), actions.onSettings)

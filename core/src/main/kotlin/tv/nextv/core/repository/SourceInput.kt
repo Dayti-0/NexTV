@@ -107,13 +107,23 @@ object SourceInputValidator {
         if (problems.isNotEmpty()) return Result.Invalid(problems)
         return Result.Valid(
             input.copy(
-                name = input.name.trim().ifEmpty { defaultName(location) },
+                name = sanitizeName(input.name).ifEmpty { defaultName(location) },
                 location = location,
                 epg = input.epg.copy(location = epgLocation),
                 userAgent = userAgent,
                 credentials = credentials,
             ),
         )
+    }
+
+    /**
+     * Une adresse donnée comme nom (collée par erreur) est réduite à son nom de serveur : le nom
+     * s'affiche partout, il ne doit jamais montrer d'identifiants.
+     */
+    fun sanitizeName(name: String): String {
+        val trimmed = name.trim()
+        if ("://" !in trimmed) return trimmed
+        return RemoteUrlValidator.parseOrNull(trimmed)?.host ?: trimmed.substringAfter("://").substringBefore('/').substringAfter('@')
     }
 
     fun defaultName(location: SourceLocation): String = when (location) {

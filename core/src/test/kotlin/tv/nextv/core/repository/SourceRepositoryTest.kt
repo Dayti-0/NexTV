@@ -347,4 +347,19 @@ class SourceRepositoryTest {
         assertTrue(result.toString(), result is RefreshResult.Success)
         assertEquals(RemoteContentOpener.FALLBACK_USER_AGENTS[0], store.source(id).userAgent)
     }
+
+    @Test
+    fun `an address given as name never shows credentials`() = runBlocking {
+        val url = "http://www.r56mail.top/get.php?username=bob&password=hunter2&type=m3u_plus"
+        assertEquals("www.r56mail.top", SourceInputValidator.sanitizeName(url))
+        assertEquals("Ma playlist", SourceInputValidator.sanitizeName("  Ma playlist "))
+
+        val id = repository.add(SourceInput(name = url, location = SourceLocation.Remote(server.url("/get.php").toString())))
+        assertEquals("www.r56mail.top", store.source(id).name)
+
+        // Nom enregistré par une version précédente : nettoyé au démarrage.
+        store.updateSourceDefinition(store.source(id).copy(name = url))
+        repository.cleanStoredNames()
+        assertEquals("www.r56mail.top", store.source(id).name)
+    }
 }
