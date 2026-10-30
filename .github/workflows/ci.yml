@@ -56,3 +56,47 @@ jobs:
           path: |
             app/build/outputs/apk/debug/*.apk
             app/build/outputs/apk/release/*.apk
+
+  screenshots:
+    name: Screenshots
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Render screenshots
+        run: ./gradlew :app:recordRoborazziDebug --stacktrace
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: app/build/screenshots/
+          if-no-files-found: ignore
+      - name: Publish to the screenshots branch
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          WORK="$RUNNER_TEMP/screenshots"
+          mkdir -p "$WORK"
+          cp app/build/screenshots/*.png "$WORK"/
+          cd "$WORK"
+          {
+            echo "# Captures d'écran NexTV"
+            echo
+            echo "Générées par la CI pour \`${GITHUB_REF_NAME}\` (${GITHUB_SHA::7})."
+            echo
+            for f in *.png; do echo "### ${f%.png}"; echo; echo "![${f%.png}]($f)"; echo; done
+          } > README.md
+          git init -q -b screenshots
+          git add -A
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "Captures d'écran de ${GITHUB_SHA::7} (${GITHUB_REF_NAME})"
+          git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" screenshots

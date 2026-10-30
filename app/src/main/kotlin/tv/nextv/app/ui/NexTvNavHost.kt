@@ -10,6 +10,8 @@ import tv.nextv.app.ui.channels.ChannelsScreen
 import tv.nextv.app.ui.channels.ChannelsViewModel
 import tv.nextv.app.ui.editor.SourceEditorScreen
 import tv.nextv.app.ui.editor.SourceEditorViewModel
+import tv.nextv.app.ui.guide.GuideScreen
+import tv.nextv.app.ui.guide.GuideViewModel
 import tv.nextv.app.ui.player.PlayerScreen
 import tv.nextv.app.ui.player.PlayerViewModel
 import tv.nextv.app.ui.settings.ProxySettingsScreen
@@ -20,11 +22,13 @@ private object Routes {
     const val EDITOR = "editor?${SourceEditorViewModel.ARG_SOURCE_ID}={${SourceEditorViewModel.ARG_SOURCE_ID}}"
     const val CHANNELS = "channels/{${ChannelsViewModel.ARG_SOURCE_ID}}"
     const val PLAYER = "player/{${PlayerViewModel.ARG_CHANNEL_ID}}"
+    const val GUIDE = "guide/{${GuideViewModel.ARG_SOURCE_ID}}"
     const val SETTINGS = "settings"
 
     fun editor(sourceId: Long? = null) = "editor?${SourceEditorViewModel.ARG_SOURCE_ID}=${sourceId ?: -1}"
     fun channels(sourceId: Long) = "channels/$sourceId"
     fun player(channelId: Long) = "player/$channelId"
+    fun guide(sourceId: Long) = "guide/$sourceId"
 }
 
 @Composable
@@ -36,6 +40,7 @@ fun NexTvNavHost() {
                 onAdd = { navController.navigate(Routes.editor()) },
                 onEdit = { navController.navigate(Routes.editor(it)) },
                 onOpen = { navController.navigate(Routes.channels(it)) },
+                onGuide = { navController.navigate(Routes.guide(it)) },
                 onSettings = { navController.navigate(Routes.SETTINGS) },
             )
         }
@@ -55,6 +60,16 @@ fun NexTvNavHost() {
             arguments = listOf(navArgument(ChannelsViewModel.ARG_SOURCE_ID) { type = NavType.LongType }),
         ) {
             ChannelsScreen(
+                onBack = { navController.popBackStack() },
+                onPlay = { navController.navigate(Routes.player(it)) },
+                onGuide = { navController.navigate(Routes.guide(it)) },
+            )
+        }
+        composable(
+            Routes.GUIDE,
+            arguments = listOf(navArgument(GuideViewModel.ARG_SOURCE_ID) { type = NavType.LongType }),
+        ) {
+            GuideScreen(
                 onBack = { navController.popBackStack() },
                 onPlay = { navController.navigate(Routes.player(it)) },
             )

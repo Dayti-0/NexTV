@@ -79,6 +79,17 @@ data class ChannelListRow(
     val streamSupport: String,
     val streamIssues: String,
     val nowTitle: String?,
+    val nowStart: Long?,
+    val nowStop: Long?,
+)
+
+/** Chaîne affichée dans la grille du guide. */
+data class GuideChannelRow(
+    val id: Long,
+    val name: String,
+    val logoUrl: String?,
+    val channelNumber: String?,
+    val epgChannelId: String,
 )
 
 @Dao
@@ -119,11 +130,14 @@ interface ChannelDao {
     @Query(
         """
         SELECT c.id, c.name, c.groupTitle, c.logoUrl, c.channelNumber, c.streamSupport, c.streamIssues,
-            (SELECT p.title FROM programmes p JOIN sources s ON s.id = p.sourceId
-             WHERE p.sourceId = c.sourceId AND p.generation = s.epgGeneration AND p.epgChannelId = c.epgChannelId
-               AND p.startMillis <= :now AND p.stopMillis > :now
-             ORDER BY p.startMillis DESC LIMIT 1) AS nowTitle
+            p.title AS nowTitle, p.startMillis AS nowStart, p.stopMillis AS nowStop
         FROM channels c
+        LEFT JOIN programmes p ON p.id = (
+            SELECT p2.id FROM programmes p2 JOIN sources s ON s.id = p2.sourceId
+            WHERE p2.sourceId = c.sourceId AND p2.generation = s.epgGeneration AND p2.epgChannelId = c.epgChannelId
+              AND p2.startMillis <= :now AND p2.stopMillis > :now
+            ORDER BY p2.startMillis DESC LIMIT 1
+        )
         WHERE c.sourceId = :sourceId
           AND (:filterGroup = 0 OR IFNULL(c.groupTitle, '') = :group)
           AND (:query = '' OR c.name LIKE '%' || :query || '%' ESCAPE '\')
@@ -131,6 +145,36 @@ interface ChannelDao {
         """,
     )
     fun pageChannels(sourceId: Long, filterGroup: Int, group: String, query: String, now: Long): PagingSource<Int, ChannelListRow>
+
+    /** Chaîne lisible suivante (zapping), dans l'ordre de la playlist. */
+    @Query(
+        """
+        SELECT id FROM channels
+        WHERE sourceId = :sourceId AND position > :position AND streamSupport != 'UNSUPPORTED'
+        ORDER BY position ASC LIMIT 1
+        """,
+    )
+    suspend fun nextChannelId(sourceId: Long, position: Int): Long?
+
+    @Query(
+        """
+        SELECT id FROM channels
+        WHERE sourceId = :sourceId AND position < :position AND streamSupport != 'UNSUPPORTED'
+        ORDER BY position DESC LIMIT 1
+        """,
+    )
+    suspend fun previousChannelId(sourceId: Long, position: Int): Long?
+
+    /** Chaînes associées au guide, pour la grille des programmes. */
+    @Query(
+        """
+        SELECT id, name, logoUrl, channelNumber, epgChannelId FROM channels
+        WHERE sourceId = :sourceId AND epgChannelId IS NOT NULL
+          AND (:filterGroup = 0 OR IFNULL(groupTitle, '') = :group)
+        ORDER BY position LIMIT :limit
+        """,
+    )
+    suspend fun guideChannels(sourceId: Long, filterGroup: Int, group: String, limit: Int): List<GuideChannelRow>
 }
 
 @Dao
@@ -161,6 +205,18 @@ interface ProgrammeDao {
         """,
     )
     suspend fun upcoming(channelId: Long, from: Long, limit: Int): List<ProgrammeEntity>
+
+    /** Programmes visibles d'une source dans la fenêtre [from, to[. */
+    @Query(
+        """
+        SELECT p.* FROM programmes p
+        JOIN sources s ON s.id = p.sourceId AND p.generation = s.epgGeneration
+        WHERE p.sourceId = :sourceId AND p.stopMillis > :from AND p.startMillis < :to
+          AND p.epgChannelId IN (:epgChannelIds)
+        ORDER BY p.epgChannelId, p.startMillis
+        """,
+    )
+    suspend fun inWindow(sourceId: Long, epgChannelIds: List<String>, from: Long, to: Long): List<ProgrammeEntity>
 }
 
 @Dao

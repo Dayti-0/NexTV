@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pictogramme centré dans la zone sûre (66 dp) de l'icône adaptative. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M37,37h34a5,5 0,0 1,5 5v20a5,5 0,0 1,-5 5H37a5,5 0,0 1,-5 -5V42a5,5 0,0 1,5 -5z"
+        android:strokeWidth="4"
+        android:strokeColor="#FFFFFFFF" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M46,71.5h16a2,2 0,0 1,0 4H46a2,2 0,0 1,0 -4z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M49,45v14l11.5,-7z" />
+</vector>

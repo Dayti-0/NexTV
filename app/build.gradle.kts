@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.roborazzi)
 }
 
 // Clé de publication fournie par l'environnement (secrets CI) ; jamais versionnée.
@@ -51,6 +52,13 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    testOptions {
+        unitTests {
+            // Robolectric rend les écrans avec les vraies ressources (captures d'écran Roborazzi).
+            isIncludeAndroidResources = true
+        }
     }
 
     packaging {
@@ -105,4 +113,13 @@ dependencies {
 
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
+
+    // Captures d'écran : ./gradlew :app:recordRoborazziDebug
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
