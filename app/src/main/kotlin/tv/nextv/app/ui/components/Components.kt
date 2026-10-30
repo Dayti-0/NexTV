@@ -37,8 +37,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
@@ -203,7 +206,10 @@ fun Modifier.openKeyboardOnOk(): Modifier {
  * Surface cliquable dont le focus est bien visible : agrandissement, contour et fond plus clair.
  * Indispensable à la navigation à la télécommande ; sans effet gênant au toucher.
  *
- * [onLongClick] répond à l'appui long au toucher comme à l'appui long sur OK de la télécommande.
+ * [onLongClick] répond à l'appui long au toucher comme à l'appui long sur OK de la télécommande ;
+ * avec la télécommande, il est appelé au relâchement de la touche. Sinon la fenêtre qu'il ouvre
+ * (fiche, confirmation) recevrait ce relâchement, et la surface, qui ne le verrait pas, ignorerait
+ * le clic suivant.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -226,6 +232,17 @@ fun FocusSurface(
     if (onFocusChange != null) {
         LaunchedEffect(focused) { onFocusChange(focused) }
     }
+    val okKey = remember { OkKeyState() }
+    val scope = rememberCoroutineScope()
+    val currentOnLongClick by rememberUpdatedState(onLongClick)
+    LaunchedEffect(focused) {
+        if (!focused) okKey.reset()
+    }
+    val longClick: (() -> Unit)? = onLongClick?.let {
+        {
+            if (okKey.held) okKey.pendingLongClick = true else currentOnLongClick?.invoke()
+        }
+    }
     val scale by animateFloatAsState(if (focused) focusScale else 1f, label = "focusScale")
     val border = when {
         focused -> BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
@@ -243,11 +260,27 @@ fun FocusSurface(
             .clip(shape)
             .background(if (focused) focusedColor else color)
             .then(if (border != null) Modifier.border(border, shape) else Modifier)
+            .onPreviewKeyEvent { event ->
+                if (event.key in OK_KEYS) {
+                    when (event.type) {
+                        KeyEventType.KeyDown -> okKey.held = true
+                        KeyEventType.KeyUp -> {
+                            okKey.held = false
+                            if (okKey.pendingLongClick) {
+                                okKey.pendingLongClick = false
+                                // Après le traitement du relâchement par la surface elle-même.
+                                scope.launch { currentOnLongClick?.invoke() }
+                            }
+                        }
+                    }
+                }
+                false
+            }
             .combinedClickable(
                 interactionSource = interactionSource,
                 indication = LocalIndication.current,
                 enabled = enabled,
-                onLongClick = onLongClick,
+                onLongClick = longClick,
                 onClick = onClick,
             ),
         propagateMinConstraints = true,
@@ -255,6 +288,19 @@ fun FocusSurface(
         CompositionLocalProvider(LocalContentColor provides contentColor) { content() }
     }
 }
+
+/** Touche OK de la télécommande tenue, et appui long en attente de son relâchement. */
+private class OkKeyState {
+    var held = false
+    var pendingLongClick = false
+
+    fun reset() {
+        held = false
+        pendingLongClick = false
+    }
+}
+
+private val OK_KEYS = setOf(Key.DirectionCenter, Key.Enter, Key.NumPadEnter)
 
 /** Bouton icône rond, utilisable au toucher comme à la télécommande. */
 @Composable
