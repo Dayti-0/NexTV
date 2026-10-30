@@ -27,6 +27,10 @@ android {
         // Clé TMDB optionnelle fournie à la compilation (secret CI) ; l'utilisateur peut aussi la saisir.
         val tmdbKey = providers.environmentVariable("NEXTV_TMDB_API_KEY").orNull.orEmpty()
         buildConfigField("String", "TMDB_API_KEY", "\"${tmdbKey.replace("\"", "")}\"")
+
+        // Dépôt GitHub dont les versions publiées servent de mises à jour (lecture anonyme : dépôt public).
+        val updateRepository = providers.gradleProperty("nextv.updateRepo").orNull ?: "Dayti-0/NexTV"
+        buildConfigField("String", "UPDATE_REPOSITORY", "\"${updateRepository.replace("\"", "")}\"")
     }
 
     signingConfigs {

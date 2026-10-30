@@ -9,6 +9,10 @@ name: Release
 # et NEXTV_KEY_PASSWORD. Sans eux, l'APK est signé avec la clé de test du dépôt (app/nextv-test.keystore),
 # la même d'une version à l'autre : mise à jour sans désinstaller.
 # Fiches films/séries : le secret facultatif NEXTV_TMDB_API_KEY intègre une clé TMDB à l'APK.
+# Mises à jour depuis l'application : elles lisent les versions publiées de ce dépôt (il doit être public).
+# Pour garder le code privé : créer un dépôt public NexTV-releases (avec un README) et le secret
+# NEXTV_RELEASES_TOKEN (jeton d'accès en écriture au contenu de ce dépôt) ; les APK y sont alors aussi
+# publiés et l'application y cherche ses mises à jour. Autre nom : variable NEXTV_RELEASES_REPO.
 
 on:
   push:
@@ -33,6 +37,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       KEYSTORE_BASE64: ${{ secrets.NEXTV_KEYSTORE_BASE64 }}
+      RELEASES_TOKEN: ${{ secrets.NEXTV_RELEASES_TOKEN }}
+      RELEASES_REPO: ${{ vars.NEXTV_RELEASES_REPO || format('{0}/NexTV-releases', github.repository_owner) }}
     steps:
       - name: Resolve version
         env:
@@ -51,6 +57,11 @@ jobs:
           fi
           echo "TAG=$TAG" >> "$GITHUB_ENV"
           echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
+          if [ -n "$RELEASES_TOKEN" ]; then
+            echo "UPDATE_REPO=$RELEASES_REPO" >> "$GITHUB_ENV"
+          else
+            echo "UPDATE_REPO=$GITHUB_REPOSITORY" >> "$GITHUB_ENV"
+          fi
 
       - uses: actions/checkout@v5
       - uses: actions/setup-java@v5
@@ -78,7 +89,8 @@ jobs:
         run: |
           ./gradlew :app:assembleRelease --stacktrace \
             -Pnextv.versionName="$VERSION" \
-            -Pnextv.versionCode="${GITHUB_RUN_NUMBER}"
+            -Pnextv.versionCode="${GITHUB_RUN_NUMBER}" \
+            -Pnextv.updateRepo="${UPDATE_REPO}"
 
       - name: Prepare release assets
         run: |
@@ -104,6 +116,7 @@ jobs:
           - Infos de lecture (touche Info/Menu) et choix du décodeur vidéo matériel ou logiciel
           - Nombre de chaînes et d'affiches par ligne réglable ; double appui sur « Retour » pour revenir à l'accueil
           - Ajout d'une playlist depuis un ordinateur : adb shell "am start -n tv.nextv.app/.MainActivity --es url 'ADRESSE'"
+          - Mise à jour depuis les réglages (versions publiées publiquement sur GitHub)
           - Guide TV xmltvfr.fr téléchargé, mis en cache et actualisé automatiquement
           - Playlists M3U/M3U8 distantes ou locales, protégées par identifiants (chiffrés, masqués dans les journaux)
           - Proxy HTTP/SOCKS pour les playlists, le guide et les flux
@@ -122,6 +135,19 @@ jobs:
           case "$TAG" in v0.*|*-*) PRERELEASE="--prerelease" ;; esac
           gh release create "$TAG" "$APK" "$APK.sha256" \
             --target "$GITHUB_SHA" \
+            --title "NexTV ${TAG}" \
+            --notes-file notes.md \
+            $PRERELEASE
+
+      - name: Publish to the public releases repository
+        if: env.RELEASES_TOKEN != ''
+        env:
+          GH_TOKEN: ${{ secrets.NEXTV_RELEASES_TOKEN }}
+        run: |
+          PRERELEASE=""
+          case "$TAG" in v0.*|*-*) PRERELEASE="--prerelease" ;; esac
+          gh release create "$TAG" "$APK" "$APK.sha256" \
+            --repo "$RELEASES_REPO" \
             --title "NexTV ${TAG}" \
             --notes-file notes.md \
             $PRERELEASE

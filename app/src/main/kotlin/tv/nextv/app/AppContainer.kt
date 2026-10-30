@@ -29,6 +29,7 @@ import tv.nextv.app.data.local.ContentResolverOpener
 import tv.nextv.app.data.security.EncryptedCredentialStore
 import tv.nextv.app.data.security.KeystoreSecretCipher
 import tv.nextv.app.data.settings.SettingsRepository
+import tv.nextv.app.data.update.AppUpdater
 import tv.nextv.app.player.PlayerFactory
 import tv.nextv.core.epg.EpgImporter
 import tv.nextv.core.epg.EpgLoader
@@ -45,6 +46,7 @@ import tv.nextv.core.repository.RefreshResult
 import tv.nextv.core.repository.SourceRepository
 import tv.nextv.core.source.M3uPlaylistLoader
 import tv.nextv.core.source.PlaylistLoaderRegistry
+import tv.nextv.core.update.UpdateChecker
 import java.io.File
 
 /** Assemblage manuel des dépendances de l'application. */
@@ -128,6 +130,14 @@ class AppContainer(context: Context) {
 
     /** Reprise de lecture des films et séries (base distincte, sans migration de celle des playlists). */
     val progress = ProgressRepository(ProgressDatabase.create(appContext))
+
+    /** Mises à jour de l'application (versions publiées sur GitHub). */
+    val updater = AppUpdater(
+        appContext,
+        UpdateChecker(httpClients, BuildConfig.UPDATE_REPOSITORY, logger = logger),
+        applicationScope,
+        logger,
+    )
 
     /** Playlist transmise par adb, en attente de confirmation dans l'éditeur. */
     val playlistImport = MutableStateFlow<PlaylistImport?>(null)

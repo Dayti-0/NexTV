@@ -30,6 +30,9 @@ Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3, enti�
   ```
 
   Paramètres facultatifs : `--es user '…' --es password '…'` pour les identifiants.
+- **Mise à jour depuis l'application** (Réglages › Mise à jour) : dernière version publiée sur GitHub, téléchargée,
+  vérifiée (SHA-256) puis installée par l'installateur du système, playlists et réglages conservés. Les versions
+  doivent être publiques : dépôt public, ou dépôt public séparé pour les APK (voir Publication).
 
 ## Sources prises en charge
 
@@ -121,6 +124,11 @@ Il exécute les tests, construit l'APK release (R8) puis publie une release GitH
 empreinte SHA-256, en créant le tag s'il n'existe pas (versions `v0.*` ou `*-…` publiées en pré-version).
 
 Clé TMDB : le secret facultatif `NEXTV_TMDB_API_KEY` l'intègre à l'APK (une clé saisie dans les réglages reste prioritaire).
+
+Mises à jour depuis l'application : elles lisent les versions publiées du dépôt (lecture anonyme, dépôt public).
+Pour garder le code privé, créer un dépôt public `NexTV-releases` (avec un README) et le secret
+`NEXTV_RELEASES_TOKEN` (jeton d'accès en écriture au contenu de ce dépôt) : chaque version y est aussi publiée et
+l'application y cherche ses mises à jour (autre nom de dépôt : variable `NEXTV_RELEASES_REPO`).
 
 Signature : définir dans les secrets du dépôt `NEXTV_KEYSTORE_BASE64` (keystore encodé en base64),
 `NEXTV_KEYSTORE_PASSWORD`, `NEXTV_KEY_ALIAS` et `NEXTV_KEY_PASSWORD`. En leur absence, l'APK est signé avec

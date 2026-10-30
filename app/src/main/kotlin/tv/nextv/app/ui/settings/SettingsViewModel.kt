@@ -1,5 +1,6 @@
 package tv.nextv.app.ui.settings
 
+import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
@@ -17,10 +18,12 @@ import tv.nextv.app.AppContainer
 import tv.nextv.app.BuildConfig
 import tv.nextv.app.RefreshController
 import tv.nextv.app.data.settings.GridColumns
+import tv.nextv.app.data.update.UpdateState
 import tv.nextv.app.player.DecoderOption
 import tv.nextv.app.player.VideoDecoders
 import tv.nextv.core.model.PlaylistSource
 import tv.nextv.core.net.ProxySettings
+import tv.nextv.core.update.AppRelease
 
 data class SettingsUiState(
     val loaded: Boolean = false,
@@ -105,6 +108,15 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             gridColumns = prefs.grid,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
+
+    /** Mise à jour de l'application. */
+    val update: StateFlow<UpdateState> = container.updater.state
+
+    fun checkUpdate() = container.updater.check()
+
+    fun installUpdate(release: AppRelease) = container.updater.install(release)
+
+    fun installPermissionIntent(): Intent? = container.updater.permissionIntent()
 
     /** Résultats des actualisations de la playlist active. */
     val refreshEvents: Flow<RefreshController.Event> = container.refreshController.events

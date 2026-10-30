@@ -34,6 +34,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -50,6 +51,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.launch
 import tv.nextv.app.R
 import tv.nextv.app.player.VideoDecoders
 import tv.nextv.app.ui.common.appViewModel
@@ -63,19 +65,31 @@ import tv.nextv.app.ui.components.ScreenHeader
 import tv.nextv.app.ui.components.rememberWindowInfo
 import tv.nextv.app.ui.editor.NexTvTextField
 import tv.nextv.app.data.settings.GridColumns
+import tv.nextv.core.update.AppRelease
+import tv.nextv.app.data.update.UpdateState
+import tv.nextv.app.data.update.UpdateFailure
 import tv.nextv.app.ui.editor.SectionCard
 import tv.nextv.app.ui.editor.ToggleRow
 import tv.nextv.app.ui.theme.NexTvColors
 import tv.nextv.app.ui.theme.NexTvIcons
 import tv.nextv.core.epg.HttpEpgFeedProvider
 import tv.nextv.core.repository.RefreshResult
+import java.util.Locale
 
 @Composable
 fun SettingsScreen(onBack: () -> Unit, onPlaylists: () -> Unit, onProxy: () -> Unit) {
     val viewModel = appViewModel { container, _ -> SettingsViewModel(container) }
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val resources = LocalContext.current.resources
+    val update by viewModel.update.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val resources = context.resources
     val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+
+    // Recherche de mise à jour à l'ouverture des réglages.
+    LaunchedEffect(viewModel) {
+        if (update == UpdateState.Idle) viewModel.checkUpdate()
+    }
 
     LaunchedEffect(viewModel) {
         viewModel.refreshEvents.collect { event ->
@@ -105,6 +119,15 @@ fun SettingsScreen(onBack: () -> Unit, onPlaylists: () -> Unit, onProxy: () -> U
         onProxy = onProxy,
         onCycleDecoder = viewModel::cycleDecoder,
         onGridColumns = viewModel::setGridColumns,
+        update = update,
+        onCheckUpdate = viewModel::checkUpdate,
+        onInstallUpdate = viewModel::installUpdate,
+        onAllowInstall = {
+            val opened = viewModel.installPermissionIntent()?.let { intent ->
+                runCatching { context.startActivity(intent) }.isSuccess
+            } ?: false
+            if (!opened) scope.launch { snackbar.showSnackbar(resources.getString(R.string.settings_update_permission_manual)) }
+        },
     )
 }
 
@@ -124,6 +147,10 @@ fun SettingsContent(
     onProxy: () -> Unit,
     onCycleDecoder: (String) -> Unit = {},
     onGridColumns: (GridColumns) -> Unit = {},
+    update: UpdateState = UpdateState.Idle,
+    onCheckUpdate: () -> Unit = {},
+    onInstallUpdate: (AppRelease) -> Unit = {},
+    onAllowInstall: () -> Unit = {},
     now: Long = System.currentTimeMillis(),
 ) {
     val window = rememberWindowInfo()
@@ -284,6 +311,11 @@ fun SettingsContent(
                         PillButton(stringResource(R.string.settings_proxy_configure), onProxy, icon = Icons.Filled.Settings)
                     }
 
+                    // Mise à jour de l'application.
+                    SectionCard(stringResource(R.string.settings_update), icon = Icons.Filled.Refresh) {
+                        UpdateSection(state.version, update, onCheckUpdate, onInstallUpdate, onAllowInstall)
+                    }
+
                     Row(
                         Modifier.fillMaxWidth().padding(bottom = 24.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -320,6 +352,85 @@ private fun DecoderRow(choice: DecoderChoice, onClick: () -> Unit) {
         enabled = choice.options.isNotEmpty(),
     )
 }
+
+/** État de la mise à jour et action possible (rechercher, installer, autoriser l'installation). */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun UpdateSection(
+    installed: String,
+    update: UpdateState,
+    onCheck: () -> Unit,
+    onInstall: (AppRelease) -> Unit,
+    onAllowInstall: () -> Unit,
+) {
+    when (update) {
+        UpdateState.Idle -> InfoText(stringResource(R.string.settings_update_installed, installed))
+        UpdateState.Checking -> {
+            InfoText(stringResource(R.string.settings_update_checking))
+            LinearProgressIndicator(Modifier.fillMaxWidth(), color = NexTvColors.Live)
+        }
+        UpdateState.UpToDate -> InfoText(stringResource(R.string.settings_update_up_to_date, installed))
+        is UpdateState.Available -> ReleaseInfo(update.release, installed)
+        is UpdateState.Downloading -> {
+            InfoText(stringResource(R.string.settings_update_downloading, update.release.version, megabytes(update.downloaded), megabytes(update.total)))
+            LinearProgressIndicator(
+                progress = { if (update.total > 0) (update.downloaded.toFloat() / update.total).coerceIn(0f, 1f) else 0f },
+                modifier = Modifier.fillMaxWidth(),
+                color = NexTvColors.Live,
+            )
+        }
+        is UpdateState.Installing -> InfoText(stringResource(R.string.settings_update_installing, update.release.version))
+        is UpdateState.NeedsPermission -> InfoText(stringResource(R.string.settings_update_permission))
+        is UpdateState.Failed -> ErrorText(
+            stringResource(
+                when (update.error) {
+                    UpdateFailure.NOT_PUBLISHED -> R.string.settings_update_not_published
+                    UpdateFailure.NETWORK -> R.string.settings_update_network
+                    UpdateFailure.SERVER -> R.string.settings_update_server
+                    UpdateFailure.CORRUPTED -> R.string.settings_update_corrupted
+                    UpdateFailure.INSTALL -> R.string.settings_update_install_failed
+                },
+            ),
+        )
+    }
+    val release = when (update) {
+        is UpdateState.Available -> update.release
+        is UpdateState.NeedsPermission -> update.release
+        is UpdateState.Failed -> update.release
+        else -> null
+    }
+    val busy = update is UpdateState.Checking || update is UpdateState.Downloading || update is UpdateState.Installing
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (update is UpdateState.NeedsPermission) {
+            PillButton(stringResource(R.string.settings_update_allow), onAllowInstall, icon = Icons.Filled.Settings, style = PillStyle.Primary)
+        }
+        if (release != null) {
+            PillButton(
+                stringResource(R.string.settings_update_install, release.version),
+                { onInstall(release) },
+                icon = Icons.Filled.Check,
+                style = if (update is UpdateState.NeedsPermission) PillStyle.Secondary else PillStyle.Primary,
+                enabled = !busy,
+            )
+        }
+        PillButton(stringResource(R.string.settings_update_check), onCheck, icon = Icons.Filled.Refresh, enabled = !busy, style = PillStyle.Ghost)
+    }
+}
+
+@Composable
+private fun ReleaseInfo(release: AppRelease, installed: String) {
+    Text(stringResource(R.string.settings_update_available, release.version), style = MaterialTheme.typography.titleMedium)
+    InfoText(stringResource(R.string.settings_update_installed, installed))
+    // Notes de version : la liste des nouveautés, sans la partie installation.
+    release.notes
+        ?.substringBefore("**Installation**")
+        ?.replace("**", "")
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+        ?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 12) }
+}
+
+private fun megabytes(bytes: Long): String = String.format(Locale.FRANCE, "%.1f", bytes / 1_000_000.0)
 
 /** Nombre réglable : gauche/droite pour diminuer/augmenter, OK passe à la valeur suivante (en boucle). */
 @Composable
