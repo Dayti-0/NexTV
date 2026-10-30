@@ -68,18 +68,40 @@ class RoomPlaylistStore(private val database: NexTvDatabase) : PlaylistStore {
         }
     }
 
-    override suspend fun replaceChannels(sourceId: Long, channels: List<Channel>) {
+    override suspend fun replaceChannels(sourceId: Long, channels: List<Channel>, onSaved: (Int) -> Unit) {
         database.withTransaction {
             // L'association EPG des chaînes inchangées survit au rechargement de la playlist.
             val previous = channelDao.epgAssignments(sourceId).associate { assignmentKey(it.tvgId, it.name) to it.epgChannelId }
+            // Une chaîne inchangée (même URL de flux) garde son identifiant : le lecteur, les fiches
+            // ouvertes et le focus de l'accueil restent valables après une actualisation.
+            val previousIds = existingIds(sourceId)
             channelDao.deleteForSource(sourceId)
             val variants = VariantInfo.compute(channels)
+            var saved = 0
             channels.chunked(BATCH_SIZE).forEach { batch ->
                 channelDao.insertAll(
-                    batch.map { toEntity(sourceId, it, previous[assignmentKey(it.tvgId, it.name)], variants.getValue(it.position)) },
+                    batch.map {
+                        toEntity(sourceId, it, previous[assignmentKey(it.tvgId, it.name)], variants.getValue(it.position))
+                            .copy(id = previousIds[urlKey(it.stream.url)]?.removeFirstOrNull() ?: 0)
+                    },
                 )
+                saved += batch.size
+                onSaved(saved)
             }
         }
+    }
+
+    /** Identifiants actuels par URL de flux (empreinte 64 bits : pas de copie des URL en mémoire). */
+    private suspend fun existingIds(sourceId: Long): HashMap<Long, ArrayDeque<Long>> {
+        val ids = HashMap<Long, ArrayDeque<Long>>()
+        var after = 0L
+        while (true) {
+            val rows = channelDao.idsAndUrls(sourceId, after, ID_PAGE_SIZE)
+            if (rows.isEmpty()) break
+            rows.forEach { ids.getOrPut(urlKey(it.streamUrl)) { ArrayDeque(1) }.addLast(it.id) }
+            after = rows.last().id
+        }
+        return ids
     }
 
     override suspend fun updateStatus(sourceId: Long, status: SourceStatus) {
@@ -154,6 +176,16 @@ class RoomPlaylistStore(private val database: NexTvDatabase) : PlaylistStore {
 
     companion object {
         private const val BATCH_SIZE = 500
+        private const val ID_PAGE_SIZE = 5_000
+
+        /** Empreinte FNV-1a 64 bits d'une URL. */
+        fun urlKey(url: String): Long {
+            var hash = -0x340d631b7bdddcdbL
+            for (c in url) {
+                hash = (hash xor c.code.toLong()) * 0x100000001b3L
+            }
+            return hash
+        }
         private const val KIND_REMOTE = "remote"
         private const val KIND_DOCUMENT = "document"
 

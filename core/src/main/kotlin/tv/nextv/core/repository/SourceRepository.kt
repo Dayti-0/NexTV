@@ -185,9 +185,10 @@ class SourceRepository(
             return@withRefreshLock RefreshResult.Failure(error)
         }
 
-        progress?.onProgress(LoadProgress(LoadStep.SAVING, 0, loaded.channels.size.toLong()))
-        store.replaceChannels(id, loaded.channels)
-        progress?.onProgress(LoadProgress(LoadStep.SAVING, loaded.channels.size.toLong(), loaded.channels.size.toLong()))
+        val total = loaded.channels.size.toLong()
+        progress?.onProgress(LoadProgress(LoadStep.SAVING, 0, total))
+        store.replaceChannels(id, loaded.channels) { saved -> progress?.onProgress(LoadProgress(LoadStep.SAVING, saved.toLong(), total)) }
+        progress?.onProgress(LoadProgress(LoadStep.SAVING, total, total))
         var status = source.status.copy(
             lastAttemptAtMillis = attemptAt,
             lastSuccessAtMillis = clock(),

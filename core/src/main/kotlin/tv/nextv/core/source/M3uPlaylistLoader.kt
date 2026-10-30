@@ -92,8 +92,20 @@ class M3uPlaylistLoader(
         val decoder = charset.charset.newDecoder()
             .onMalformedInput(CodingErrorAction.REPLACE)
             .onUnmappableCharacter(CodingErrorAction.REPLACE)
+        // Chaque entrée est convertie dès sa lecture : la liste des entrées brutes n'existe jamais.
+        val base = content.effectiveUrl
+        val channels = ArrayList<Channel>()
+        val strings = HashMap<String, String>()
+        var unsupported = false
         val playlist = try {
-            parser.parse(InputStreamReader(input, decoder), checkCancelled)
+            parser.parse(InputStreamReader(input, decoder), checkCancelled) { entry, headerSeen ->
+                // Sans en-tête ni #EXTINF, seule une liste d'URL absolues est acceptée : un fichier texte
+                // quelconque ne doit pas devenir une liste de « chaînes ».
+                if (!headerSeen && !entry.hasExtInf && "://" !in entry.url) return@parse
+                val channel = toChannel(channels.size, entry, base, strings)
+                if (channel.stream.support == StreamSupport.UNSUPPORTED) unsupported = true
+                channels += channel
+            }
         } catch (e: LineTooLongException) {
             throw SourceException(SourceError.NotAPlaylist, e)
         }
@@ -101,27 +113,20 @@ class M3uPlaylistLoader(
         if (playlist.isHlsMedia) {
             return singleStream(source, remote ?: throw SourceException(SourceError.NotAPlaylist), StreamFormat.HLS)
         }
-        // Sans en-tête ni #EXTINF, seule une liste d'URL absolues est acceptée : un fichier texte
-        // quelconque ne doit pas devenir une liste de « chaînes ».
-        val entries = if (playlist.hasHeader) {
-            playlist.entries
-        } else {
-            playlist.entries.filter { it.hasExtInf || "://" in it.url }
-        }
-        if (entries.isEmpty()) {
+        if (channels.isEmpty()) {
             throw SourceException(if (playlist.hasHeader) SourceError.NoChannels else SourceError.NotAPlaylist)
         }
+        channels.trimToSize()
 
-        val base = content.effectiveUrl
-        val channels = entries.mapIndexed { index, entry -> toChannel(index, entry, base) }
         val warnings = buildSet {
             if (playlist.truncated) add(SourceWarning.TRUNCATED)
-            if (channels.any { it.stream.support == StreamSupport.UNSUPPORTED }) add(SourceWarning.UNSUPPORTED_STREAMS)
+            if (unsupported) add(SourceWarning.UNSUPPORTED_STREAMS)
         }
         return LoadedPlaylist(channels, playlist.epgUrls, warnings)
     }
 
-    private fun toChannel(position: Int, entry: M3uEntry, baseUrl: String?): Channel {
+    /** @param strings textes déjà rencontrés (groupes…) : une seule copie en mémoire pour des milliers d'entrées. */
+    private fun toChannel(position: Int, entry: M3uEntry, baseUrl: String?, strings: MutableMap<String, String>): Channel {
         val stream = StreamUrlInspector.inspect(entry.url, baseUrl, entry.headers, entry.drmProtected)
         val attributes = entry.attributes
         val name = entry.title
@@ -134,7 +139,7 @@ class M3uPlaylistLoader(
             position = position,
             name = name,
             stream = stream,
-            groupTitle = entry.group,
+            groupTitle = entry.group?.let { strings.getOrPut(it) { it } },
             logoUrl = attributes["tvg-logo"]?.takeIf { it.isNotBlank() }?.let { resolveLogo(it, baseUrl) },
             tvgId = attributes["tvg-id"]?.takeIf { it.isNotBlank() },
             tvgName = attributes["tvg-name"]?.takeIf { it.isNotBlank() },
@@ -149,6 +154,10 @@ class M3uPlaylistLoader(
     }
 
     private fun resolveLogo(logo: String, baseUrl: String?): String? {
+        // Cas courant : URL absolue HTTP(S) sans espace, utilisable telle quelle (analyse complète évitée).
+        if ((logo.startsWith("https://", ignoreCase = true) || logo.startsWith("http://", ignoreCase = true)) && logo.none { it.isWhitespace() }) {
+            return logo
+        }
         val inspected = StreamUrlInspector.inspect(logo, baseUrl)
         return inspected.url.takeIf { inspected.support == StreamSupport.SUPPORTED }
     }

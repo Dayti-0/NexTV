@@ -64,7 +64,8 @@ object QualityParser {
             }
             i++
         }
-        val baseName = stripTokens(normalized).ifBlank { name.trim() }
+        // Sans mention de qualité ni de codec (cas le plus fréquent des films), la recherche des mentions est sautée.
+        val baseName = stripTokens(normalized, hasTokens = kept.size != tokens.size).ifBlank { name.trim() }
         val key = kept.joinToString(" ") { foldAccents(it.lowercase()) }
         return Result(baseName = baseName, quality = best, variantKey = key)
     }
@@ -72,23 +73,29 @@ object QualityParser {
     private fun maxQuality(a: StreamQuality?, b: StreamQuality): StreamQuality =
         if (a == null || b.rank > a.rank) b else a
 
+    /** Mentions de qualité et de codec, en mots entiers (compilé une seule fois : appelé pour chaque entrée). */
+    private val STRIP = Regex(
+        "(?i)(?<![\\p{L}\\p{Nd}])(?:full\\s*hd|" +
+            (QUALITY_TOKENS.keys + CODEC_TOKENS).sortedByDescending { it.length }.joinToString("|") { Regex.escape(it) } +
+            ")(?![\\p{L}\\p{Nd}])",
+    )
+    private val EMPTY_BRACKETS = Regex("[\\[(]\\s*[\\])]")
+    private val SPACES = Regex("\\s{2,}")
+    private val MARKS = Regex("\\p{Mn}+")
+
     /** Retire les mentions de qualité et de codec du nom, en conservant le reste tel quel. */
-    private fun stripTokens(name: String): String {
-        val pattern = Regex(
-            "(?i)(?<![\\p{L}\\p{Nd}])(?:full\\s*hd|" +
-                (QUALITY_TOKENS.keys + CODEC_TOKENS).sortedByDescending { it.length }.joinToString("|") { Regex.escape(it) } +
-                ")(?![\\p{L}\\p{Nd}])",
-        )
-        return name.replace(pattern, " ")
-            .replace(Regex("[\\[(]\\s*[\\])]"), " ")
-            .replace(Regex("\\s{2,}"), " ")
+    private fun stripTokens(name: String, hasTokens: Boolean): String {
+        return (if (hasTokens) name.replace(STRIP, " ") else name)
+            .replace(EMPTY_BRACKETS, " ")
+            .replace(SPACES, " ")
             .trim()
             .trim('-', '|', ':', '_', '.', ' ')
             .trim()
     }
 
     private fun normalizeSuperscripts(text: String): String {
-        if (text.none { it in SUPERSCRIPTS }) return text
+        // Les exposants sont tous hors ASCII : test rapide avant la recherche dans la table.
+        if (text.none { it.code > 0x7F && it in SUPERSCRIPTS }) return text
         val out = StringBuilder(text.length + 2)
         var previousWasSuperscript = false
         for (c in text) {
@@ -107,6 +114,9 @@ object QualityParser {
         return out.toString()
     }
 
-    private fun foldAccents(text: String): String =
-        Normalizer.normalize(text, Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "")
+    private fun foldAccents(text: String): String {
+        // Texte ASCII (cas le plus fréquent) : rien à décomposer.
+        if (text.all { it.code < 0x80 }) return text
+        return Normalizer.normalize(text, Normalizer.Form.NFD).replace(MARKS, "")
+    }
 }

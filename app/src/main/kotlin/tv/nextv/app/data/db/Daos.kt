@@ -70,6 +70,8 @@ data class EpgRefRow(val id: Long, val tvgId: String?, val tvgName: String?, val
 
 data class GroupRow(val title: String?, val count: Int)
 
+data class ChannelUrlRow(val id: Long, val streamUrl: String)
+
 /** Chaîne affichée dans les listes (meilleure version), avec le programme en cours s'il est connu. */
 data class ChannelListRow(
     val id: Long,
@@ -139,6 +141,10 @@ interface ChannelDao {
 
     @Query("DELETE FROM channels WHERE sourceId = :sourceId")
     suspend fun deleteForSource(sourceId: Long)
+
+    /** Identifiants et URL des chaînes, par pages (conservation des identifiants à l'actualisation). */
+    @Query("SELECT id, streamUrl FROM channels WHERE sourceId = :sourceId AND id > :after ORDER BY id LIMIT :limit")
+    suspend fun idsAndUrls(sourceId: Long, after: Long, limit: Int): List<ChannelUrlRow>
 
     @Query("SELECT tvgId, name, epgChannelId FROM channels WHERE sourceId = :sourceId AND epgChannelId IS NOT NULL")
     suspend fun epgAssignments(sourceId: Long): List<EpgAssignmentRow>

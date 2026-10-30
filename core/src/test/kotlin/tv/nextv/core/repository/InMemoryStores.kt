@@ -46,7 +46,7 @@ class InMemoryPlaylistStore : PlaylistStore {
         epgMapping.remove(id)
     }
 
-    override suspend fun replaceChannels(sourceId: Long, channels: List<Channel>) {
+    override suspend fun replaceChannels(sourceId: Long, channels: List<Channel>, onSaved: (Int) -> Unit) {
         this.channels[sourceId] = channels.map { nextChannelId++ to it }
     }
 

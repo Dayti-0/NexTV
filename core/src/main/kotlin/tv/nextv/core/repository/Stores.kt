@@ -29,8 +29,10 @@ interface PlaylistStore {
     /**
      * Remplace atomiquement les chaînes de la source. L'association EPG des chaînes
      * inchangées (même `tvg-id` et même nom) est conservée jusqu'au prochain import du guide.
+     *
+     * @param onSaved nombre de chaînes déjà enregistrées, appelé au fil de l'écriture (progression).
      */
-    suspend fun replaceChannels(sourceId: Long, channels: List<Channel>)
+    suspend fun replaceChannels(sourceId: Long, channels: List<Channel>, onSaved: (Int) -> Unit = {})
 
     suspend fun updateStatus(sourceId: Long, status: SourceStatus)
 
