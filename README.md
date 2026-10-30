@@ -7,16 +7,18 @@ Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3, enti�
 - **Démarrage** : la dernière playlist utilisée est rechargée (si elle a plus de 12 h) avec son guide, avec une
   progression réelle (octets reçus, chaînes enregistrées, guide téléchargé puis importé), puis l'accueil s'ouvre.
   En cas d'échec : réessayer, continuer avec les données enregistrées ou choisir une autre playlist.
-- **Accueil** : sections TV, Films, Séries et Guide TV, avec catégories (groupes de la playlist), recherche et favoris.
+- **Accueil** : sections TV, Films, Séries, Guide TV et Foot, avec catégories (groupes de la playlist), recherche et favoris.
   Appui long sur OK : ajouter / retirer des favoris ; « Réorganiser » puis OK et flèches pour les déplacer.
   Catégories de chaînes masquables (appui long sur une catégorie, ou Réglages › Catégories de chaînes) :
   leurs chaînes disparaissent des listes, de la recherche, du zapping et du guide ; les favoris restent visibles.
+- **Foot** : matchs de Ligue 1, de Premier League et de Ligue des champions des 8 prochains jours trouvés dans
+  le guide, par jour, avec la chaîne qui les diffuse ; OK pour regarder, appui long pour la fiche du match.
 - **Films et séries** : fiche enrichie par TMDB (synopsis, note, genres, affiche, bande-annonce), saisons et épisodes.
   Une clé d'API TMDB se saisit dans les réglages (ou s'intègre à la compilation, voir plus bas).
 - **Lecture en direct** : bandeau de 5 s au changement de chaîne ou sur OK (programme en cours avec horaires et
   progression, programme suivant, qualité, débit mesuré en Mbit/s) ; haut / bas pour zapper ; Retour ouvre la liste
   des chaînes à gauche sans couper la lecture (catégories avec gauche / droite, chaînes avec haut / bas, OK pour
-  lancer), un second Retour la ferme.
+  lancer, appui long sur OK pour la fiche du programme avec sa description), un second Retour la ferme.
 - **Qualité automatique** : quand une chaîne existe en plusieurs versions dans la playlist (« FHD », « HD », « SD »,
   « LOW » dans le nom), la lecture descend d'un cran en cas d'erreur ou de mise en mémoire tampon persistante, puis
   remonte quand le débit mesuré le permet. Jamais de bascule vers une autre chaîne ; désactivable dans les réglages.
@@ -43,6 +45,7 @@ Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3, enti�
 | Source | Détails |
 | --- | --- |
 | Playlist M3U/M3U8 distante | URL HTTP ou HTTPS, redirections suivies (10 au maximum), compression gzip détectée sur le contenu. |
+| Compte Xtream Codes | Adresse du serveur, identifiant et mot de passe : le lien de la playlist (`get.php?…&type=m3u_plus`) est construit par l'application. |
 | Playlist M3U/M3U8 locale | Fichier choisi avec le sélecteur de fichiers Android (Storage Access Framework), autorisation persistante, relu à chaque actualisation. |
 | Playlist protégée | Authentification HTTP Basic en réponse au défi `401` du serveur ; identifiants chiffrés (Android Keystore), jamais présentés à un autre hôte, masqués dans les journaux. Les identifiants saisis dans l'URL (`http://user:pass@…`) sont extraits et stockés de la même façon. |
 | URL de flux directe | Si l'URL d'une « playlist » renvoie un manifeste HLS ou un flux vidéo (`video/*`, MPEG-TS, MP4), la source devient une chaîne unique. |

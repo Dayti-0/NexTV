@@ -147,6 +147,12 @@
     <string name="favorites_reorder_hint_pick">Appuyez sur OK pour saisir un favori, puis déplacez-le avec les flèches.</string>
     <string name="favorites_reorder_hint_move">Déplacez avec les flèches, OK pour poser.</string>
     <string name="favorite_added">« %1$s » ajouté aux favoris</string>
+    <string name="home_football">Foot</string>
+    <string name="football_all">Tous les matchs</string>
+    <string name="football_today">Aujourd’hui</string>
+    <string name="football_tomorrow">Demain</string>
+    <string name="football_empty_title">Aucun match trouvé</string>
+    <string name="football_empty_message">Pas de match de Ligue 1, de Premier League ni de Ligue des champions dans le guide des 8 prochains jours, sur les chaînes de la playlist. Le guide se met à jour dans Réglages › Guide TV.</string>
     <string name="favorite_removed">« %1$s » retiré des favoris</string>
     <string name="category_hide">Masquer</string>
     <string name="category_hide_title">Masquer « %1$s » ?</string>

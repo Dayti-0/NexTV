@@ -1,5 +1,8 @@
 package tv.nextv.app.screenshots
 
+import tv.nextv.app.ui.football.FootballMatch
+import tv.nextv.app.ui.football.FootballUiState
+import tv.nextv.core.epg.Competition
 import tv.nextv.app.data.catalog.MetadataState
 import tv.nextv.app.data.progress.ProgressEntity
 import tv.nextv.app.data.db.ChannelListRow
@@ -364,6 +367,24 @@ object SampleData {
         qualityNotice = null,
         bandwidthMbps = null,
         error = "Le serveur du flux ne répond pas (délai dépassé).\nLa lecture passe par le proxy configuré : vérifiez qu’il est joignable.",
+    )
+
+    val football = FootballUiState(
+        loading = false,
+        now = NOW,
+        matches = listOf(
+            Triple(Competition.LIGUE_1, "Canal+ Sport", "Paris SG / Marseille") to (NOW - 40 * MINUTE),
+            Triple(Competition.PREMIER_LEAGUE, "Canal+ Foot", "Liverpool / Arsenal") to (NOW + 75 * MINUTE),
+            Triple(Competition.CHAMPIONS_LEAGUE, "beIN Sports 1", "Real Madrid / Bayern Munich") to (NOW + 26 * 60 * MINUTE),
+            Triple(Competition.LIGUE_1, "Ligue 1+", "Lens / Lille") to (NOW + 50 * 60 * MINUTE),
+        ).mapIndexed { index, (match, start) ->
+            val (competition, channel, teams) = match
+            FootballMatch(
+                competition = competition,
+                channel = GuideChannel(100L + index, channel, null, null, emptyList()),
+                programme = GuideProgramme("Football : ${competition.label}", start, start + 115 * MINUTE, teams, "Match de ${competition.label}.", "Football"),
+            )
+        },
     )
 
     val editor = EditorState(

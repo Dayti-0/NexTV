@@ -95,6 +95,7 @@ import tv.nextv.app.ui.components.IconAction
 import tv.nextv.app.ui.components.PillButton
 import tv.nextv.app.ui.components.WindowInfo
 import tv.nextv.app.ui.components.rememberWindowInfo
+import tv.nextv.app.ui.football.FootballScreen
 import tv.nextv.app.ui.guide.GuideScreen
 import tv.nextv.app.ui.guide.formatDuration
 import tv.nextv.app.ui.theme.NexTvColors
@@ -198,6 +199,7 @@ fun HomeScreen(
             onHideCategory = { pendingHide = it },
         ),
         guide = { modifier -> sourceId?.let { GuideScreen(it, onPlay, modifier) } },
+        football = { modifier -> sourceId?.let { FootballScreen(it, onPlay, modifier) } },
         continueMovies = continueMovies,
         continueSeries = continueSeries,
         gridColumns = gridColumns,
@@ -244,6 +246,8 @@ fun HomeContent(
     snackbarHostState: SnackbarHostState,
     actions: HomeActions,
     guide: @Composable (Modifier) -> Unit,
+    /** Section « Foot » : matchs à venir, d'après le guide. */
+    football: @Composable (Modifier) -> Unit = {},
     continueMovies: List<ProgressEntity> = emptyList(),
     continueSeries: List<ProgressEntity> = emptyList(),
     gridColumns: GridColumns = GridColumns(),
@@ -263,6 +267,8 @@ fun HomeContent(
             HomeTopBar(section, sourceName, window, actions)
             if (section == HomeSection.GUIDE) {
                 guide(Modifier.weight(1f))
+            } else if (section == HomeSection.FOOTBALL) {
+                football(Modifier.weight(1f))
             } else {
                 val favoritesCount = when (section) {
                     HomeSection.TV -> favoriteChannels.size
@@ -387,6 +393,7 @@ private fun sectionLabel(section: HomeSection) = stringResource(
         HomeSection.MOVIES -> R.string.home_movies
         HomeSection.SERIES -> R.string.home_series
         HomeSection.GUIDE -> R.string.home_guide
+        HomeSection.FOOTBALL -> R.string.home_football
     },
 )
 
@@ -395,6 +402,7 @@ private fun sectionIcon(section: HomeSection): ImageVector = when (section) {
     HomeSection.MOVIES -> NexTvIcons.Movie
     HomeSection.SERIES -> NexTvIcons.Series
     HomeSection.GUIDE -> NexTvIcons.Guide
+    HomeSection.FOOTBALL -> NexTvIcons.Football
 }
 
 @Composable

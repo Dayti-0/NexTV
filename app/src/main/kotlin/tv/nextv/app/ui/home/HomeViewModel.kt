@@ -41,7 +41,7 @@ import tv.nextv.app.data.db.MovieRow
 import tv.nextv.app.data.db.SeriesRow
 import tv.nextv.core.model.ContentKind
 
-enum class HomeSection { TV, MOVIES, SERIES, GUIDE }
+enum class HomeSection { TV, MOVIES, SERIES, GUIDE, FOOTBALL }
 
 /** Catégorie affichée dans une section. */
 sealed interface Category {
@@ -62,7 +62,7 @@ fun HomeSection.kind(): ContentKind? = when (this) {
     HomeSection.TV -> ContentKind.LIVE
     HomeSection.MOVIES -> ContentKind.MOVIE
     HomeSection.SERIES -> ContentKind.SERIES
-    HomeSection.GUIDE -> null
+    HomeSection.GUIDE, HomeSection.FOOTBALL -> null
 }
 
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)

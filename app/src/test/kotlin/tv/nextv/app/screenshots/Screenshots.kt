@@ -42,6 +42,7 @@ import tv.nextv.app.ui.player.PlaybackInfoPanel
 import tv.nextv.app.ui.player.ResumePrompt
 import tv.nextv.app.ui.player.ResumePromptCard
 import tv.nextv.app.ui.player.PlayerOverlay
+import tv.nextv.app.ui.football.FootballContent
 import tv.nextv.app.ui.settings.ChannelGroupsContent
 import tv.nextv.app.ui.settings.ProxySettingsContent
 import tv.nextv.app.ui.settings.SettingsContent
@@ -135,6 +136,11 @@ abstract class ScreenshotSuite(private val device: String) {
     @Test
     fun guide() = capture("09_guide") {
         Home(HomeSection.GUIDE, Category.All)
+    }
+
+    @Test
+    fun football() = capture("09b_foot") {
+        Home(HomeSection.FOOTBALL, Category.All)
     }
 
     @Test
@@ -392,6 +398,9 @@ abstract class ScreenshotSuite(private val device: String) {
                     onPlay = {},
                     modifier = modifier,
                 )
+            },
+            football = { modifier ->
+                FootballContent(SampleData.football, competition = null, onCompetition = {}, onPlay = {}, modifier = modifier)
             },
         )
     }
