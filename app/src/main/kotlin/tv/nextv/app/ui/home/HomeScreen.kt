@@ -133,6 +133,8 @@ fun HomeScreen(
     onSeries: (Long) -> Unit,
     onSettings: () -> Unit,
     onResume: (Long) -> Unit = onPlay,
+    /** Programme passé d'une chaîne avec replay (chaîne, début, fin). */
+    onReplay: (Long, Long, Long) -> Unit = { _, _, _ -> },
 ) {
     val resources = LocalContext.current.resources
     val viewModel = appViewModel { container, _ -> HomeViewModel(container, resources) }
@@ -179,6 +181,12 @@ fun HomeScreen(
         onStopOrDispose { viewModel.setPreviewActive(false) }
     }
 
+    // Connexion de l'aperçu libérée avant la lecture en plein écran.
+    val playChannel: (Long) -> Unit = {
+        viewModel.setPreviewActive(false)
+        onPlay(it)
+    }
+
     HomeContent(
         section = section,
         sourceName = sourceName,
@@ -199,11 +207,7 @@ fun HomeScreen(
             onSection = viewModel::selectSection,
             onCategory = viewModel::selectCategory,
             onQuery = viewModel::setQuery,
-            onPlayChannel = {
-                // Connexion libérée avant la lecture en plein écran.
-                viewModel.setPreviewActive(false)
-                onPlay(it)
-            },
+            onPlayChannel = playChannel,
             onOpenMovie = onMovie,
             onOpenSeries = onSeries,
             onToggleFavorite = viewModel::toggleFavorite,
@@ -216,8 +220,15 @@ fun HomeScreen(
             onHideCategory = { pendingHide = it },
             onChannelFocus = viewModel::onChannelFocused,
         ),
-        guide = { modifier -> sourceId?.let { GuideScreen(it, onPlay, modifier) } },
-        football = { modifier -> sourceId?.let { FootballScreen(it, onPlay, modifier) } },
+        guide = { modifier ->
+            sourceId?.let {
+                GuideScreen(it, playChannel, modifier, onReplay = { channelId, start, stop ->
+                    viewModel.setPreviewActive(false)
+                    onReplay(channelId, start, stop)
+                })
+            }
+        },
+        football = { modifier -> sourceId?.let { FootballScreen(it, playChannel, modifier) } },
         continueMovies = continueMovies,
         continueSeries = continueSeries,
         gridColumns = gridColumns,

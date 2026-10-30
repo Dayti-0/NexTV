@@ -34,6 +34,11 @@ private const val BEST_VISIBLE =
     "NOT EXISTS (SELECT 1 FROM channels b WHERE $BETTER_VERSION " +
         "AND IFNULL(b.groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'LIVE'))"
 
+/** Jours de replay de `c` : ceux de la version qui en a le plus (toutes ne sont pas forcément enregistrées). */
+private const val CATCHUP_DAYS =
+    "MAX(c.catchupDays, IFNULL((SELECT MAX(v.catchupDays) FROM channels v " +
+        "WHERE v.sourceId = c.sourceId AND v.variantKey = c.variantKey AND c.variantKey != ''), 0)) AS catchupDays"
+
 /** `c` affichée dans la liste : catégorie `:group` si `:filterGroup` vaut 1, sinon toutes. */
 private const val LISTED =
     "$NOT_HIDDEN AND CASE WHEN :filterGroup = 1 THEN IFNULL(c.groupTitle, '') = :group AND $BEST_IN_GROUP ELSE $BEST_VISIBLE END"
@@ -179,6 +184,7 @@ data class GuideChannelRow(
     val logoUrl: String?,
     val channelNumber: String?,
     val epgChannelId: String,
+    val catchupDays: Int,
 )
 
 @Dao
@@ -459,7 +465,7 @@ interface ChannelDao {
     /** Chaînes associées au guide, pour la grille des programmes (hors catégories masquées). */
     @Query(
         """
-        SELECT c.id, c.name, c.title, c.logoUrl, c.channelNumber, c.epgChannelId FROM channels c
+        SELECT c.id, c.name, c.title, c.logoUrl, c.channelNumber, c.epgChannelId, $CATCHUP_DAYS FROM channels c
         WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.epgChannelId IS NOT NULL AND $LISTED
         ORDER BY c.position LIMIT :limit
         """,
@@ -469,7 +475,7 @@ interface ChannelDao {
     /** Chaînes favorites associées au guide. */
     @Query(
         """
-        SELECT c.id, c.name, c.title, c.logoUrl, c.channelNumber, c.epgChannelId
+        SELECT c.id, c.name, c.title, c.logoUrl, c.channelNumber, c.epgChannelId, $CATCHUP_DAYS
         FROM favorites f
         JOIN channels c ON c.sourceId = f.sourceId AND c.itemKey = f.itemKey AND c.kind = 'LIVE' AND c.isPrimary = 1
         WHERE f.sourceId = :sourceId AND f.kind = 'LIVE' AND c.epgChannelId IS NOT NULL

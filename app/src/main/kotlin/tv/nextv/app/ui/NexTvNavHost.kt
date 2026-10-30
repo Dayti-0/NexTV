@@ -38,7 +38,8 @@ private object Routes {
     const val HOME = "home"
     const val PLAYLISTS = "playlists"
     const val EDITOR = "editor?${SourceEditorViewModel.ARG_SOURCE_ID}={${SourceEditorViewModel.ARG_SOURCE_ID}}"
-    const val PLAYER = "player/{${PlayerViewModel.ARG_CHANNEL_ID}}?${PlayerViewModel.ARG_RESUME}={${PlayerViewModel.ARG_RESUME}}"
+    const val PLAYER = "player/{${PlayerViewModel.ARG_CHANNEL_ID}}?${PlayerViewModel.ARG_RESUME}={${PlayerViewModel.ARG_RESUME}}" +
+        "&${PlayerViewModel.ARG_REPLAY_START}={${PlayerViewModel.ARG_REPLAY_START}}&${PlayerViewModel.ARG_REPLAY_STOP}={${PlayerViewModel.ARG_REPLAY_STOP}}"
     const val MOVIE = "movie/{$ARG_ITEM}"
     const val SERIES = "series/{$ARG_ITEM}"
     const val SETTINGS = "settings"
@@ -48,6 +49,10 @@ private object Routes {
     fun startup(reload: Boolean = false) = "startup?${StartupViewModel.ARG_RELOAD}=$reload"
     fun editor(sourceId: Long? = null) = "editor?${SourceEditorViewModel.ARG_SOURCE_ID}=${sourceId ?: -1}"
     fun player(channelId: Long, resume: String = PlayerViewModel.RESUME_ASK) = "player/$channelId?${PlayerViewModel.ARG_RESUME}=$resume"
+
+    /** Programme passé d'une chaîne avec replay. */
+    fun replay(channelId: Long, startMillis: Long, stopMillis: Long) =
+        "player/$channelId?${PlayerViewModel.ARG_REPLAY_START}=$startMillis&${PlayerViewModel.ARG_REPLAY_STOP}=$stopMillis"
     fun movie(channelId: Long) = "movie/$channelId"
     fun series(channelId: Long) = "series/$channelId"
 }
@@ -112,6 +117,7 @@ private fun AppNavHost(navController: NavHostController) {
                 onSeries = { navController.navigate(Routes.series(it)) },
                 onSettings = { navController.navigate(Routes.SETTINGS) },
                 onResume = { navController.navigate(Routes.player(it, PlayerViewModel.RESUME_YES)) },
+                onReplay = { channelId, start, stop -> navController.navigate(Routes.replay(channelId, start, stop)) },
             )
         }
         composable(
@@ -147,6 +153,14 @@ private fun AppNavHost(navController: NavHostController) {
                 navArgument(PlayerViewModel.ARG_RESUME) {
                     type = NavType.StringType
                     defaultValue = PlayerViewModel.RESUME_ASK
+                },
+                navArgument(PlayerViewModel.ARG_REPLAY_START) {
+                    type = NavType.LongType
+                    defaultValue = 0L
+                },
+                navArgument(PlayerViewModel.ARG_REPLAY_STOP) {
+                    type = NavType.LongType
+                    defaultValue = 0L
                 },
             ),
         ) {

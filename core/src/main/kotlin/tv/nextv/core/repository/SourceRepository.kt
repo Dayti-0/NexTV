@@ -2,6 +2,8 @@ package tv.nextv.core.repository
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -28,6 +30,7 @@ import tv.nextv.core.model.SourceStatus
 import tv.nextv.core.model.SourceWarning
 import tv.nextv.core.net.RemoteUrlValidator
 import tv.nextv.core.net.RequestPurpose
+import tv.nextv.core.source.Catchup
 import tv.nextv.core.source.PlaylistLoaderRegistry
 import java.util.concurrent.ConcurrentHashMap
 
@@ -59,6 +62,8 @@ class SourceRepository(
      * les guides configurés par playlist ou annoncés par leur en-tête.
      */
     private val epgFeed: EpgFeedProvider? = null,
+    /** Jours de replay des chaînes, par identifiant de flux (comptes Xtream) ; `null` : inconnus. */
+    private val catchupDays: suspend (PlaylistSource) -> Map<String, Int>? = { null },
 ) {
 
     val sources: Flow<List<PlaylistSource>> = store.observeSources()
@@ -190,7 +195,12 @@ class SourceRepository(
         val attemptAt = clock()
 
         val loaded = try {
-            loaders.get(source.type).load(source, credentials, progress)
+            coroutineScope {
+                // Chaînes avec replay : demandées au serveur pendant le téléchargement de la playlist.
+                val archive = async { archiveDays(source) }
+                val playlist = loaders.get(source.type).load(source, credentials, progress)
+                archive.await()?.let { days -> playlist.copy(channels = Catchup.annotate(playlist.channels, days)) } ?: playlist
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -229,6 +239,15 @@ class SourceRepository(
             store.updateStatus(id, status)
         }
         RefreshResult.Success(loaded.channels.size, loaded.warnings, status.epg)
+    }
+
+    private suspend fun archiveDays(source: PlaylistSource): Map<String, Int>? = try {
+        catchupDays(source)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        logger.warn(TAG, "Replay de la source ${source.id} inconnu", e)
+        null
     }
 
     /**

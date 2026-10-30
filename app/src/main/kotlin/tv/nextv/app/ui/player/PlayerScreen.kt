@@ -556,8 +556,12 @@ private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Mo
                     StatusPill(stringResource(R.string.player_delay, formatClock(delay)), NexTvColors.Warning, Modifier.align(Alignment.CenterVertically))
                 }
             }
+            if (state.replay != null) StatusPill(stringResource(R.string.player_replay), NexTvColors.Primary, Modifier.align(Alignment.CenterVertically))
             state.quality?.let { Badge(it, Modifier.align(Alignment.CenterVertically), color = NexTvColors.Primary) }
             state.bandwidthMbps?.let { SpeedLabel(it, Modifier.align(Alignment.CenterVertically)) }
+        }
+        state.replay?.let {
+            Text(it, style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.85f), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         state.now?.let { programme ->
             Text(programme.title, style = MaterialTheme.typography.titleLarge, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)

@@ -277,6 +277,7 @@ class RoomPlaylistStore(private val database: NexTvDatabase) : PlaylistStore {
             isPrimary = variant.primary,
             variantCount = variant.count,
             itemKey = ItemKeys.of(channel),
+            catchupDays = channel.catchupDays,
         )
 
         private fun encode(location: SourceLocation): Triple<String, String, String?> = when (location) {

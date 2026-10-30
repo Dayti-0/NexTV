@@ -84,6 +84,33 @@ class XtreamApiTest {
     }
 
     @Test
+    fun `replay days are read from the list of live streams`() {
+        val streams = """
+            [{"num":1,"name":"TF1 \"HD\"","stream_type":"live","stream_id":101,"category_ids":[1,2],"tv_archive":1,
+              "direct_source":"","tv_archive_duration":"7"},
+             {"num":2,"name":"France 2","stream_id":"102","tv_archive":0,"tv_archive_duration":0},
+             {"num":3,"name":"M6 {replay}","stream_id":103,"tv_archive":"1","tv_archive_duration":3,"extra":{"a":[{"b":"]"}]}},
+             {"num":4,"stream_id":104,"tv_archive":1,"tv_archive_duration":null}]
+        """.trimIndent()
+
+        assertEquals(mapOf("101" to 7, "103" to 3), XtreamApi.readArchiveDays(streams.reader()))
+        assertEquals(emptyMap<String, Int>(), XtreamApi.readArchiveDays("[]".reader()))
+        assertNull(XtreamApi.readArchiveDays("""{"user_info":{"auth":0}}""".reader()))
+    }
+
+    @Test
+    fun `replay days are requested with the live streams action`() = runBlocking {
+        primary.enqueue(MockResponse.Builder().code(200).body("""[{"stream_id":5,"tv_archive":1,"tv_archive_duration":"2"}]""").build())
+        val source = PlaylistSource(
+            name = "Test",
+            location = SourceLocation.Remote(primary.url("/get.php?username=u&password=p&type=m3u_plus").toString()),
+        )
+
+        assertEquals(mapOf("5" to 2), api.archiveDays(source))
+        assertEquals("get_live_streams", primary.takeRequest().url.queryParameter("action"))
+    }
+
+    @Test
     fun `playlists that are not Xtream accounts have no account details`() = runBlocking {
         assertNull(api.accountInfo(PlaylistSource(name = "M3U", location = SourceLocation.Remote(primary.url("/liste.m3u").toString()))))
     }

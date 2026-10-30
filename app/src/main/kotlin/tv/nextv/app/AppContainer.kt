@@ -43,6 +43,7 @@ import tv.nextv.core.log.RedactingLogger
 import tv.nextv.core.log.Redactor
 import tv.nextv.core.football.FootballDataClient
 import tv.nextv.core.meta.TmdbClient
+import tv.nextv.core.model.PlaylistSource
 import tv.nextv.core.net.HttpClientProvider
 import tv.nextv.core.net.NetworkSettings
 import tv.nextv.core.repository.RefreshResult
@@ -52,6 +53,8 @@ import tv.nextv.core.source.PlaylistLoaderRegistry
 import tv.nextv.core.source.XtreamApi
 import tv.nextv.core.update.UpdateChecker
 import java.io.File
+import java.util.TimeZone
+import java.util.concurrent.ConcurrentHashMap
 
 /** Assemblage manuel des dépendances de l'application. */
 class AppContainer(context: Context) {
@@ -97,6 +100,9 @@ class AppContainer(context: Context) {
         logger = logger,
     )
 
+    /** Comptes Xtream Codes : abonnement (date de fin, connexions simultanées) et chaînes avec replay. */
+    val xtreamApi = XtreamApi(httpClients, logger)
+
     val sourceRepository = SourceRepository(
         store = playlistStore,
         credentialStore = EncryptedCredentialStore(database.credentialDao(), cipher, logger),
@@ -112,6 +118,7 @@ class AppContainer(context: Context) {
         logger = logger,
         documentAccess = documentAccess,
         epgFeed = epgFeed,
+        catchupDays = xtreamApi::archiveDays,
     )
 
     val refreshController = RefreshController(applicationScope, sourceRepository)
@@ -141,9 +148,6 @@ class AppContainer(context: Context) {
         apiKey = { footballKey.value ?: BuildConfig.FOOTBALL_API_KEY.takeIf { it.isNotBlank() } },
         logger = logger,
     )
-
-    /** Abonnement des comptes Xtream Codes (date de fin, connexions simultanées). */
-    val xtreamApi = XtreamApi(httpClients, logger)
 
     val favorites = FavoritesRepository(database)
 
@@ -177,6 +181,21 @@ class AppContainer(context: Context) {
         val sourceId = settings.activePlaylistId.first() ?: return null
         val key = settings.recentChannels(sourceId).first().firstOrNull() ?: return null
         return channelDao.primaryIdByKey(sourceId, key)
+    }
+
+    private val serverTimeZones = ConcurrentHashMap<Long, TimeZone>()
+
+    /**
+     * Fuseau horaire du serveur Xtream d'une playlist, dans lequel s'expriment les heures du replay ;
+     * celui de l'appareil si le serveur ne l'indique pas.
+     */
+    suspend fun serverTimeZone(source: PlaylistSource): TimeZone {
+        serverTimeZones[source.id]?.let { return it }
+        val id = xtreamApi.accountInfo(source)?.serverTimeZone ?: return TimeZone.getDefault()
+        // Identifiant inconnu : TimeZone le remplace par GMT.
+        val zone = TimeZone.getTimeZone(id).takeIf { it.id == id } ?: return TimeZone.getDefault()
+        serverTimeZones[source.id] = zone
+        return zone
     }
 
     /** Applique les réglages enregistrés, prépare le masquage des secrets et les actualisations périodiques. */

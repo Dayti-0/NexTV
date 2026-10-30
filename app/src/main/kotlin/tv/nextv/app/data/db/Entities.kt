@@ -92,6 +92,8 @@ data class ChannelEntity(
     val variantCount: Int = 1,
     /** Clé stable (favoris, cache TMDB) : ne change pas d'une actualisation à l'autre. */
     val itemKey: String = "",
+    /** Jours de programmes passés gardés par le serveur pour le replay (0 : pas de replay). */
+    val catchupDays: Int = 0,
 )
 
 /**

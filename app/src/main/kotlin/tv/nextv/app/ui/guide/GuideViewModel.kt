@@ -9,7 +9,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -17,6 +19,7 @@ import kotlinx.coroutines.launch
 import tv.nextv.app.AppContainer
 import tv.nextv.app.data.db.GroupRow
 import tv.nextv.core.model.ContentKind
+import java.util.Calendar
 
 @Immutable
 data class GuideProgramme(
@@ -37,12 +40,17 @@ data class GuideChannel(
     val number: String?,
     val logoUrl: String?,
     val programmes: List<GuideProgramme>,
+    /** Jours de programmes passés gardés par le serveur (replay), 0 sans replay. */
+    val catchupDays: Int = 0,
 )
 
 data class GuideUiState(
     val loading: Boolean = true,
+    /** Début de la grille : la veille à minuit (programmes passés, replay). */
     val windowStart: Long = 0,
     val windowEnd: Long = 0,
+    /** Position affichée à l'ouverture : la demi-heure écoulée. */
+    val openAt: Long = 0,
     val now: Long = 0,
     val channels: List<GuideChannel> = emptyList(),
 )
@@ -79,13 +87,26 @@ class GuideViewModel(
         }
     }
 
-    val state: StateFlow<GuideUiState> = combine(selectedGroup, clock, hiddenGroups) { group, now, _ -> group to now }
-        .mapLatest { (group, now) -> load(group, now) }
+    /** Demi-heure en cours : la grille n'est rechargée qu'à son changement (ou à celui de la catégorie). */
+    private val slot = clock.map { it - it % HALF_HOUR }.distinctUntilChanged()
+
+    val state: StateFlow<GuideUiState> = combine(
+        combine(selectedGroup, slot, hiddenGroups) { group, slot, _ -> group to slot }.mapLatest { (group, slot) -> load(group, slot) },
+        clock,
+    ) { loaded, now -> loaded.copy(now = now) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), GuideUiState())
 
-    private suspend fun load(group: String?, now: Long): GuideUiState {
-        val windowStart = now - now % HALF_HOUR - HALF_HOUR
-        val windowEnd = windowStart + WINDOW_MILLIS
+    private suspend fun load(group: String?, slot: Long): GuideUiState {
+        val openAt = slot - HALF_HOUR
+        val windowStart = Calendar.getInstance().apply {
+            timeInMillis = slot
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+            add(Calendar.DAY_OF_MONTH, -1)
+        }.timeInMillis
+        val windowEnd = openAt + WINDOW_MILLIS
         val rows = if (group == FAVORITES) {
             container.channelDao.guideFavoriteChannels(sourceId)
         } else {
@@ -109,9 +130,10 @@ class GuideViewModel(
                 programmes = programmes[row.epgChannelId].orEmpty().map {
                     GuideProgramme(it.title, it.startMillis, it.stopMillis, it.subtitle, it.description, it.category, it.year)
                 },
+                catchupDays = row.catchupDays,
             )
         }
-        return GuideUiState(loading = false, windowStart = windowStart, windowEnd = windowEnd, now = now, channels = channels)
+        return GuideUiState(loading = false, windowStart = windowStart, windowEnd = windowEnd, openAt = openAt, now = slot, channels = channels)
     }
 
     companion object {
@@ -119,7 +141,7 @@ class GuideViewModel(
         const val FAVORITES = "\u0000favorites"
         private const val HALF_HOUR = 30 * 60_000L
 
-        /** Fenêtre affichée : la demi-heure écoulée et les 24 heures à venir. */
+        /** Fin de la grille : 24 heures après la demi-heure écoulée. */
         private const val WINDOW_MILLIS = 24 * 60 * 60_000L + HALF_HOUR
         private const val REFRESH_MILLIS = 60_000L
         private const val MAX_CHANNELS = 300

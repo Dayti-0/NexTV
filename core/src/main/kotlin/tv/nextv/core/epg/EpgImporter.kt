@@ -19,8 +19,8 @@ fun interface ProgrammeSink {
 }
 
 data class EpgImportOptions(
-    /** Programmes terminés depuis plus longtemps que cette durée : ignorés. */
-    val pastWindowMillis: Long = 12 * HOUR,
+    /** Programmes terminés depuis plus longtemps que cette durée : ignorés (le replay remonte à la veille). */
+    val pastWindowMillis: Long = 2 * 24 * HOUR,
     /** Programmes commençant au-delà de cette durée : ignorés. */
     val futureWindowMillis: Long = 8 * 24 * HOUR,
     val batchSize: Int = 1000,

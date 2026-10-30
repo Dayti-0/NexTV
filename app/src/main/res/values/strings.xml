@@ -199,6 +199,11 @@
     <string name="guide_upcoming">À venir</string>
     <string name="guide_no_description">Pas de description dans le guide.</string>
     <string name="guide_watch">Regarder</string>
+    <string name="guide_watch_live">Regarder le direct</string>
+    <string name="guide_replay">Revoir</string>
+    <string name="guide_restart">Depuis le début</string>
+    <string name="guide_yesterday">Hier</string>
+    <string name="guide_tomorrow">Demain</string>
 
     <!-- Lecteur -->
     <string name="player_next">Ensuite %1$s · %2$s</string>
@@ -219,6 +224,8 @@
     <string name="player_aspect_zoom">Agrandi (bords coupés)</string>
     <string name="player_more">Plus</string>
     <string name="player_last_channel">Dernière chaîne regardée</string>
+    <string name="player_replay">Replay</string>
+    <string name="player_replay_unavailable">Ce programme n’est pas disponible en replay.</string>
     <string name="player_backup_server">Serveur principal injoignable : lecture par un serveur de secours</string>
     <string name="player_options_hint_live">Menu ≡ : options · ⏪ : dernière chaîne regardée</string>
     <string name="player_options_hint">Menu ≡ : options</string>

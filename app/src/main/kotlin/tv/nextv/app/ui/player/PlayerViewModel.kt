@@ -2,6 +2,7 @@ package tv.nextv.app.ui.player
 
 import android.content.Context
 import android.net.wifi.WifiManager
+import android.text.format.DateUtils
 import java.io.File
 import androidx.annotation.OptIn
 import androidx.lifecycle.SavedStateHandle
@@ -66,7 +67,9 @@ import tv.nextv.core.model.StreamFormat
 import tv.nextv.core.model.StreamQuality
 import tv.nextv.core.model.StreamSupport
 import tv.nextv.core.net.RequestPurpose
+import tv.nextv.core.source.Catchup
 import tv.nextv.core.source.Mirrors
+import tv.nextv.core.source.XtreamAccount
 import tv.nextv.core.stream.QualityOption
 import tv.nextv.core.stream.QualitySwitcher
 import java.util.Locale
@@ -117,6 +120,8 @@ data class PlayerUiState(
     val resumePrompt: ResumePrompt? = null,
     /** Pistes audio et sous-titres du flux en cours. */
     val tracks: PlayerTracks = PlayerTracks(),
+    /** Replay d'un programme passé : chaîne et horaires (« TF1 · ven. 30 oct., 20:58 – 21:50 »). */
+    val replay: String? = null,
 )
 
 /**
@@ -172,6 +177,10 @@ class PlayerViewModel(
 ) : ViewModel() {
 
     private var channelId: Long = checkNotNull(handle.get<Long>(ARG_CHANNEL_ID))
+
+    /** Replay d'un programme passé (début, fin) ; `null` : lecture normale. */
+    private val replay: Pair<Long, Long>? = handle.get<Long>(ARG_REPLAY_START)?.takeIf { it > 0 }
+        ?.let { start -> handle.get<Long>(ARG_REPLAY_STOP)?.takeIf { it > start }?.let { start to it } }
     /** Chaîne affichée (meilleure version), base du zapping. */
     private var channel: ChannelEntity? = null
     /** Ligne choisie dans les listes (une version précise : celle de sa catégorie). */
@@ -614,6 +623,10 @@ class PlayerViewModel(
         val primary = if (isLive && requested.variantKey.isNotEmpty()) dao.primaryOf(requested.sourceId, requested.variantKey) ?: requested else requested
         channel = primary
         listed = requested
+        if (replay != null && isLive) {
+            playReplay(requested, primary, replay)
+            return
+        }
         // Chaînes récentes de l'accueil.
         if (isLive) container.settings.addRecentChannel(primary.sourceId, primary.itemKey)
         sourceId.value = primary.sourceId
@@ -667,6 +680,65 @@ class PlayerViewModel(
         val firstId = switcher?.current?.channelId ?: startId
         val variant = if (firstId == requested.id) requested else dao.get(firstId) ?: requested
         playVariant(variant, notice = null)
+    }
+
+    /** Programme passé, lu depuis l'enregistrement du serveur Xtream (replay), avec les commandes d'un film. */
+    private suspend fun playReplay(requested: ChannelEntity, primary: ChannelEntity, programme: Pair<Long, Long>) {
+        val (start, stop) = programme
+        switcher = null
+        // Version enregistrée par le serveur : toutes les qualités ne le sont pas forcément.
+        val variants = if (primary.variantKey.isNotEmpty()) container.channelDao.variants(primary.sourceId, primary.variantKey) else emptyList()
+        val recorded = (listOf(requested) + variants).firstOrNull { it.catchupDays > 0 } ?: requested
+        val source = container.sourceRepository.getSource(recorded.sourceId)
+        val title = container.programmeDao.upcoming(primary.id, start, limit = 1).firstOrNull()?.takeIf { it.startMillis == start }?.title
+        val channelName = primary.title.ifBlank { primary.name }
+        val time = DateUtils.formatDateRange(
+            context,
+            start,
+            stop,
+            DateUtils.FORMAT_SHOW_WEEKDAY or DateUtils.FORMAT_ABBREV_WEEKDAY or DateUtils.FORMAT_SHOW_DATE or
+                DateUtils.FORMAT_ABBREV_MONTH or DateUtils.FORMAT_SHOW_TIME,
+        )
+        mutableState.update {
+            it.copy(
+                channelName = title ?: channelName,
+                channelNumber = null,
+                logoUrl = primary.logoUrl,
+                sourceName = source?.name.orEmpty(),
+                isLive = false,
+                replay = "$channelName  ·  $time",
+                now = null,
+                next = null,
+                error = null,
+                quality = null,
+                qualityNotice = null,
+                buffering = true,
+                channelVersion = it.channelVersion + 1,
+            )
+        }
+        val account = (source?.location as? SourceLocation.Remote)?.url?.let(XtreamAccount::parse)
+        val url = if (source != null && account != null) {
+            Catchup.xtreamUrl(recorded.streamUrl, account, start, stop, container.serverTimeZone(source))
+        } else {
+            null
+        }
+        if (source == null || url == null) {
+            releasePlayer()
+            mutableState.update { it.copy(buffering = false, error = resources.getString(R.string.player_replay_unavailable)) }
+            return
+        }
+        playing = recorded
+        startPositionMs = 0
+        serverRoots = serverRootsOf(source)
+        backupUrls = Mirrors.alternatives(url, serverRoots)
+        request = PlaybackRequest(
+            stream = recorded.toStream().copy(url = url, format = StreamFormat.PROGRESSIVE),
+            userAgent = source.userAgent,
+            credentials = null,
+            credentialsOrigin = null,
+        )
+        triedHlsFallback = false
+        start(forceHls = false)
     }
 
     /** Lance la lecture d'une version précise de la chaîne. */
@@ -723,7 +795,7 @@ class PlayerViewModel(
 
     private suspend fun refreshProgrammes() {
         val current = channel ?: return
-        if (current.kind != ContentKind.LIVE.name) return
+        if (current.kind != ContentKind.LIVE.name || replay != null) return
         val now = System.currentTimeMillis()
         val upcoming = container.programmeDao.upcoming(current.id, now, limit = 2)
             .map { PlayerProgramme(it.title, it.startMillis, it.stopMillis) }
@@ -1080,6 +1152,10 @@ class PlayerViewModel(
     companion object {
         const val ARG_CHANNEL_ID = "channelId"
         const val ARG_RESUME = "resume"
+
+        /** Replay : début et fin du programme passé (millisecondes), 0 pour une lecture normale. */
+        const val ARG_REPLAY_START = "replayStart"
+        const val ARG_REPLAY_STOP = "replayStop"
 
         /** Demander s'il faut reprendre un film ou un épisode commencé. */
         const val RESUME_ASK = "ask"
