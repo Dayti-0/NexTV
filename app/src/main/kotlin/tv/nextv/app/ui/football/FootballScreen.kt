@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -326,12 +327,15 @@ private fun MatchRow(
     }
 }
 
-/** TV, tablette : heure (ou score en direct), affiche et chaîne sur une ligne. */
+/**
+ * TV, tablette : heure (ou score en direct) à gauche ; à droite la compétition, l'affiche sur toute
+ * la largeur (noms d'équipes en entier), puis la chaîne.
+ */
 @Composable
 private fun WideMatch(match: FootballMatch, now: Long, followed: Boolean, reminded: Boolean) {
     val live = match.isLive(now)
     Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        Column(Modifier.width(120.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(Modifier.width(104.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             val score = match.score
             if (live && score != null) {
                 Text(score, style = MaterialTheme.typography.titleLarge, color = NexTvColors.Live)
@@ -340,13 +344,13 @@ private fun WideMatch(match: FootballMatch, now: Long, followed: Boolean, remind
             }
             if (live) StatusPill(stringResource(R.string.player_live), NexTvColors.Live)
         }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             MatchHeading(match, followed, reminded)
             Teams(match, large = true)
-            if (live) LiveProgress(match.kickoffMillis, match.endMillis, now, Modifier.padding(top = 4.dp))
-        }
-        Row(Modifier.width(240.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ChannelInfo(match, logoWidth = 56.dp)
+            if (live) LiveProgress(match.kickoffMillis, match.endMillis, now, Modifier.widthIn(max = 480.dp))
+            Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                ChannelInfo(match, logoWidth = 44.dp, inline = true)
+            }
         }
     }
 }
@@ -401,23 +405,28 @@ private fun Teams(match: FootballMatch, large: Boolean) {
     }
 }
 
-/** Chaîne de la playlist qui diffuse le match (et combien d'autres), ou son absence du guide. */
+/**
+ * Chaîne de la playlist qui diffuse le match (et combien d'autres), ou son absence du guide.
+ * [inline] : nom et autres chaînes sur une seule ligne.
+ */
 @Composable
-private fun ChannelInfo(match: FootballMatch, logoWidth: Dp) {
+private fun RowScope.ChannelInfo(match: FootballMatch, logoWidth: Dp, inline: Boolean = false) {
     val channel = match.channel
     if (channel == null) {
         Text(stringResource(R.string.football_no_channel), style = MaterialTheme.typography.labelLarge, color = NexTvColors.TextMuted, maxLines = 2)
+        return
+    }
+    ChannelLogo(channel.logoUrl, channel.name, Modifier.size(width = logoWidth, height = logoWidth * 0.68f), monogramSize = 12.dp)
+    val others = match.otherChannels.takeIf { it > 0 }?.let {
+        LocalContext.current.resources.getQuantityString(R.plurals.football_other_channels, it, it)
+    }
+    if (inline) {
+        Text(channel.name, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+        others?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
     } else {
-        ChannelLogo(channel.logoUrl, channel.name, Modifier.size(width = logoWidth, height = logoWidth * 0.68f), monogramSize = 12.dp)
         Column {
             Text(channel.name, style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            if (match.otherChannels > 0) {
-                Text(
-                    LocalContext.current.resources.getQuantityString(R.plurals.football_other_channels, match.otherChannels, match.otherChannels),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            others?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
     }
 }

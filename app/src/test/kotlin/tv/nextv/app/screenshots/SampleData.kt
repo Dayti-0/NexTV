@@ -388,7 +388,8 @@ object SampleData {
         now = NOW,
         matches = listOf(
             Triple(Competition.LIGUE_1, "Canal+ Sport", "PSG / Marseille") to (NOW - 40 * MINUTE),
-            Triple(Competition.PREMIER_LEAGUE, "Canal+ Foot", "Liverpool / Arsenal") to (NOW + 75 * MINUTE),
+            Triple(Competition.PREMIER_LEAGUE, "FR| CANAL+ HDR (Résolution Exclusive)", "Chelsea / Man United") to (NOW + 75 * MINUTE),
+            Triple(Competition.PREMIER_LEAGUE, null, "Coventry City / Sunderland") to (NOW + 75 * MINUTE),
             Triple(Competition.LA_LIGA, null, "Real Madrid / Barça") to (NOW + 3 * 60 * MINUTE),
             Triple(Competition.CHAMPIONS_LEAGUE, "beIN Sports 1", "Bayern / Inter") to (NOW + 26 * 60 * MINUTE),
             Triple(Competition.EUROPA_LEAGUE, "Canal+ Live 2", "Lyon / AS Rome") to (NOW + 27 * 60 * MINUTE),
