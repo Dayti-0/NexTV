@@ -242,7 +242,8 @@ private fun HomeTopBar(section: HomeSection, sourceName: String, window: WindowI
         Modifier.fillMaxWidth().padding(horizontal = window.horizontalPadding, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        BrandMark(compact = true)
+        // Écran étroit : logo seul et onglets réduits à leur icône, pour que les quatre sections restent visibles.
+        BrandMark(compact = true, showName = window.isWide)
         Spacer(Modifier.width(if (window.isWide) 32.dp else 12.dp))
         Row(
             Modifier.weight(1f).horizontalScroll(rememberScrollState()),
@@ -252,6 +253,7 @@ private fun HomeTopBar(section: HomeSection, sourceName: String, window: WindowI
                 SectionTab(
                     icon = sectionIcon(target),
                     label = sectionLabel(target),
+                    showLabel = window.isWide || target == section,
                     selected = target == section,
                     onClick = { actions.onSection(target) },
                     modifier = if (target == section) Modifier.focusRequester(initialFocus) else Modifier,
@@ -273,7 +275,14 @@ private fun HomeTopBar(section: HomeSection, sourceName: String, window: WindowI
 }
 
 @Composable
-private fun SectionTab(icon: ImageVector, label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun SectionTab(
+    icon: ImageVector,
+    label: String,
+    showLabel: Boolean,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     FocusSurface(
         onClick = onClick,
         modifier = modifier,
@@ -284,12 +293,12 @@ private fun SectionTab(icon: ImageVector, label: String, selected: Boolean, onCl
         focusScale = 1.06f,
     ) {
         Row(
-            Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
+            Modifier.padding(horizontal = if (showLabel) 18.dp else 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
-            Text(label, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+            Icon(icon, contentDescription = if (showLabel) null else label, modifier = Modifier.size(20.dp))
+            if (showLabel) Text(label, style = MaterialTheme.typography.titleSmall, maxLines = 1)
         }
     }
 }
@@ -422,7 +431,9 @@ private fun SectionBody(
             val minCell: Dp = when {
                 section == HomeSection.TV && window.isWide -> 180.dp
                 section == HomeSection.TV -> usable
-                window.isWide -> 160.dp
+                // Affiches : 5 colonnes sur TV pour voir deux rangées à la fois.
+                window.isTv -> 104.dp
+                window.isWide -> 150.dp
                 else -> 108.dp
             }
             val columns = maxOf(1, ((usable + GRID_SPACING) / (minCell + GRID_SPACING)).toInt())

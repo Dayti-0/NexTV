@@ -8,6 +8,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -112,6 +114,7 @@ private fun openTrailer(context: Context, key: String): Boolean {
 }
 
 /** Fiche d'un film ou d'une série. Sans dépendance au ViewModel (captures d'écran). */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DetailContent(
     state: DetailUiState,
@@ -185,7 +188,8 @@ fun DetailContent(
                                 )
                             }
                             Spacer(Modifier.height(4.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            // Retour à la ligne des boutons sur un écran étroit.
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 val playTarget = if (kind == ContentKind.SERIES) {
                                     state.seasons.getOrNull(state.selectedSeason)?.episodes?.firstOrNull()?.id
                                 } else {

@@ -26,6 +26,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
@@ -105,7 +107,8 @@ fun StartupContent(
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.widthIn(max = 560.dp).padding(32.dp),
+            // Défilable : sur un petit écran TV, les boutons d'erreur restent atteignables.
+            modifier = Modifier.widthIn(max = 640.dp).verticalScroll(rememberScrollState()).padding(32.dp),
         ) {
             AnimatedLogo(animate = animate && state.error == null)
             Spacer(Modifier.height(20.dp))
@@ -113,7 +116,7 @@ fun StartupContent(
             state.playlistName?.let {
                 Text(it, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Spacer(Modifier.height(40.dp))
+            Spacer(Modifier.height(if (state.error == null) 40.dp else 24.dp))
             val error = state.error
             if (error == null) {
                 LoadingProgress(state)

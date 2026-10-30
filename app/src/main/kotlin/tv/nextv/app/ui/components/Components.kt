@@ -315,7 +315,7 @@ fun LiveProgress(startMillis: Long, stopMillis: Long, now: Long, modifier: Modif
 
 /** Marque NexTV : pictogramme dégradé + nom. */
 @Composable
-fun BrandMark(modifier: Modifier = Modifier, compact: Boolean = false) {
+fun BrandMark(modifier: Modifier = Modifier, compact: Boolean = false, showName: Boolean = true) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Box(
             Modifier
@@ -326,12 +326,14 @@ fun BrandMark(modifier: Modifier = Modifier, compact: Boolean = false) {
         ) {
             Icon(NexTvIcons.Tv, contentDescription = null, tint = Color.White, modifier = Modifier.size(if (compact) 18.dp else 20.dp))
         }
-        Text(
-            "NexTV",
-            style = if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground,
-        )
+        if (showName) {
+            Text(
+                "NexTV",
+                style = if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+        }
     }
 }
 

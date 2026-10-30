@@ -141,7 +141,7 @@ fun SettingsContent(
                             InfoText(
                                 listOfNotNull(
                                     resources.getQuantityString(R.plurals.channels_count, status.channelCount, status.channelCount),
-                                    status.lastSuccessAtMillis?.let { stringResource(R.string.settings_updated, relativeTime(it, now)) },
+                                    status.lastSuccessAtMillis?.let { stringResource(R.string.settings_updated, relativeTime(it, now).lowercaseFirst()) },
                                 ).joinToString("  ·  "),
                             )
                             status.error?.let { ErrorText(resources.describe(it)) }
@@ -183,7 +183,7 @@ fun SettingsContent(
                     ) {
                         val epg = state.playlist?.status?.epg
                         InfoText(
-                            state.guideDownloadedAt?.let { stringResource(R.string.settings_guide_downloaded, relativeTime(it, now)) }
+                            state.guideDownloadedAt?.let { stringResource(R.string.settings_guide_downloaded, relativeTime(it, now).lowercaseFirst()) }
                                 ?: stringResource(R.string.settings_guide_never),
                         )
                         if (epg != null && epg.programmeCount > 0) {
@@ -264,6 +264,9 @@ fun SettingsContent(
         }
     }
 }
+
+/** « Il y a 5 minutes » → « il y a 5 minutes », en milieu de phrase. */
+private fun String.lowercaseFirst(): String = replaceFirstChar { it.lowercaseChar() }
 
 @Composable
 private fun InfoText(text: String) {
