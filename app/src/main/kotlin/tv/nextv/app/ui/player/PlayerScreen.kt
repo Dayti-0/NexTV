@@ -35,7 +35,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -104,6 +103,7 @@ import tv.nextv.app.ui.components.PillButton
 import tv.nextv.app.ui.components.PillStyle
 import tv.nextv.app.ui.components.StatusPill
 import tv.nextv.app.ui.components.rememberWindowInfo
+import tv.nextv.app.ui.guide.ProgrammeSheet
 import tv.nextv.app.ui.guide.formatDuration
 import tv.nextv.app.ui.home.Category
 import tv.nextv.app.ui.home.qualityLabel
@@ -125,6 +125,7 @@ fun PlayerScreen(onBack: () -> Unit) {
     val menuGroups by viewModel.menuGroups.collectAsStateWithLifecycle()
     val menuFavorites by viewModel.menuFavorites.collectAsStateWithLifecycle()
     val menuChannels = viewModel.menuChannels.collectAsLazyPagingItems()
+    val programmeSheet by viewModel.programmeSheet.collectAsStateWithLifecycle()
     val window = rememberWindowInfo()
     var bannerTrigger by remember { mutableIntStateOf(0) }
     var bannerVisible by remember { mutableStateOf(true) }
@@ -249,12 +250,25 @@ fun PlayerScreen(onBack: () -> Unit) {
             now = now,
             onCategory = viewModel::selectMenuCategory,
             onPlay = viewModel::playFromMenu,
-            onHome = onBack,
+            onProgramme = viewModel::showProgramme,
             onInfo = {
                 viewModel.closeMenu()
                 infoVisible = true
             },
         )
+
+        programmeSheet?.let { sheet ->
+            ProgrammeSheet(
+                channel = sheet.channel,
+                programme = sheet.programme,
+                now = now,
+                onWatch = {
+                    viewModel.hideProgramme()
+                    viewModel.playFromMenu(sheet.channel.id)
+                },
+                onDismiss = viewModel::hideProgramme,
+            )
+        }
     }
 }
 
@@ -434,7 +448,8 @@ fun ChannelMenu(
     now: Long,
     onCategory: (Category) -> Unit,
     onPlay: (Long) -> Unit,
-    onHome: () -> Unit,
+    /** Appui long sur OK : fiche du programme de la chaîne. */
+    onProgramme: (ChannelListRow) -> Unit = {},
     onInfo: () -> Unit = {},
 ) {
     val window = rememberWindowInfo()
@@ -523,13 +538,8 @@ fun ChannelMenu(
                 ) {
                     Text(stringResource(R.string.player_channel_list), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                     IconAction(Icons.Filled.Info, stringResource(R.string.player_info_title), onInfo, modifier = Modifier.focusProperties { canFocus = false })
-                    PillButton(
-                        stringResource(R.string.player_home),
-                        onHome,
-                        icon = Icons.Filled.Home,
-                        style = PillStyle.Ghost,
-                        modifier = Modifier.focusProperties { canFocus = false },
-                    )
+                    // Heure actuelle.
+                    Text(timeOf(now), style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 8.dp))
                 }
                 // Catégories : gauche/droite depuis la liste (pas de focus ici), toucher sur écran tactile.
                 LazyRow(
@@ -553,6 +563,7 @@ fun ChannelMenu(
                         current = current,
                         now = now,
                         onClick = { onPlay(channel.id) },
+                        onLongClick = { onProgramme(channel) },
                         modifier = Modifier
                             .then(if (current) Modifier.focusRequester(currentFocus) else Modifier)
                             .then(if (index == 0) Modifier.focusRequester(firstFocus) else Modifier),
@@ -613,9 +624,17 @@ private fun MenuChip(name: String, selected: Boolean, star: Boolean = false, onC
 }
 
 @Composable
-private fun MenuChannelRow(channel: ChannelListRow, current: Boolean, now: Long, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun MenuChannelRow(
+    channel: ChannelListRow,
+    current: Boolean,
+    now: Long,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     FocusSurface(
         onClick = onClick,
+        onLongClick = onLongClick,
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         color = if (current) NexTvColors.PrimaryContainer.copy(alpha = 0.6f) else Color.Transparent,

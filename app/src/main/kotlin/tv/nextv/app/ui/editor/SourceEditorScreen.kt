@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -182,14 +183,21 @@ fun SourceEditorContent(
                                     title = stringResource(R.string.editor_mode_url_short),
                                     subtitle = stringResource(R.string.editor_mode_url_hint),
                                     selected = state.mode == LocationMode.URL,
-                                    onClick = { onEdit { it.copy(mode = LocationMode.URL) } },
+                                    onClick = { onEdit { it.withMode(LocationMode.URL) } },
+                                )
+                                ChoiceTile(
+                                    icon = Icons.Filled.Person,
+                                    title = stringResource(R.string.editor_mode_xtream_short),
+                                    subtitle = stringResource(R.string.editor_mode_xtream_hint),
+                                    selected = state.mode == LocationMode.XTREAM,
+                                    onClick = { onEdit { it.withMode(LocationMode.XTREAM) } },
                                 )
                                 ChoiceTile(
                                     icon = NexTvIcons.Folder,
                                     title = stringResource(R.string.editor_mode_file_short),
                                     subtitle = stringResource(R.string.editor_mode_file_hint),
                                     selected = state.mode == LocationMode.FILE,
-                                    onClick = { onEdit { it.copy(mode = LocationMode.FILE) } },
+                                    onClick = { onEdit { it.withMode(LocationMode.FILE) } },
                                 )
                             }
                             when (state.mode) {
@@ -201,6 +209,12 @@ fun SourceEditorContent(
                                     error = errorText(SourceInputField.LOCATION),
                                     help = stringResource(R.string.editor_url_help),
                                     keyboardType = KeyboardType.Uri,
+                                )
+                                LocationMode.XTREAM -> XtreamFields(
+                                    state = state,
+                                    onEdit = onEdit,
+                                    serverError = errorText(SourceInputField.LOCATION),
+                                    usernameMissing = state.errors.containsKey(SourceInputField.USERNAME),
                                 )
                                 LocationMode.FILE -> DocumentField(
                                     document = state.document,
@@ -225,6 +239,11 @@ fun SourceEditorContent(
                                 icon = Icons.Filled.Lock,
                             ) {
                                 CredentialsFields(state, onEdit, errorText(SourceInputField.USERNAME))
+                                UserAgentFields(state, onEdit, errorText(SourceInputField.USER_AGENT))
+                            }
+                        }
+                        if (state.mode == LocationMode.XTREAM) {
+                            SectionCard(stringResource(R.string.editor_section_connection), icon = Icons.Filled.Lock) {
                                 UserAgentFields(state, onEdit, errorText(SourceInputField.USER_AGENT))
                             }
                         }
@@ -304,6 +323,44 @@ private fun ChoiceChip(label: String, selected: Boolean, onClick: () -> Unit) {
     ) {
         Text(label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp))
     }
+}
+
+/** Compte Xtream Codes : adresse du serveur, identifiant et mot de passe. */
+@Composable
+private fun XtreamFields(
+    state: EditorState,
+    onEdit: ((EditorState) -> EditorState) -> Unit,
+    serverError: String?,
+    usernameMissing: Boolean,
+) {
+    var showPassword by rememberSaveable { mutableStateOf(false) }
+    NexTvTextField(
+        value = state.server,
+        onValueChange = { value -> onEdit { it.copy(server = value) } },
+        label = stringResource(R.string.editor_xtream_server),
+        placeholder = "http://exemple.com:8080",
+        error = serverError,
+        help = stringResource(R.string.editor_xtream_server_help),
+        keyboardType = KeyboardType.Uri,
+    )
+    NexTvTextField(
+        value = state.xtreamUsername,
+        onValueChange = { value -> onEdit { it.copy(xtreamUsername = value) } },
+        label = stringResource(R.string.editor_xtream_username),
+        error = if (usernameMissing) stringResource(R.string.editor_xtream_username_missing) else null,
+    )
+    NexTvTextField(
+        value = state.xtreamPassword,
+        onValueChange = { value -> onEdit { it.copy(xtreamPassword = value) } },
+        label = stringResource(R.string.editor_password),
+        keyboardType = KeyboardType.Password,
+        visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+        trailing = {
+            TextButton(onClick = { showPassword = !showPassword }) {
+                Text(stringResource(if (showPassword) R.string.action_hide else R.string.action_show))
+            }
+        },
+    )
 }
 
 @Composable

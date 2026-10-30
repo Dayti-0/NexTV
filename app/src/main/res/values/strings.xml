@@ -51,6 +51,13 @@
     <string name="editor_section_source">Source</string>
     <string name="editor_mode_url_short">Adresse URL</string>
     <string name="editor_mode_url_hint">Playlist en ligne (HTTP ou HTTPS)</string>
+    <string name="editor_mode_xtream_short">Xtream Codes</string>
+    <string name="editor_mode_xtream_hint">Serveur, identifiant et mot de passe</string>
+    <string name="editor_xtream_server">Adresse du serveur</string>
+    <string name="editor_xtream_server_help">Donnée par le fournisseur, avec le port s’il y en a un (« :8080 »). Le lien de la playlist est construit automatiquement.</string>
+    <string name="editor_xtream_username">Identifiant</string>
+    <string name="editor_xtream_username_missing">Indiquez l’identifiant.</string>
+    <string name="editor_section_connection">Connexion</string>
     <string name="editor_mode_file_short">Fichier</string>
     <string name="editor_mode_file_hint">Fichier .m3u de l’appareil</string>
     <string name="editor_url">URL de la playlist M3U/M3U8</string>
@@ -205,7 +212,6 @@
     <string name="player_info_channels">%1$d canaux</string>
     <string name="player_info_hint">Info, Menu ou Retour pour fermer</string>
     <string name="player_quality_decoder">L’appareil ne suit pas : passage en %1$s</string>
-    <string name="player_home">Accueil</string>
     <string name="player_speed">%1$s Mbit/s</string>
     <string name="player_remaining">Reste %1$s</string>
     <string name="player_quality_down">Connexion lente : passage en %1$s</string>

@@ -51,6 +51,8 @@ import tv.nextv.app.player.TimeshiftRecorder
 import tv.nextv.app.player.VideoDecoders
 import tv.nextv.app.player.describePlaybackError
 import tv.nextv.app.ui.common.describe
+import tv.nextv.app.ui.guide.GuideChannel
+import tv.nextv.app.ui.guide.GuideProgramme
 import tv.nextv.app.ui.home.Category
 import tv.nextv.core.model.ContentKind
 import tv.nextv.core.model.SourceLocation
@@ -129,6 +131,9 @@ data class PlaybackInfo(
 /** Chaîne du menu, avec la catégorie dont elle provient : la liste affichée correspond-elle au choix ? */
 data class MenuChannel(val category: Category, val row: ChannelListRow)
 
+/** Fiche du programme d'une chaîne du menu (appui long sur OK) ; [programme] `null` : rien dans le guide. */
+data class ProgrammeSheetState(val channel: GuideChannel, val programme: GuideProgramme?)
+
 /** Menu latéral des chaînes, ouvert par « Retour » pendant la lecture. */
 data class ChannelMenuState(
     val open: Boolean = false,
@@ -165,6 +170,9 @@ class PlayerViewModel(
 
     private val mutableMenu = MutableStateFlow(ChannelMenuState())
     val menu: StateFlow<ChannelMenuState> = mutableMenu.asStateFlow()
+
+    private val mutableProgrammeSheet = MutableStateFlow<ProgrammeSheetState?>(null)
+    val programmeSheet: StateFlow<ProgrammeSheetState?> = mutableProgrammeSheet.asStateFlow()
 
     private val sourceId = MutableStateFlow<Long?>(null)
 
@@ -411,6 +419,23 @@ class PlayerViewModel(
 
     fun selectMenuCategory(category: Category) {
         mutableMenu.update { it.copy(category = category, initialIndex = 0) }
+    }
+
+    /** Programme en cours (ou le prochain) d'une chaîne du menu, avec sa description. */
+    fun showProgramme(row: ChannelListRow) {
+        viewModelScope.launch {
+            val programme = container.programmeDao.upcoming(row.id, System.currentTimeMillis(), limit = 1).firstOrNull()
+            mutableProgrammeSheet.value = ProgrammeSheetState(
+                channel = GuideChannel(row.id, row.title.ifBlank { row.name }, row.channelNumber, row.logoUrl, emptyList()),
+                programme = programme?.let {
+                    GuideProgramme(it.title, it.startMillis, it.stopMillis, it.subtitle, it.description, it.category, it.year)
+                },
+            )
+        }
+    }
+
+    fun hideProgramme() {
+        mutableProgrammeSheet.value = null
     }
 
     fun playFromMenu(id: Long) {

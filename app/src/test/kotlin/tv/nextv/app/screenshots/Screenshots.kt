@@ -243,7 +243,6 @@ abstract class ScreenshotSuite(private val device: String) {
             now = SampleData.NOW,
             onCategory = {},
             onPlay = {},
-            onHome = {},
         )
     }
 
@@ -299,6 +298,18 @@ abstract class ScreenshotSuite(private val device: String) {
     fun editor() = capture("18_edition") {
         SourceEditorContent(
             state = SampleData.editor,
+            snackbarHostState = remember { SnackbarHostState() },
+            onEdit = {},
+            onPick = {},
+            onSave = {},
+            onBack = {},
+        )
+    }
+
+    @Test
+    fun editorXtream() = capture("18b_edition_xtream") {
+        SourceEditorContent(
+            state = SampleData.editorXtream,
             snackbarHostState = remember { SnackbarHostState() },
             onEdit = {},
             onPick = {},

@@ -419,11 +419,11 @@ private fun ProgrammeBlock(
     }
 }
 
-/** Fiche détaillée d'un programme, avec l'action « Regarder ». */
+/** Fiche détaillée d'un programme (`null` : aucun programme connu), avec l'action « Regarder ». */
 @Composable
 fun ProgrammeSheet(
     channel: GuideChannel,
-    programme: GuideProgramme,
+    programme: GuideProgramme?,
     now: Long,
     onWatch: () -> Unit,
     onDismiss: () -> Unit,
@@ -436,7 +436,7 @@ fun ProgrammeSheet(
 @Composable
 fun ProgrammeSheetContent(
     channel: GuideChannel,
-    programme: GuideProgramme,
+    programme: GuideProgramme?,
     now: Long,
     onWatch: () -> Unit,
     onDismiss: () -> Unit,
@@ -453,31 +453,38 @@ fun ProgrammeSheetContent(
                 ChannelLogo(channel.logoUrl, channel.name, Modifier.size(width = 64.dp, height = 44.dp), monogramSize = 14.dp)
                 Column(Modifier.weight(1f)) {
                     Text(channel.name, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(
-                        "${timeRange(programme.startMillis, programme.stopMillis)}  ·  ${duration(programme)}",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    if (programme != null) {
+                        Text(
+                            "${timeRange(programme.startMillis, programme.stopMillis)}  ·  ${duration(programme)}",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
                 when {
+                    programme == null -> Unit
                     programme.isLive(now) -> StatusPill(stringResource(R.string.player_live), NexTvColors.Live)
                     programme.stopMillis <= now -> StatusPill(stringResource(R.string.guide_ended), NexTvColors.TextSecondary)
                     else -> StatusPill(stringResource(R.string.guide_upcoming), NexTvColors.Primary)
                 }
             }
-            Text(programme.title, style = MaterialTheme.typography.headlineSmall)
-            programme.subtitle?.let { Text(it, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            // Genre et année de production, quand le guide les indique.
-            listOfNotNull(programme.category, programme.year?.toString()).joinToString("  ·  ").takeIf { it.isNotEmpty() }?.let {
-                Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            if (programme == null) {
+                Text(stringResource(R.string.channels_no_epg), style = MaterialTheme.typography.headlineSmall)
+            } else {
+                Text(programme.title, style = MaterialTheme.typography.headlineSmall)
+                programme.subtitle?.let { Text(it, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                // Genre et année de production, quand le guide les indique.
+                listOfNotNull(programme.category, programme.year?.toString()).joinToString("  ·  ").takeIf { it.isNotEmpty() }?.let {
+                    Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                }
+                if (programme.isLive(now)) LiveProgress(programme.startMillis, programme.stopMillis, now)
+                Text(
+                    programme.description ?: stringResource(R.string.guide_no_description),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.heightIn(max = 220.dp).verticalScroll(rememberScrollState()),
+                )
             }
-            if (programme.isLive(now)) LiveProgress(programme.startMillis, programme.stopMillis, now)
-            Text(
-                programme.description ?: stringResource(R.string.guide_no_description),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.heightIn(max = 220.dp).verticalScroll(rememberScrollState()),
-            )
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 4.dp)) {
                 PillButton(
                     stringResource(R.string.guide_watch),

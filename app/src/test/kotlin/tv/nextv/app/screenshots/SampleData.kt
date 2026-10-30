@@ -374,6 +374,14 @@ object SampleData {
         password = "s3cret",
     )
 
+    val editorXtream = EditorState(
+        name = "Bouquet Maison",
+        mode = LocationMode.XTREAM,
+        server = "http://iptv.example.com:8080",
+        xtreamUsername = "alice",
+        xtreamPassword = "s3cret",
+    )
+
     val editorWithErrors = EditorState(
         name = "",
         mode = LocationMode.URL,
