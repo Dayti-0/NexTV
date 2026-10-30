@@ -20,7 +20,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -46,6 +45,7 @@ import tv.nextv.app.ui.components.rememberWindowInfo
 import tv.nextv.app.ui.editor.CheckRow
 import tv.nextv.app.ui.editor.NexTvTextField
 import tv.nextv.app.ui.editor.SectionCard
+import tv.nextv.app.ui.editor.ToggleRow
 import tv.nextv.app.ui.theme.NexTvIcons
 import tv.nextv.core.net.ProxyScope
 import tv.nextv.core.net.ProxyType
@@ -88,7 +88,7 @@ fun ProxySettingsContent(
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             ScreenHeader(
-                title = stringResource(R.string.settings_title),
+                title = stringResource(R.string.proxy_section),
                 modifier = Modifier.padding(start = window.horizontalPadding - 12.dp, end = window.horizontalPadding, top = 12.dp, bottom = 8.dp),
                 navigation = { IconAction(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back), onBack) },
                 actions = {
@@ -101,21 +101,13 @@ fun ProxySettingsContent(
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     SectionCard(stringResource(R.string.proxy_section), icon = NexTvIcons.Cloud) {
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(stringResource(R.string.proxy_enable), style = MaterialTheme.typography.titleSmall)
-                                Text(
-                                    stringResource(R.string.proxy_description),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            Switch(
-                                checked = state.enabled,
-                                onCheckedChange = { checked -> onEdit { it.copy(enabled = checked) } },
-                                enabled = !state.loading,
-                            )
-                        }
+                        ToggleRow(
+                            title = stringResource(R.string.proxy_enable),
+                            description = stringResource(R.string.proxy_description),
+                            checked = state.enabled,
+                            onChange = { checked -> onEdit { it.copy(enabled = checked) } },
+                            enabled = !state.loading,
+                        )
 
                         if (state.enabled) {
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -46,6 +47,42 @@ class SettingsRepository(
 
     suspend fun currentProxySettings(): ProxySettings = proxySettings.first()
 
+    /** Playlist chargée au démarrage (la dernière utilisée). */
+    val activePlaylistId: Flow<Long?> = dataStore.data.map { it[ACTIVE_PLAYLIST] }.distinctUntilChanged()
+
+    suspend fun setActivePlaylist(id: Long?) {
+        dataStore.edit { prefs ->
+            if (id != null) {
+                prefs[ACTIVE_PLAYLIST] = id
+            } else {
+                prefs.remove(ACTIVE_PLAYLIST)
+            }
+        }
+    }
+
+    /** Basculement automatique de qualité (FHD → HD → SD → LOW et retour). */
+    val autoQuality: Flow<Boolean> = dataStore.data.map { it[AUTO_QUALITY] ?: true }.distinctUntilChanged()
+
+    suspend fun setAutoQuality(enabled: Boolean) {
+        dataStore.edit { it[AUTO_QUALITY] = enabled }
+    }
+
+    /** Clé TMDB saisie par l'utilisateur (chiffrée sur l'appareil). */
+    val tmdbApiKey: Flow<String?> = dataStore.data
+        .map { prefs -> prefs[TMDB_KEY]?.let(cipher::decrypt) }
+        .distinctUntilChanged()
+
+    suspend fun setTmdbApiKey(key: String?) {
+        val encrypted = key?.trim()?.takeIf { it.isNotEmpty() }?.let(cipher::encrypt)
+        dataStore.edit { prefs ->
+            if (encrypted != null) {
+                prefs[TMDB_KEY] = encrypted
+            } else {
+                prefs.remove(TMDB_KEY)
+            }
+        }
+    }
+
     suspend fun saveProxySettings(settings: ProxySettings) {
         val encryptedCredentials = settings.credentials?.let(cipher::encryptCredentials)
         dataStore.edit { prefs ->
@@ -71,5 +108,8 @@ class SettingsRepository(
         val PROXY_CREDENTIALS = stringPreferencesKey("proxy_credentials")
         val PROXY_SCOPES = stringSetPreferencesKey("proxy_scopes")
         val PROXY_BYPASS_LOCAL = booleanPreferencesKey("proxy_bypass_local")
+        val ACTIVE_PLAYLIST = longPreferencesKey("active_playlist")
+        val AUTO_QUALITY = booleanPreferencesKey("auto_quality")
+        val TMDB_KEY = stringPreferencesKey("tmdb_key")
     }
 }

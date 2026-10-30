@@ -109,6 +109,38 @@ class M3uPlaylistLoaderTest {
     }
 
     @Test
+    fun `entries are classified and progress reaches the announced size`() {
+        val body = """
+            #EXTM3U
+            #EXTINF:-1 group-title="FR",TF1 FHD
+            http://h/live/u/p/1.ts
+            #EXTINF:-1 group-title="FR",TF1 HD
+            http://h/live/u/p/2.ts
+            #EXTINF:-1 group-title="VOD",Avatar (2009)
+            http://h/movie/u/p/3.mkv
+            #EXTINF:-1 group-title="Séries",Dark S01 E02
+            http://h/series/u/p/4.mp4
+        """.trimIndent()
+        respond(body)
+        val progress = mutableListOf<tv.nextv.core.io.LoadProgress>()
+
+        val channels = runBlocking { loader.load(remote("/list.m3u"), null) { progress += it } }.channels
+
+        assertEquals(
+            listOf(tv.nextv.core.model.ContentKind.LIVE, tv.nextv.core.model.ContentKind.LIVE, tv.nextv.core.model.ContentKind.MOVIE, tv.nextv.core.model.ContentKind.SERIES),
+            channels.map { it.kind },
+        )
+        assertEquals(channels[0].variantKey, channels[1].variantKey)
+        assertEquals(tv.nextv.core.model.StreamQuality.FHD, channels[0].quality)
+        assertEquals("Avatar", channels[2].title)
+        assertEquals(2009, channels[2].year)
+        assertEquals(tv.nextv.core.model.EpisodeInfo("Dark", 1, 2), channels[3].episode)
+        val last = progress.last()
+        assertEquals(tv.nextv.core.io.LoadStep.PLAYLIST, last.step)
+        assertEquals(1f, last.fraction)
+    }
+
+    @Test
     fun `gzip playlists are detected from their content`() {
         server.enqueue(
             MockResponse.Builder().code(200)

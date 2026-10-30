@@ -1,7 +1,6 @@
 package tv.nextv.app.ui.guide
 
 import androidx.compose.runtime.Immutable
-import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -15,6 +14,7 @@ import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import tv.nextv.app.AppContainer
 import tv.nextv.app.data.db.GroupRow
+import tv.nextv.core.model.ContentKind
 
 @Immutable
 data class GuideProgramme(
@@ -46,19 +46,17 @@ data class GuideUiState(
 @OptIn(ExperimentalCoroutinesApi::class)
 class GuideViewModel(
     private val container: AppContainer,
-    handle: SavedStateHandle,
+    val sourceId: Long,
 ) : ViewModel() {
-
-    val sourceId: Long = checkNotNull(handle.get<Long>(ARG_SOURCE_ID))
 
     val sourceName: StateFlow<String> = container.playlistStore.observeSource(sourceId)
         .mapLatest { it?.name.orEmpty() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
 
-    val groups: StateFlow<List<GroupRow>> = container.channelDao.observeGroups(sourceId)
+    val groups: StateFlow<List<GroupRow>> = container.channelDao.observeGroups(sourceId, ContentKind.LIVE.name)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    /** `null` : toutes les chaînes ; `""` : chaînes sans groupe. */
+    /** `null` : toutes les chaînes ; `""` : chaînes sans groupe ; [FAVORITES] : chaînes favorites. */
     val selectedGroup = MutableStateFlow<String?>(null)
 
     private val clock = flow {
@@ -73,14 +71,18 @@ class GuideViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), GuideUiState())
 
     private suspend fun load(group: String?, now: Long): GuideUiState {
-        val windowStart = now - now % HALF_HOUR
+        val windowStart = now - now % HALF_HOUR - HALF_HOUR
         val windowEnd = windowStart + WINDOW_MILLIS
-        val rows = container.channelDao.guideChannels(
-            sourceId = sourceId,
-            filterGroup = if (group == null) 0 else 1,
-            group = group.orEmpty(),
-            limit = MAX_CHANNELS,
-        )
+        val rows = if (group == FAVORITES) {
+            container.channelDao.guideFavoriteChannels(sourceId)
+        } else {
+            container.channelDao.guideChannels(
+                sourceId = sourceId,
+                filterGroup = if (group == null) 0 else 1,
+                group = group.orEmpty(),
+                limit = MAX_CHANNELS,
+            )
+        }
         val programmes = rows.map { it.epgChannelId }.distinct()
             .chunked(SQL_VARIABLES_PER_QUERY)
             .flatMap { ids -> container.programmeDao.inWindow(sourceId, ids, windowStart, windowEnd) }
@@ -88,7 +90,7 @@ class GuideViewModel(
         val channels = rows.map { row ->
             GuideChannel(
                 id = row.id,
-                name = row.name,
+                name = row.title.ifBlank { row.name },
                 number = row.channelNumber,
                 logoUrl = row.logoUrl,
                 programmes = programmes[row.epgChannelId].orEmpty().map {
@@ -100,9 +102,12 @@ class GuideViewModel(
     }
 
     companion object {
-        const val ARG_SOURCE_ID = "sourceId"
+        /** Catégorie « Favoris » (valeur réservée, jamais un nom de groupe). */
+        const val FAVORITES = "\u0000favorites"
         private const val HALF_HOUR = 30 * 60_000L
-        private const val WINDOW_MILLIS = 6 * 60 * 60_000L
+
+        /** Fenêtre affichée : la demi-heure écoulée et les 24 heures à venir. */
+        private const val WINDOW_MILLIS = 24 * 60 * 60_000L + HALF_HOUR
         private const val REFRESH_MILLIS = 60_000L
         private const val MAX_CHANNELS = 300
         private const val SQL_VARIABLES_PER_QUERY = 500

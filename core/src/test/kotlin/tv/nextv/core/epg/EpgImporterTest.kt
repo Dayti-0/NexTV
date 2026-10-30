@@ -56,8 +56,8 @@ class EpgImporterTest {
         val (result, programmes) = run(xml)
 
         assertEquals(mapOf(1L to "tf1.fr", 2L to "france2.fr", 3L to "arte.fr"), result.mapping)
-        assertEquals(setOf("Journal & météo", "Film", "Sans fin 1", "Sans fin 2", "Doc"), programmes.map { it.title }.toSet())
-        assertEquals(5, result.programmeCount)
+        assertEquals(setOf("Journal & météo", "Film", "Sans fin 1", "Doc"), programmes.map { it.title }.toSet())
+        assertEquals(4, result.programmeCount)
         assertEquals(1, result.skippedProgrammes)
 
         val news = programmes.first { it.title == "Journal & météo" }
@@ -67,14 +67,14 @@ class EpgImporterTest {
     }
 
     @Test
-    fun `missing stop times are filled from the next programme`() = runBlocking {
+    fun `missing stop times come from the next programme and are never invented`() = runBlocking {
         val (_, programmes) = run(xml)
 
         val first = programmes.first { it.title == "Sans fin 1" }
-        val second = programmes.first { it.title == "Sans fin 2" }
         assertEquals(now - 3_600_000, first.startMillis)
-        assertEquals(second.startMillis, first.stopMillis)
-        assertEquals(second.startMillis + 3_600_000, second.stopMillis)
+        assertEquals(now + 3_600_000, first.stopMillis) // début de « Sans fin 2 »
+        // « Sans fin 2 » n'a ni fin ni programme suivant : ignoré plutôt que doté d'une durée fictive.
+        assertTrue(programmes.none { it.title == "Sans fin 2" })
     }
 
     @Test

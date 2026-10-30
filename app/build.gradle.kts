@@ -20,7 +20,11 @@ android {
         minSdk = 24
         targetSdk = 36
         versionCode = providers.gradleProperty("nextv.versionCode").orNull?.toIntOrNull() ?: 1
-        versionName = providers.gradleProperty("nextv.versionName").orNull ?: "0.1.0"
+        versionName = providers.gradleProperty("nextv.versionName").orNull ?: "0.2.0"
+
+        // Clé TMDB optionnelle fournie à la compilation (secret CI) ; l'utilisateur peut aussi la saisir.
+        val tmdbKey = providers.environmentVariable("NEXTV_TMDB_API_KEY").orNull.orEmpty()
+        buildConfigField("String", "TMDB_API_KEY", "\"${tmdbKey.replace("\"", "")}\"")
     }
 
     signingConfigs {

@@ -7,6 +7,7 @@ name: Release
 # Le tag est créé par la publication s'il n'existe pas encore.
 # Signature : définir les secrets NEXTV_KEYSTORE_BASE64, NEXTV_KEYSTORE_PASSWORD, NEXTV_KEY_ALIAS
 # et NEXTV_KEY_PASSWORD. Sans eux, l'APK est signé avec une clé de test temporaire.
+# Fiches films/séries : le secret facultatif NEXTV_TMDB_API_KEY intègre une clé TMDB à l'APK.
 
 on:
   push:
@@ -71,6 +72,8 @@ jobs:
           NEXTV_KEYSTORE_PASSWORD: ${{ secrets.NEXTV_KEYSTORE_PASSWORD }}
           NEXTV_KEY_ALIAS: ${{ secrets.NEXTV_KEY_ALIAS }}
           NEXTV_KEY_PASSWORD: ${{ secrets.NEXTV_KEY_PASSWORD }}
+          # Clé TMDB facultative intégrée à l'APK (sinon, elle se saisit dans les réglages).
+          NEXTV_TMDB_API_KEY: ${{ secrets.NEXTV_TMDB_API_KEY }}
         run: |
           ./gradlew :app:assembleRelease --stacktrace \
             -Pnextv.versionName="$VERSION" \

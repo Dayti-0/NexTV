@@ -16,13 +16,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
@@ -35,6 +33,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextFieldColors
@@ -52,7 +51,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -73,28 +71,30 @@ import tv.nextv.core.model.SourceLocation
 import tv.nextv.core.repository.SourceInputField
 
 @Composable
-fun SourceEditorScreen(onDone: () -> Unit) {
+fun SourceEditorScreen(onClose: () -> Unit, onReload: () -> Unit) {
     val viewModel = appViewModel { container, handle -> SourceEditorViewModel(container, handle) }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val resources = LocalContext.current.resources
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    var pickTarget by rememberSaveable { mutableStateOf(PickTarget.PLAYLIST) }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) viewModel.onDocumentPicked(uri, pickTarget)
+        if (uri != null) viewModel.onDocumentPicked(uri)
     }
 
     LaunchedEffect(state.saved) {
-        if (state.saved) onDone()
+        when (state.saved) {
+            SaveOutcome.RELOAD -> onReload()
+            SaveOutcome.CLOSE -> onClose()
+            null -> Unit
+        }
     }
 
     SourceEditorContent(
         state = state,
         snackbarHostState = snackbar,
         onEdit = viewModel::edit,
-        onPick = { target ->
-            pickTarget = target
+        onPick = {
             try {
                 // Le type MIME des .m3u / .xml.gz varie selon les fournisseurs : le contenu est vérifié au chargement.
                 picker.launch(arrayOf("*/*"))
@@ -103,7 +103,7 @@ fun SourceEditorScreen(onDone: () -> Unit) {
             }
         },
         onSave = viewModel::save,
-        onBack = onDone,
+        onBack = onClose,
     )
 }
 
@@ -113,7 +113,7 @@ fun SourceEditorContent(
     state: EditorState,
     snackbarHostState: SnackbarHostState,
     onEdit: ((EditorState) -> EditorState) -> Unit,
-    onPick: (PickTarget) -> Unit,
+    onPick: () -> Unit,
     onSave: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -186,7 +186,7 @@ fun SourceEditorContent(
                                     persisted = state.documentPersisted,
                                     error = errorText(SourceInputField.LOCATION),
                                     help = stringResource(R.string.editor_file_help),
-                                    onPick = { onPick(PickTarget.PLAYLIST) },
+                                    onPick = onPick,
                                 )
                             }
                         }
@@ -211,50 +211,6 @@ fun SourceEditorContent(
                                     error = errorText(SourceInputField.USER_AGENT),
                                     help = stringResource(R.string.editor_user_agent_help),
                                 )
-                            }
-                        }
-
-                        SectionCard(stringResource(R.string.editor_section_epg), subtitle = stringResource(R.string.editor_epg_intro)) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                ChoiceTile(
-                                    icon = Icons.Filled.Close,
-                                    title = stringResource(R.string.editor_epg_none_short),
-                                    selected = state.epgMode == EpgMode.NONE,
-                                    onClick = { onEdit { it.copy(epgMode = EpgMode.NONE) } },
-                                )
-                                ChoiceTile(
-                                    icon = NexTvIcons.Link,
-                                    title = stringResource(R.string.editor_mode_url_short),
-                                    selected = state.epgMode == EpgMode.URL,
-                                    onClick = { onEdit { it.copy(epgMode = EpgMode.URL) } },
-                                )
-                                ChoiceTile(
-                                    icon = NexTvIcons.Folder,
-                                    title = stringResource(R.string.editor_mode_file_short),
-                                    selected = state.epgMode == EpgMode.FILE,
-                                    onClick = { onEdit { it.copy(epgMode = EpgMode.FILE) } },
-                                )
-                            }
-                            when (state.epgMode) {
-                                EpgMode.NONE -> Unit
-                                EpgMode.URL -> NexTvTextField(
-                                    value = state.epgUrl,
-                                    onValueChange = { value -> onEdit { it.copy(epgUrl = value) } },
-                                    label = stringResource(R.string.editor_epg_url_label),
-                                    placeholder = "https://exemple.com/guide.xml.gz",
-                                    error = errorText(SourceInputField.EPG_LOCATION),
-                                    keyboardType = KeyboardType.Uri,
-                                )
-                                EpgMode.FILE -> DocumentField(
-                                    document = state.epgDocument,
-                                    persisted = state.epgDocumentPersisted,
-                                    error = errorText(SourceInputField.EPG_LOCATION),
-                                    help = stringResource(R.string.editor_epg_file_help),
-                                    onPick = { onPick(PickTarget.EPG) },
-                                )
-                            }
-                            CheckRow(stringResource(R.string.editor_epg_header), state.useHeaderEpg) { checked ->
-                                onEdit { it.copy(useHeaderEpg = checked) }
                             }
                         }
 
@@ -432,14 +388,41 @@ fun nexTvTextFieldColors(): TextFieldColors = OutlinedTextFieldDefaults.colors(
 
 @Composable
 fun CheckRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .toggleable(value = checked, onValueChange = onChange, role = Role.Checkbox)
-            .padding(vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    FocusSurface(
+        onClick = { onChange(!checked) },
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        color = Color.Transparent,
+        focusedColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+        focusScale = 1f,
     ) {
-        Checkbox(checked = checked, onCheckedChange = null, colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary))
-        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 12.dp))
+        Row(Modifier.padding(horizontal = 4.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = checked, onCheckedChange = null, colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary))
+            Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 4.dp, end = 12.dp))
+        }
+    }
+}
+
+/** Option activable : toute la ligne prend le focus et bascule l'interrupteur (télécommande). */
+@Composable
+fun ToggleRow(title: String, description: String?, checked: Boolean, onChange: (Boolean) -> Unit, enabled: Boolean = true) {
+    FocusSurface(
+        onClick = { onChange(!checked) },
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        color = Color.Transparent,
+        focusedColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+        focusScale = 1f,
+        enabled = enabled,
+    ) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleSmall)
+                if (description != null) {
+                    Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Switch(checked = checked, onCheckedChange = null, enabled = enabled, modifier = Modifier.padding(start = 16.dp))
+        }
     }
 }

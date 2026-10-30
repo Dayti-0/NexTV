@@ -23,8 +23,6 @@ data class EpgImportOptions(
     val pastWindowMillis: Long = 12 * HOUR,
     /** Programmes commençant au-delà de cette durée : ignorés. */
     val futureWindowMillis: Long = 8 * 24 * HOUR,
-    /** Durée attribuée au dernier programme d'une chaîne quand `stop` est absent. */
-    val defaultDurationMillis: Long = HOUR,
     val batchSize: Int = 1000,
 ) {
     private companion object {
@@ -78,7 +76,7 @@ class EpgImporter(
         var relevant: Set<String> = emptySet()
         val covered = HashSet<String>()
         val batch = ArrayList<Programme>(options.batchSize)
-        // Dernier programme sans heure de fin, par chaîne : sa fin sera le début du suivant.
+        // Programme sans heure de fin, par chaîne : sa fin sera le début du programme suivant.
         val openEnded = HashMap<String, XmltvProgramme>()
         var written = 0
         var items = 0
@@ -121,7 +119,7 @@ class EpgImporter(
                 }
             }
         }
-        for (programme in openEnded.values) emit(programme, programme.startMillis + options.defaultDurationMillis)
+        // Un dernier programme sans heure de fin ni programme suivant est ignoré : aucune durée n'est inventée.
         if (batch.isNotEmpty()) {
             sink.write(batch.toList())
             written += batch.size

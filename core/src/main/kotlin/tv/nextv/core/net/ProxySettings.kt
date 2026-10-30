@@ -8,6 +8,9 @@ enum class RequestPurpose {
     EPG,
     STREAM,
     IMAGE,
+
+    /** Informations complémentaires (TMDB : synopsis, affiches…). */
+    METADATA,
 }
 
 enum class ProxyType {
@@ -50,7 +53,7 @@ data class ProxySettings(
     fun appliesTo(purpose: RequestPurpose): Boolean {
         if (!enabled || validate().isNotEmpty()) return false
         val scope = when (purpose) {
-            RequestPurpose.PLAYLIST, RequestPurpose.IMAGE -> ProxyScope.PLAYLISTS
+            RequestPurpose.PLAYLIST, RequestPurpose.IMAGE, RequestPurpose.METADATA -> ProxyScope.PLAYLISTS
             RequestPurpose.EPG -> ProxyScope.EPG
             RequestPurpose.STREAM -> ProxyScope.STREAMS
         }

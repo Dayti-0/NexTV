@@ -45,7 +45,12 @@ data class SourceEntity(
     foreignKeys = [
         ForeignKey(entity = SourceEntity::class, parentColumns = ["id"], childColumns = ["sourceId"], onDelete = ForeignKey.CASCADE),
     ],
-    indices = [Index(value = ["sourceId", "position"]), Index(value = ["sourceId", "groupTitle"])],
+    indices = [
+        Index(value = ["sourceId", "position"]),
+        Index(value = ["sourceId", "kind", "groupTitle"]),
+        Index(value = ["sourceId", "variantKey"]),
+        Index(value = ["sourceId", "kind", "seriesName"]),
+    ],
 )
 data class ChannelEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -65,6 +70,70 @@ data class ChannelEntity(
     /** Noms de [tv.nextv.core.model.StreamIssue] séparés par des virgules. */
     val streamIssues: String,
     val epgChannelId: String? = null,
+    /** [tv.nextv.core.model.ContentKind] : LIVE, MOVIE ou SERIES. */
+    val kind: String = "LIVE",
+    /** Titre nettoyé (sans qualité, année ni préfixe de langue). */
+    val title: String = name,
+    /** Clé commune aux versions (qualités) d'une même chaîne. */
+    val variantKey: String = "",
+    /** [tv.nextv.core.model.StreamQuality] annoncée par le nom, si présente. */
+    val quality: String? = null,
+    val year: Int? = null,
+    val seriesName: String? = null,
+    val season: Int? = null,
+    val episode: Int? = null,
+    /** Rang de qualité ([tv.nextv.core.model.StreamQuality.rankOf]) pour choisir la meilleure version. */
+    val qualityRank: Int = 2,
+    /** Version affichée dans les listes (la meilleure de sa chaîne). */
+    val isPrimary: Boolean = true,
+    /** Nombre de versions (qualités) de la chaîne. */
+    val variantCount: Int = 1,
+    /** Clé stable (favoris, cache TMDB) : ne change pas d'une actualisation à l'autre. */
+    val itemKey: String = "",
+)
+
+/**
+ * Favori. La clé ([itemKey]) ne dépend pas de l'identifiant de ligne, qui change à chaque
+ * actualisation : clé de version pour une chaîne, titre (et année) pour un film, nom pour une série.
+ */
+@Entity(
+    tableName = "favorites",
+    foreignKeys = [
+        ForeignKey(entity = SourceEntity::class, parentColumns = ["id"], childColumns = ["sourceId"], onDelete = ForeignKey.CASCADE),
+    ],
+    indices = [Index(value = ["sourceId", "kind", "itemKey"], unique = true), Index(value = ["sourceId", "kind", "position"])],
+)
+data class FavoriteEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val sourceId: Long,
+    val kind: String,
+    val itemKey: String,
+    val title: String,
+    val logoUrl: String?,
+    val position: Int,
+)
+
+/** Fiche TMDB en cache (ou absence de résultat, [found] faux). */
+@Entity(tableName = "tmdb_cache")
+data class TmdbCacheEntity(
+    @PrimaryKey val cacheKey: String,
+    val found: Boolean,
+    val fetchedAt: Long,
+    val tmdbId: Long = 0,
+    val title: String = "",
+    val originalTitle: String? = null,
+    val overview: String? = null,
+    val tagline: String? = null,
+    val year: Int? = null,
+    val rating: Double? = null,
+    val voteCount: Int = 0,
+    /** Genres séparés par « | ». */
+    val genres: String = "",
+    val posterUrl: String? = null,
+    val backdropUrl: String? = null,
+    val trailerKey: String? = null,
+    val runtimeMinutes: Int? = null,
+    val seasonCount: Int? = null,
 )
 
 /**

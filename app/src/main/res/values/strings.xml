@@ -4,14 +4,13 @@
 
     <!-- Actions -->
     <string name="action_add_first_source">Ajouter une playlist</string>
-    <string name="action_open_guide">Guide des programmes</string>
     <string name="action_add_source">Ajouter</string>
     <string name="action_back">Retour</string>
     <string name="action_cancel">Annuler</string>
+    <string name="action_close">Fermer</string>
     <string name="action_delete">Supprimer</string>
     <string name="action_edit">Modifier</string>
     <string name="action_hide">Masquer</string>
-    <string name="action_ok">OK</string>
     <string name="action_refresh">Actualiser</string>
     <string name="action_refresh_all">Tout actualiser</string>
     <string name="action_retry">Réessayer</string>
@@ -26,6 +25,8 @@
     <string name="stat_guide">chaînes avec guide</string>
     <string name="stat_updated">mise à jour</string>
     <string name="sources_title">Playlists</string>
+    <string name="sources_subtitle">Choisissez la playlist affichée à l’accueil.</string>
+    <string name="sources_active">Active</string>
     <string name="sources_empty_title">Aucune playlist</string>
     <string name="sources_empty_message">Ajoutez une playlist M3U/M3U8 par son URL (HTTP ou HTTPS) ou importez un fichier depuis l’appareil.</string>
     <string name="location_kind_remote">URL</string>
@@ -67,26 +68,15 @@
     <string name="editor_password">Mot de passe</string>
     <string name="editor_user_agent">User-Agent (facultatif)</string>
     <string name="editor_user_agent_help">Certains serveurs exigent un User-Agent précis.</string>
-    <string name="editor_section_epg">Guide des programmes (EPG)</string>
-    <string name="editor_epg_intro">Associe les programmes aux chaînes grâce à leur identifiant (tvg-id) ou à leur nom.</string>
-    <string name="editor_epg_none_short">Aucun</string>
-    <string name="editor_epg_url_label">URL du guide XMLTV (.xml ou .xml.gz)</string>
-    <string name="editor_epg_file_help">Fichier .xml ou .xml.gz, relu à chaque actualisation.</string>
-    <string name="editor_epg_header">Utiliser aussi le guide annoncé par la playlist (url-tvg)</string>
     <string name="editor_save_and_load">Enregistrer et charger</string>
 
     <!-- Chaînes -->
     <string name="channels_all_short">Toutes</string>
     <string name="channels_all_title">Toutes les chaînes</string>
-    <string name="channels_groups">Groupes</string>
     <string name="channels_no_epg">Pas d’information de programme</string>
-    <string name="channels_empty_hint">Actualisez la playlist pour charger ses chaînes.</string>
-    <string name="channels_error_title">Impossible de charger les chaînes</string>
-    <string name="channels_no_match_hint">Essayez un autre nom ou choisissez un autre groupe.</string>
     <string name="channels_search">Rechercher une chaîne</string>
     <string name="channels_no_group">Sans groupe</string>
     <string name="channels_empty">Aucune chaîne chargée pour le moment.</string>
-    <string name="channels_no_match">Aucune chaîne ne correspond à la recherche.</string>
     <string name="stream_limited">Limité</string>
     <string name="stream_unsupported_short">Non pris en charge</string>
     <string name="stream_unsupported">Ce flux ne peut pas être lu par le lecteur.</string>
@@ -97,11 +87,77 @@
     <string name="stream_issue_no_proxy">Le proxy ne s’applique pas à ce protocole.</string>
     <string name="stream_issue_multicast">Flux multicast : nécessite un réseau qui le diffuse.</string>
 
+    <!-- Démarrage -->
+    <string name="startup_step_preparing">Préparation…</string>
+    <string name="startup_step_playlist">Téléchargement de la playlist</string>
+    <string name="startup_step_saving">Enregistrement des chaînes</string>
+    <string name="startup_step_epg_download">Téléchargement du guide TV</string>
+    <string name="startup_step_epg_import">Import du guide TV</string>
+    <string name="startup_step_ready">Prêt</string>
+    <string name="startup_bytes_received">%1$s reçus</string>
+    <string name="startup_summary">%1$d chaînes · %2$d films · %3$d séries</string>
+    <string name="startup_error_title">Chargement impossible</string>
+    <string name="startup_continue_cached">Continuer avec les données enregistrées</string>
+    <string name="startup_choose_playlist">Choisir une autre playlist</string>
+    <string name="welcome_title">Bienvenue sur NexTV</string>
+    <string name="welcome_message">Vos chaînes, films et séries IPTV, pensés pour la télécommande.</string>
+    <string name="welcome_step_playlist">Ajoutez votre playlist M3U (adresse en ligne ou fichier).</string>
+    <string name="welcome_step_guide">Le guide TV se télécharge et se met à jour tout seul.</string>
+    <string name="welcome_step_remote">Appui long sur OK pour les favoris, Retour pendant la lecture pour la liste des chaînes.</string>
+
+    <!-- Accueil -->
+    <string name="home_tv">TV</string>
+    <string name="home_movies">Films</string>
+    <string name="home_series">Séries</string>
+    <string name="home_guide">Guide TV</string>
+    <string name="home_favorites">Favoris</string>
+    <string name="home_all_movies">Tous les films</string>
+    <string name="home_all_series">Toutes les séries</string>
+    <string name="home_search_movies">Rechercher un film</string>
+    <string name="home_search_series">Rechercher une série</string>
+    <string name="home_empty_hint">Actualisez la playlist dans les réglages pour charger ses chaînes.</string>
+    <string name="home_no_movies">Aucun film</string>
+    <string name="home_no_movies_hint">La playlist ne contient pas de films, ou aucun ne correspond à la recherche.</string>
+    <string name="home_no_series">Aucune série</string>
+    <string name="home_no_series_hint">La playlist ne contient pas de séries, ou aucune ne correspond à la recherche.</string>
+    <string name="favorites_empty_title">Aucun favori</string>
+    <string name="favorites_empty_channels">Appui long sur OK sur une chaîne pour l’ajouter aux favoris.</string>
+    <string name="favorites_empty_movies">Appui long sur OK sur un film pour l’ajouter aux favoris.</string>
+    <string name="favorites_empty_series">Appui long sur OK sur une série pour l’ajouter aux favoris.</string>
+    <string name="favorites_reorder">Réorganiser</string>
+    <string name="favorites_reorder_done">Terminé</string>
+    <string name="favorites_reorder_hint_pick">Appuyez sur OK pour saisir un favori, puis déplacez-le avec les flèches.</string>
+    <string name="favorites_reorder_hint_move">Déplacez avec les flèches, OK pour poser.</string>
+    <string name="favorite_added">« %1$s » ajouté aux favoris</string>
+    <string name="favorite_removed">« %1$s » retiré des favoris</string>
+
+    <!-- Fiche film / série -->
+    <string name="detail_loading">Recherche des informations…</string>
+    <string name="detail_play">Lecture</string>
+    <string name="detail_play_episode">Lire le premier épisode</string>
+    <string name="detail_trailer">Bande-annonce</string>
+    <string name="detail_favorite">Ajouter aux favoris</string>
+    <string name="detail_unfavorite">Retirer des favoris</string>
+    <string name="detail_rating">%1$s/10 (%2$d votes)</string>
+    <string name="detail_season">Saison %1$d</string>
+    <string name="detail_episodes">Épisodes</string>
+    <string name="detail_episode">Épisode %1$d</string>
+    <string name="detail_no_trailer_app">Aucune application ne peut lire la bande-annonce.</string>
+    <string name="detail_tmdb_not_found">Aucune fiche TMDB trouvée pour ce titre.</string>
+    <string name="detail_tmdb_missing_key">Ajoutez une clé API TMDB dans les réglages pour afficher synopsis, notes et affiches.</string>
+    <string name="detail_tmdb_invalid_key">La clé API TMDB est refusée. Vérifiez-la dans les réglages.</string>
+    <string name="detail_tmdb_unavailable">Informations TMDB indisponibles pour le moment.</string>
+
     <!-- Guide des programmes -->
-    <string name="guide_title">Guide des programmes</string>
     <string name="guide_empty_title">Aucun programme à afficher</string>
     <string name="guide_empty_message">Ajoutez un guide XMLTV à la playlist (ou utilisez celui qu’elle annonce), puis actualisez-la.</string>
     <string name="guide_no_programme">Pas de programme</string>
+    <string name="guide_no_favorites_title">Aucune chaîne favorite</string>
+    <string name="guide_no_favorites_message">Ajoutez des chaînes aux favoris (appui long sur OK) pour les retrouver ici.</string>
+    <string name="guide_ended">Terminé</string>
+    <string name="guide_upcoming">À venir</string>
+    <string name="guide_no_description">Pas de description dans le guide.</string>
+    <string name="guide_watch">Regarder</string>
 
     <!-- Lecteur -->
     <string name="player_next">Ensuite %1$s · %2$s</string>
@@ -109,6 +165,13 @@
     <string name="player_next_channel">Chaîne suivante</string>
     <string name="player_previous_channel">Chaîne précédente</string>
     <string name="player_error_title">Lecture impossible</string>
+    <string name="player_channel_list">Chaînes</string>
+    <string name="player_home">Accueil</string>
+    <string name="player_speed">%1$s Mbit/s</string>
+    <string name="player_remaining">Reste %1$s</string>
+    <string name="player_quality_down">Connexion lente : passage en %1$s</string>
+    <string name="player_quality_up">Connexion rétablie : retour en %1$s</string>
+    <string name="player_quality_unknown">qualité standard</string>
     <string name="player_channel_missing">Cette chaîne n’existe plus (playlist actualisée ou supprimée).</string>
     <string name="player_error_connection">Connexion au serveur du flux impossible.</string>
     <string name="player_error_timeout">Le serveur du flux ne répond pas (délai dépassé).</string>
@@ -128,6 +191,33 @@
     <!-- Réglages : proxy -->
     <string name="settings_title">Réglages</string>
     <string name="settings_saved">Réglages enregistrés</string>
+    <string name="settings_playlist">Playlist</string>
+    <string name="settings_no_playlist">Aucune playlist active.</string>
+    <string name="settings_updated">mise à jour %1$s</string>
+    <string name="settings_manage_playlists">Gérer les playlists (%1$d)</string>
+    <string name="settings_playlist_updated">Playlist actualisée : %1$d entrées</string>
+    <string name="settings_playback">Lecture</string>
+    <string name="settings_auto_quality">Qualité automatique</string>
+    <string name="settings_auto_quality_help">Passe en qualité inférieure (FHD → HD → SD → LOW) si la connexion faiblit, puis revient à la meilleure dès que possible. Seules les versions de la même chaîne présentes dans la playlist sont utilisées.</string>
+    <string name="settings_guide">Guide TV</string>
+    <string name="settings_guide_help">Téléchargé automatiquement depuis %1$s, mis en cache sur l’appareil et actualisé toutes les 12 heures.</string>
+    <string name="settings_guide_downloaded">Dernier téléchargement %1$s</string>
+    <string name="settings_guide_never">Pas encore téléchargé.</string>
+    <string name="settings_guide_matched">%1$d programmes · %2$d chaînes associées</string>
+    <string name="settings_guide_refresh">Mettre à jour le guide</string>
+    <string name="settings_guide_updated">Guide mis à jour : %1$d programmes</string>
+    <string name="settings_tmdb">Fiches films et séries (TMDB)</string>
+    <string name="settings_tmdb_help">Synopsis, notes, genres, affiches et bandes-annonces viennent de The Movie Database. Une clé d’API gratuite s’obtient sur themoviedb.org (compte → paramètres → API).</string>
+    <string name="settings_tmdb_saved">Une clé est enregistrée (chiffrée sur l’appareil).</string>
+    <string name="settings_tmdb_builtin">La clé intégrée à l’application est utilisée.</string>
+    <string name="settings_tmdb_missing">Aucune clé : les fiches n’affichent que les informations de la playlist.</string>
+    <string name="settings_tmdb_key">Clé d’API v3 ou jeton de lecture v4</string>
+    <string name="settings_tmdb_save">Enregistrer la clé</string>
+    <string name="settings_tmdb_remove">Supprimer la clé</string>
+    <string name="settings_proxy_on">Proxy activé : %1$s</string>
+    <string name="settings_proxy_off">Aucun proxy : connexions directes.</string>
+    <string name="settings_proxy_configure">Configurer le proxy</string>
+    <string name="settings_version">NexTV version %1$s</string>
     <string name="proxy_section">Proxy réseau</string>
     <string name="proxy_enable">Utiliser un proxy</string>
     <string name="proxy_description">Pour les playlists, guides et flux distants.</string>
@@ -189,5 +279,21 @@
     <plurals name="channels_count">
         <item quantity="one">%d chaîne</item>
         <item quantity="other">%d chaînes</item>
+    </plurals>
+    <plurals name="movies_count">
+        <item quantity="one">%d film</item>
+        <item quantity="other">%d films</item>
+    </plurals>
+    <plurals name="series_count">
+        <item quantity="one">%d série</item>
+        <item quantity="other">%d séries</item>
+    </plurals>
+    <plurals name="episodes_count">
+        <item quantity="one">%d épisode</item>
+        <item quantity="other">%d épisodes</item>
+    </plurals>
+    <plurals name="seasons_count">
+        <item quantity="one">%d saison</item>
+        <item quantity="other">%d saisons</item>
     </plurals>
 </resources>

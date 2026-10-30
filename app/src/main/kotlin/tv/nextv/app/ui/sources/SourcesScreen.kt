@@ -1,5 +1,6 @@
 package tv.nextv.app.ui.sources
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,15 +12,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
@@ -52,7 +52,6 @@ import tv.nextv.app.R
 import tv.nextv.app.ui.common.appViewModel
 import tv.nextv.app.ui.common.describe
 import tv.nextv.app.ui.common.relativeTime
-import tv.nextv.app.ui.components.BrandMark
 import tv.nextv.app.ui.components.EmptyState
 import tv.nextv.app.ui.components.FocusSurface
 import tv.nextv.app.ui.components.IconAction
@@ -73,11 +72,10 @@ import tv.nextv.core.repository.RefreshResult
 
 @Composable
 fun SourcesScreen(
+    onBack: () -> Unit,
     onAdd: () -> Unit,
     onEdit: (Long) -> Unit,
-    onOpen: (Long) -> Unit,
-    onGuide: (Long) -> Unit,
-    onSettings: () -> Unit,
+    onReload: () -> Unit,
 ) {
     val viewModel = appViewModel { container, _ -> SourcesViewModel(container) }
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -85,6 +83,9 @@ fun SourcesScreen(
     val resources = LocalContext.current.resources
     var pendingDelete by rememberSaveable { mutableStateOf<Long?>(null) }
 
+    LaunchedEffect(viewModel) {
+        viewModel.reload.collect { onReload() }
+    }
     LaunchedEffect(viewModel) {
         viewModel.refreshEvents.collect { event ->
             val name = viewModel.sourceName(event.sourceId) ?: return@collect
@@ -105,14 +106,13 @@ fun SourcesScreen(
         state = state,
         redactor = viewModel.redactor,
         snackbarHostState = snackbar,
+        onBack = onBack,
         onAdd = onAdd,
-        onOpen = onOpen,
-        onGuide = onGuide,
+        onActivate = viewModel::activate,
         onRefresh = viewModel::refresh,
         onRefreshAll = viewModel::refreshAll,
         onEdit = onEdit,
         onDelete = { pendingDelete = it },
-        onSettings = onSettings,
     )
 
     pendingDelete?.let { id ->
@@ -135,20 +135,22 @@ fun SourcesScreen(
     }
 }
 
-/** Accueil : grille des playlists. Sans dépendance au ViewModel (aperçus, captures d'écran). */
+/**
+ * Gestion des playlists : choix de la playlist active, ajout, modification, suppression, actualisation.
+ * Sans dépendance au ViewModel (aperçus, captures d'écran).
+ */
 @Composable
 fun SourcesContent(
     state: SourcesUiState,
     redactor: Redactor,
     snackbarHostState: SnackbarHostState,
+    onBack: () -> Unit,
     onAdd: () -> Unit,
-    onOpen: (Long) -> Unit,
-    onGuide: (Long) -> Unit,
+    onActivate: (Long) -> Unit,
     onRefresh: (Long) -> Unit,
     onRefreshAll: () -> Unit,
     onEdit: (Long) -> Unit,
     onDelete: (Long) -> Unit,
-    onSettings: () -> Unit,
     now: Long = System.currentTimeMillis(),
 ) {
     val window = rememberWindowInfo()
@@ -158,9 +160,10 @@ fun SourcesContent(
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             ScreenHeader(
-                title = "",
-                modifier = Modifier.padding(horizontal = window.horizontalPadding, vertical = 16.dp),
-                leading = { BrandMark(compact = !window.isWide) },
+                title = stringResource(R.string.sources_title),
+                subtitle = stringResource(R.string.sources_subtitle),
+                modifier = Modifier.padding(start = window.horizontalPadding - 12.dp, end = window.horizontalPadding, top = 12.dp, bottom = 8.dp),
+                navigation = { IconAction(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back), onBack) },
                 actions = {
                     if (state.items.isNotEmpty()) {
                         if (window.isWide) {
@@ -170,10 +173,8 @@ fun SourcesContent(
                         }
                     }
                     if (window.isWide) {
-                        PillButton(stringResource(R.string.settings_title), onSettings, icon = Icons.Filled.Settings)
                         PillButton(stringResource(R.string.action_add_source), onAdd, icon = Icons.Filled.Add, style = PillStyle.Primary)
                     } else {
-                        IconAction(Icons.Filled.Settings, stringResource(R.string.settings_title), onSettings)
                         IconAction(Icons.Filled.Add, stringResource(R.string.action_add_source), onAdd, tint = MaterialTheme.colorScheme.primary)
                     }
                 },
@@ -194,20 +195,13 @@ fun SourcesContent(
                     verticalArrangement = Arrangement.spacedBy(20.dp),
                     modifier = Modifier.fillMaxSize(),
                 ) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        Text(
-                            stringResource(R.string.sources_title) + "  ·  " + state.items.size,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
                     items(state.items, key = { it.source.id }) { item ->
                         PlaylistCard(
                             item = item,
+                            active = item.source.id == state.activeId,
                             redactor = redactor,
                             now = now,
-                            onOpen = { onOpen(item.source.id) },
-                            onGuide = { onGuide(item.source.id) },
+                            onOpen = { onActivate(item.source.id) },
                             onRefresh = { onRefresh(item.source.id) },
                             onEdit = { onEdit(item.source.id) },
                             onDelete = { onDelete(item.source.id) },
@@ -222,10 +216,10 @@ fun SourcesContent(
 @Composable
 private fun PlaylistCard(
     item: SourceItem,
+    active: Boolean,
     redactor: Redactor,
     now: Long,
     onOpen: () -> Unit,
-    onGuide: () -> Unit,
     onRefresh: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
@@ -233,7 +227,11 @@ private fun PlaylistCard(
     val source = item.source
     val resources = LocalContext.current.resources
     val (start, end) = NexTvColors.swatchFor(source.name)
-    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainer) {
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        border = if (active) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
+    ) {
         Column {
             FocusSurface(
                 onClick = onOpen,
@@ -260,6 +258,7 @@ private fun PlaylistCard(
                             Modifier.align(Alignment.BottomStart).padding(14.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
+                            if (active) StatusPill(stringResource(R.string.sources_active), Color.White)
                             SourceStatusPill(item)
                         }
                     }
@@ -286,12 +285,6 @@ private fun PlaylistCard(
                 Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconAction(
-                    NexTvIcons.Guide,
-                    stringResource(R.string.action_open_guide),
-                    onGuide,
-                    enabled = source.status.epg.programmeCount > 0,
-                )
                 IconAction(Icons.Filled.Refresh, stringResource(R.string.action_refresh), onRefresh, enabled = !item.refreshing)
                 Spacer(Modifier.weight(1f))
                 IconAction(Icons.Filled.Edit, stringResource(R.string.action_edit), onEdit)

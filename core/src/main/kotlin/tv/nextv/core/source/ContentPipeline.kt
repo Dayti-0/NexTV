@@ -2,6 +2,7 @@ package tv.nextv.core.source
 
 import kotlinx.coroutines.CancellationException
 import tv.nextv.core.error.SourceException
+import tv.nextv.core.io.CountingInputStream
 import tv.nextv.core.io.LimitedInputStream
 import tv.nextv.core.io.OpenedContent
 import tv.nextv.core.io.Streams
@@ -11,9 +12,13 @@ import java.io.IOException
 
 internal object ContentPipeline {
 
-    /** Limite de téléchargement → décompression gzip éventuelle → limite décompressée → tampon. */
-    fun prepare(content: OpenedContent, limits: ContentLimits): BufferedInputStream {
-        val downloaded = LimitedInputStream(content.stream, limits.maxDownloadBytes)
+    /**
+     * Comptage des octets reçus (progression) → limite de téléchargement → décompression gzip
+     * éventuelle → limite décompressée → tampon.
+     */
+    fun prepare(content: OpenedContent, limits: ContentLimits, onBytesRead: ((Long) -> Unit)? = null): BufferedInputStream {
+        val raw = if (onBytesRead != null) CountingInputStream(content.stream, onCount = onBytesRead) else content.stream
+        val downloaded = LimitedInputStream(raw, limits.maxDownloadBytes)
         val decoded = LimitedInputStream(Streams.decompressIfGzip(downloaded), limits.maxDecodedBytes)
         return Streams.buffered(decoded)
     }

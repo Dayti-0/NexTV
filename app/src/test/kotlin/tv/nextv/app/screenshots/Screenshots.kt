@@ -4,12 +4,17 @@ import android.app.Application
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import androidx.paging.PagingData
 import androidx.paging.compose.collectAsLazyPagingItems
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -20,15 +25,26 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
-import tv.nextv.app.ui.channels.ChannelsContent
+import tv.nextv.app.ui.detail.DetailContent
 import tv.nextv.app.ui.editor.SourceEditorContent
 import tv.nextv.app.ui.guide.GuideContent
+import tv.nextv.app.ui.guide.ProgrammeSheetContent
+import tv.nextv.app.ui.home.Category
+import tv.nextv.app.ui.home.HomeActions
+import tv.nextv.app.ui.home.HomeContent
+import tv.nextv.app.ui.home.HomeSection
+import tv.nextv.app.ui.home.ReorderState
+import tv.nextv.app.ui.player.ChannelMenu
 import tv.nextv.app.ui.player.PlayerOverlay
 import tv.nextv.app.ui.settings.ProxySettingsContent
+import tv.nextv.app.ui.settings.SettingsContent
 import tv.nextv.app.ui.sources.SourcesContent
-import tv.nextv.app.ui.sources.SourcesUiState
+import tv.nextv.app.ui.startup.StartupContent
+import tv.nextv.app.ui.startup.StartupStep
+import tv.nextv.app.ui.startup.WelcomeScreen
 import tv.nextv.app.ui.theme.NexTvTheme
 import tv.nextv.core.log.Redactor
+import tv.nextv.core.model.ContentKind
 import java.util.TimeZone
 
 /**
@@ -49,79 +65,97 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
-    fun playlists() = capture("01_playlists") {
-        SourcesContent(
-            state = SampleData.sources,
-            redactor = Redactor(),
+    fun startup() = capture("01_demarrage") {
+        StartupContent(SampleData.startup, onRetry = {}, onContinue = {}, onChoosePlaylist = {}, animate = false)
+    }
+
+    @Test
+    fun startupDone() = capture("02_demarrage_pret") {
+        StartupContent(
+            SampleData.startup.copy(percent = 100, step = StartupStep.READY, bytesReceived = null, summary = SampleData.startupSummary),
+            onRetry = {},
+            onContinue = {},
+            onChoosePlaylist = {},
+            animate = false,
+        )
+    }
+
+    @Test
+    fun startupError() = capture("03_demarrage_erreur") {
+        StartupContent(SampleData.startupError, onRetry = {}, onContinue = {}, onChoosePlaylist = {}, animate = false)
+    }
+
+    @Test
+    fun welcome() = capture("04_bienvenue") {
+        WelcomeScreen(onAdd = {}, animate = false)
+    }
+
+    @Test
+    fun homeTv() = capture("05_accueil_tv") {
+        Home(HomeSection.TV, Category.All)
+    }
+
+    @Test
+    fun homeFavorites() = capture("06_accueil_favoris") {
+        Home(HomeSection.TV, Category.Favorites, reorder = ReorderState(active = true, movingKey = SampleData.favoriteChannels[1].itemKey))
+    }
+
+    @Test
+    fun homeMovies() = capture("07_accueil_films") {
+        Home(HomeSection.MOVIES, Category.All)
+    }
+
+    @Test
+    fun homeSeries() = capture("08_accueil_series") {
+        Home(HomeSection.SERIES, Category.All)
+    }
+
+    @Test
+    fun guide() = capture("09_guide") {
+        Home(HomeSection.GUIDE, Category.All)
+    }
+
+    @Test
+    fun programme() = capture("10_programme") {
+        val channel = SampleData.guide.channels[7]
+        val programme = channel.programmes.first { it.startMillis <= SampleData.NOW && it.stopMillis > SampleData.NOW }
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background.copy(alpha = 0.9f)), contentAlignment = Alignment.Center) {
+            Box(Modifier.widthIn(max = 560.dp).padding(24.dp)) {
+                ProgrammeSheetContent(channel, programme, SampleData.NOW, onWatch = {}, onDismiss = {})
+            }
+        }
+    }
+
+    @Test
+    fun movie() = capture("11_fiche_film") {
+        DetailContent(
+            state = SampleData.movieDetail,
+            kind = ContentKind.MOVIE,
             snackbarHostState = remember { SnackbarHostState() },
-            onAdd = {},
-            onOpen = {},
-            onGuide = {},
-            onRefresh = {},
-            onRefreshAll = {},
-            onEdit = {},
-            onDelete = {},
-            onSettings = {},
-            now = SampleData.NOW,
+            onPlay = {},
+            onTrailer = {},
+            onToggleFavorite = {},
+            onSelectSeason = {},
+            onBack = {},
         )
     }
 
     @Test
-    fun playlistsEmpty() = capture("02_playlists_vide") {
-        SourcesContent(
-            state = SourcesUiState(loaded = true),
-            redactor = Redactor(),
+    fun series() = capture("12_fiche_serie") {
+        DetailContent(
+            state = SampleData.seriesDetail,
+            kind = ContentKind.SERIES,
             snackbarHostState = remember { SnackbarHostState() },
-            onAdd = {},
-            onOpen = {},
-            onGuide = {},
-            onRefresh = {},
-            onRefreshAll = {},
-            onEdit = {},
-            onDelete = {},
-            onSettings = {},
-            now = SampleData.NOW,
-        )
-    }
-
-    @Test
-    fun channels() = capture("03_chaines") {
-        val items = remember { flowOf(PagingData.from(SampleData.channels)) }.collectAsLazyPagingItems()
-        ChannelsContent(
-            sourceName = "Bouquet Maison",
-            sourceError = null,
-            loaded = true,
-            hasGuide = true,
-            groups = SampleData.groups,
-            selectedGroup = null,
-            query = "",
-            channels = items,
-            refreshing = false,
-            now = SampleData.NOW,
-            onBack = {},
-            onRefresh = {},
-            onGuide = {},
-            onQueryChange = {},
-            onSelectGroup = {},
             onPlay = {},
-        )
-    }
-
-    @Test
-    fun guide() = capture("04_guide") {
-        GuideContent(
-            state = SampleData.guide,
-            sourceName = "Bouquet Maison",
-            groups = SampleData.groups,
-            selectedGroup = null,
+            onTrailer = {},
+            onToggleFavorite = {},
+            onSelectSeason = {},
             onBack = {},
-            onSelectGroup = {},
-            onPlay = {},
         )
     }
 
     @Test
-    fun player() = capture("05_lecteur") {
+    fun player() = capture("13_lecteur") {
         FakeVideo()
         PlayerOverlay(
             state = SampleData.player,
@@ -135,7 +169,23 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
-    fun playerError() = capture("06_lecteur_erreur") {
+    fun playerMenu() = capture("14_lecteur_menu") {
+        FakeVideo()
+        val channels = remember { flowOf(PagingData.from(SampleData.channels)) }.collectAsLazyPagingItems()
+        ChannelMenu(
+            menu = SampleData.menu,
+            groups = SampleData.groups,
+            channels = channels,
+            favorites = SampleData.favoriteChannels,
+            now = SampleData.NOW,
+            onCategory = {},
+            onPlay = {},
+            onHome = {},
+        )
+    }
+
+    @Test
+    fun playerError() = capture("15_lecteur_erreur") {
         FakeVideo()
         PlayerOverlay(
             state = SampleData.playerError,
@@ -149,7 +199,41 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
-    fun editor() = capture("07_edition") {
+    fun settings() = capture("16_reglages") {
+        SettingsContent(
+            state = SampleData.settings,
+            snackbarHostState = remember { SnackbarHostState() },
+            onBack = {},
+            onPlaylists = {},
+            onRefreshPlaylist = {},
+            onRefreshGuide = {},
+            onAutoQuality = {},
+            onSaveTmdbKey = {},
+            onClearTmdbKey = {},
+            onProxy = {},
+            now = SampleData.NOW,
+        )
+    }
+
+    @Test
+    fun playlists() = capture("17_playlists") {
+        SourcesContent(
+            state = SampleData.sources,
+            redactor = Redactor(),
+            snackbarHostState = remember { SnackbarHostState() },
+            onBack = {},
+            onAdd = {},
+            onActivate = {},
+            onRefresh = {},
+            onRefreshAll = {},
+            onEdit = {},
+            onDelete = {},
+            now = SampleData.NOW,
+        )
+    }
+
+    @Test
+    fun editor() = capture("18_edition") {
         SourceEditorContent(
             state = SampleData.editor,
             snackbarHostState = remember { SnackbarHostState() },
@@ -161,7 +245,7 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
-    fun editorErrors() = capture("08_edition_erreur") {
+    fun editorErrors() = capture("19_edition_erreur") {
         SourceEditorContent(
             state = SampleData.editorWithErrors,
             snackbarHostState = remember { SnackbarHostState() },
@@ -173,7 +257,7 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
-    fun settings() = capture("09_reglages") {
+    fun proxy() = capture("20_proxy") {
         ProxySettingsContent(
             state = SampleData.proxy,
             snackbarHostState = remember { SnackbarHostState() },
@@ -181,6 +265,45 @@ abstract class ScreenshotSuite(private val device: String) {
             onToggleScope = { _, _ -> },
             onSave = {},
             onBack = {},
+        )
+    }
+
+    @Composable
+    private fun Home(section: HomeSection, category: Category, reorder: ReorderState = ReorderState()) {
+        val channels = remember { flowOf(PagingData.from(SampleData.channels)) }.collectAsLazyPagingItems()
+        val movies = remember { flowOf(PagingData.from(SampleData.movies)) }.collectAsLazyPagingItems()
+        val series = remember { flowOf(PagingData.from(SampleData.series)) }.collectAsLazyPagingItems()
+        HomeContent(
+            section = section,
+            sourceName = "Bouquet Maison",
+            groups = when (section) {
+                HomeSection.MOVIES -> SampleData.movieGroups
+                HomeSection.SERIES -> SampleData.seriesGroups
+                else -> SampleData.groups
+            },
+            category = category,
+            query = "",
+            channels = channels,
+            favoriteChannels = SampleData.favoriteChannels,
+            movies = movies,
+            favoriteMovies = listOf(SampleData.movies[0], SampleData.movies[5]),
+            series = series,
+            favoriteSeries = listOf(SampleData.series[0]),
+            favoriteKeys = SampleData.favoriteKeys,
+            reorder = reorder,
+            now = SampleData.NOW,
+            snackbarHostState = remember { SnackbarHostState() },
+            actions = HomeActions(),
+            guide = { modifier ->
+                GuideContent(
+                    state = SampleData.guide,
+                    groups = SampleData.groups,
+                    selectedGroup = null,
+                    onSelectGroup = {},
+                    onPlay = {},
+                    modifier = modifier,
+                )
+            },
         )
     }
 

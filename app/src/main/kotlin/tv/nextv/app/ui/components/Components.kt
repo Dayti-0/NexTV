@@ -3,6 +3,10 @@ package tv.nextv.app.ui.components
 import android.content.res.Configuration
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -22,10 +26,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -35,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -78,7 +84,10 @@ fun rememberWindowInfo(): WindowInfo {
 /**
  * Surface cliquable dont le focus est bien visible : agrandissement, contour et fond plus clair.
  * Indispensable à la navigation à la télécommande ; sans effet gênant au toucher.
+ *
+ * [onLongClick] répond à l'appui long au toucher comme à l'appui long sur OK de la télécommande.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FocusSurface(
     onClick: () -> Unit,
@@ -91,6 +100,7 @@ fun FocusSurface(
     focusScale: Float = 1.03f,
     enabled: Boolean = true,
     onFocusChange: ((Boolean) -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -99,27 +109,33 @@ fun FocusSurface(
         LaunchedEffect(focused) { onFocusChange(focused) }
     }
     val scale by animateFloatAsState(if (focused) focusScale else 1f, label = "focusScale")
-    Surface(
-        onClick = onClick,
-        enabled = enabled,
+    val border = when {
+        focused -> BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+        selected -> BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f))
+        else -> null
+    }
+    Box(
         modifier = modifier
             .zIndex(if (focused) 1f else 0f)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
-            },
-        shape = shape,
-        color = if (focused) focusedColor else color,
-        contentColor = contentColor,
-        border = when {
-            focused -> BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
-            selected -> BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f))
-            else -> null
-        },
-        shadowElevation = if (focused) 8.dp else 0.dp,
-        interactionSource = interactionSource,
-        content = content,
-    )
+            }
+            .shadow(if (focused) 8.dp else 0.dp, shape, clip = false)
+            .clip(shape)
+            .background(if (focused) focusedColor else color)
+            .then(if (border != null) Modifier.border(border, shape) else Modifier)
+            .combinedClickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                enabled = enabled,
+                onLongClick = onLongClick,
+                onClick = onClick,
+            ),
+        propagateMinConstraints = true,
+    ) {
+        CompositionLocalProvider(LocalContentColor provides contentColor) { content() }
+    }
 }
 
 /** Bouton icône rond, utilisable au toucher comme à la télécommande. */
