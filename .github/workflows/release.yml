@@ -92,13 +92,15 @@ jobs:
           cat > notes.md <<NOTES
           Version ${VERSION} de NexTV (Android 7.0+, téléphone, tablette et Android TV).
 
-          **Sources prises en charge**
-          - Playlists M3U/M3U8 distantes (HTTP/HTTPS, redirections suivies) ou importées depuis un fichier de l'appareil
-          - Playlists protégées par identifiants (HTTP Basic), chiffrés sur l'appareil et masqués dans les journaux
-          - Flux HTTP/HTTPS (HLS, DASH, progressif) lus avec Media3 ; RTSP/UDP en mode limité
-          - Guides EPG XMLTV distants ou locaux (.xml, .xml.gz), y compris ceux annoncés par la playlist (url-tvg)
-          - Plusieurs playlists : ajout, modification, suppression, actualisation
-          - Proxy HTTP/SOCKS configurable pour les playlists, l'EPG et les flux
+          **Fonctionnalités**
+          - Démarrage direct sur la dernière playlist, avec progression réelle du chargement
+          - Accueil TV, Films, Séries et Guide TV, favoris (appui long sur OK) réorganisables
+          - Fiches films et séries enrichies par TMDB (clé d'API à saisir dans les réglages)
+          - Lecteur : bandeau de 5 s avec programme et débit, zapping haut/bas, liste des chaînes sur « Retour »
+          - Qualité automatique FHD → HD → SD → LOW entre les versions de la playlist (désactivable)
+          - Guide TV xmltvfr.fr téléchargé, mis en cache et actualisé automatiquement
+          - Playlists M3U/M3U8 distantes ou locales, protégées par identifiants (chiffrés, masqués dans les journaux)
+          - Proxy HTTP/SOCKS pour les playlists, le guide et les flux
 
           **Installation** : téléchargez \`${APK}\`, autorisez l'installation depuis des sources inconnues puis ouvrez le fichier.
 
