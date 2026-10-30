@@ -159,7 +159,7 @@ fun FootballContent(
                 modifier = listModifier,
             )
         } else {
-            MatchList(shown, state.now, window.horizontalPadding, onPlay, onDetails = { details = it }, modifier = listModifier)
+            MatchList(shown, state.now, window.horizontalPadding, compact = !window.isWide, onPlay, onDetails = { details = it }, modifier = listModifier)
         }
     }
 
@@ -213,6 +213,7 @@ private fun MatchList(
     matches: List<FootballMatch>,
     now: Long,
     horizontalPadding: Dp,
+    compact: Boolean,
     onPlay: (Long) -> Unit,
     onDetails: (FootballMatch) -> Unit,
     modifier: Modifier = Modifier,
@@ -220,7 +221,7 @@ private fun MatchList(
     val days = remember(matches) { matches.groupBy { dayStart(it.programme.startMillis) } }
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 28.dp, end = horizontalPadding, top = 8.dp, bottom = 32.dp),
+        contentPadding = PaddingValues(start = if (compact) horizontalPadding else 28.dp, end = horizontalPadding, top = 8.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         days.forEach { (day, dayMatches) ->
@@ -233,16 +234,15 @@ private fun MatchList(
                 )
             }
             items(dayMatches, key = { "${it.channel.id}-${it.programme.startMillis}" }) { match ->
-                MatchRow(match, now, onClick = { onPlay(match.channel.id) }, onLongClick = { onDetails(match) })
+                MatchRow(match, now, compact, onClick = { onPlay(match.channel.id) }, onLongClick = { onDetails(match) })
             }
         }
     }
 }
 
 @Composable
-private fun MatchRow(match: FootballMatch, now: Long, onClick: () -> Unit, onLongClick: () -> Unit) {
-    val programme = match.programme
-    val live = programme.startMillis <= now && programme.stopMillis > now
+private fun MatchRow(match: FootballMatch, now: Long, compact: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
+    val live = match.programme.startMillis <= now && match.programme.stopMillis > now
     FocusSurface(
         onClick = onClick,
         onLongClick = onLongClick,
@@ -251,23 +251,53 @@ private fun MatchRow(match: FootballMatch, now: Long, onClick: () -> Unit, onLon
         color = MaterialTheme.colorScheme.surfaceContainer,
         focusScale = 1.01f,
     ) {
-        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Column(Modifier.width(76.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(timeOf(programme.startMillis), style = MaterialTheme.typography.titleLarge)
-                if (live) StatusPill(stringResource(R.string.player_live), NexTvColors.Live)
-            }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(match.competition.label, style = MaterialTheme.typography.labelLarge, color = competitionColor(match.competition))
-                Text(programme.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                programme.subtitle?.let {
-                    Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                }
-                if (live) LiveProgress(programme.startMillis, programme.stopMillis, now, Modifier.padding(top = 4.dp))
-            }
-            Row(Modifier.width(220.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                ChannelLogo(match.channel.logoUrl, match.channel.name, Modifier.size(width = 56.dp, height = 38.dp), monogramSize = 13.dp)
-                Text(match.channel.name, style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            }
+        if (compact) CompactMatch(match, now, live) else WideMatch(match, now, live)
+    }
+}
+
+/** TV, tablette : heure, affiche et chaîne sur une ligne. */
+@Composable
+private fun WideMatch(match: FootballMatch, now: Long, live: Boolean) {
+    val programme = match.programme
+    Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(Modifier.width(120.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(timeOf(programme.startMillis), style = MaterialTheme.typography.titleLarge)
+            if (live) StatusPill(stringResource(R.string.player_live), NexTvColors.Live)
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(match.competition.label, style = MaterialTheme.typography.labelLarge, color = competitionColor(match.competition))
+            // Le sous-titre porte en général l'affiche (« Paris SG / Marseille ») ; le titre (« Football : Ligue 1 »)
+            // n'est montré qu'à défaut.
+            Text(
+                programme.subtitle ?: programme.title,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (live) LiveProgress(programme.startMillis, programme.stopMillis, now, Modifier.padding(top = 4.dp))
+        }
+        Row(Modifier.width(220.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            ChannelLogo(match.channel.logoUrl, match.channel.name, Modifier.size(width = 56.dp, height = 38.dp), monogramSize = 13.dp)
+            Text(match.channel.name, style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/** Écran étroit (téléphone) : heure et compétition, affiche, puis chaîne, les uns sous les autres. */
+@Composable
+private fun CompactMatch(match: FootballMatch, now: Long, live: Boolean) {
+    val programme = match.programme
+    Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(timeOf(programme.startMillis), style = MaterialTheme.typography.titleMedium)
+            if (live) StatusPill(stringResource(R.string.player_live), NexTvColors.Live)
+            Text(match.competition.label, style = MaterialTheme.typography.labelLarge, color = competitionColor(match.competition), maxLines = 1)
+        }
+        Text(programme.subtitle ?: programme.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        if (live) LiveProgress(programme.startMillis, programme.stopMillis, now)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ChannelLogo(match.channel.logoUrl, match.channel.name, Modifier.size(width = 40.dp, height = 28.dp), monogramSize = 11.dp)
+            Text(match.channel.name, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
