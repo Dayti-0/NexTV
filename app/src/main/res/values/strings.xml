@@ -147,6 +147,11 @@
     <string name="favorites_reorder_hint_pick">Appuyez sur OK pour saisir un favori, puis déplacez-le avec les flèches.</string>
     <string name="favorites_reorder_hint_move">Déplacez avec les flèches, OK pour poser.</string>
     <string name="favorite_added">« %1$s » ajouté aux favoris</string>
+    <string name="home_recent">Récentes</string>
+    <string name="recent_empty_title">Aucune chaîne récente</string>
+    <string name="recent_empty_message">Les chaînes que vous regardez apparaissent ici, la dernière en premier.</string>
+    <string name="preview_hint">Sélectionnez une chaîne : son programme et un aperçu s’affichent ici.</string>
+    <string name="preview_next">À suivre · %1$s  %2$s</string>
     <string name="home_football">Foot</string>
     <string name="football_all">Tous les matchs</string>
     <string name="football_today">Aujourd’hui</string>
@@ -252,6 +257,8 @@
     <string name="settings_channel_columns">Chaînes par ligne</string>
     <string name="settings_poster_columns">Films et séries par ligne</string>
     <string name="settings_columns_value">%1$d (de %2$d à %3$d)</string>
+    <string name="settings_channel_preview">Aperçu de la chaîne sélectionnée</string>
+    <string name="settings_channel_preview_help">À l’accueil, la chaîne sélectionnée démarre en petit, sans le son, au bout d’une seconde. À désactiver si l’abonnement n’autorise qu’une connexion à la fois ou si l’appareil est lent.</string>
     <string name="settings_channel_groups">Catégories de chaînes</string>
     <string name="settings_channel_groups_visible">Toutes visibles</string>
     <string name="channel_groups_help">Désactivez une catégorie pour la masquer : ses chaînes n’apparaissent plus dans les listes, la recherche, le zapping ni le guide. Les favoris restent visibles. À l’accueil, un appui long sur une catégorie la masque aussi.</string>

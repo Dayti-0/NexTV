@@ -42,10 +42,10 @@ import tv.nextv.app.R
 import tv.nextv.app.data.db.ChannelEntity
 import tv.nextv.app.data.db.ChannelListRow
 import tv.nextv.app.data.db.GroupRow
-import tv.nextv.app.data.db.HeaderCodec
 import tv.nextv.app.data.progress.ProgressEntity
 import tv.nextv.app.data.progress.ProgressRepository
 import tv.nextv.app.player.PlaybackRequest
+import tv.nextv.app.player.toStream
 import tv.nextv.app.player.TimeshiftBuffer
 import tv.nextv.app.player.TimeshiftRecorder
 import tv.nextv.app.player.VideoDecoders
@@ -56,9 +56,7 @@ import tv.nextv.app.ui.guide.GuideProgramme
 import tv.nextv.app.ui.home.Category
 import tv.nextv.core.model.ContentKind
 import tv.nextv.core.model.SourceLocation
-import tv.nextv.core.model.StreamDescriptor
 import tv.nextv.core.model.StreamFormat
-import tv.nextv.core.model.StreamIssue
 import tv.nextv.core.model.StreamQuality
 import tv.nextv.core.model.StreamSupport
 import tv.nextv.core.net.RequestPurpose
@@ -464,6 +462,8 @@ class PlayerViewModel(
         val primary = if (isLive && requested.variantKey.isNotEmpty()) dao.primaryOf(requested.sourceId, requested.variantKey) ?: requested else requested
         channel = primary
         listed = requested
+        // Chaînes récentes de l'accueil.
+        if (isLive) container.settings.addRecentChannel(primary.sourceId, primary.itemKey)
         sourceId.value = primary.sourceId
         val source = container.sourceRepository.getSource(primary.sourceId)
 
@@ -843,14 +843,6 @@ class PlayerViewModel(
             else -> null
         }
     }
-
-    private fun ChannelEntity.toStream() = StreamDescriptor(
-        url = streamUrl,
-        headers = HeaderCodec.decode(streamHeaders),
-        format = StreamFormat.entries.firstOrNull { it.name == streamFormat } ?: StreamFormat.UNKNOWN,
-        support = StreamSupport.entries.firstOrNull { it.name == streamSupport } ?: StreamSupport.SUPPORTED,
-        issues = streamIssues.split(',').mapNotNull { name -> StreamIssue.entries.firstOrNull { it.name == name } }.toSet(),
-    )
 
     private fun releasePlayer() {
         mutablePlayer.value?.let {

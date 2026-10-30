@@ -1,6 +1,7 @@
 package tv.nextv.app.screenshots
 
 import tv.nextv.app.ui.football.FootballMatch
+import tv.nextv.app.ui.home.ChannelPreview
 import tv.nextv.app.ui.football.FootballUiState
 import tv.nextv.core.epg.Competition
 import tv.nextv.app.data.catalog.MetadataState
@@ -367,6 +368,17 @@ object SampleData {
         qualityNotice = null,
         bandwidthMbps = null,
         error = "Le serveur du flux ne répond pas (délai dépassé).\nLa lecture passe par le proxy configuré : vérifiez qu’il est joignable.",
+    )
+
+    val channelPreview = ChannelPreview(
+        channel = channels[0],
+        current = GuideProgramme(
+            "Le 20h",
+            NOW - 15 * MINUTE,
+            NOW + 25 * MINUTE,
+            description = "Toute l’actualité du jour en France et dans le monde, avec les invités du journal et la météo.",
+        ),
+        next = GuideProgramme("Météo", NOW + 25 * MINUTE, NOW + 30 * MINUTE),
     )
 
     val football = FootballUiState(

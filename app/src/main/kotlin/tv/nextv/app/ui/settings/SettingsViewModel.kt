@@ -53,6 +53,8 @@ data class SettingsUiState(
     val dns: DnsProvider = DnsProvider.SYSTEM,
     /** Catégories de chaînes masquées dans la playlist active. */
     val hiddenChannelGroups: Int = 0,
+    /** Aperçu vidéo de la chaîne sélectionnée à l'accueil. */
+    val channelPreview: Boolean = true,
 )
 
 /** @property selected décodeur choisi, `null` : automatique. */
@@ -91,6 +93,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     private data class Preferences(
         val autoQuality: Boolean,
+        val channelPreview: Boolean,
         val tmdbKeySaved: Boolean,
         val proxy: ProxySettings,
         val grid: GridColumns,
@@ -98,12 +101,12 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
     )
 
     private val preferences = combine(
-        settings.autoQuality,
+        combine(settings.autoQuality, settings.channelPreview) { autoQuality, preview -> autoQuality to preview },
         settings.tmdbApiKey,
         settings.proxySettings,
         settings.gridColumns,
         settings.dnsProvider,
-    ) { autoQuality, tmdbKey, proxy, grid, dns -> Preferences(autoQuality, tmdbKey != null, proxy, grid, dns) }
+    ) { (autoQuality, preview), tmdbKey, proxy, grid, dns -> Preferences(autoQuality, preview, tmdbKey != null, proxy, grid, dns) }
 
     val state: StateFlow<SettingsUiState> = combine(
         activePlaylist,
@@ -129,6 +132,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             gridColumns = prefs.grid,
             dns = prefs.dns,
             hiddenChannelGroups = hidden,
+            channelPreview = prefs.channelPreview,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
@@ -171,6 +175,10 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         val values = DnsProvider.entries
         val next = values[(values.indexOf(state.value.dns) + 1) % values.size]
         viewModelScope.launch { settings.setDnsProvider(next) }
+    }
+
+    fun setChannelPreview(enabled: Boolean) {
+        viewModelScope.launch { settings.setChannelPreview(enabled) }
     }
 
     fun setGridColumns(columns: GridColumns) {

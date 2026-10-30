@@ -109,6 +109,28 @@ class SettingsRepository(
         }
     }
 
+    /** Aperçu vidéo (sans le son) de la chaîne sélectionnée à l'accueil. */
+    val channelPreview: Flow<Boolean> = dataStore.data.map { it[CHANNEL_PREVIEW] ?: true }.distinctUntilChanged()
+
+    suspend fun setChannelPreview(enabled: Boolean) {
+        dataStore.edit { it[CHANNEL_PREVIEW] = enabled }
+    }
+
+    /** Chaînes regardées récemment dans une playlist (clés des chaînes, la plus récente en premier). */
+    fun recentChannels(sourceId: Long): Flow<List<String>> = dataStore.data
+        .map { prefs -> prefs[recentKey(sourceId)]?.split('\n')?.filter { it.isNotEmpty() }.orEmpty() }
+        .distinctUntilChanged()
+
+    suspend fun addRecentChannel(sourceId: Long, itemKey: String) {
+        val key = recentKey(sourceId)
+        dataStore.edit { prefs ->
+            val previous = prefs[key]?.split('\n')?.filter { it.isNotEmpty() && it != itemKey }.orEmpty()
+            prefs[key] = (listOf(itemKey) + previous).take(MAX_RECENT_CHANNELS).joinToString("\n")
+        }
+    }
+
+    private fun recentKey(sourceId: Long) = stringPreferencesKey(RECENT_PREFIX + sourceId)
+
     /** Résolution des noms (DNS du système ou résolveur public en DNS sur HTTPS). */
     val dnsProvider: Flow<DnsProvider> = dataStore.data
         .map { prefs -> prefs[DNS_PROVIDER]?.let { name -> DnsProvider.entries.firstOrNull { it.name == name } } ?: DnsProvider.SYSTEM }
@@ -165,7 +187,10 @@ class SettingsRepository(
         val CHANNEL_COLUMNS = intPreferencesKey("channel_columns")
         val DNS_PROVIDER = stringPreferencesKey("dns_provider")
         val POSTER_COLUMNS = intPreferencesKey("poster_columns")
+        val CHANNEL_PREVIEW = booleanPreferencesKey("channel_preview")
         const val DECODER_PREFIX = "decoder_"
+        const val RECENT_PREFIX = "recent_channels_"
+        const val MAX_RECENT_CHANNELS = 30
     }
 }
 

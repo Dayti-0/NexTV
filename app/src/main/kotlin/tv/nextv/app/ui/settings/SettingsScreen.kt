@@ -121,6 +121,7 @@ fun SettingsScreen(onBack: () -> Unit, onPlaylists: () -> Unit, onProxy: () -> U
         onChannelGroups = onChannelGroups,
         onCycleDecoder = viewModel::cycleDecoder,
         onGridColumns = viewModel::setGridColumns,
+        onChannelPreview = viewModel::setChannelPreview,
         onCycleDns = viewModel::cycleDns,
         update = update,
         onCheckUpdate = viewModel::checkUpdate,
@@ -151,6 +152,7 @@ fun SettingsContent(
     onChannelGroups: () -> Unit = {},
     onCycleDecoder: (String) -> Unit = {},
     onGridColumns: (GridColumns) -> Unit = {},
+    onChannelPreview: (Boolean) -> Unit = {},
     onCycleDns: () -> Unit = {},
     update: UpdateState = UpdateState.Idle,
     onCheckUpdate: () -> Unit = {},
@@ -238,6 +240,12 @@ fun SettingsContent(
                             onChange = { onGridColumns(grid.copy(posters = it)) },
                         )
                         InfoText(stringResource(R.string.settings_columns_help))
+                        ToggleRow(
+                            title = stringResource(R.string.settings_channel_preview),
+                            description = stringResource(R.string.settings_channel_preview_help),
+                            checked = state.channelPreview,
+                            onChange = onChannelPreview,
+                        )
                         if (state.playlist != null) {
                             ValueRow(
                                 title = stringResource(R.string.settings_channel_groups),

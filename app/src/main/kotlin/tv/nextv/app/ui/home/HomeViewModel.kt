@@ -11,6 +11,9 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChangedBy
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -39,6 +42,8 @@ import tv.nextv.app.data.db.GroupRow
 import tv.nextv.app.data.db.HiddenGroupEntity
 import tv.nextv.app.data.db.MovieRow
 import tv.nextv.app.data.db.SeriesRow
+import tv.nextv.app.player.ChannelPreviewPlayer
+import tv.nextv.app.ui.guide.GuideProgramme
 import tv.nextv.core.model.ContentKind
 
 enum class HomeSection { TV, MOVIES, SERIES, GUIDE, FOOTBALL }
@@ -51,9 +56,15 @@ sealed interface Category {
     /** Films et séries commencés (reprise de lecture). */
     data object ContinueWatching : Category
 
+    /** Chaînes regardées récemment, la dernière en premier. */
+    data object Recent : Category
+
     /** [title] vide : éléments sans groupe. */
     data class Group(val title: String) : Category
 }
+
+/** Chaîne sélectionnée à l'accueil, avec son programme en cours et le suivant (panneau du haut). */
+data class ChannelPreview(val channel: ChannelListRow, val current: GuideProgramme?, val next: GuideProgramme?)
 
 /** Réorganisation des favoris : [movingKey] est l'élément « soulevé », déplacé avec les flèches. */
 data class ReorderState(val active: Boolean = false, val movingKey: String? = null)
@@ -133,6 +144,64 @@ class HomeViewModel(
 
     val now: StateFlow<Long> = clock.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), System.currentTimeMillis())
 
+    /** Chaînes regardées récemment (catégorie « Récentes »). */
+    val recentChannels: StateFlow<List<ChannelListRow>> = combine(sourceId.filterNotNull(), clock) { id, now -> id to now }
+        .flatMapLatest { (id, now) ->
+            container.settings.recentChannels(id).flatMapLatest { keys ->
+                if (keys.isEmpty()) {
+                    flowOf(emptyList())
+                } else {
+                    dao.observeChannelsByKey(id, keys, now).map { rows -> rows.sortedBy { keys.indexOf(it.itemKey) } }
+                }
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Aperçu vidéo de la chaîne sélectionnée (réglages). */
+    val previewEnabled: StateFlow<Boolean> = container.settings.channelPreview
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    private val previewer = ChannelPreviewPlayer(container.playerFactory, container.sourceRepository)
+
+    /** Lecteur de l'aperçu (sans le son), `null` sans aperçu. */
+    val previewPlayer = previewer.player
+
+    /** Dernière chaîne sélectionnée dans la grille des chaînes. */
+    private val focusedChannel = MutableStateFlow<ChannelListRow?>(null)
+
+    /** Accueil affiché (aperçu possible). */
+    private val previewActive = MutableStateFlow(false)
+
+    /** Chaîne sélectionnée avec son programme (panneau du haut). */
+    val preview: StateFlow<ChannelPreview?> = focusedChannel
+        .mapLatest { row ->
+            row ?: return@mapLatest null
+            val upcoming = container.programmeDao.upcoming(row.id, System.currentTimeMillis(), limit = 2).map {
+                GuideProgramme(it.title, it.startMillis, it.stopMillis, it.subtitle, it.description, it.category, it.year)
+            }
+            val current = upcoming.firstOrNull()?.takeIf { it.startMillis <= System.currentTimeMillis() }
+            ChannelPreview(row, current, upcoming.firstOrNull { it != current })
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    init {
+        // Aperçu : la chaîne sélectionnée démarre après un court arrêt dessus, section TV affichée.
+        viewModelScope.launch {
+            combine(focusedChannel, previewActive, previewEnabled, section) { row, active, enabled, current ->
+                row.takeIf { active && enabled && current == HomeSection.TV }
+            }
+                .distinctUntilChangedBy { it?.id }
+                .collectLatest { row ->
+                    if (row == null) {
+                        previewer.stop()
+                        return@collectLatest
+                    }
+                    delay(PREVIEW_DELAY_MILLIS)
+                    dao.get(row.id)?.let { previewer.show(it) }
+                }
+        }
+    }
+
     /** Chaînes et affiches par ligne (réglages). */
     val gridColumns: StateFlow<GridColumns> = container.settings.gridColumns
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), GridColumns())
@@ -151,7 +220,7 @@ class HomeViewModel(
      */
     val channels: Flow<PagingData<ChannelListRow>> = filterFor(HomeSection.TV)
         .flatMapLatest { (id, c, q) ->
-            if (c == Category.Favorites || c == Category.ContinueWatching) {
+            if (c == Category.Favorites || c == Category.ContinueWatching || c == Category.Recent) {
                 emptyFlow()
             } else {
                 pager { dao.pageChannels(id, c.filterFlag(), c.groupTitle(), q, System.currentTimeMillis()) }
@@ -196,6 +265,20 @@ class HomeViewModel(
     fun clearProgress(itemKey: String) {
         val id = sourceId.value ?: return
         viewModelScope.launch { container.progress.clear(id, itemKey) }
+    }
+
+    fun onChannelFocused(row: ChannelListRow) {
+        focusedChannel.value = row
+    }
+
+    /** Accueil affiché ou quitté ; l'aperçu s'arrête aussitôt (une seule connexion pour la lecture). */
+    fun setPreviewActive(active: Boolean) {
+        previewActive.value = active
+        if (!active) previewer.stop()
+    }
+
+    override fun onCleared() {
+        previewer.stop()
     }
 
     fun selectSection(target: HomeSection) {
@@ -257,5 +340,6 @@ class HomeViewModel(
         const val PAGE_SIZE = 60
         const val SEARCH_DEBOUNCE_MILLIS = 300L
         const val NOW_REFRESH_MILLIS = 30_000L
+        const val PREVIEW_DELAY_MILLIS = 900L
     }
 }

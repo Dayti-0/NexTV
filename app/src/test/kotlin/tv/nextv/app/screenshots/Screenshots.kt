@@ -104,6 +104,11 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
+    fun homeTvPreview() = capture("05c_accueil_apercu") {
+        Home(HomeSection.TV, Category.All, preview = true)
+    }
+
+    @Test
     fun homeTvDense() = capture("05b_accueil_tv_9_par_ligne") {
         Home(HomeSection.TV, Category.All, grid = GridColumns(channels = 9))
     }
@@ -361,7 +366,13 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Composable
-    private fun Home(section: HomeSection, category: Category, reorder: ReorderState = ReorderState(), grid: GridColumns = GridColumns()) {
+    private fun Home(
+        section: HomeSection,
+        category: Category,
+        reorder: ReorderState = ReorderState(),
+        grid: GridColumns = GridColumns(),
+        preview: Boolean = false,
+    ) {
         val channels = remember { flowOf(PagingData.from(SampleData.channels)) }.collectAsLazyPagingItems()
         val movies = remember { flowOf(PagingData.from(SampleData.movies)) }.collectAsLazyPagingItems()
         val series = remember { flowOf(PagingData.from(SampleData.series)) }.collectAsLazyPagingItems()
@@ -402,6 +413,9 @@ abstract class ScreenshotSuite(private val device: String) {
             football = { modifier ->
                 FootballContent(SampleData.football, competition = null, onCompetition = {}, onPlay = {}, modifier = modifier)
             },
+            recentChannels = SampleData.channels.take(3),
+            showPreview = preview,
+            preview = SampleData.channelPreview.takeIf { preview },
         )
     }
 

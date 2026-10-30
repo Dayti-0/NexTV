@@ -293,6 +293,24 @@ interface ChannelDao {
     )
     fun observeFavoriteChannels(sourceId: Long, now: Long): Flow<List<ChannelListRow>>
 
+    /** Chaînes désignées par leur clé (chaînes récentes), meilleure version de chacune, dans le désordre. */
+    @Query(
+        """
+        SELECT c.id, c.name, c.title, c.groupTitle, c.logoUrl, c.channelNumber, c.streamSupport, c.streamIssues,
+            c.quality, c.variantCount, c.itemKey,
+            p.title AS nowTitle, p.startMillis AS nowStart, p.stopMillis AS nowStop
+        FROM channels c
+        LEFT JOIN programmes p ON p.id = (
+            SELECT p2.id FROM programmes p2 JOIN sources s ON s.id = p2.sourceId
+            WHERE p2.sourceId = c.sourceId AND p2.generation = s.epgGeneration AND p2.epgChannelId = c.epgChannelId
+              AND p2.startMillis <= :now AND p2.stopMillis > :now
+            ORDER BY p2.startMillis DESC LIMIT 1
+        )
+        WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.isPrimary = 1 AND c.itemKey IN (:itemKeys)
+        """,
+    )
+    fun observeChannelsByKey(sourceId: Long, itemKeys: List<String>, now: Long): Flow<List<ChannelListRow>>
+
     @Query(
         """
         SELECT id, title, year, logoUrl, groupTitle, itemKey, streamSupport FROM channels

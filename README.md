@@ -9,6 +9,9 @@ Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3, enti�
   En cas d'échec : réessayer, continuer avec les données enregistrées ou choisir une autre playlist.
 - **Accueil** : sections TV, Films, Séries, Guide TV et Foot, avec catégories (groupes de la playlist), recherche et favoris.
   Appui long sur OK : ajouter / retirer des favoris ; « Réorganiser » puis OK et flèches pour les déplacer.
+  Section TV sur TV et tablette : panneau du haut avec l'aperçu vidéo (sans le son) de la chaîne sélectionnée, son
+  programme en cours (horaires, progression, description) et le suivant ; désactivable dans Réglages › Affichage.
+  Catégorie « Récentes » : les 30 dernières chaînes regardées.
   Catégories de chaînes masquables (appui long sur une catégorie, ou Réglages › Catégories de chaînes) :
   leurs chaînes disparaissent des listes, de la recherche, du zapping et du guide ; les favoris restent visibles.
 - **Foot** : matchs de Ligue 1, de Premier League et de Ligue des champions des 8 prochains jours trouvés dans
