@@ -33,7 +33,12 @@ object ContentClassifier {
     )
     private val YEAR = Regex("""[(\[]?\b((?:19|20)\d{2})\b[)\]]?""")
     private val LANGUAGE_PREFIX = Regex("""^\s*[\[|]?\s*(?:[A-Z]{2,3}|VOSTFR|MULTI)\s*[\]|]?\s*[:|\-–]\s+""")
-    private val TRAILING_NOISE = Regex("""(?i)[\s\-|:]+(?:vostfr|vf|vo|multi|truefrench|french)\s*$""")
+    /** Mentions de version ou de langue, à la fin (« - MULTI », « (VOSTFR », « [VF] »). */
+    private val TRAILING_NOISE = Regex("""(?i)[\s\-|:(\[]+(?:$VERSION_TAGS)\s*[)\]]?\s*$""")
+
+    /** Les mêmes mentions entre parenthèses ou crochets, n'importe où dans le titre. */
+    private val BRACKETED_NOISE = Regex("""(?i)\s*[(\[]\s*(?:$VERSION_TAGS)\s*[)\]]""")
+    private const val VERSION_TAGS = "vostfr|vost|vf|vff|vfq|vfi|vo|multi|multi-?subs?|truefrench|subfrench|french|dual"
     private val NON_WORD = Regex("[^A-Z0-9]+")
     private val SPACES = Regex("\\s{2,}")
     private val MARKS = Regex("\\p{Mn}+")
@@ -139,6 +144,7 @@ object ContentClassifier {
     fun cleanTitle(name: String): String {
         var title = name.trim()
         repeat(2) { title = LANGUAGE_PREFIX.replace(title, "") }
+        title = BRACKETED_NOISE.replace(title, "")
         title = TRAILING_NOISE.replace(title, "")
         return QualityParser.parse(title).baseName.ifBlank { title }.trim()
     }
@@ -151,7 +157,25 @@ object ContentClassifier {
         return withoutYear.trimSeparators().ifBlank { title.trim() } to year
     }
 
-    private fun String.trimSeparators() = trim().trim('-', '|', ':', '.', '_', '(', ')', '[', ']', ' ').trim()
+    /**
+     * Retire les séparateurs aux extrémités, et les parenthèses ou crochets orphelins (« Titre ( »),
+     * jamais une paire complète qui fait partie du titre (« Rick and Morty (US) »).
+     */
+    private fun String.trimSeparators(): String {
+        var text = trim().trim('-', '|', ':', '.', '_', ' ')
+        while (text.isNotEmpty()) {
+            val before = text
+            val first = text.first()
+            val last = text.last()
+            text = when {
+                first == '(' && ')' !in text || first == '[' && ']' !in text || first == ')' || first == ']' -> text.drop(1)
+                last == ')' && '(' !in text || last == ']' && '[' !in text || last == '(' || last == '[' -> text.dropLast(1)
+                else -> text
+            }.trim().trim('-', '|', ':', '.', '_', ' ')
+            if (text == before) break
+        }
+        return text
+    }
 
     private fun fold(text: String) = Normalizer.normalize(text, Normalizer.Form.NFD).replace(MARKS, "")
 }

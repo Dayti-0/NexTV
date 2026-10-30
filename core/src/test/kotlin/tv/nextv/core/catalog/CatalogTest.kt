@@ -110,4 +110,29 @@ class ContentClassifierTest {
         assertEquals("FR| TF1 FHD", live.title)
         assertNull(live.episode)
     }
+
+    @Test
+    fun `version tags in brackets are removed without breaking the title`() {
+        val series = ContentClassifier.classify(
+            "Celui qui s'appelait Matthew Perry (MULTI) S01 E01",
+            "http://p.example/series/u/p/1.mkv",
+            "SERIES | DOCUMENTAIRES",
+        )
+        assertEquals("Celui qui s'appelait Matthew Perry", series.title)
+        assertEquals(1, series.episode?.season)
+        assertEquals(1, series.episode?.episode)
+
+        val movie = ContentClassifier.classify("Le Grand Voyage [VOSTFR] (2019)", "http://p.example/movie/u/p/2.mkv", "VOD | DRAME")
+        assertEquals("Le Grand Voyage", movie.title)
+        assertEquals(2019, movie.year)
+
+        val unclosed = ContentClassifier.classify("Un Titre (MULTI", "http://p.example/movie/u/p/3.mkv", "VOD | DRAME")
+        assertEquals("Un Titre", unclosed.title)
+    }
+
+    @Test
+    fun `parentheses that belong to the title are kept`() {
+        val series = ContentClassifier.classify("Rick and Morty (US) S01E02", "http://p.example/series/u/p/4.mkv", "SERIES | ANIMATION")
+        assertEquals("Rick and Morty (US)", series.title)
+    }
 }

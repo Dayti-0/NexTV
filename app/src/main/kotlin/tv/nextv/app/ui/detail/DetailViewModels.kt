@@ -11,6 +11,7 @@ import tv.nextv.app.AppContainer
 import tv.nextv.app.data.catalog.MetadataState
 import tv.nextv.app.data.progress.ProgressEntity
 import tv.nextv.app.data.db.EpisodeRow
+import tv.nextv.core.catalog.ContentClassifier
 import tv.nextv.core.meta.MediaType
 import tv.nextv.core.meta.TmdbError
 import tv.nextv.core.model.ContentKind
@@ -58,7 +59,9 @@ class DetailViewModel(
             mutableState.update { it.copy(missing = true, metadata = MetadataState.NotFound) }
             return
         }
-        val title = if (kind == ContentKind.SERIES) entity.seriesName ?: entity.title else entity.title
+        val rawTitle = if (kind == ContentKind.SERIES) entity.seriesName ?: entity.title else entity.title
+        // Nettoyé à nouveau : les titres importés avant une amélioration du nettoyage (« … (MULTI ») en profitent.
+        val title = ContentClassifier.cleanTitle(rawTitle).ifBlank { rawTitle }
         val item = PlaylistItem(entity.sourceId, entity.id, title, entity.year, entity.logoUrl, entity.itemKey)
         mutableState.update { it.copy(item = item) }
 
@@ -85,7 +88,8 @@ class DetailViewModel(
             MetadataState.Unavailable(TmdbError.MISSING_KEY)
         } else {
             container.metadata.details(
-                cacheKey = entity.itemKey,
+                // Version de la recherche : les « introuvables » enregistrés avant son amélioration sont ignorés.
+                cacheKey = "$LOOKUP_VERSION|${entity.itemKey}",
                 type = if (kind == ContentKind.SERIES) MediaType.SERIES else MediaType.MOVIE,
                 title = title,
                 year = entity.year,
@@ -96,6 +100,10 @@ class DetailViewModel(
 
     fun selectSeason(index: Int) {
         mutableState.update { it.copy(selectedSeason = index) }
+    }
+
+    private companion object {
+        const val LOOKUP_VERSION = "v2"
     }
 
     fun toggleFavorite() {

@@ -71,8 +71,16 @@ class TmdbClient(
     suspend fun lookup(type: MediaType, title: String, year: Int?): TmdbResult {
         val key = apiKey()?.trim()?.takeIf { it.isNotEmpty() } ?: return TmdbResult.Failed(TmdbError.MISSING_KEY)
         return try {
-            val id = search(key, type, title, year) ?: year?.let { search(key, type, title, null) }
-                ?: return TmdbResult.NotFound
+            // Titre tel quel, puis sans ses parties entre parenthèses ou crochets ; avec l'année, puis sans.
+            val queries = listOf(title, title.replace(BRACKETED, " ").replace(SPACES, " ").trim())
+                .filter { it.isNotBlank() }
+                .distinct()
+            var id: Long? = null
+            for (query in queries) {
+                id = search(key, type, query, year) ?: year?.let { search(key, type, query, null) }
+                if (id != null) break
+            }
+            if (id == null) return TmdbResult.NotFound
             TmdbResult.Found(details(key, type, id))
         } catch (e: CancellationException) {
             throw e
@@ -195,5 +203,7 @@ class TmdbClient(
 
     private companion object {
         const val TAG = "Tmdb"
+        val BRACKETED = Regex("""\s*[(\[][^)\]]*[)\]]?""")
+        val SPACES = Regex("""\s{2,}""")
     }
 }
