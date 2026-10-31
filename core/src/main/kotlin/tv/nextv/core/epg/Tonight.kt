@@ -1,5 +1,6 @@
 package tv.nextv.core.epg
 
+import java.text.Normalizer
 import tv.nextv.core.catalog.ContentClassifier
 
 /**
@@ -88,4 +89,15 @@ object EveningPicker {
     /** Deuxième partie : commence avant 1 h du matin. */
     private const val LATEST_SECOND = 4 * 60 * MINUTE
     private const val TOLERANCE = MINUTE
+}
+
+/** Reconnaît un même programme diffusé sur plusieurs chaînes (versions régionales, doublons de la playlist). */
+object SameProgramme {
+    private val MARKS_AND_PUNCTUATION = Regex("[^\\p{L}\\p{N}]+")
+
+    /** Titre sans casse, accents, espaces ni ponctuation, et minute de début. */
+    fun key(title: String, startMillis: Long): String {
+        val folded = Normalizer.normalize(title.lowercase(), Normalizer.Form.NFD).replace(MARKS_AND_PUNCTUATION, "")
+        return "$folded@${startMillis / 60_000L}"
+    }
 }

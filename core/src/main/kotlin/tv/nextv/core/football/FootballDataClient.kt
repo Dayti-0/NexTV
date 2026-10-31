@@ -1,8 +1,10 @@
 package tv.nextv.core.football
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
@@ -231,14 +233,18 @@ class FootballDataClient(
             .build()
         val call = clients.client(RequestPurpose.METADATA).newCall(request)
         call.timeout().timeout(callTimeoutMillis, TimeUnit.MILLISECONDS)
-        return call.await().use { response ->
-            when {
-                // Jeton refusé (400 « invalid token », 401) ou compétition hors de l'offre (403).
-                response.code == 400 || response.code == 401 || response.code == 403 -> throw FootballDataException(FootballDataError.INVALID_KEY)
-                response.code == 429 -> throw FootballDataException(FootballDataError.RATE_LIMITED)
-                !response.isSuccessful -> throw FootballDataException(FootballDataError.SERVER)
+        // Réponse lue hors du fil principal : lire le corps passe par le réseau, interdit sur le fil
+        // principal d'Android (l'application serait fermée, par exemple depuis le bandeau du lecteur).
+        return withContext(Dispatchers.IO) {
+            call.await().use { response ->
+                when {
+                    // Jeton refusé (400 « invalid token », 401) ou compétition hors de l'offre (403).
+                    response.code == 400 || response.code == 401 || response.code == 403 -> throw FootballDataException(FootballDataError.INVALID_KEY)
+                    response.code == 429 -> throw FootballDataException(FootballDataError.RATE_LIMITED)
+                    !response.isSuccessful -> throw FootballDataException(FootballDataError.SERVER)
+                }
+                JSONObject(response.body.string())
             }
-            JSONObject(response.body.string())
         }
     }
 

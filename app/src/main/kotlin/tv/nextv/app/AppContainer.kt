@@ -140,6 +140,7 @@ class AppContainer(context: Context) {
             clients = httpClients,
             apiKey = { tmdbKey.value ?: BuildConfig.TMDB_API_KEY.takeIf { it.isNotBlank() } },
             logger = logger,
+            fallbackApiKey = { BuildConfig.TMDB_API_KEY.takeIf { it.isNotBlank() } },
         ),
     )
 

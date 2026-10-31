@@ -10,6 +10,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.material3.Surface
 import tv.nextv.app.ui.NexTvNavHost
 import tv.nextv.app.ui.theme.NexTvTheme
+import tv.nextv.app.ui.update.LaunchUpdatePrompt
 import tv.nextv.app.ui.theme.ThemeStyle
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -34,6 +35,8 @@ class MainActivity : ComponentActivity() {
             NexTvTheme(theme) {
                 Surface {
                     NexTvNavHost()
+                    // Nouvelle version publiée : proposée au lancement.
+                    LaunchUpdatePrompt()
                 }
             }
         }

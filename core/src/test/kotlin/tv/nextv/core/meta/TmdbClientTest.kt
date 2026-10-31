@@ -106,4 +106,20 @@ class TmdbClientTest {
         key = "bad"
         assertEquals(TmdbResult.Failed(TmdbError.INVALID_KEY), client.lookup(MediaType.MOVIE, "Avatar", null))
     }
+
+    @Test
+    fun `refused saved key falls back to the built-in key`() = runBlocking {
+        val previous = server.dispatcher
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse =
+                if (request.url.queryParameter("api_key") == "old-saved-key") MockResponse.Builder().code(401).build() else previous.dispatch(request)
+        }
+        key = "old-saved-key"
+        val withFallback = TmdbClient(HttpClientProvider(), apiKey = { key }, baseUrl = server.url("/3/"), fallbackApiKey = { "abc123" })
+
+        val result = withFallback.lookup(MediaType.MOVIE, "Avatar", 2009)
+
+        assertEquals(19995L, (result as TmdbResult.Found).details.tmdbId)
+        assertEquals("abc123", requests.last().url.queryParameter("api_key"))
+    }
 }

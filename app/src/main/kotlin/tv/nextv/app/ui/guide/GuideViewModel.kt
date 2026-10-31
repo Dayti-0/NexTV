@@ -28,6 +28,7 @@ import tv.nextv.app.data.db.GroupRow
 import tv.nextv.app.data.db.GuideVersionRow
 import tv.nextv.core.catalog.ContentClassifier
 import tv.nextv.core.epg.EveningPicker
+import tv.nextv.core.epg.SameProgramme
 import tv.nextv.core.epg.TntChannels
 import tv.nextv.core.model.ContentKind
 import java.util.Calendar
@@ -223,15 +224,21 @@ class GuideViewModel(
             }.timeInMillis
         }
         val evening = evenings[day.coerceIn(evenings.indices)]
-        // Chaînes de « L'essentiel » si elle en a, sinon toutes (TNT d'abord).
-        val channels = selectedChannels().ifEmpty { allGuideChannels() }.take(MAX_TONIGHT_CHANNELS)
+        // Tout le catalogue associé au guide, une ligne par chaîne (sa meilleure version : « Regarder »
+        // l'ouvre dans la qualité des réglages) : « L'essentiel » d'abord, puis la TNT, puis les autres.
+        val selected = selectedChannels()
+        val chosen = selected.mapTo(HashSet()) { it.first.epgChannelId }
+        val channels = (selected + allGuideChannels().filter { it.first.epgChannelId !in chosen }).take(MAX_TONIGHT_CHANNELS)
         val programmes = programmesFor(channels.map { it.first.epgChannelId }, evening - EVENING_BEFORE, evening + EVENING_AFTER)
+        // Même programme à la même heure sur plusieurs chaînes (versions régionales, doublons) : une seule fois.
+        val shown = HashSet<String>()
         val rows = channels.mapNotNull { (row, tnt) ->
             val list = programmes[row.epgChannelId].orEmpty()
             val picked = EveningPicker.pick(list, evening, { it.startMillis }, { it.stopMillis })
             // Chaîne sans programme ce soir-là : absente (le programme papier ne l'aurait pas non plus).
-            picked.first ?: return@mapNotNull null
-            TonightRow(row.toGuideChannel(tnt, list), picked.first, picked.second)
+            val first = picked.first ?: return@mapNotNull null
+            if (!shown.add(SameProgramme.key(first.title, first.startMillis))) return@mapNotNull null
+            TonightRow(row.toGuideChannel(tnt, list), first, picked.second)
         }
         return TonightUiState(loading = false, day = day, evenings = evenings, rows = rows, now = now)
     }
@@ -301,7 +308,7 @@ class GuideViewModel(
         private const val EVENINGS = 7
         private const val EVENING_BEFORE = 90 * 60_000L
         private const val EVENING_AFTER = 5 * 60 * 60_000L
-        private const val MAX_TONIGHT_CHANNELS = 400
+        private const val MAX_TONIGHT_CHANNELS = 2_000
         private const val HALF_HOUR = 30 * 60_000L
 
         /** Fin de la grille : 24 heures après la demi-heure écoulée. */

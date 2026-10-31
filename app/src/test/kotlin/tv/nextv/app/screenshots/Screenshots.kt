@@ -28,6 +28,7 @@ import org.robolectric.annotation.GraphicsMode
 import tv.nextv.app.CrashLog
 import tv.nextv.app.data.db.GroupVisibilityRow
 import tv.nextv.app.data.settings.GridColumns
+import tv.nextv.app.data.update.UpdateState
 import tv.nextv.app.ui.detail.DetailContent
 import tv.nextv.app.ui.editor.SourceEditorContent
 import tv.nextv.app.ui.guide.GuideContent
@@ -50,6 +51,7 @@ import tv.nextv.app.ui.football.FootballContent
 import tv.nextv.app.ui.football.StandingsState
 import tv.nextv.app.ui.football.TeamSheetContent
 import tv.nextv.app.ui.guide.GuideProgramme
+import tv.nextv.app.ui.update.UpdateDialog
 import tv.nextv.core.football.Competition
 import tv.nextv.app.ui.settings.ChannelGroupsContent
 import tv.nextv.app.ui.settings.ProxySettingsContent
@@ -66,6 +68,7 @@ import tv.nextv.app.ui.player.PlayerProgramme
 import tv.nextv.core.log.Redactor
 import tv.nextv.core.model.ContentKind
 import java.util.TimeZone
+import tv.nextv.core.update.AppRelease
 
 /**
  * Captures d'écran des écrans principaux, générées par `./gradlew :app:recordRoborazziDebug`
@@ -456,6 +459,18 @@ abstract class ScreenshotSuite(private val device: String) {
             onZap = {},
             onRetry = {},
         )
+    }
+
+    @Test
+    fun updatePrompt() = capture("16c_mise_a_jour") {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+            UpdateDialog(
+                state = UpdateState.Available(AppRelease("0.2.16", null, "https://example.invalid/NexTV.apk", 18_000_000, null)),
+                onInstall = {},
+                onAllow = {},
+                onClose = {},
+            )
+        }
     }
 
     @Test

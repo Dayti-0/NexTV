@@ -1,6 +1,7 @@
 package tv.nextv.core.epg
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -56,5 +57,14 @@ class TonightTest {
 
     private companion object {
         const val MINUTE_SCALE = 60_000L
+    }
+
+    @Test
+    fun `same programme on several channels shares one key`() {
+        val start = 1_700_000_000_000L
+        assertEquals(SameProgramme.key("Koh-Lanta : La Tribu maudite", start), SameProgramme.key("KOH LANTA – la tribu maudite", start + 20_000))
+        assertEquals(SameProgramme.key("Météo à la carte", start), SameProgramme.key("Meteo a la carte", start))
+        assertNotEquals(SameProgramme.key("Koh-Lanta", start), SameProgramme.key("Koh-Lanta", start + 5 * 60_000L))
+        assertNotEquals(SameProgramme.key("Koh-Lanta", start), SameProgramme.key("Zone interdite", start))
     }
 }

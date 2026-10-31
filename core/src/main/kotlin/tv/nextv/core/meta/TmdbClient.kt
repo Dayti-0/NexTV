@@ -1,6 +1,8 @@
 package tv.nextv.core.meta
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
@@ -62,6 +64,8 @@ class TmdbClient(
     private val baseUrl: HttpUrl = "https://api.themoviedb.org/3/".toHttpUrl(),
     private val imageBaseUrl: String = "https://image.tmdb.org/t/p/",
     private val logger: Logger = Logger.None,
+    /** Clé de secours (fournie avec l'application), essayée si [apiKey] est refusée. */
+    private val fallbackApiKey: () -> String? = { null },
 ) {
 
     private class TmdbException(val error: TmdbError) : Exception(error.name)
@@ -69,7 +73,18 @@ class TmdbClient(
 
     /** Recherche un film ou une série par titre (et année si connue), puis en lit la fiche. */
     suspend fun lookup(type: MediaType, title: String, year: Int?): TmdbResult {
-        val key = apiKey()?.trim()?.takeIf { it.isNotEmpty() } ?: return TmdbResult.Failed(TmdbError.MISSING_KEY)
+        val fallback = fallbackApiKey()?.trim()?.takeIf { it.isNotEmpty() }
+        val key = apiKey()?.trim()?.takeIf { it.isNotEmpty() } ?: fallback ?: return TmdbResult.Failed(TmdbError.MISSING_KEY)
+        val result = lookupWith(key, type, title, year)
+        // Clé des réglages refusée (ancienne, mal recopiée…) : celle fournie avec l'application.
+        if (result == TmdbResult.Failed(TmdbError.INVALID_KEY) && fallback != null && fallback != key) {
+            logger.warn(TAG, "Clé TMDB des réglages refusée : clé fournie avec l'application")
+            return lookupWith(fallback, type, title, year)
+        }
+        return result
+    }
+
+    private suspend fun lookupWith(key: String, type: MediaType, title: String, year: Int?): TmdbResult {
         return try {
             // Titre tel quel, puis sans ses parties entre parenthèses ou crochets ; avec l'année, puis sans.
             val queries = listOf(title, title.replace(BRACKETED, " ").replace(SPACES, " ").trim())
@@ -179,14 +194,17 @@ class TmdbClient(
             .header("Accept", "application/json")
             .apply { if (bearer) header("Authorization", "Bearer $key") }
             .build()
-        clients.client(RequestPurpose.METADATA).newCall(request).await().use { response ->
-            when {
-                response.code == 401 -> throw TmdbException(TmdbError.INVALID_KEY)
-                response.code == 404 -> throw NotFoundException()
-                response.code == 429 -> throw TmdbException(TmdbError.RATE_LIMITED)
-                !response.isSuccessful -> throw TmdbException(TmdbError.SERVER)
+        // Réponse lue hors du fil principal (le corps se lit sur le réseau, interdit sur le fil principal).
+        return withContext(Dispatchers.IO) {
+            clients.client(RequestPurpose.METADATA).newCall(request).await().use { response ->
+                when {
+                    response.code == 401 -> throw TmdbException(TmdbError.INVALID_KEY)
+                    response.code == 404 -> throw NotFoundException()
+                    response.code == 429 -> throw TmdbException(TmdbError.RATE_LIMITED)
+                    !response.isSuccessful -> throw TmdbException(TmdbError.SERVER)
+                }
+                JSONObject(response.body.string())
             }
-            return JSONObject(response.body.string())
         }
     }
 

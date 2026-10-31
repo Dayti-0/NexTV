@@ -1,8 +1,10 @@
 package tv.nextv.core.update
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
@@ -55,7 +57,9 @@ class UpdateChecker(
 ) {
 
     /** Version la plus récente, si elle est plus récente que [currentVersion]. */
-    suspend fun check(currentVersion: String): UpdateCheck = try {
+    suspend fun check(currentVersion: String): UpdateCheck = withContext(Dispatchers.IO) { checkOnIo(currentVersion) }
+
+    private suspend fun checkOnIo(currentVersion: String): UpdateCheck = try {
         val url = apiBaseUrl.newBuilder()
             .addPathSegments("repos/$repository/releases")
             .addQueryParameter("per_page", "20")
@@ -89,7 +93,10 @@ class UpdateChecker(
      * Télécharge l'APK de [release] dans [target] et vérifie son empreinte.
      * @return `null` si le fichier est prêt, sinon l'erreur (le fichier est alors supprimé).
      */
-    suspend fun download(release: AppRelease, target: File, onProgress: (downloaded: Long, total: Long) -> Unit = { _, _ -> }): UpdateError? {
+    suspend fun download(release: AppRelease, target: File, onProgress: (downloaded: Long, total: Long) -> Unit = { _, _ -> }): UpdateError? =
+        withContext(Dispatchers.IO) { downloadOnIo(release, target, onProgress) }
+
+    private suspend fun downloadOnIo(release: AppRelease, target: File, onProgress: (downloaded: Long, total: Long) -> Unit): UpdateError? {
         try {
             val expected = release.sha256Url?.let { fetchText(it).trim().substringBefore(' ').lowercase() }
             val digest = MessageDigest.getInstance("SHA-256")
