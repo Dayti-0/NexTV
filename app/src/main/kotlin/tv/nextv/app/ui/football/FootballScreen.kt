@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
@@ -39,9 +40,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -51,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
 import tv.nextv.app.R
 import tv.nextv.app.ui.common.appViewModel
 import tv.nextv.app.ui.components.ChannelLogo
@@ -213,7 +217,7 @@ fun FootballContent(
                 item { CompetitionItem(competitionLabel(null), count(null), null, !myTeams && competition == null) { onCompetition(null) } }
                 item { CompetitionItem(stringResource(R.string.football_my_teams), myTeamsCount, null, myTeams, star = true, onClick = onMyTeams) }
                 items(Competition.entries) { choice ->
-                    CompetitionItem(competitionLabel(choice), count(choice), competitionColor(choice), !myTeams && choice == competition) {
+                    CompetitionItem(competitionLabel(choice), count(choice), choice, !myTeams && choice == competition) {
                         onCompetition(choice)
                     }
                 }
@@ -229,7 +233,7 @@ fun FootballContent(
                 item { CompetitionChip(competitionLabel(null), !myTeams && competition == null) { onCompetition(null) } }
                 item { CompetitionChip(stringResource(R.string.football_my_teams), myTeams, onClick = onMyTeams) }
                 items(Competition.entries) { choice ->
-                    CompetitionChip(competitionLabel(choice), !myTeams && choice == competition) { onCompetition(choice) }
+                    CompetitionChip(competitionLabel(choice), !myTeams && choice == competition, competition = choice) { onCompetition(choice) }
                 }
             }
             list(Modifier.weight(1f))
@@ -392,6 +396,7 @@ private fun CompactMatch(match: FootballMatch, now: Long, followed: Boolean) {
 private fun MatchHeading(match: FootballMatch, followed: Boolean) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         if (followed) Icon(Icons.Filled.Star, contentDescription = null, tint = NexTvColors.Warning, modifier = Modifier.size(16.dp))
+        CompetitionLogo(match.competition, 22.dp)
         Text(match.competition.label, style = MaterialTheme.typography.labelLarge, color = competitionColor(match.competition), maxLines = 1)
     }
 }
@@ -474,6 +479,7 @@ private fun MatchSheet(
         ) {
             Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    CompetitionLogo(match.competition, 32.dp)
                     Text(match.competition.label, style = MaterialTheme.typography.labelLarge, color = competitionColor(match.competition))
                     Text(
                         "${dayLabel(dayStart(match.kickoffMillis), now)}  ·  ${timeOf(match.kickoffMillis)}",
@@ -752,7 +758,7 @@ private fun TeamMatchLine(match: ScheduledMatch, team: Team, now: Long, past: Bo
 }
 
 @Composable
-private fun CompetitionItem(name: String, count: Int, color: Color?, selected: Boolean, star: Boolean = false, onClick: () -> Unit) {
+private fun CompetitionItem(name: String, count: Int, competition: Competition?, selected: Boolean, star: Boolean = false, onClick: () -> Unit) {
     FocusSurface(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
@@ -766,7 +772,7 @@ private fun CompetitionItem(name: String, count: Int, color: Color?, selected: B
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             if (star) Icon(Icons.Filled.Star, contentDescription = null, tint = NexTvColors.Warning, modifier = Modifier.size(14.dp))
-            if (color != null) Box(Modifier.size(10.dp).background(color, CircleShape))
+            competition?.let { CompetitionLogo(it, 30.dp) }
             Text(name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             Text(count.toString(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -774,7 +780,7 @@ private fun CompetitionItem(name: String, count: Int, color: Color?, selected: B
 }
 
 @Composable
-private fun CompetitionChip(name: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun CompetitionChip(name: String, selected: Boolean, modifier: Modifier = Modifier, competition: Competition? = null, onClick: () -> Unit) {
     FocusSurface(
         onClick = onClick,
         modifier = modifier,
@@ -784,9 +790,61 @@ private fun CompetitionChip(name: String, selected: Boolean, modifier: Modifier 
         contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
         focusScale = 1.05f,
     ) {
-        Text(name, style = MaterialTheme.typography.labelLarge, maxLines = 1, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
+        Row(
+            Modifier.padding(start = if (competition != null) 6.dp else 14.dp, end = 14.dp, top = 6.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            competition?.let { CompetitionLogo(it, 22.dp) }
+            Text(name, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+        }
     }
 }
+
+/**
+ * Logo officiel de la compétition (football-data.org), sur une pastille claire : la plupart sont
+ * sombres, faits pour un fond blanc. À défaut (pas de logo, pas de réseau), la couleur de la compétition.
+ */
+@Composable
+fun CompetitionLogo(competition: Competition, size: Dp, modifier: Modifier = Modifier) {
+    val url = competitionLogoUrl(competition)
+    var failed by remember(url) { mutableStateOf(false) }
+    Box(
+        modifier
+            .size(size)
+            .clip(RoundedCornerShape(size * 0.25f))
+            .background(if (url != null && !failed) LOGO_TILE else Color.Transparent),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (url != null && !failed) {
+            AsyncImage(
+                model = url,
+                contentDescription = competition.label,
+                contentScale = ContentScale.Fit,
+                onError = { failed = true },
+                modifier = Modifier.fillMaxSize().padding(size * 0.1f),
+            )
+        } else {
+            Icon(NexTvIcons.Football, contentDescription = null, tint = competitionColor(competition), modifier = Modifier.fillMaxSize(0.8f))
+        }
+    }
+}
+
+/** Pastille des logos de compétition. */
+private val LOGO_TILE = Color(0xFFF2F4F8)
+
+/** Logos des compétitions sur le serveur d'écussons de football-data.org (pas de logo commun aux sélections). */
+private fun competitionLogoUrl(competition: Competition): String? = when (competition) {
+    Competition.LIGUE_1 -> "FL1"
+    Competition.PREMIER_LEAGUE -> "PL"
+    Competition.LA_LIGA -> "PD"
+    Competition.SERIE_A -> "SA"
+    Competition.BUNDESLIGA -> "BL1"
+    Competition.CHAMPIONS_LEAGUE -> "CL"
+    Competition.EUROPA_LEAGUE -> "EL"
+    Competition.CONFERENCE_LEAGUE -> "UCL"
+    Competition.NATIONAL_TEAMS -> null
+}?.let { "https://crests.football-data.org/$it.png" }
 
 @Composable
 private fun competitionLabel(competition: Competition?): String = competition?.label ?: stringResource(R.string.football_all)
