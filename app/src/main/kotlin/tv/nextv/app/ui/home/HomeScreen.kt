@@ -53,6 +53,7 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -506,7 +507,7 @@ private fun HomeTopBar(
                     showLabel = window.isWide || target == section,
                     selected = target == section,
                     onClick = { actions.onSection(target) },
-                    // Télécommande : la section s'affiche dès que l'onglet est sélectionné (sans OK).
+                    // Télécommande : la section s'affiche dès que l'onglet est sélectionné, sans OK ni attente.
                     onFocused = { actions.onSection(target) },
                     modifier = if (target == section) Modifier.focusRequester(initialFocus) else Modifier,
                 )
@@ -537,16 +538,12 @@ private fun SectionTab(
     onFocused: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    var focused by remember { mutableStateOf(false) }
-    // Court arrêt sur l'onglet : on traverse les onglets sans ouvrir chaque section au passage.
-    LaunchedEffect(focused, selected) {
-        if (!focused || selected) return@LaunchedEffect
-        delay(TAB_SELECT_DELAY_MILLIS)
-        onFocused()
-    }
+    // La section s'affiche dès que l'onglet reçoit le focus (sans attente : la télécommande répond aussitôt).
+    val currentSelected by rememberUpdatedState(selected)
+    val currentOnFocused by rememberUpdatedState(onFocused)
     FocusSurface(
         onClick = onClick,
-        modifier = modifier.onFocusChanged { focused = it.hasFocus },
+        modifier = modifier.onFocusChanged { if (it.hasFocus && !currentSelected) currentOnFocused() },
         shape = CircleShape,
         color = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
         focusedColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -1229,9 +1226,6 @@ internal fun SearchField(query: String, hint: String, onQueryChange: (String) ->
 }
 
 private val GRID_SPACING = 16.dp
-
-/** Arrêt sur un onglet avant d'afficher sa section (traversée rapide des onglets). */
-private const val TAB_SELECT_DELAY_MILLIS = 250L
 
 /** Vignette la plus étroite acceptée, quel que soit le réglage. */
 private val MIN_CELL = 56.dp

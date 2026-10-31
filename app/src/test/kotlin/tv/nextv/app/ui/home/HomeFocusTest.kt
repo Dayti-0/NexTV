@@ -119,7 +119,7 @@ class HomeFocusTest {
         assertEquals(HomeSection.SERIES, section)
     }
 
-    /** Appui sur une touche, puis le temps de l'arrêt sur un onglet. */
+    /** Appui sur une touche, puis le temps des animations. */
     private fun press(key: Key) {
         compose.onRoot().performKeyInput { pressKey(key) }
         compose.mainClock.advanceTimeBy(500)
