@@ -52,6 +52,25 @@ class EpgImporterTest {
     }
 
     @Test
+    fun `provider prefixes, quality marks and plus signs do not prevent the match`() {
+        val guide = listOf(
+            XmltvChannel("Ligue1Plus.fr", listOf("Ligue 1+")),
+            XmltvChannel("Ligue1Plus5.fr", listOf("Ligue 1+ 5")),
+            XmltvChannel("CanalPlusFoot.fr", listOf("Canal+ Foot")),
+        )
+        val channels = listOf(
+            EpgChannelRef(1, tvgId = null, tvgName = null, name = "FR| LIGUE 1+ 5 FHD"),
+            EpgChannelRef(2, tvgId = "", tvgName = null, name = "|FR| LIGUE 1+ HD"),
+            EpgChannelRef(3, tvgId = null, tvgName = null, name = "FR: Canal Plus Foot"),
+            EpgChannelRef(4, tvgId = null, tvgName = null, name = "FR| LIGUE 1+ 6 FHD"),
+        )
+
+        val mapping = EpgImporter(parserFactory = { KXmlParser() }).match(channels, guide, emptySet())
+
+        assertEquals(mapOf(1L to "ligue1plus5.fr", 2L to "ligue1plus.fr", 3L to "canalplusfoot.fr"), mapping)
+    }
+
+    @Test
     fun `matches channels by id then by name and filters programmes`() = runBlocking {
         val (result, programmes) = run(xml)
 

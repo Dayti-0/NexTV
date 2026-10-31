@@ -1,6 +1,7 @@
 package tv.nextv.core.epg
 
 import org.xmlpull.v1.XmlPullParser
+import tv.nextv.core.catalog.ContentClassifier
 import tv.nextv.core.model.Programme
 import java.io.InputStream
 import java.text.Normalizer
@@ -159,9 +160,11 @@ class EpgImporter(
         }
         for (channel in channels) {
             val byId = channel.tvgId?.let(::normalizeId)?.takeIf { it in ids }
+            val names = listOfNotNull(channel.tvgName, channel.name)
+            // Nom exact, puis sans préfixe de langue ni mention de qualité (« FR| LIGUE 1+ 5 FHD » → « Ligue 1+ 5 »).
             val matched = byId
-                ?: channel.tvgName?.let { byName[normalizeName(it)] }
-                ?: byName[normalizeName(channel.name)]
+                ?: names.firstNotNullOfOrNull { byName[normalizeName(it)] }
+                ?: names.firstNotNullOfOrNull { byName[normalizeName(ContentClassifier.cleanTitle(it))] }
             if (matched != null) result[channel.channelId] = matched
         }
         return result
@@ -174,8 +177,9 @@ class EpgImporter(
 
         fun normalizeId(id: String): String = id.trim().lowercase()
 
+        /** Minuscules, sans accents ni ponctuation ; « + » devient « plus » (« Canal+ » = « CanalPlus », « Ligue 1+ »). */
         fun normalizeName(name: String): String {
-            val decomposed = Normalizer.normalize(name.trim().lowercase(), Normalizer.Form.NFD)
+            val decomposed = Normalizer.normalize(name.trim().lowercase().replace("+", "plus"), Normalizer.Form.NFD)
             return NON_ALPHANUMERIC.replace(DIACRITICS.replace(decomposed, ""), "")
         }
     }
