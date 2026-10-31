@@ -21,6 +21,9 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          # Cache enregistré aussi depuis les branches de travail (pas seulement la branche principale).
+          cache-read-only: false
       - name: Test core module
         run: ./gradlew -p core test --stacktrace
       - name: Upload test reports
@@ -40,6 +43,9 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          # Cache enregistré aussi depuis les branches de travail (pas seulement la branche principale).
+          cache-read-only: false
       - name: Assemble and lint
         run: ./gradlew :app:assembleDebug :app:assembleRelease :app:lintDebug --stacktrace
       - name: Show lint errors
@@ -74,6 +80,9 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          # Cache enregistré aussi depuis les branches de travail (pas seulement la branche principale).
+          cache-read-only: false
       - name: Render screenshots
         run: ./gradlew :app:recordRoborazziDebug --stacktrace
       - name: Upload screenshots

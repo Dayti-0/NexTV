@@ -72,6 +72,10 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          # Cache Gradle (dépendances, résultats de compilation) enregistré aussi depuis les branches de
+          # travail et de version : les publications suivantes repartent de ce qui est déjà construit.
+          cache-read-only: false
 
       - name: Decode signing key
         if: env.KEYSTORE_BASE64 != ''
@@ -96,9 +100,7 @@ jobs:
           echo "NEXTV_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
           echo "PRIVATE_KEY=1" >> "$GITHUB_ENV"
 
-      - name: Test core module
-        run: ./gradlew -p core test --stacktrace
-
+      # Les tests tournent déjà dans la CI à chaque envoi : la publication ne les refait pas.
       - name: Build release APK
         env:
           NEXTV_KEYSTORE_PASSWORD: ${{ secrets.NEXTV_KEYSTORE_PASSWORD || secrets.NEXTV_KEY_PASSPHRASE }}
