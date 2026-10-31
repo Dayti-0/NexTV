@@ -50,6 +50,19 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import kotlinx.coroutines.launch
+import kotlin.math.abs
 import tv.nextv.app.R
 import tv.nextv.app.data.db.GroupRow
 import tv.nextv.app.ui.common.appViewModel
@@ -230,6 +243,26 @@ private fun GuideGrid(
         }
     }
 
+    // Heure visée : haut / bas restent sur cette heure, gauche / droite la déplacent.
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    var anchor by remember { mutableLongStateOf(state.now) }
+    var focusedRow by remember { mutableIntStateOf(-1) }
+    var verticalMove by remember { mutableStateOf(false) }
+    var pendingFocus by remember { mutableStateOf<Pair<Int, Long>?>(null) }
+    val minutePx = with(density) { minuteWidth.toPx() }
+    val rowStepPx = with(density) { (rowHeight + 6.dp).toPx() }
+    val onProgrammeFocus: (Int, GuideProgramme) -> Unit = { index, programme ->
+        focusedRow = index
+        if (verticalMove) {
+            verticalMove = false
+        } else if (anchor !in programme.startMillis until programme.stopMillis) {
+            // Programme atteint par gauche / droite : son début, ou le bord gauche visible s'il commence avant.
+            val leftEdge = state.windowStart + (scroll.value / minutePx * 60_000).toLong()
+            anchor = maxOf(programme.startMillis, leftEdge).coerceAtMost(programme.stopMillis - 1)
+        }
+    }
+
     Column(Modifier.fillMaxSize()) {
         ProgrammeDetails(highlighted, state.now, Modifier.padding(horizontal = horizontalPadding, vertical = 8.dp))
         TimeRuler(
@@ -240,11 +273,29 @@ private fun GuideGrid(
             modifier = Modifier.padding(start = horizontalPadding),
         )
         LazyColumn(
+            state = listState,
             contentPadding = PaddingValues(start = horizontalPadding, bottom = 24.dp, top = 4.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().onPreviewKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown || focusedRow < 0) return@onPreviewKeyEvent false
+                val step = when (event.key) {
+                    Key.DirectionDown -> 1
+                    Key.DirectionUp -> -1
+                    else -> return@onPreviewKeyEvent false
+                }
+                val target = focusedRow + step
+                // Première ligne vers le haut (catégories), dernière vers le bas, ligne sans programme : comportement habituel.
+                if (target !in state.channels.indices || visibleProgrammes(state.channels[target], state).isEmpty()) return@onPreviewKeyEvent false
+                verticalMove = true
+                pendingFocus = target to anchor
+                // Ligne hors de l'écran : elle n'existe pas encore, on fait défiler d'une ligne.
+                if (listState.layoutInfo.visibleItemsInfo.none { it.index == target }) {
+                    scope.launch { listState.scrollBy(step * rowStepPx) }
+                }
+                true
+            },
         ) {
-            items(state.channels, key = { it.id }) { channel ->
+            itemsIndexed(state.channels, key = { _, channel -> channel.id }) { index, channel ->
                 GuideRow(
                     channel = channel,
                     state = state,
@@ -254,8 +305,14 @@ private fun GuideGrid(
                     rowHeight = rowHeight,
                     compact = compact,
                     focusRequester = initialFocus.takeIf { channel == state.channels.first() },
+                    focusAt = pendingFocus?.takeIf { it.first == index }?.second,
+                    onFocusAtDone = { pendingFocus = null },
+                    onChannelFocus = { focusedRow = -1 },
                     onPlay = { onPlay(channel.id) },
-                    onFocus = { programme -> onFocus(channel to programme) },
+                    onFocus = { programme ->
+                        onProgrammeFocus(index, programme)
+                        onFocus(channel to programme)
+                    },
                     onOpen = { programme -> onOpen(channel to programme) },
                 )
             }
@@ -357,11 +414,25 @@ private fun GuideRow(
     rowHeight: Dp,
     compact: Boolean,
     focusRequester: FocusRequester?,
+    /** Heure dont le programme doit prendre le focus (haut / bas depuis une autre ligne). */
+    focusAt: Long?,
+    onFocusAtDone: () -> Unit,
+    onChannelFocus: () -> Unit,
     onPlay: () -> Unit,
     onFocus: (GuideProgramme) -> Unit,
     onOpen: (GuideProgramme) -> Unit,
 ) {
     val totalWidth = minutes(state.windowEnd - state.windowStart) * minuteWidth
+    val shown = visibleProgrammes(channel, state)
+    val requesters = remember(shown) { shown.associateWith { FocusRequester() } }
+    if (focusAt != null) {
+        LaunchedEffect(focusAt) {
+            val target = shown.firstOrNull { focusAt >= it.startMillis && focusAt < it.stopMillis }
+                ?: shown.minByOrNull { minOf(abs(it.startMillis - focusAt), abs(it.stopMillis - focusAt)) }
+            target?.let { runCatching { requesters.getValue(it).requestFocus() } }
+            onFocusAtDone()
+        }
+    }
     Row(Modifier.fillMaxWidth().height(rowHeight)) {
         FocusSurface(
             onClick = onPlay,
@@ -369,6 +440,7 @@ private fun GuideRow(
             shape = MaterialTheme.shapes.small,
             color = MaterialTheme.colorScheme.surfaceContainerLow,
             focusScale = 1f,
+            onFocusChange = { if (it) onChannelFocus() },
         ) {
             Row(
                 Modifier.padding(horizontal = 10.dp),
@@ -399,26 +471,25 @@ private fun GuideRow(
                         modifier = Modifier.align(Alignment.CenterStart).padding(start = 12.dp),
                     )
                 }
-                channel.programmes.forEach { programme ->
+                shown.forEach { programme ->
                     val start = maxOf(programme.startMillis, state.windowStart)
                     val end = minOf(programme.stopMillis, state.windowEnd)
-                    if (end - start >= 60_000) {
-                        val live = programme.isLive(state.now)
-                        ProgrammeBlock(
-                            programme = programme,
-                            live = live,
-                            past = programme.stopMillis <= state.now,
-                            replay = Catchup.isAvailable(channel.catchupDays, programme.startMillis, state.now),
-                            modifier = Modifier
-                                .offset(x = minutes(start - state.windowStart) * minuteWidth)
-                                .width(minutes(end - start) * minuteWidth)
-                                .fillMaxHeight()
-                                .padding(end = 4.dp)
-                                .then(if (live && focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier),
-                            onClick = { onOpen(programme) },
-                            onFocus = { onFocus(programme) },
-                        )
-                    }
+                    val live = programme.isLive(state.now)
+                    ProgrammeBlock(
+                        programme = programme,
+                        live = live,
+                        past = programme.stopMillis <= state.now,
+                        replay = Catchup.isAvailable(channel.catchupDays, programme.startMillis, state.now),
+                        modifier = Modifier
+                            .offset(x = minutes(start - state.windowStart) * minuteWidth)
+                            .width(minutes(end - start) * minuteWidth)
+                            .fillMaxHeight()
+                            .padding(end = 4.dp)
+                            .focusRequester(requesters.getValue(programme))
+                            .then(if (live && focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier),
+                        onClick = { onOpen(programme) },
+                        onFocus = { onFocus(programme) },
+                    )
                 }
                 Box(
                     Modifier
@@ -573,6 +644,10 @@ fun ProgrammeSheetContent(
 }
 
 private fun GuideProgramme.isLive(now: Long) = startMillis <= now && stopMillis > now
+
+/** Programmes affichés d'une ligne : au moins une minute dans la fenêtre de la grille. */
+private fun visibleProgrammes(channel: GuideChannel, state: GuideUiState): List<GuideProgramme> =
+    channel.programmes.filter { minOf(it.stopMillis, state.windowEnd) - maxOf(it.startMillis, state.windowStart) >= 60_000 }
 
 private const val HALF_HOUR = 30 * 60_000L
 

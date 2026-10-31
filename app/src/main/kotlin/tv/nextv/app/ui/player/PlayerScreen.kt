@@ -94,6 +94,7 @@ import androidx.paging.compose.itemKey
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.math.abs
 import tv.nextv.app.R
 import tv.nextv.app.data.db.ChannelListRow
 import tv.nextv.app.data.db.GroupRow
@@ -146,6 +147,9 @@ fun PlayerScreen(onBack: () -> Unit) {
         }
     }
 
+    // Bandeau et touches du lecteur : direct, et replay (programme lu depuis l'enregistrement du serveur).
+    val bannerMode = state.isLive || state.replay != null
+
     LifecycleStartEffect(viewModel) {
         viewModel.onStart()
         onStopOrDispose { viewModel.onStop() }
@@ -158,8 +162,8 @@ fun PlayerScreen(onBack: () -> Unit) {
         bannerVisible = false
     }
     // Le lecteur garde le focus quand le menu est fermé : les touches de la télécommande lui parviennent.
-    LaunchedEffect(menu.open, state.isLive) {
-        if (!menu.open && state.isLive) runCatching { rootFocus.requestFocus() }
+    LaunchedEffect(menu.open, bannerMode) {
+        if (!menu.open && bannerMode) runCatching { rootFocus.requestFocus() }
     }
 
     // Premier « Retour » : menu des chaînes (sans interrompre la lecture) ; second : fermeture du menu.
@@ -171,7 +175,7 @@ fun PlayerScreen(onBack: () -> Unit) {
     BackHandler(enabled = optionsVisible) { optionsVisible = false }
     // Options refermées : le lecteur reprend les touches de la télécommande.
     LaunchedEffect(optionsVisible) {
-        if (!optionsVisible && !menu.open && state.isLive) runCatching { rootFocus.requestFocus() }
+        if (!optionsVisible && !menu.open && bannerMode) runCatching { rootFocus.requestFocus() }
     }
 
     Box(
@@ -188,7 +192,7 @@ fun PlayerScreen(onBack: () -> Unit) {
                     Key.DirectionDown -> state.isLive.also { if (it) viewModel.zap(-1) }
                     // En erreur, OK relance la lecture ; bandeau affiché : pause / lecture ; sinon il affiche le bandeau.
                     Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> when {
-                        !state.isLive -> false
+                        !bannerMode -> false
                         state.error != null -> true.also { viewModel.retry() }
                         bannerVisible || state.paused -> true.also {
                             viewModel.togglePause()
@@ -196,14 +200,40 @@ fun PlayerScreen(onBack: () -> Unit) {
                         }
                         else -> true.also { bannerTrigger++ }
                     }
-                    Key.MediaPlayPause, Key.MediaPlay, Key.MediaPause -> state.isLive.also {
+                    Key.MediaPlayPause, Key.MediaPlay, Key.MediaPause -> bannerMode.also {
                         if (it) {
                             viewModel.togglePause()
                             bannerTrigger++
                         }
                     }
-                    // Différé : retour au direct.
-                    Key.DirectionRight, Key.MediaFastForward -> (state.isLive && delayed).also { if (it) viewModel.backToLive() }
+                    // Replay, « Depuis le début » : ← → reculent / avancent d'une minute (passer la pub) ; appui long
+                    // sur → (ou ⏩) en « Depuis le début » : retour au direct.
+                    Key.DirectionLeft -> state.seekable.also {
+                        if (it && event.nativeKeyEvent.repeatCount % HELD_JUMP_REPEATS == 0) {
+                            viewModel.jump(-1)
+                            bannerTrigger++
+                        }
+                    }
+                    Key.DirectionRight -> when {
+                        state.seekable && state.isLive && event.nativeKeyEvent.repeatCount >= LONG_PRESS_REPEATS -> true.also {
+                            if (event.nativeKeyEvent.repeatCount == LONG_PRESS_REPEATS) viewModel.backToLive()
+                        }
+                        state.seekable -> true.also {
+                            if (event.nativeKeyEvent.repeatCount == 0 || (!state.isLive && event.nativeKeyEvent.repeatCount % HELD_JUMP_REPEATS == 0)) {
+                                viewModel.jump(+1)
+                                bannerTrigger++
+                            }
+                        }
+                        // Différé (pause du direct) : retour au direct.
+                        else -> (state.isLive && delayed).also { if (it) viewModel.backToLive() }
+                    }
+                    Key.MediaFastForward -> when {
+                        state.seekable && !state.isLive -> true.also {
+                            viewModel.jump(+5)
+                            bannerTrigger++
+                        }
+                        else -> (state.isLive && delayed).also { if (it) viewModel.backToLive() }
+                    }
                     Key.Info -> true.also { infoVisible = !infoVisible }
                     Key.Menu -> true.also { optionsVisible = true }
                     // Chaîne regardée juste avant (⏪, ou touche dédiée de certaines télécommandes).
@@ -224,18 +254,18 @@ fun PlayerScreen(onBack: () -> Unit) {
                 }
             },
             update = { view ->
-                // Pause et différé : la dernière image reste affichée pendant le changement de lecteur.
-                view.setKeepContentOnPlayerReset(state.paused || state.liveDelayMs > 0)
+                // Pause, différé, saut dans un replay : la dernière image reste affichée pendant le changement de lecteur.
+                view.setKeepContentOnPlayerReset(state.paused || state.liveDelayMs > 0 || state.seekable)
                 view.player = player
                 view.resizeMode = when (aspect) {
                     AspectMode.FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT
                     AspectMode.FILL -> AspectRatioFrameLayout.RESIZE_MODE_FILL
                     AspectMode.ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                 }
-                // Direct : pas de barre de lecture, OK affiche le bandeau. Film / épisode : commandes Media3.
-                view.useController = !state.isLive
+                // Direct et replay : pas de barre de lecture, OK affiche le bandeau. Film / épisode : commandes Media3.
+                view.useController = !bannerMode
                 // Film / épisode : focus sur le lecteur (commandes Media3), sans le reprendre à ses commandes.
-                if (!state.isLive && state.resumePrompt == null && !view.hasFocus()) view.requestFocus()
+                if (!bannerMode && state.resumePrompt == null && !view.hasFocus()) view.requestFocus()
             },
             onRelease = { view -> view.player = null },
             modifier = Modifier.fillMaxSize(),
@@ -572,6 +602,14 @@ private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Mo
                 }
             }
             if (state.replay != null) StatusPill(stringResource(R.string.player_replay), NexTvColors.Primary, Modifier.align(Alignment.CenterVertically))
+            if (state.pendingJumpMinutes != 0) {
+                val jump = state.pendingJumpMinutes
+                StatusPill(
+                    stringResource(if (jump > 0) R.string.player_jump_forward else R.string.player_jump_back, abs(jump)),
+                    NexTvColors.Primary,
+                    Modifier.align(Alignment.CenterVertically),
+                )
+            }
             state.quality?.let { Badge(it, Modifier.align(Alignment.CenterVertically), color = NexTvColors.Primary) }
             state.bandwidthMbps?.let { SpeedLabel(it, Modifier.align(Alignment.CenterVertically)) }
         }
@@ -579,8 +617,8 @@ private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Mo
             Text(it, style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.85f), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         state.now?.let { programme ->
-            // En différé (pause, « Depuis le début ») : la progression de ce qui est à l'écran.
-            val watched = if (state.isLive) now - liveDelay(state, now) else now
+            // En différé (pause, « Depuis le début ») et en replay : la progression de ce qui est à l'écran.
+            val watched = state.watchedAt ?: if (state.isLive) now - liveDelay(state, now) else now
             Text(programme.title, style = MaterialTheme.typography.titleLarge, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
             state.match?.let { MatchScore(it) }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.widthIn(max = 640.dp)) {
@@ -606,9 +644,13 @@ private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Mo
         state.qualityNotice?.let {
             Text(it, style = MaterialTheme.typography.bodySmall, color = NexTvColors.Warning)
         }
-        if (state.isLive && (state.paused || state.liveDelayMs > 0)) {
-            Text(stringResource(R.string.player_timeshift_hint), style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.75f))
+        val hint = when {
+            state.seekable && state.isLive -> R.string.player_restart_hint
+            state.seekable -> R.string.player_replay_hint
+            state.isLive && (state.paused || state.liveDelayMs > 0) -> R.string.player_timeshift_hint
+            else -> null
         }
+        hint?.let { Text(stringResource(it), style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.75f)) }
         state.notices.forEach {
             Text(it, style = MaterialTheme.typography.bodySmall, color = NexTvColors.Warning)
         }
@@ -973,6 +1015,12 @@ private fun channelsLabel(count: Int): String = when (count) {
     8 -> "7.1"
     else -> stringResource(R.string.player_info_channels, count)
 }
+
+/** ← → maintenu : une minute de plus toutes les [HELD_JUMP_REPEATS] répétitions de la touche. */
+private const val HELD_JUMP_REPEATS = 4
+
+/** → maintenu environ une seconde : appui long (retour au direct en « Depuis le début »). */
+private const val LONG_PRESS_REPEATS = 12
 
 /** Retard sur le direct, pause en cours comprise. */
 private fun liveDelay(state: PlayerUiState, now: Long): Long =

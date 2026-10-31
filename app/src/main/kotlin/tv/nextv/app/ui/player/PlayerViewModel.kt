@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.wifi.WifiManager
 import android.text.format.DateUtils
 import java.io.File
+import kotlin.math.abs
 import androidx.annotation.OptIn
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -138,8 +139,14 @@ data class PlayerUiState(
     val resumePrompt: ResumePrompt? = null,
     /** Pistes audio et sous-titres du flux en cours. */
     val tracks: PlayerTracks = PlayerTracks(),
-    /** Replay d'un programme passé : chaîne et horaires (« TF1 · ven. 30 oct., 20:58 – 21:50 »). */
+    /** Replay d'un programme passé : jour (« ven. 30 oct. »). */
     val replay: String? = null,
+    /** Lecture depuis l'enregistrement du serveur (replay, « Depuis le début ») : ← → reculent / avancent d'une minute. */
+    val seekable: Boolean = false,
+    /** Heure de ce qui est à l'écran pendant un replay (progression du programme). */
+    val watchedAt: Long? = null,
+    /** Saut demandé (minutes), appliqué quand les appuis s'arrêtent. */
+    val pendingJumpMinutes: Int = 0,
     /** Option « baisser le son des pubs » activée. */
     val lowerAdVolume: Boolean = false,
     /** Pub détectée : son baissé. */
@@ -212,6 +219,14 @@ class PlayerViewModel(
      * le direct (bandeau, menu des chaînes, zapping), avec le retard affiché et → pour le rattraper.
      */
     private var restarting = false
+
+    /** Heure correspondant au début du flux de l'enregistrement en cours de lecture. */
+    private var segmentStart = 0L
+
+    /** Adresse de l'enregistrement à partir d'une heure donnée (jusqu'à la fin du programme). */
+    private var replayUrlFrom: ((Long) -> String?)? = null
+    private var pendingJumpMinutes = 0
+    private var jumpJob: Job? = null
     /** Chaîne affichée (meilleure version), base du zapping. */
     private var channel: ChannelEntity? = null
     /** Ligne choisie dans les listes (une version précise : celle de sa catégorie). */
@@ -447,6 +462,10 @@ class PlayerViewModel(
         viewModelScope.launch {
             while (true) {
                 delay(QUALITY_CHECK_MILLIS)
+                if (replayUrlFrom != null && mutablePlayer.value != null && pendingJumpMinutes == 0) {
+                    val at = watchedAt()
+                    if (abs(at - (state.value.watchedAt ?: 0)) >= 1_000) mutableState.update { it.copy(watchedAt = at) }
+                }
                 val adMuted = adVolume.enabled && adVolume.attenuating
                 if (state.value.adMuted != adMuted) mutableState.update { it.copy(adMuted = adMuted) }
                 val dropped = newDroppedFrames()
@@ -791,13 +810,13 @@ class PlayerViewModel(
         } else {
             mutableState.update {
                 it.copy(
-                    channelName = title ?: channelName,
-                    channelNumber = null,
+                    channelName = channelName,
+                    channelNumber = primary.channelNumber,
                     logoUrl = primary.logoUrl,
                     sourceName = source?.name.orEmpty(),
                     isLive = false,
-                    replay = "$channelName  ·  $time",
-                    now = null,
+                    replay = time,
+                    now = PlayerProgramme(title ?: channelName, start, stop),
                     next = null,
                     match = null,
                     error = null,
@@ -809,11 +828,17 @@ class PlayerViewModel(
             }
         }
         val account = (source?.location as? SourceLocation.Remote)?.url?.let(XtreamAccount::parse)
-        val url = if (source != null && account != null) {
-            Catchup.xtreamUrl(recorded.streamUrl, account, start, stop, container.serverTimeZone(source))
+        val urlFrom: ((Long) -> String?)? = if (source != null && account != null) {
+            val timeZone = container.serverTimeZone(source)
+            val url: (Long) -> String? = { from -> Catchup.xtreamUrl(recorded.streamUrl, account, from, stop, timeZone) }
+            url
         } else {
             null
         }
+        replayUrlFrom = urlFrom
+        segmentStart = start
+        mutableState.update { it.copy(seekable = urlFrom != null, watchedAt = start, pendingJumpMinutes = 0) }
+        val url = urlFrom?.invoke(start)
         if (source == null || url == null) {
             releasePlayer()
             mutableState.update { it.copy(buffering = false, error = resources.getString(R.string.player_replay_unavailable)) }
@@ -1115,9 +1140,63 @@ class PlayerViewModel(
         if (replay == null && !restarting) return
         replay = null
         restarting = false
+        replayUrlFrom = null
+        jumpJob?.cancel()
+        pendingJumpMinutes = 0
         handle[ARG_REPLAY_START] = 0L
         handle[ARG_REPLAY_STOP] = 0L
-        mutableState.update { it.copy(replay = null) }
+        mutableState.update { it.copy(replay = null, seekable = false, watchedAt = null, pendingJumpMinutes = 0) }
+    }
+
+    /** Heure de ce qui est à l'écran dans l'enregistrement en cours. */
+    private fun watchedAt(): Long = segmentStart + (mutablePlayer.value?.currentPosition ?: 0)
+
+    /**
+     * Replay ou « Depuis le début » : recule ou avance de [minutes] (passer la pub avant le programme).
+     * Les appuis rapprochés s'additionnent ; l'enregistrement est relu à partir de la nouvelle heure
+     * une fois les appuis arrêtés (le serveur ne permet pas d'avancer dans le flux lui-même).
+     */
+    fun jump(minutes: Int) {
+        if (replayUrlFrom == null) return
+        pendingJumpMinutes += minutes
+        mutableState.update { it.copy(pendingJumpMinutes = pendingJumpMinutes) }
+        jumpJob?.cancel()
+        jumpJob = viewModelScope.launch {
+            delay(JUMP_DEBOUNCE_MILLIS)
+            applyJump()
+        }
+    }
+
+    private fun applyJump() {
+        val urlFrom = replayUrlFrom ?: return
+        val programme = replay ?: return
+        val minutes = pendingJumpMinutes
+        pendingJumpMinutes = 0
+        mutableState.update { it.copy(pendingJumpMinutes = 0) }
+        if (minutes == 0) return
+        val now = System.currentTimeMillis()
+        val wanted = watchedAt() + minutes * MINUTE_MILLIS
+        // « Depuis le début » : avancer jusqu'au direct, c'est le rejoindre.
+        if (restarting && wanted >= now - MINUTE_MILLIS) {
+            backToLive()
+            return
+        }
+        val latest = if (restarting) now - MINUTE_MILLIS else programme.second - MINUTE_MILLIS
+        val target = (wanted.coerceIn(programme.first - MAX_EARLY_MILLIS, latest) / MINUTE_MILLIS) * MINUTE_MILLIS
+        val url = urlFrom(target) ?: return
+        val playback = request ?: return
+        segmentStart = target
+        request = playback.copy(stream = playback.stream.copy(url = url))
+        backupUrls = Mirrors.alternatives(url, serverRoots)
+        mutableState.update {
+            it.copy(
+                watchedAt = target,
+                liveDelayMs = if (restarting) (now - target).coerceAtLeast(0) else it.liveDelayMs,
+                paused = false,
+                pausedAtMillis = null,
+            )
+        }
+        start(forceHls = false)
     }
 
     private fun stopTimeshift() {
@@ -1313,6 +1392,13 @@ class PlayerViewModel(
         /** Même période que la section Foot : la réponse de football-data.org est partagée. */
         private const val FOOTBALL_WINDOW_MILLIS = 8 * 24 * 60 * 60_000L
         private const val QUALITY_CHECK_MILLIS = 500L
+        private const val MINUTE_MILLIS = 60_000L
+
+        /** Appuis rapprochés sur ← → : additionnés pendant ce délai. */
+        private const val JUMP_DEBOUNCE_MILLIS = 900L
+
+        /** Recul possible avant le début prévu (programme commencé en avance). */
+        private const val MAX_EARLY_MILLIS = 15 * MINUTE_MILLIS
         private val HLS_FALLBACK_FORMATS = setOf(StreamFormat.UNKNOWN, StreamFormat.PROGRESSIVE)
         private val HLS_FALLBACK_ERRORS = setOf(
             PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,

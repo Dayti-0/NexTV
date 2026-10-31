@@ -58,7 +58,8 @@ Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3, enti�
   Chaque catégorie affiche toutes ses chaînes dans l'ordre de la playlist (TF1 SD dans « FR TV SD »…) ; « Toutes »,
   la recherche et le zapping n'en gardent qu'une ligne par chaîne, sa meilleure version visible.
 - **Guide TV** : grille chaînes × horaires depuis la veille, avec repère de l'heure actuelle et programme en cours
-  mis en valeur ; OK ouvre la fiche du programme (horaires, durée, description) avec « Regarder ».
+  mis en valeur ; haut / bas changent de chaîne en restant à la même heure, gauche / droite changent d'heure ; OK
+  ouvre la fiche du programme (horaires, durée, description) avec « Regarder ».
   Un créneau sans donnée reste vide.
   « Ce soir » : le programme du soir comme dans un magazine télé, une ligne par chaîne avec le programme principal
   (vers 21 h, sans la météo ni les programmes courts) et la deuxième partie de soirée ; les chaînes de la TNT d'abord,
@@ -68,7 +69,9 @@ Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3, enti�
 - **Replay** (comptes Xtream dont le serveur enregistre les chaînes) : les programmes passés disponibles portent
   l'icône ↺ dans le guide ; « Revoir » les lit depuis l'enregistrement du serveur (avance / retour comme un film),
   « Depuis le début » relance le programme en cours en différé, comme le direct : bandeau avec le retard
-  (« Différé −25:12 »), → pour rattraper le direct, liste des chaînes sur « Retour », zapping et options.
+  (« Différé −25:12 »), appui long sur → pour rattraper le direct, liste des chaînes sur « Retour », zapping et
+  options. En replay comme en « Depuis le début », ← → reculent ou avancent d'une minute (appuis cumulés, touche
+  maintenue pour aller plus loin) : de quoi passer la pub diffusée avant le programme.
 - **Sauvegarde** (Réglages › Sauvegarde) : playlists avec leurs identifiants, favoris, catégories masquées et
   réglages dans un fichier JSON, à restaurer après une réinstallation ou sur un autre appareil (sans sélecteur de
   fichiers, comme sur Fire TV, le fichier va dans le dossier de l'application).

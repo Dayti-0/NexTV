@@ -59,6 +59,7 @@ import tv.nextv.app.ui.startup.WelcomeScreen
 import tv.nextv.app.ui.theme.NexTvTheme
 import tv.nextv.app.ui.theme.ThemeStyle
 import tv.nextv.app.ui.player.PlayerMatch
+import tv.nextv.app.ui.player.PlayerProgramme
 import tv.nextv.core.log.Redactor
 import tv.nextv.core.model.ContentKind
 import java.util.TimeZone
@@ -309,11 +310,35 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
-    fun playerRestart() = capture("13f_lecteur_depuis_le_debut") {
+    fun playerReplay() = capture("13g_lecteur_replay") {
+        FakeVideo()
+        PlayerOverlay(
+            // Replay d'un programme passé : bandeau, progression et saut de 3 minutes en cours (pub avant le programme).
+            state = SampleData.player.copy(
+                isLive = false,
+                replay = "ven. 30 oct., 20:58 – 22:50",
+                seekable = true,
+                now = PlayerProgramme("Le Grand Voyage", SampleData.NOW - 26 * 60 * 60_000L, SampleData.NOW - 24 * 60 * 60_000L),
+                next = null,
+                watchedAt = SampleData.NOW - 26 * 60 * 60_000L + 4 * 60_000L,
+                pendingJumpMinutes = 3,
+                qualityNotice = null,
+            ),
+            now = SampleData.NOW,
+            visible = true,
+            showTouchControls = false,
+            onBack = {},
+            onZap = {},
+            onRetry = {},
+        )
+    }
+
+    @Test
+        fun playerRestart() = capture("13f_lecteur_depuis_le_debut") {
         FakeVideo()
         PlayerOverlay(
             // « Depuis le début » d'un programme commencé il y a 25 min : bandeau du direct, différé affiché.
-            state = SampleData.player.copy(liveDelayMs = 25 * 60_000L + 12_000),
+            state = SampleData.player.copy(liveDelayMs = 25 * 60_000L + 12_000, seekable = true, qualityNotice = null),
             now = SampleData.NOW,
             visible = true,
             showTouchControls = false,
