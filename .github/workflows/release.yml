@@ -133,7 +133,7 @@ jobs:
           - Démarrage direct sur la dernière playlist, avec progression réelle du chargement
           - Accueil TV, Films, Séries, Guide TV et Foot, favoris (appui long sur OK) réorganisables, chaînes récentes
           - Section TV : aperçu vidéo et programme de la chaîne sélectionnée ; catégories de chaînes, films et séries masquables
-          - Interface au choix : thèmes bleu nuit, noir profond, cinéma ou violet ; chaînes en mosaïque ou en liste
+          - Trois interfaces au choix : Classique (mosaïque ou liste), Streaming (affiche et rangées par catégorie) ou Box TV (liste des chaînes et grand volet du direct) ; thèmes bleu nuit, noir profond, cinéma ou violet
           - Foot : matchs à venir (Ligue 1, Premier League, Liga, Serie A, Bundesliga, coupes d'Europe, équipes nationales) avec la chaîne qui les diffuse, scores en direct, classements et « Mes équipes »
           - Guide TV depuis la veille, replay des programmes passés (comptes Xtream qui enregistrent)
           - Fiches films et séries enrichies par TMDB (clé d'API à saisir dans les réglages)

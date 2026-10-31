@@ -2,6 +2,7 @@ package tv.nextv.app.screenshots
 
 import tv.nextv.app.ui.football.FootballMatch
 import tv.nextv.app.ui.home.ChannelPreview
+import tv.nextv.app.ui.home.HomeRows
 import tv.nextv.app.ui.football.FootballUiState
 import tv.nextv.core.football.Competition
 import tv.nextv.core.football.MatchStatus
@@ -385,6 +386,18 @@ object SampleData {
             description = "Toute l’actualité du jour en France et dans le monde, avec les invités du journal et la météo.",
         ),
         next = GuideProgramme("Météo", NOW + 25 * MINUTE, NOW + 30 * MINUTE),
+        later = listOf(
+            GuideProgramme("Grand débat : l’Europe en question", NOW + 30 * MINUTE, NOW + 95 * MINUTE),
+            GuideProgramme("Le club de l’éco", NOW + 95 * MINUTE, NOW + 125 * MINUTE),
+            GuideProgramme("Journal de la nuit", NOW + 125 * MINUTE, NOW + 140 * MINUTE),
+        ),
+    )
+
+    /** Rangées de l'interface « Streaming » : éléments de chaque catégorie. */
+    val rows = HomeRows(
+        channels = { group -> channels.filter { it.groupTitle.orEmpty() == group } },
+        movies = { group -> movies.filter { it.groupTitle == group }.ifEmpty { movies.reversed() } },
+        series = { group -> series.filter { it.groupTitle == group }.ifEmpty { series.reversed() } },
     )
 
     val football = FootballUiState(

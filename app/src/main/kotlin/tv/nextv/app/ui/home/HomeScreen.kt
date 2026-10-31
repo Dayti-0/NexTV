@@ -154,6 +154,7 @@ fun HomeScreen(
     val continueSeries by viewModel.continueSeries.collectAsStateWithLifecycle()
     val now by viewModel.now.collectAsStateWithLifecycle()
     val gridColumns by viewModel.gridColumns.collectAsStateWithLifecycle()
+    val layout by viewModel.layout.collectAsStateWithLifecycle()
     val channelCount by viewModel.channelCount.collectAsStateWithLifecycle()
     val recentChannels by viewModel.recentChannels.collectAsStateWithLifecycle()
     val previewEnabled by viewModel.previewEnabled.collectAsStateWithLifecycle()
@@ -175,6 +176,11 @@ fun HomeScreen(
             channels.refresh()
         }
     }
+    // Interface « Streaming » : « Retour » ramène d'une catégorie ou d'une recherche aux rangées.
+    BackHandler(enabled = layout == HomeLayout.STREAMING && section.kind() != null && (category != Category.All || query.isNotEmpty())) {
+        viewModel.showRows()
+    }
+    // Déclaré après : pendant la réorganisation des favoris, « Retour » la termine d'abord.
     BackHandler(enabled = reorder.active) { viewModel.toggleReorder() }
     // Aperçu seulement quand l'accueil est affiché (arrêté en arrière-plan et à l'ouverture d'un autre écran).
     LifecycleStartEffect(viewModel) {
@@ -238,6 +244,8 @@ fun HomeScreen(
         showPreview = previewEnabled,
         preview = preview,
         previewPlayer = previewPlayer,
+        layout = layout,
+        rows = viewModel.rows,
     )
 
     pendingHide?.let { title ->
@@ -294,6 +302,10 @@ fun HomeContent(
     showPreview: Boolean = false,
     preview: ChannelPreview? = null,
     previewPlayer: Player? = null,
+    /** Interface choisie dans les réglages. */
+    layout: HomeLayout = HomeLayout.CLASSIC,
+    /** Contenu des rangées (interface « Streaming »). */
+    rows: HomeRows = HomeRows(),
 ) {
     val window = rememberWindowInfo()
     // Dernière vignette ouverte : elle reprend le focus au retour sur l'accueil (télécommande).
@@ -321,28 +333,9 @@ fun HomeContent(
                     HomeSection.SERIES -> continueSeries
                     else -> null
                 }
-                CatalogSection(
-                    section = section,
-                    window = window,
-                    groups = groups,
-                    recentCount = recentChannels.size.takeIf { section == HomeSection.TV },
-                    hero = if (section == HomeSection.TV && window.isWide && showPreview) {
-                        { title, count, action -> ChannelHero(title, count, action, preview, previewPlayer, now, window) }
-                    } else {
-                        null
-                    },
-                    // Une chaîne peut figurer dans plusieurs catégories (une par qualité) : compte à part.
-                    allCount = channelCount?.takeIf { section == HomeSection.TV } ?: groups.sumOf { it.count },
-                    category = category,
-                    query = query,
-                    favoritesCount = favoritesCount,
-                    resumeCount = resumeItems?.size,
-                    reorder = reorder,
-                    actions = actions,
-                    modifier = Modifier.weight(1f),
-                    gridColumns = gridColumns,
-                    focusedItem = focused.value,
-                ) { grid ->
+                // Une chaîne peut figurer dans plusieurs catégories (une par qualité) : compte à part.
+                val allCount = channelCount?.takeIf { section == HomeSection.TV } ?: groups.sumOf { it.count }
+                val body: @Composable (GridLayout) -> Unit = { grid ->
                     if (resumeItems != null && category == Category.ContinueWatching) {
                         ContinueBody(resumeItems, grid, window, lastOpened, actions, focused)
                     } else when (section) {
@@ -350,6 +343,89 @@ fun HomeContent(
                         HomeSection.MOVIES -> MoviesBody(movies, favoriteMovies, category, favoriteKeys, reorder, grid, window, lastOpened, actions, focused)
                         else -> SeriesBody(series, favoriteSeries, category, favoriteKeys, reorder, grid, window, lastOpened, actions, focused)
                     }
+                }
+                // Mosaïque ou liste : réglage de l'interface classique ; les autres ont leur présentation.
+                val columns = if (layout == HomeLayout.CLASSIC) gridColumns else gridColumns.copy(channelList = false)
+                when {
+                    layout == HomeLayout.STREAMING && category == Category.All -> StreamingHome(
+                        section = section,
+                        window = window,
+                        groups = groups,
+                        rows = rows,
+                        query = query,
+                        channels = channels,
+                        movies = movies,
+                        series = series,
+                        favoriteChannels = favoriteChannels,
+                        recentChannels = recentChannels,
+                        favoriteMovies = favoriteMovies,
+                        favoriteSeries = favoriteSeries,
+                        continueItems = resumeItems.orEmpty(),
+                        favoriteKeys = favoriteKeys,
+                        now = now,
+                        preview = preview,
+                        previewPlayer = previewPlayer.takeIf { showPreview },
+                        lastOpened = lastOpened,
+                        actions = actions,
+                        modifier = Modifier.weight(1f),
+                    )
+                    layout == HomeLayout.BOX && section == HomeSection.TV && window.isWide -> BoxTvSection(
+                        window = window,
+                        groups = groups,
+                        recentCount = recentChannels.size,
+                        allCount = allCount,
+                        category = category,
+                        query = query,
+                        favoritesCount = favoritesCount,
+                        title = categoryTitle(section, category),
+                        count = itemCount(
+                            section,
+                            when (category) {
+                                Category.Favorites -> favoritesCount
+                                Category.Recent -> recentChannels.size
+                                is Category.Group -> groups.firstOrNull { it.title.orEmpty() == category.title }?.count ?: 0
+                                else -> allCount
+                            },
+                        ),
+                        preview = preview,
+                        previewPlayer = previewPlayer.takeIf { showPreview },
+                        now = now,
+                        actions = actions,
+                        modifier = Modifier.weight(1f),
+                        action = if (category == Category.Favorites && favoritesCount > 1) {
+                            {
+                                PillButton(
+                                    stringResource(if (reorder.active) R.string.favorites_reorder_done else R.string.favorites_reorder),
+                                    actions.onToggleReorder,
+                                    icon = if (reorder.active) Icons.Filled.Check else Icons.Filled.Edit,
+                                )
+                            }
+                        } else {
+                            null
+                        },
+                    ) { CatalogGrid(section, window, columns, list = true, body = body) }
+                    else -> CatalogSection(
+                        section = section,
+                        window = window,
+                        groups = groups,
+                        recentCount = recentChannels.size.takeIf { section == HomeSection.TV },
+                        hero = if (section == HomeSection.TV && window.isWide && showPreview) {
+                            { title, count, action -> ChannelHero(title, count, action, preview, previewPlayer, now, window) }
+                        } else {
+                            null
+                        },
+                        allCount = allCount,
+                        category = category,
+                        query = query,
+                        favoritesCount = favoritesCount,
+                        resumeCount = resumeItems?.size,
+                        reorder = reorder,
+                        actions = actions,
+                        modifier = Modifier.weight(1f),
+                        gridColumns = columns,
+                        focusedItem = focused.value,
+                        body = body,
+                    )
                 }
             }
         }
@@ -434,7 +510,7 @@ private fun SectionTab(
 }
 
 @Composable
-private fun sectionLabel(section: HomeSection) = stringResource(
+internal fun sectionLabel(section: HomeSection) = stringResource(
     when (section) {
         HomeSection.TV -> R.string.home_tv
         HomeSection.MOVIES -> R.string.home_movies
@@ -477,49 +553,7 @@ private fun CatalogSection(
     val hide: (String) -> (() -> Unit)? = { title -> if (section.kind() != null) ({ actions.onHideCategory(title) }) else null }
     if (window.isWide) {
         Row(modifier.fillMaxSize()) {
-            Column(
-                Modifier
-                    .width(290.dp)
-                    .fillMaxHeight()
-                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
-                    .padding(start = window.horizontalPadding - 16.dp, end = 12.dp, top = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                SearchField(query, searchHint(section), actions.onQuery)
-                LazyColumn(contentPadding = PaddingValues(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    item {
-                        CategoryItem(stringResource(R.string.home_favorites), favoritesCount, category == Category.Favorites, star = true) {
-                            actions.onCategory(Category.Favorites)
-                        }
-                    }
-                    if (recentCount != null) {
-                        item {
-                            CategoryItem(stringResource(R.string.home_recent), recentCount, category == Category.Recent) {
-                                actions.onCategory(Category.Recent)
-                            }
-                        }
-                    }
-                    if (resumeCount != null) {
-                        item {
-                            CategoryItem(stringResource(R.string.home_continue), resumeCount, category == Category.ContinueWatching) {
-                                actions.onCategory(Category.ContinueWatching)
-                            }
-                        }
-                    }
-                    item { CategoryItem(allLabel(section), allCount, category == Category.All) { actions.onCategory(Category.All) } }
-                    items(groups, key = { it.title ?: NO_GROUP_KEY }) { group ->
-                        val title = group.title.orEmpty()
-                        CategoryItem(
-                            group.title ?: stringResource(R.string.channels_no_group),
-                            group.count,
-                            category == Category.Group(title),
-                            onLongClick = hide(title),
-                        ) {
-                            actions.onCategory(Category.Group(title))
-                        }
-                    }
-                }
-            }
+            CategoryRail(section, window, groups, recentCount, allCount, category, query, favoritesCount, resumeCount, actions, Modifier.width(290.dp))
             SectionBody(section, category, groups, allCount, favoritesCount, resumeCount ?: 0, recentCount ?: 0, hero, reorder, window, actions, Modifier.weight(1f), gridColumns, focusedItem, body)
         }
     } else {
@@ -549,6 +583,67 @@ private fun CatalogSection(
                 }
             }
             SectionBody(section, category, groups, allCount, favoritesCount, resumeCount ?: 0, recentCount ?: 0, hero, reorder, window, actions, Modifier.weight(1f), gridColumns, focusedItem, body)
+        }
+    }
+}
+
+/** Colonne des catégories (écran large) : recherche, favoris, récentes, reprise, toutes et groupes. */
+@Composable
+internal fun CategoryRail(
+    section: HomeSection,
+    window: WindowInfo,
+    groups: List<GroupRow>,
+    recentCount: Int?,
+    allCount: Int,
+    category: Category,
+    query: String,
+    favoritesCount: Int,
+    resumeCount: Int?,
+    actions: HomeActions,
+    modifier: Modifier = Modifier,
+) {
+    // Appui long sur une catégorie pour la masquer.
+    val hide: (String) -> (() -> Unit)? = { title -> if (section.kind() != null) ({ actions.onHideCategory(title) }) else null }
+    Column(
+        modifier
+            .fillMaxHeight()
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .padding(start = window.horizontalPadding - 16.dp, end = 12.dp, top = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        SearchField(query, searchHint(section), actions.onQuery)
+        LazyColumn(contentPadding = PaddingValues(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            item {
+                CategoryItem(stringResource(R.string.home_favorites), favoritesCount, category == Category.Favorites, star = true) {
+                    actions.onCategory(Category.Favorites)
+                }
+            }
+            if (recentCount != null) {
+                item {
+                    CategoryItem(stringResource(R.string.home_recent), recentCount, category == Category.Recent) {
+                        actions.onCategory(Category.Recent)
+                    }
+                }
+            }
+            if (resumeCount != null) {
+                item {
+                    CategoryItem(stringResource(R.string.home_continue), resumeCount, category == Category.ContinueWatching) {
+                        actions.onCategory(Category.ContinueWatching)
+                    }
+                }
+            }
+            item { CategoryItem(allLabel(section), allCount, category == Category.All) { actions.onCategory(Category.All) } }
+            items(groups, key = { it.title ?: NO_GROUP_KEY }) { group ->
+                val title = group.title.orEmpty()
+                CategoryItem(
+                    group.title ?: stringResource(R.string.channels_no_group),
+                    group.count,
+                    category == Category.Group(title),
+                    onLongClick = hide(title),
+                ) {
+                    actions.onCategory(Category.Group(title))
+                }
+            }
         }
     }
 }
@@ -617,30 +712,36 @@ private fun SectionBody(
                 modifier = Modifier.padding(start = if (window.isWide) 28.dp else window.horizontalPadding, bottom = 8.dp),
             )
         }
-        BoxWithConstraints(Modifier.fillMaxSize()) {
-            val start = if (window.isWide) 28.dp else window.horizontalPadding
-            val usable = maxWidth - start - window.horizontalPadding
-            val columns = if (section == HomeSection.TV && gridColumns.channelList) {
-                // Disposition « liste » (réglages) : une chaîne par ligne avec son programme.
-                1
-            } else if (window.isWide) {
-                // TV, tablette : nombre choisi dans les réglages, dans la limite de la largeur.
-                val wanted = if (section == HomeSection.TV) gridColumns.channels else gridColumns.posters
-                val fitting = ((usable + gridSpacing(wanted)) / (MIN_CELL + gridSpacing(wanted))).toInt()
-                wanted.coerceAtMost(fitting).coerceAtLeast(1)
-            } else {
-                // Téléphone : liste des chaînes, affiches d'au moins 108 dp.
-                val minCell = if (section == HomeSection.TV) usable else 108.dp
-                maxOf(1, ((usable + GRID_SPACING) / (minCell + GRID_SPACING)).toInt())
-            }
-            val spacing = gridSpacing(columns)
-            body(GridLayout(columns, (usable - spacing * (columns - 1)) / columns, spacing))
+        CatalogGrid(section, window, gridColumns, list = section == HomeSection.TV && gridColumns.channelList, body = body)
+    }
+}
+
+/** Grille de l'accueil : colonnes selon la largeur et les réglages ; [list] : une chaîne par ligne. */
+@Composable
+internal fun CatalogGrid(section: HomeSection, window: WindowInfo, gridColumns: GridColumns, list: Boolean, body: @Composable (grid: GridLayout) -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val start = if (window.isWide) 28.dp else window.horizontalPadding
+        val usable = maxWidth - start - window.horizontalPadding
+        val columns = if (list) {
+            // Disposition « liste » (réglages) : une chaîne par ligne avec son programme.
+            1
+        } else if (window.isWide) {
+            // TV, tablette : nombre choisi dans les réglages, dans la limite de la largeur.
+            val wanted = if (section == HomeSection.TV) gridColumns.channels else gridColumns.posters
+            val fitting = ((usable + gridSpacing(wanted)) / (MIN_CELL + gridSpacing(wanted))).toInt()
+            wanted.coerceAtMost(fitting).coerceAtLeast(1)
+        } else {
+            // Téléphone : liste des chaînes, affiches d'au moins 108 dp.
+            val minCell = if (section == HomeSection.TV) usable else 108.dp
+            maxOf(1, ((usable + GRID_SPACING) / (minCell + GRID_SPACING)).toInt())
         }
+        val spacing = gridSpacing(columns)
+        body(GridLayout(columns, (usable - spacing * (columns - 1)) / columns, spacing))
     }
 }
 
 @Composable
-private fun categoryTitle(section: HomeSection, category: Category): String = when (category) {
+internal fun categoryTitle(section: HomeSection, category: Category): String = when (category) {
     Category.Favorites -> stringResource(R.string.home_favorites)
     Category.ContinueWatching -> stringResource(R.string.home_continue)
     Category.Recent -> stringResource(R.string.home_recent)
@@ -649,7 +750,7 @@ private fun categoryTitle(section: HomeSection, category: Category): String = wh
 }
 
 @Composable
-private fun allLabel(section: HomeSection) = stringResource(
+internal fun allLabel(section: HomeSection) = stringResource(
     when (section) {
         HomeSection.MOVIES -> R.string.home_all_movies
         HomeSection.SERIES -> R.string.home_all_series
@@ -658,14 +759,14 @@ private fun allLabel(section: HomeSection) = stringResource(
 )
 
 @Composable
-private fun itemCount(section: HomeSection, count: Int): String = when (section) {
+internal fun itemCount(section: HomeSection, count: Int): String = when (section) {
     HomeSection.MOVIES -> LocalContext.current.resources.getQuantityString(R.plurals.movies_count, count, count)
     HomeSection.SERIES -> LocalContext.current.resources.getQuantityString(R.plurals.series_count, count, count)
     else -> channelCount(count)
 }
 
 @Composable
-private fun searchHint(section: HomeSection) = stringResource(
+internal fun searchHint(section: HomeSection) = stringResource(
     when (section) {
         HomeSection.MOVIES -> R.string.home_search_movies
         HomeSection.SERIES -> R.string.home_search_series
@@ -693,7 +794,7 @@ private fun Modifier.reorderKeys(active: Boolean, columns: Int, onMove: (Int) ->
     }
 
 @Composable
-private fun TvBody(
+internal fun TvBody(
     channels: LazyPagingItems<ChannelListRow>,
     favorites: List<ChannelListRow>,
     recent: List<ChannelListRow>,
@@ -948,15 +1049,15 @@ private fun ContinueBody(
 
 /** Nom complet et détail de la vignette sélectionnée, affichés en haut à droite de la grille. */
 @Immutable
-private data class FocusedItem(val title: String, val detail: String?)
+internal data class FocusedItem(val title: String, val detail: String?)
 
-private fun Modifier.showWhenFocused(focused: MutableState<FocusedItem?>, item: FocusedItem): Modifier =
+internal fun Modifier.showWhenFocused(focused: MutableState<FocusedItem?>, item: FocusedItem): Modifier =
     onFocusChanged { if (it.isFocused) focused.value = item }
 
 /** Nom complet (défilant s'il est trop long) et détail : programme en cours, année… */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun FocusedItemLabel(item: FocusedItem, modifier: Modifier = Modifier) {
+internal fun FocusedItemLabel(item: FocusedItem, modifier: Modifier = Modifier) {
     Column(modifier, horizontalAlignment = Alignment.End) {
         Text(
             item.title,
@@ -976,7 +1077,7 @@ private fun FocusedItemLabel(item: FocusedItem, modifier: Modifier = Modifier) {
  * faire défiler la grille ensuite ne déplace plus le focus.
  */
 @Composable
-private fun Modifier.restoreFocus(key: String, lastOpened: MutableState<String?>): Modifier {
+internal fun Modifier.restoreFocus(key: String, lastOpened: MutableState<String?>): Modifier {
     if (lastOpened.value != key) return this
     val requester = remember { FocusRequester() }
     LaunchedEffect(Unit) {
@@ -986,7 +1087,7 @@ private fun Modifier.restoreFocus(key: String, lastOpened: MutableState<String?>
     return focusRequester(requester)
 }
 
-private fun gridPadding(window: WindowInfo) = PaddingValues(
+internal fun gridPadding(window: WindowInfo) = PaddingValues(
     start = if (window.isWide) 28.dp else window.horizontalPadding,
     end = window.horizontalPadding,
     top = 4.dp,
@@ -994,7 +1095,7 @@ private fun gridPadding(window: WindowInfo) = PaddingValues(
 )
 
 @Composable
-private fun CategoryItem(
+internal fun CategoryItem(
     name: String,
     count: Int,
     selected: Boolean,
@@ -1022,7 +1123,7 @@ private fun CategoryItem(
 }
 
 @Composable
-private fun CategoryChip(name: String, selected: Boolean, star: Boolean = false, onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
+internal fun CategoryChip(name: String, selected: Boolean, star: Boolean = false, onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
     FocusSurface(
         onClick = onClick,
         onLongClick = onLongClick,
@@ -1040,7 +1141,7 @@ private fun CategoryChip(name: String, selected: Boolean, star: Boolean = false,
 }
 
 @Composable
-private fun SearchField(query: String, hint: String, onQueryChange: (String) -> Unit, modifier: Modifier = Modifier) {
+internal fun SearchField(query: String, hint: String, onQueryChange: (String) -> Unit, modifier: Modifier = Modifier) {
     RemoteTextField(modifier.fillMaxWidth()) { fieldModifier, interactionSource ->
         OutlinedTextField(
             value = query,
@@ -1068,20 +1169,20 @@ private val GRID_SPACING = 16.dp
 private val MIN_CELL = 56.dp
 
 /** En dessous, affiche réduite (titre sur une ligne). */
-private val COMPACT_POSTER_WIDTH = 84.dp
+internal val COMPACT_POSTER_WIDTH = 84.dp
 
 /** Panneau du haut : reçoit le titre de la catégorie, son nombre d'éléments et une action éventuelle. */
-private typealias HeroSlot = @Composable (title: String, count: String, action: (@Composable () -> Unit)?) -> Unit
+internal typealias HeroSlot = @Composable (title: String, count: String, action: (@Composable () -> Unit)?) -> Unit
 
 /** Grille de l'accueil : colonnes, largeur d'une vignette et espacement. */
 @Immutable
-private data class GridLayout(val columns: Int, val cellWidth: Dp, val spacing: Dp)
+internal data class GridLayout(val columns: Int, val cellWidth: Dp, val spacing: Dp)
 
 /** Espacement resserré quand les vignettes sont nombreuses. */
-private fun gridSpacing(columns: Int): Dp = when {
+internal fun gridSpacing(columns: Int): Dp = when {
     columns >= 8 -> 8.dp
     columns >= 6 -> 12.dp
     else -> GRID_SPACING
 }
-private const val NO_GROUP_KEY = "\u0000"
+internal const val NO_GROUP_KEY = "\u0000"
 private const val CHANNELS_REFRESH_MILLIS = 5 * 60_000L

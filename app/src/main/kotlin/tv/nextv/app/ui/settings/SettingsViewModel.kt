@@ -25,6 +25,7 @@ import tv.nextv.app.RefreshController
 import tv.nextv.app.data.backup.RestoreResult
 import tv.nextv.app.data.settings.GridColumns
 import tv.nextv.app.data.update.UpdateState
+import tv.nextv.app.ui.home.HomeLayout
 import tv.nextv.app.ui.theme.ThemeStyle
 import tv.nextv.app.player.DecoderOption
 import tv.nextv.app.player.VideoDecoders
@@ -71,6 +72,8 @@ data class SettingsUiState(
     val lowerAdVolume: Boolean = false,
     /** Thème de l'interface. */
     val theme: ThemeStyle = ThemeStyle.NIGHT,
+    /** Interface de l'accueil. */
+    val homeLayout: HomeLayout = HomeLayout.CLASSIC,
 )
 
 /** Abonnement Xtream de la playlist active. */
@@ -138,6 +141,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         val dns: DnsProvider,
         val lowerAdVolume: Boolean,
         val theme: ThemeStyle,
+        val homeLayout: HomeLayout,
     )
 
     private val preferences = combine(
@@ -147,9 +151,9 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         combine(settings.tmdbApiKey, settings.footballApiKey, settings.lowerAdVolume) { tmdb, football, ads -> Triple(tmdb != null, football != null, ads) },
         settings.proxySettings,
         settings.gridColumns,
-        combine(settings.dnsProvider, settings.themeStyle, ::Pair),
-    ) { (autoQuality, preview, startLast), (tmdbKey, footballKey, ads), proxy, grid, (dns, theme) ->
-        Preferences(autoQuality, preview, startLast, tmdbKey, footballKey, proxy, grid, dns, ads, theme)
+        combine(settings.dnsProvider, settings.themeStyle, settings.homeLayout, ::Triple),
+    ) { (autoQuality, preview, startLast), (tmdbKey, footballKey, ads), proxy, grid, (dns, theme, layout) ->
+        Preferences(autoQuality, preview, startLast, tmdbKey, footballKey, proxy, grid, dns, ads, theme, layout)
     }
 
     val state: StateFlow<SettingsUiState> = combine(
@@ -182,6 +186,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             startOnLastChannel = prefs.startOnLastChannel,
             lowerAdVolume = prefs.lowerAdVolume,
             theme = prefs.theme,
+            homeLayout = prefs.homeLayout,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
@@ -251,6 +256,13 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         val values = ThemeStyle.entries
         val next = values[(values.indexOf(state.value.theme) + 1) % values.size]
         viewModelScope.launch { settings.setThemeStyle(next) }
+    }
+
+    /** Interface suivante : classique, streaming, box TV. */
+    fun cycleHomeLayout() {
+        val values = HomeLayout.entries
+        val next = values[(values.indexOf(state.value.homeLayout) + 1) % values.size]
+        viewModelScope.launch { settings.setHomeLayout(next) }
     }
 
     /** Chaînes de l'accueil en mosaïque ou en liste. */

@@ -310,6 +310,36 @@ interface ChannelDao {
     @RawQuery(observedEntities = [ChannelEntity::class, SourceEntity::class, HiddenGroupEntity::class])
     fun pageChannels(query: SupportSQLiteQuery): PagingSource<Int, ChannelListRow>
 
+    /** Premières chaînes d'une catégorie ([group] vide : sans groupe), pour les rangées de l'interface « Streaming ». */
+    suspend fun channelRow(sourceId: Long, group: String, now: Long, limit: Int): List<ChannelListRow> =
+        channelRow(SimpleSQLiteQuery("$PAGE_CHANNELS LIMIT ?6", arrayOf(sourceId, 1, group, "", now, limit)))
+
+    @RawQuery
+    suspend fun channelRow(query: SupportSQLiteQuery): List<ChannelListRow>
+
+    /**
+     * Premiers films d'une catégorie ([group] `null` : sans groupe). `position + 0` : lecture par
+     * l'index des catégories (et non tout l'index des positions jusqu'à trouver la catégorie).
+     */
+    @Query(
+        """
+        SELECT id, title, year, logoUrl, groupTitle, itemKey, streamSupport FROM channels
+        WHERE sourceId = :sourceId AND kind = 'MOVIE' AND groupTitle IS :group
+        ORDER BY position + 0 LIMIT :limit
+        """,
+    )
+    suspend fun movieRow(sourceId: Long, group: String?, limit: Int): List<MovieRow>
+
+    /** Premières séries d'une catégorie ([group] `null` : sans groupe). */
+    @Query(
+        """
+        SELECT id, seriesName AS title, year, logoUrl, groupTitle, itemKey, variantCount AS episodeCount FROM channels
+        WHERE sourceId = :sourceId AND kind = 'SERIES' AND isPrimary = 1 AND seriesName IS NOT NULL AND groupTitle IS :group
+        ORDER BY position + 0 LIMIT :limit
+        """,
+    )
+    suspend fun seriesRow(sourceId: Long, group: String?, limit: Int): List<SeriesRow>
+
     /** Chaînes favorites, dans l'ordre choisi. */
     @Query(
         """

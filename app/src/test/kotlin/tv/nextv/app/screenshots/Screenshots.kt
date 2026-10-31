@@ -34,6 +34,7 @@ import tv.nextv.app.ui.guide.ProgrammeSheetContent
 import tv.nextv.app.ui.home.Category
 import tv.nextv.app.ui.home.HomeActions
 import tv.nextv.app.ui.home.HomeContent
+import tv.nextv.app.ui.home.HomeLayout
 import tv.nextv.app.ui.home.HomeSection
 import tv.nextv.app.ui.home.ReorderState
 import tv.nextv.app.ui.player.MenuChannel
@@ -157,6 +158,21 @@ abstract class ScreenshotSuite(private val device: String) {
     @Test
     fun homeViolet() = capture("05f_accueil_violet", ThemeStyle.VIOLET) {
         Home(HomeSection.MOVIES, Category.All)
+    }
+
+    @Test
+    fun homeStreaming() = capture("05g_accueil_streaming") {
+        Home(HomeSection.TV, Category.All, preview = true, layout = HomeLayout.STREAMING)
+    }
+
+    @Test
+    fun homeStreamingMovies() = capture("05h_accueil_streaming_films", ThemeStyle.CINEMA) {
+        Home(HomeSection.MOVIES, Category.All, layout = HomeLayout.STREAMING)
+    }
+
+    @Test
+    fun homeBox() = capture("05i_accueil_box", ThemeStyle.BLACK) {
+        Home(HomeSection.TV, Category.All, preview = true, layout = HomeLayout.BOX)
     }
 
     @Test
@@ -448,6 +464,7 @@ abstract class ScreenshotSuite(private val device: String) {
         reorder: ReorderState = ReorderState(),
         grid: GridColumns = GridColumns(),
         preview: Boolean = false,
+        layout: HomeLayout = HomeLayout.CLASSIC,
     ) {
         val channels = remember { flowOf(PagingData.from(SampleData.channels)) }.collectAsLazyPagingItems()
         val movies = remember { flowOf(PagingData.from(SampleData.movies)) }.collectAsLazyPagingItems()
@@ -492,6 +509,8 @@ abstract class ScreenshotSuite(private val device: String) {
             recentChannels = SampleData.channels.take(3),
             showPreview = preview,
             preview = SampleData.channelPreview.takeIf { preview },
+            layout = layout,
+            rows = SampleData.rows,
         )
     }
 

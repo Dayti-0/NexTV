@@ -181,7 +181,7 @@ private fun ProgrammeLine(programme: GuideProgramme, now: Long) {
 /** Vidéo de l'aperçu : jamais sélectionnable à la télécommande (le focus reste dans la grille). */
 @AndroidXOptIn(UnstableApi::class)
 @Composable
-private fun PreviewVideo(player: Player, modifier: Modifier = Modifier) {
+internal fun PreviewVideo(player: Player, modifier: Modifier = Modifier) {
     AndroidView(
         factory = { context ->
             PlayerView(context).apply {

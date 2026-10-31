@@ -63,8 +63,23 @@ sealed interface Category {
     data class Group(val title: String) : Category
 }
 
-/** Chaîne sélectionnée à l'accueil, avec son programme en cours et le suivant (panneau du haut). */
-data class ChannelPreview(val channel: ChannelListRow, val current: GuideProgramme?, val next: GuideProgramme?)
+/**
+ * Chaîne sélectionnée à l'accueil, avec son programme en cours, le suivant (panneau du haut) et
+ * les programmes d'après ([later], volet de l'interface « Box TV »).
+ */
+data class ChannelPreview(
+    val channel: ChannelListRow,
+    val current: GuideProgramme?,
+    val next: GuideProgramme?,
+    val later: List<GuideProgramme> = emptyList(),
+)
+
+/** Contenu des rangées de l'interface « Streaming » : premiers éléments d'une catégorie ([String] vide : sans groupe). */
+class HomeRows(
+    val channels: suspend (group: String) -> List<ChannelListRow> = { emptyList() },
+    val movies: suspend (group: String) -> List<MovieRow> = { emptyList() },
+    val series: suspend (group: String) -> List<SeriesRow> = { emptyList() },
+)
 
 /** Réorganisation des favoris : [movingKey] est l'élément « soulevé », déplacé avec les flèches. */
 data class ReorderState(val active: Boolean = false, val movingKey: String? = null)
@@ -178,11 +193,12 @@ class HomeViewModel(
     val preview: StateFlow<ChannelPreview?> = focusedChannel
         .mapLatest { row ->
             row ?: return@mapLatest null
-            val upcoming = container.programmeDao.upcoming(row.id, System.currentTimeMillis(), limit = 2).map {
+            val upcoming = container.programmeDao.upcoming(row.id, System.currentTimeMillis(), limit = PREVIEW_PROGRAMMES).map {
                 GuideProgramme(it.title, it.startMillis, it.stopMillis, it.subtitle, it.description, it.category, it.year)
             }
             val current = upcoming.firstOrNull()?.takeIf { it.startMillis <= System.currentTimeMillis() }
-            ChannelPreview(row, current, upcoming.firstOrNull { it != current })
+            val following = upcoming.filter { it != current }
+            ChannelPreview(row, current, following.firstOrNull(), following.drop(1))
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
@@ -207,6 +223,23 @@ class HomeViewModel(
     /** Chaînes et affiches par ligne (réglages). */
     val gridColumns: StateFlow<GridColumns> = container.settings.gridColumns
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), GridColumns())
+
+    /** Interface de l'accueil (réglages). */
+    val layout: StateFlow<HomeLayout> = container.settings.homeLayout
+        .stateIn(viewModelScope, SharingStarted.Eagerly, HomeLayout.CLASSIC)
+
+    /** Premiers éléments de chaque catégorie, lus à l'affichage de sa rangée. */
+    val rows = HomeRows(
+        channels = { group -> sourceId.value?.let { dao.channelRow(it, group, System.currentTimeMillis(), ROW_SIZE) }.orEmpty() },
+        movies = { group -> sourceId.value?.let { dao.movieRow(it, group.ifEmpty { null }, ROW_SIZE) }.orEmpty() },
+        series = { group -> sourceId.value?.let { dao.seriesRow(it, group.ifEmpty { null }, ROW_SIZE) }.orEmpty() },
+    )
+
+    /** Retour aux rangées (interface « Streaming ») : catégorie « Toutes » et recherche vidée. */
+    fun showRows() {
+        categories.update { it + (section.value to Category.All) }
+        queries.update { it + (section.value to "") }
+    }
 
     private fun filterFor(target: HomeSection): Flow<Triple<Long, Category, String>> =
         combine(
@@ -345,5 +378,7 @@ class HomeViewModel(
         const val SEARCH_DEBOUNCE_MILLIS = 300L
         const val NOW_REFRESH_MILLIS = 30_000L
         const val PREVIEW_DELAY_MILLIS = 900L
+        const val PREVIEW_PROGRAMMES = 6
+        const val ROW_SIZE = 24
     }
 }

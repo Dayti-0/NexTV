@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import tv.nextv.app.data.security.KeystoreSecretCipher
+import tv.nextv.app.ui.home.HomeLayout
 import tv.nextv.app.ui.theme.ThemeStyle
 import tv.nextv.core.backup.SettingBackup
 import tv.nextv.core.net.DnsProvider
@@ -120,6 +121,15 @@ class SettingsRepository(
 
     suspend fun setThemeStyle(style: ThemeStyle) {
         dataStore.edit { it[THEME_STYLE] = style.name }
+    }
+
+    /** Interface de l'accueil : classique, streaming ou box TV. */
+    val homeLayout: Flow<HomeLayout> = dataStore.data
+        .map { prefs -> prefs[HOME_LAYOUT]?.let { name -> HomeLayout.entries.firstOrNull { it.name == name } } ?: HomeLayout.CLASSIC }
+        .distinctUntilChanged()
+
+    suspend fun setHomeLayout(layout: HomeLayout) {
+        dataStore.edit { it[HOME_LAYOUT] = layout.name }
     }
 
     /** Format de l'image dans le lecteur. */
@@ -322,6 +332,7 @@ class SettingsRepository(
         val FAVORITE_TEAMS = stringPreferencesKey("favorite_teams")
         val LOWER_AD_VOLUME = booleanPreferencesKey("lower_ad_volume")
         val THEME_STYLE = stringPreferencesKey("theme_style")
+        val HOME_LAYOUT = stringPreferencesKey("home_layout")
         val CHANNEL_LIST = booleanPreferencesKey("channel_list")
 
         /** Réglages de la version 0.2.10 retirés depuis (rappels, code parental). */
