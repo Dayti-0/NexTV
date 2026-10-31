@@ -41,7 +41,6 @@ import tv.nextv.app.R
 import tv.nextv.app.ui.components.Badge
 import tv.nextv.app.ui.components.ChannelLogo
 import tv.nextv.app.ui.components.LiveProgress
-import tv.nextv.app.ui.components.StatusPill
 import tv.nextv.app.ui.components.WindowInfo
 import tv.nextv.app.ui.guide.GuideProgramme
 import tv.nextv.app.ui.theme.NexTvColors
@@ -162,19 +161,19 @@ private fun HeroDetails(preview: ChannelPreview, now: Long) {
     }
 }
 
+/** Programme en cours : titre sur toute la ligne (il défile s'il est trop long), puis horaires et progression. */
 @Composable
 private fun ProgrammeLine(programme: GuideProgramme, now: Long) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            StatusPill(stringResource(R.string.player_live), NexTvColors.Live)
-            Text(programme.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+        ScrollingText(programme.title, MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold))
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(
                 "${timeOf(programme.startMillis)} – ${timeOf(programme.stopMillis)}",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            LiveProgress(programme.startMillis, programme.stopMillis, now, Modifier.width(240.dp))
         }
-        LiveProgress(programme.startMillis, programme.stopMillis, now, Modifier.width(280.dp))
     }
 }
 

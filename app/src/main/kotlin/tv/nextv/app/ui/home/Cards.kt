@@ -1,6 +1,7 @@
 package tv.nextv.app.ui.home
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -28,10 +30,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -99,10 +104,12 @@ fun ChannelCard(
     size: CardSize = CardSize.LARGE,
 ) {
     val small = size == CardSize.SMALL
+    // Vignette sélectionnée : nom et programme défilent s'ils ne tiennent pas en entier.
+    var focused by remember { mutableStateOf(false) }
     FocusSurface(
         onClick = onClick,
         onLongClick = onLongClick,
-        modifier = modifier.movingOutline(moving),
+        modifier = modifier.movingOutline(moving).onFocusChanged { focused = it.hasFocus },
         shape = MaterialTheme.shapes.medium,
         focusScale = if (small) 1.1f else 1.06f,
     ) {
@@ -165,23 +172,28 @@ fun ChannelCard(
                             )
                         }
                     }
-                    // Nom sur deux lignes (hauteur fixe : vignettes alignées) ; complet en haut à droite.
-                    Text(
-                        channel.title,
-                        style = if (small) MaterialTheme.typography.labelSmall else MaterialTheme.typography.titleSmall,
-                        maxLines = 2,
-                        minLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.alignByBaseline(),
-                    )
+                    // Nom sur deux lignes (hauteur fixe : vignettes alignées) ; sélectionné, sur une ligne qui défile.
+                    val nameStyle = if (small) MaterialTheme.typography.labelSmall else MaterialTheme.typography.titleSmall
+                    if (focused) {
+                        val twoLines = with(LocalDensity.current) { (nameStyle.lineHeight * 2).toDp() }
+                        ScrollingText(channel.title, nameStyle, Modifier.alignByBaseline().heightIn(min = twoLines))
+                    } else {
+                        Text(
+                            channel.title,
+                            style = nameStyle,
+                            maxLines = 2,
+                            minLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.alignByBaseline(),
+                        )
+                    }
                 }
                 if (!small) {
-                    Text(
+                    ScrollingText(
                         channel.nowTitle ?: stringResource(R.string.channels_no_epg),
-                        style = MaterialTheme.typography.bodySmall,
+                        MaterialTheme.typography.bodySmall,
                         color = if (channel.nowTitle != null) MaterialTheme.colorScheme.onSurfaceVariant else NexTvColors.TextMuted,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        scrolling = focused,
                     )
                 }
                 val start = channel.nowStart
@@ -207,10 +219,11 @@ fun ChannelListItem(
     modifier: Modifier = Modifier,
     moving: Boolean = false,
 ) {
+    var focused by remember { mutableStateOf(false) }
     FocusSurface(
         onClick = onClick,
         onLongClick = onLongClick,
-        modifier = modifier.fillMaxWidth().movingOutline(moving),
+        modifier = modifier.fillMaxWidth().movingOutline(moving).onFocusChanged { focused = it.hasFocus },
         shape = MaterialTheme.shapes.medium,
         color = Color.Transparent,
         focusScale = 1.01f,
@@ -223,18 +236,17 @@ fun ChannelListItem(
             ChannelLogo(channel.logoUrl, channel.title, Modifier.size(width = 72.dp, height = 48.dp), monogramSize = 16.dp)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(
+                    ScrollingText(
                         listOfNotNull(channel.channelNumber, channel.title).joinToString("  "),
-                        style = MaterialTheme.typography.titleSmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false),
+                        MaterialTheme.typography.titleSmall,
+                        Modifier.weight(1f, fill = false),
+                        scrolling = focused,
                     )
                     qualityLabel(channel.quality)?.let { Badge(it, color = NexTvColors.Primary) }
                     if (isFavorite) Icon(Icons.Filled.Star, contentDescription = null, tint = NexTvColors.Warning, modifier = Modifier.size(16.dp))
                 }
                 channel.nowTitle?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    ScrollingText(it, MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, scrolling = focused)
                 }
                 val start = channel.nowStart
                 val stop = channel.nowStop
@@ -244,6 +256,34 @@ fun ChannelListItem(
         }
     }
 }
+
+/**
+ * Texte sur une ligne : coupé par « … » au repos, il défile en entier quand [scrolling] (vignette
+ * sélectionnée) s'il ne tient pas dans la place disponible.
+ */
+@Composable
+fun ScrollingText(
+    text: String,
+    style: TextStyle,
+    modifier: Modifier = Modifier,
+    color: Color = Color.Unspecified,
+    scrolling: Boolean = true,
+) {
+    Text(
+        text,
+        style = style,
+        color = color,
+        maxLines = 1,
+        overflow = if (scrolling) TextOverflow.Clip else TextOverflow.Ellipsis,
+        modifier = if (scrolling) {
+            modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = MARQUEE_DELAY_MILLIS, repeatDelayMillis = MARQUEE_DELAY_MILLIS)
+        } else {
+            modifier
+        },
+    )
+}
+
+private const val MARQUEE_DELAY_MILLIS = 800
 
 @Composable
 fun SupportBadge(streamSupport: String, modifier: Modifier = Modifier) {

@@ -510,7 +510,7 @@ private fun ChannelBillboard(preview: ChannelPreview?, player: Player?, now: Lon
                 }
                 preview.current?.let { current ->
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(current.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                        ScrollingText(current.title, MaterialTheme.typography.titleMedium, Modifier.weight(1f, fill = false))
                         Text("${shortTime(current.startMillis)} – ${shortTime(current.stopMillis)}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     LiveProgress(current.startMillis, current.stopMillis, now, Modifier.width(320.dp))
@@ -534,7 +534,7 @@ private fun ChannelBillboard(preview: ChannelPreview?, player: Player?, now: Lon
                 Text(stringResource(R.string.channels_no_epg), style = MaterialTheme.typography.bodyLarge, color = NexTvColors.TextMuted)
             } else {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(current.title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    ScrollingText(current.title, MaterialTheme.typography.titleLarge, Modifier.weight(1f, fill = false))
                     Text("${shortTime(current.startMillis)} – ${shortTime(current.stopMillis)}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 LiveProgress(current.startMillis, current.stopMillis, now, Modifier.width(320.dp))
