@@ -108,14 +108,14 @@ fun DetailScreen(
 }
 
 /**
- * Ouvre la bande-annonce dans une application YouTube (officielle, SmartTube…) ou le navigateur.
- * Le lien web d'abord : toutes le comprennent, alors que certaines (SmartTube) refusent `vnd.youtube:`.
+ * Ouvre la bande-annonce dans une application YouTube : d'abord celles des TV (Fire TV, Android TV,
+ * SmartTube), pour que le navigateur ne s'en empare pas, puis toute application qui comprend le lien,
+ * enfin le navigateur. Le lien web d'abord : certaines (SmartTube) refusent `vnd.youtube:`.
  */
 private fun openTrailer(context: Context, key: String): Boolean {
-    val intents = listOf(
-        Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=$key")),
-        Intent(Intent.ACTION_VIEW, Uri.parse("vnd.youtube:$key")),
-    )
+    val links = listOf(Uri.parse("https://www.youtube.com/watch?v=$key"), Uri.parse("vnd.youtube:$key"))
+    val intents = YOUTUBE_APPS.flatMap { app -> links.map { Intent(Intent.ACTION_VIEW, it).setPackage(app) } } +
+        links.map { Intent(Intent.ACTION_VIEW, it) }
     for (intent in intents) {
         try {
             context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -126,6 +126,15 @@ private fun openTrailer(context: Context, key: String): Boolean {
     }
     return false
 }
+
+/** Applications YouTube des TV et des téléphones, par ordre de préférence. */
+private val YOUTUBE_APPS = listOf(
+    "com.amazon.firetv.youtube",
+    "com.google.android.youtube.tv",
+    "com.liskovsoft.smarttubetv.beta",
+    "com.liskovsoft.smarttubetv",
+    "com.google.android.youtube",
+)
 
 /** Fiche d'un film ou d'une série. Sans dépendance au ViewModel (captures d'écran). */
 @OptIn(ExperimentalLayoutApi::class)

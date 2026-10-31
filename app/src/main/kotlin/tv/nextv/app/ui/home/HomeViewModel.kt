@@ -7,6 +7,7 @@ import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
@@ -79,7 +80,33 @@ class HomeRows(
     val channels: suspend (group: String) -> List<ChannelListRow> = { emptyList() },
     val movies: suspend (group: String) -> List<MovieRow> = { emptyList() },
     val series: suspend (group: String) -> List<SeriesRow> = { emptyList() },
-)
+) {
+    /**
+     * Rangées déjà lues, avec la version de leur lecture : une rangée qui revient à l'écran (ou que la
+     * télécommande vise juste en dessous) est remplie aussitôt, sans attendre la base.
+     */
+    private val cache = ConcurrentHashMap<Pair<HomeSection, String>, Pair<String, List<Any>>>()
+
+    /** Dernière lecture de la rangée, quelle que soit sa version. */
+    @Suppress("UNCHECKED_CAST")
+    fun <T : Any> cached(section: HomeSection, group: String): List<T>? = cache[section to group]?.second as List<T>?
+
+    /** La rangée dans la [version] demandée : gardée si elle est déjà lue, sinon lue dans la base. */
+    @Suppress("UNCHECKED_CAST")
+    suspend fun <T : Any> fresh(section: HomeSection, group: String, version: String): List<T> {
+        cache[section to group]?.takeIf { it.first == version }?.let { return it.second as List<T> }
+        val rows: List<Any> = when (section) {
+            HomeSection.TV -> channels(group)
+            HomeSection.MOVIES -> movies(group)
+            else -> series(group)
+        }
+        cache[section to group] = version to rows
+        return rows as List<T>
+    }
+
+    /** Autre playlist : rien n'est gardé. */
+    fun clear() = cache.clear()
+}
 
 /** Réorganisation des favoris : [movingKey] est l'élément « soulevé », déplacé avec les flèches. */
 data class ReorderState(val active: Boolean = false, val movingKey: String? = null)
@@ -228,12 +255,16 @@ class HomeViewModel(
     val layout: StateFlow<HomeLayout> = container.settings.homeLayout
         .stateIn(viewModelScope, SharingStarted.Eagerly, HomeLayout.CLASSIC)
 
-    /** Premiers éléments de chaque catégorie, lus à l'affichage de sa rangée. */
+    /** Premiers éléments de chaque catégorie, lus d'avance et gardés pendant que l'accueil existe. */
     val rows = HomeRows(
         channels = { group -> sourceId.value?.let { dao.channelRow(it, group, System.currentTimeMillis(), ROW_SIZE) }.orEmpty() },
         movies = { group -> sourceId.value?.let { dao.movieRow(it, group.ifEmpty { null }, ROW_SIZE) }.orEmpty() },
         series = { group -> sourceId.value?.let { dao.seriesRow(it, group.ifEmpty { null }, ROW_SIZE) }.orEmpty() },
     )
+
+    init {
+        viewModelScope.launch { sourceId.collect { rows.clear() } }
+    }
 
     /** Retour aux rangées (interface « Streaming ») : catégorie « Toutes » et recherche vidée. */
     fun showRows() {

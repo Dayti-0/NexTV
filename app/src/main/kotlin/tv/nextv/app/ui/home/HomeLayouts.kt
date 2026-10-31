@@ -1,5 +1,6 @@
 package tv.nextv.app.ui.home
 
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
@@ -22,6 +23,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -31,7 +33,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -39,6 +43,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -53,6 +58,7 @@ import androidx.media3.common.Player
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.itemKey
 import coil3.compose.AsyncImage
+import kotlinx.coroutines.CancellationException
 import tv.nextv.app.R
 import tv.nextv.app.data.db.ChannelListRow
 import tv.nextv.app.data.db.GroupRow
@@ -114,20 +120,42 @@ internal fun StreamingHome(
 ) {
     val billboard = remember(section) { mutableStateOf<Billboard?>(null) }
     val padding = if (window.isWide) 28.dp else window.horizontalPadding
+    val listState = rememberLazyListState()
+    // Rangées parcourues (recherche sortie de l'écran) : l'affiche se réduit pour en montrer davantage,
+    // et reprend sa taille en haut de la liste. Chaînes : l'aperçu reste, en plus petit.
+    val scrolled by remember { derivedStateOf { listState.firstVisibleItemIndex > 0 } }
+    val billboardHeight by animateDpAsState(
+        when {
+            !scrolled -> BILLBOARD_HEIGHT
+            section == HomeSection.TV -> COMPACT_BILLBOARD_HEIGHT
+            else -> 0.dp
+        },
+        label = "billboard",
+    )
     Column(modifier.fillMaxSize()) {
-        if (window.isWide) {
-            if (section == HomeSection.TV) {
-                ChannelBillboard(preview, previewPlayer, now, padding)
-            } else {
-                PosterBillboard(section, billboard.value, padding)
+        if (window.isWide && billboardHeight > 0.dp) {
+            Box(Modifier.fillMaxWidth().height(billboardHeight).clipToBounds()) {
+                if (section == HomeSection.TV) {
+                    ChannelBillboard(preview, previewPlayer, now, padding, compact = scrolled)
+                } else {
+                    PosterBillboard(section, billboard.value, padding)
+                }
             }
         }
         val sizes = ShelfSizes.of(window)
         val nowBucket = now / ROW_REFRESH_MILLIS
+        // Toutes les rangées sont lues d'avance, dans l'ordre de l'écran : la télécommande ne peut descendre que
+        // sur une rangée déjà remplie (une rangée en chargement n'a rien à sélectionner, « bas » resterait bloqué).
+        LaunchedEffect(section, groups, nowBucket) {
+            for (group in groups) {
+                loadSafely { rows.fresh<Any>(section, group.title.orEmpty(), rowVersion(section, group, nowBucket)) }
+            }
+        }
         LazyColumn(
             Modifier.weight(1f),
+            state = listState,
             contentPadding = PaddingValues(top = 4.dp, bottom = 40.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             // Recherche en tête des rangées : elle défile avec elles (et garde le clavier pendant la saisie).
             item(key = "search") {
@@ -192,26 +220,28 @@ internal fun StreamingHome(
                 val name = group.title ?: stringResource(R.string.channels_no_group)
                 val seeAll = { actions.onCategory(Category.Group(title)) }
                 val count = itemCount(section, group.count)
+                val version = rowVersion(section, group, nowBucket)
                 when (section) {
                     HomeSection.TV -> {
-                        val channels by produceState<List<ChannelListRow>?>(null, title, group.count, nowBucket) {
-                            value = runCatching { rows.channels(title) }.getOrDefault(emptyList())
+                        // Rangée déjà lue : affichée tout de suite, puis relue si elle a changé.
+                        val channels by produceState(rows.cached<ChannelListRow>(section, title), title, version) {
+                            value = loadSafely { rows.fresh<ChannelListRow>(section, title, version) } ?: value.orEmpty()
                         }
                         Shelf(name, count, padding, seeAll, sizes.channel, CHANNEL_RATIO, loading = channels == null) {
                             items(channels.orEmpty(), key = { it.id }) { channel -> ShelfChannel(channel, sizes.channel, favoriteKeys, now, lastOpened, actions) }
                         }
                     }
                     HomeSection.MOVIES -> {
-                        val movies by produceState<List<MovieRow>?>(null, title, group.count) {
-                            value = runCatching { rows.movies(title) }.getOrDefault(emptyList())
+                        val movies by produceState(rows.cached<MovieRow>(section, title), title, version) {
+                            value = loadSafely { rows.fresh<MovieRow>(section, title, version) } ?: value.orEmpty()
                         }
                         Shelf(name, count, padding, seeAll, sizes.poster, POSTER_RATIO, loading = movies == null) {
                             items(movies.orEmpty(), key = { it.id }) { movie -> MoviePoster(movie, sizes.poster, favoriteKeys, billboard, lastOpened, actions) }
                         }
                     }
                     else -> {
-                        val series by produceState<List<SeriesRow>?>(null, title, group.count) {
-                            value = runCatching { rows.series(title) }.getOrDefault(emptyList())
+                        val series by produceState(rows.cached<SeriesRow>(section, title), title, version) {
+                            value = loadSafely { rows.fresh<SeriesRow>(section, title, version) } ?: value.orEmpty()
                         }
                         Shelf(name, count, padding, seeAll, sizes.poster, POSTER_RATIO, loading = series == null) {
                             items(series.orEmpty(), key = { it.id }) { show -> SeriesPoster(show, sizes.poster, favoriteKeys, billboard, lastOpened, actions) }
@@ -223,11 +253,24 @@ internal fun StreamingHome(
     }
 }
 
-/** Largeur des vignettes des rangées. */
+/** Largeur des vignettes des rangées : sur la TV, six chaînes et huit affiches par rangée. */
 private data class ShelfSizes(val channel: Dp, val poster: Dp) {
     companion object {
-        fun of(window: WindowInfo) = if (window.isWide) ShelfSizes(channel = 204.dp, poster = 132.dp) else ShelfSizes(channel = 172.dp, poster = 112.dp)
+        fun of(window: WindowInfo) = if (window.isWide) ShelfSizes(channel = 148.dp, poster = 104.dp) else ShelfSizes(channel = 156.dp, poster = 104.dp)
     }
+}
+
+/** Version d'une rangée : relue quand sa catégorie change de taille, et toutes les 5 minutes pour les chaînes (programmes). */
+private fun rowVersion(section: HomeSection, group: GroupRow, nowBucket: Long): String =
+    if (section == HomeSection.TV) "$nowBucket:${group.count}" else "${group.count}"
+
+/** Lecture d'une rangée ; une erreur laisse la rangée vide (l'annulation, elle, est transmise). */
+private suspend fun <T> loadSafely(block: suspend () -> T): T? = try {
+    block()
+} catch (e: CancellationException) {
+    throw e
+} catch (e: Exception) {
+    null
 }
 
 private fun LazyListScope.channelShelf(
@@ -267,15 +310,15 @@ private fun Shelf(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Row(Modifier.padding(horizontal = padding), verticalAlignment = Alignment.Bottom) {
-            Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
             count?.let {
                 Text("  ·  $it", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
             }
         }
         LazyRow(
             // Marge verticale : les vignettes grossissent sous le focus.
-            contentPadding = PaddingValues(horizontal = padding, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            contentPadding = PaddingValues(horizontal = padding, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             if (loading) {
                 items(PLACEHOLDERS) {
@@ -297,15 +340,16 @@ private fun Shelf(
 
 @Composable
 private fun SeeAllCard(onClick: () -> Unit, width: Dp, imageRatio: Float) {
+    // Même hauteur que les visuels de la rangée, assez large pour « Tout voir ».
     FocusSurface(
         onClick = onClick,
-        modifier = Modifier.width(width * 0.7f),
+        modifier = Modifier.width(maxOf(width * 0.7f, SEE_ALL_MIN_WIDTH)),
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         focusScale = 1.06f,
     ) {
         Column(
-            Modifier.fillMaxWidth().aspectRatio(imageRatio * 0.7f).padding(12.dp),
+            Modifier.fillMaxWidth().height(width / imageRatio).padding(12.dp),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -436,9 +480,9 @@ private fun ContinueCard(
 /** Grande affiche d'une chaîne : direct à droite, fondu dans le fond, programme en cours à gauche. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ChannelBillboard(preview: ChannelPreview?, player: Player?, now: Long, padding: Dp) {
+private fun ChannelBillboard(preview: ChannelPreview?, player: Player?, now: Long, padding: Dp, compact: Boolean = false) {
     val background = MaterialTheme.colorScheme.background
-    Box(Modifier.fillMaxWidth().height(BILLBOARD_HEIGHT)) {
+    Box(Modifier.fillMaxSize()) {
         Box(
             Modifier.align(Alignment.CenterEnd).fillMaxHeight().aspectRatio(16f / 9f).background(Color.Black),
             contentAlignment = Alignment.Center,
@@ -457,6 +501,22 @@ private fun ChannelBillboard(preview: ChannelPreview?, player: Player?, now: Lon
                 return@Column
             }
             val channel = preview.channel
+            if (compact) {
+                // Affiche réduite : chaîne, programme en cours et progression.
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    StatusPill(stringResource(R.string.player_live), NexTvColors.Live)
+                    channel.channelNumber?.let { Badge(it) }
+                    Text(channel.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.weight(1f, fill = false).basicMarquee())
+                }
+                preview.current?.let { current ->
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(current.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                        Text("${shortTime(current.startMillis)} – ${shortTime(current.stopMillis)}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    LiveProgress(current.startMillis, current.stopMillis, now, Modifier.width(320.dp))
+                }
+                return@Column
+            }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 StatusPill(stringResource(R.string.player_live), NexTvColors.Live)
                 channel.channelNumber?.let { Badge(it) }
@@ -464,7 +524,7 @@ private fun ChannelBillboard(preview: ChannelPreview?, player: Player?, now: Lon
             }
             Text(
                 channel.title,
-                style = MaterialTheme.typography.headlineLarge,
+                style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 modifier = Modifier.basicMarquee(),
@@ -479,7 +539,7 @@ private fun ChannelBillboard(preview: ChannelPreview?, player: Player?, now: Lon
                 }
                 LiveProgress(current.startMillis, current.stopMillis, now, Modifier.width(320.dp))
                 current.description?.let {
-                    Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
             preview.next?.let { next ->
@@ -573,18 +633,18 @@ internal fun BoxTvSection(
     list: @Composable () -> Unit,
 ) {
     Row(modifier.fillMaxSize()) {
-        CategoryRail(HomeSection.TV, window, groups, recentCount, allCount, category, query, favoritesCount, null, actions, Modifier.width(250.dp))
+        CategoryRail(HomeSection.TV, window, groups, recentCount, allCount, category, query, favoritesCount, null, actions, Modifier.width(220.dp), dense = true)
         Column(Modifier.weight(1f).fillMaxHeight()) {
-            Row(Modifier.fillMaxWidth().padding(start = 28.dp, end = 16.dp, top = 6.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(title, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(count, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 action?.invoke()
             }
             Box(Modifier.weight(1f)) { list() }
         }
-        BoxLivePane(preview, previewPlayer, now, Modifier.weight(0.85f).fillMaxHeight())
+        BoxLivePane(preview, previewPlayer, now, Modifier.weight(0.7f).fillMaxHeight())
     }
 }
 
@@ -648,7 +708,9 @@ private fun UpcomingLine(programme: GuideProgramme) {
 
 private fun shortTime(millis: Long): String = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(millis))
 
-private val BILLBOARD_HEIGHT = 208.dp
+private val BILLBOARD_HEIGHT = 176.dp
+private val COMPACT_BILLBOARD_HEIGHT = 104.dp
+private val SEE_ALL_MIN_WIDTH = 104.dp
 private const val CHANNEL_RATIO = 16f / 9f
 private const val POSTER_RATIO = 2f / 3f
 private const val PLACEHOLDERS = 6

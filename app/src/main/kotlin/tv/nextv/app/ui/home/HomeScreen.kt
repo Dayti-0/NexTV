@@ -626,6 +626,8 @@ internal fun CategoryRail(
     resumeCount: Int?,
     actions: HomeActions,
     modifier: Modifier = Modifier,
+    /** Catégories plus serrées (interface « Box TV ») : davantage visibles à la fois. */
+    dense: Boolean = false,
 ) {
     // Appui long sur une catégorie pour la masquer.
     val hide: (String) -> (() -> Unit)? = { title -> if (section.kind() != null) ({ actions.onHideCategory(title) }) else null }
@@ -639,25 +641,25 @@ internal fun CategoryRail(
         SearchField(query, searchHint(section), actions.onQuery)
         LazyColumn(contentPadding = PaddingValues(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             item {
-                CategoryItem(stringResource(R.string.home_favorites), favoritesCount, category == Category.Favorites, star = true) {
+                CategoryItem(stringResource(R.string.home_favorites), favoritesCount, category == Category.Favorites, star = true, dense = dense) {
                     actions.onCategory(Category.Favorites)
                 }
             }
             if (recentCount != null) {
                 item {
-                    CategoryItem(stringResource(R.string.home_recent), recentCount, category == Category.Recent) {
+                    CategoryItem(stringResource(R.string.home_recent), recentCount, category == Category.Recent, dense = dense) {
                         actions.onCategory(Category.Recent)
                     }
                 }
             }
             if (resumeCount != null) {
                 item {
-                    CategoryItem(stringResource(R.string.home_continue), resumeCount, category == Category.ContinueWatching) {
+                    CategoryItem(stringResource(R.string.home_continue), resumeCount, category == Category.ContinueWatching, dense = dense) {
                         actions.onCategory(Category.ContinueWatching)
                     }
                 }
             }
-            item { CategoryItem(allLabel(section), allCount, category == Category.All) { actions.onCategory(Category.All) } }
+            item { CategoryItem(allLabel(section), allCount, category == Category.All, dense = dense) { actions.onCategory(Category.All) } }
             items(groups, key = { it.title ?: NO_GROUP_KEY }) { group ->
                 val title = group.title.orEmpty()
                 CategoryItem(
@@ -665,6 +667,7 @@ internal fun CategoryRail(
                     group.count,
                     category == Category.Group(title),
                     onLongClick = hide(title),
+                    dense = dense,
                 ) {
                     actions.onCategory(Category.Group(title))
                 }
@@ -1126,6 +1129,7 @@ internal fun CategoryItem(
     selected: Boolean,
     star: Boolean = false,
     onLongClick: (() -> Unit)? = null,
+    dense: Boolean = false,
     onClick: () -> Unit,
 ) {
     FocusSurface(
@@ -1136,12 +1140,18 @@ internal fun CategoryItem(
         color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
         focusScale = 1.02f,
     ) {
-        Row(Modifier.padding(horizontal = 14.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(horizontal = 14.dp, vertical = if (dense) 7.dp else 11.dp), verticalAlignment = Alignment.CenterVertically) {
             if (star) {
                 Icon(Icons.Filled.Star, contentDescription = null, tint = NexTvColors.Warning, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
             }
-            Text(name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            Text(
+                name,
+                style = if (dense) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
             Text(count.toString(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

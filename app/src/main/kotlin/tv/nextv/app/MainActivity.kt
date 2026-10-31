@@ -16,12 +16,13 @@ import androidx.compose.runtime.getValue
 
 class MainActivity : ComponentActivity() {
 
-    /** Action du double appui rapide sur « Retour » (retour à l'accueil), fournie par la navigation. */
+    /** Retour à l'accueil (double appui rapide ou appui long sur « Retour »), fourni par la navigation. */
     var onDoubleBack: (() -> Unit)? = null
 
     /** Relâchement du dernier « Retour » (horloge des événements). */
     private var lastBackUpTime = 0L
     private var doubleBack = false
+    private var longBack = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -52,8 +53,9 @@ class MainActivity : ComponentActivity() {
      * « Retour » va directement à la navigation (menus, écran précédent) : sans cela, Compose s'en
      * sert d'abord pour faire remonter le focus vers un élément parent, et un appui semble ignoré.
      *
-     * Double appui rapide : le premier agit normalement, le second ramène à l'accueil.
-     * (L'appui long est souvent réservé par le système, par exemple pour fermer l'application.)
+     * Double appui rapide : le premier agit normalement, le second ramène à l'accueil. Appui long
+     * (direct en plein écran…) : retour à l'accueil, sans « Retour » au relâchement. Certains systèmes
+     * se réservent l'appui long (LineageOS peut fermer l'application) : le double appui reste possible.
      *
      * `Activity.dispatchKeyEvent` est public ; seule sa redéfinition dans androidx est marquée interne.
      * Le retour prédictif est désactivé (manifeste) et la touche aboutit aux mêmes callbacks
@@ -65,15 +67,25 @@ class MainActivity : ComponentActivity() {
         when (event.action) {
             KeyEvent.ACTION_DOWN -> {
                 val toHome = onDoubleBack
-                if (toHome != null && !doubleBack && event.repeatCount == 0 && event.eventTime - lastBackUpTime <= DOUBLE_BACK_MILLIS) {
-                    doubleBack = true
-                    lastBackUpTime = 0
-                    toHome()
+                if (event.repeatCount == 0) longBack = false
+                when {
+                    toHome == null || doubleBack -> Unit
+                    event.repeatCount == 0 && event.eventTime - lastBackUpTime <= DOUBLE_BACK_MILLIS -> {
+                        doubleBack = true
+                        lastBackUpTime = 0
+                        toHome()
+                    }
+                    // Touche maintenue : répétitions de la touche.
+                    event.repeatCount > 0 && !longBack && event.eventTime - event.downTime >= LONG_BACK_MILLIS -> {
+                        longBack = true
+                        toHome()
+                    }
                 }
             }
             KeyEvent.ACTION_UP -> when {
-                // Relâchement du second appui : pas de « Retour » de plus.
+                // Relâchement du second appui ou de l'appui long : pas de « Retour » de plus.
                 doubleBack -> doubleBack = false
+                longBack -> longBack = false
                 !event.isCanceled -> {
                     lastBackUpTime = event.eventTime
                     onBackPressedDispatcher.onBackPressed()
@@ -85,5 +97,6 @@ class MainActivity : ComponentActivity() {
 
     private companion object {
         const val DOUBLE_BACK_MILLIS = 400L
+        const val LONG_BACK_MILLIS = 700L
     }
 }
