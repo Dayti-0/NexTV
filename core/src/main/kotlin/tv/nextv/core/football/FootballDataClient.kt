@@ -40,6 +40,10 @@ data class ScheduledMatch(
     val away: Team,
     val homeScore: Int? = null,
     val awayScore: Int? = null,
+    /** Minute de jeu pendant le match (« 81' », « 45+2' »), si la source des scores la donne. */
+    val clock: String? = null,
+    /** Mi-temps. */
+    val halfTime: Boolean = false,
 ) {
     /** En cours ou sur le point de commencer : le score change, il est redemandé plus souvent. */
     fun isActive(now: Long): Boolean =
@@ -95,6 +99,8 @@ class FootballDataClient(
     private val standingsCacheMillis: Long = 60 * 60_000L,
     /** Au-delà, la section Foot n'attend plus le service et se rabat sur le guide. */
     private val callTimeoutMillis: Long = 10_000,
+    /** Scores et minute de jeu en direct, plus à jour que l'offre gratuite (qui les donne en retard). */
+    private val liveScores: LiveScoreClient? = null,
 ) {
     private class FootballDataException(val error: FootballDataError) : Exception(error.name)
 
@@ -114,7 +120,14 @@ class FootballDataClient(
      * Matchs entre [fromMillis] et [toMillis] (10 jours au plus). Une réponse récente pour la même
      * période est réutilisée ; en cas d'échec, la dernière réponse obtenue reste servie.
      */
-    suspend fun matches(fromMillis: Long, toMillis: Long): FootballDataResult = mutex.withLock {
+    suspend fun matches(fromMillis: Long, toMillis: Long): FootballDataResult {
+        val result = scheduled(fromMillis, toMillis)
+        val live = liveScores ?: return result
+        // Matchs en cours : score et minute de jeu en direct (hors du verrou : autre service).
+        return (result as? FootballDataResult.Success)?.let { FootballDataResult.Success(live.update(it.matches)) } ?: result
+    }
+
+    private suspend fun scheduled(fromMillis: Long, toMillis: Long): FootballDataResult = mutex.withLock {
         val key = apiKey()?.trim()?.takeIf { it.isNotEmpty() } ?: return@withLock FootballDataResult.Failed(FootballDataError.MISSING_KEY)
         val from = day(fromMillis)
         val to = day(toMillis)
@@ -294,6 +307,7 @@ class FootballDataClient(
             away = away,
             homeScore = score?.score("home"),
             awayScore = score?.score("away"),
+            halfTime = json.optString("status") == "PAUSED",
         )
     }
 

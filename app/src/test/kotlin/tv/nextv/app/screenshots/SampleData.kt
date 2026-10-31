@@ -462,6 +462,7 @@ object SampleData {
                 guideChannel = if (channel == null && competition == Competition.LA_LIGA) "DAZN 1" else null,
                 otherChannels = if (index == 0) 2 else 0,
                 homeScore = if (index == 0) 1 else null,
+                clock = if (index == 0) "67'" else null,
                 awayScore = if (index == 0) 0 else null,
             )
         },

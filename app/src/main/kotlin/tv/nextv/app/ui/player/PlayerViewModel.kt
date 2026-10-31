@@ -105,6 +105,10 @@ data class PlayerMatch(
     /** Score du moment, `null` avant le coup d'envoi. */
     val score: String?,
     val live: Boolean,
+    /** Minute de jeu (« 81' », « 45+2' ») pendant le match, si elle est connue. */
+    val clock: String? = null,
+    /** Mi-temps. */
+    val halfTime: Boolean = false,
 )
 
 data class PlayerUiState(
@@ -1019,6 +1023,8 @@ class PlayerViewModel(
                 null
             },
             live = live,
+            clock = match.clock.takeIf { live },
+            halfTime = live && match.halfTime,
         )
     }
 

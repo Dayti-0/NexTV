@@ -60,9 +60,13 @@ data class FootballMatch(
     val guideChannel: String? = null,
     /** Autres chaînes qui le diffusent. */
     val otherChannels: Int = 0,
-    /** Score en cours de match (football-data.org). */
+    /** Score en cours de match. */
     val homeScore: Int? = null,
     val awayScore: Int? = null,
+    /** Minute de jeu (« 81' », « 45+2' ») pendant le match, si elle est connue. */
+    val clock: String? = null,
+    /** Mi-temps. */
+    val halfTime: Boolean = false,
     /** Noms complets des équipes, pour les équipes suivies. */
     val homeTeam: String = home,
     val awayTeam: String = away,
@@ -285,7 +289,8 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
 
     private companion object {
         const val API_REFRESH_MILLIS = 30 * 60_000L
-        const val LIVE_REFRESH_MILLIS = 2 * 60_000L
+        /** Pendant les matchs : score et minute de jeu redemandés chaque minute. */
+        const val LIVE_REFRESH_MILLIS = 60_000L
         const val TICK_MILLIS = 30_000L
 
         /** Le guide couvre en général une semaine. */
@@ -342,6 +347,8 @@ private fun apiMatches(matches: List<ScheduledMatch>, rows: List<BroadcastRow>, 
             otherChannels = (shows.size - 1).coerceAtLeast(0),
             homeScore = match.homeScore.takeIf { match.status == MatchStatus.LIVE },
             awayScore = match.awayScore.takeIf { match.status == MatchStatus.LIVE },
+            clock = match.clock.takeIf { match.status == MatchStatus.LIVE },
+            halfTime = match.halfTime && match.status == MatchStatus.LIVE,
             homeTeam = match.home.name,
             awayTeam = match.away.name,
         )

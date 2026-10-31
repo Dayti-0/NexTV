@@ -377,7 +377,7 @@ abstract class ScreenshotSuite(private val device: String) {
     fun playerMatch() = capture("13e_lecteur_match") {
         FakeVideo()
         PlayerOverlay(
-            state = SampleData.player.copy(match = PlayerMatch("PSG", "Marseille", null, null, "1 – 0", live = true), adMuted = true),
+            state = SampleData.player.copy(match = PlayerMatch("PSG", "Marseille", null, null, "1 – 0", live = true, clock = "45+2'"), adMuted = true),
             now = SampleData.NOW,
             visible = true,
             showTouchControls = false,

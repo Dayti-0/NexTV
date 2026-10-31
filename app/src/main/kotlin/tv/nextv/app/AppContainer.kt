@@ -37,6 +37,7 @@ import tv.nextv.app.player.PlayerFactory
 import tv.nextv.core.epg.EpgImporter
 import tv.nextv.core.epg.EpgLoader
 import tv.nextv.core.epg.HttpEpgFeedProvider
+import tv.nextv.core.football.LiveScoreClient
 import tv.nextv.core.io.CompositeContentOpener
 import tv.nextv.core.io.RemoteContentOpener
 import tv.nextv.core.log.Logger
@@ -153,6 +154,7 @@ class AppContainer(context: Context) {
         clients = httpClients,
         apiKey = { footballKey.value ?: BuildConfig.FOOTBALL_API_KEY.takeIf { it.isNotBlank() } },
         logger = logger,
+        liveScores = LiveScoreClient(httpClients, logger = logger),
     )
 
     val favorites = FavoritesRepository(database)

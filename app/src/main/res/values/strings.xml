@@ -247,6 +247,7 @@
     <!-- Lecteur -->
     <string name="player_next">Ensuite %1$s · %2$s</string>
     <string name="player_live">En direct</string>
+    <string name="football_half_time">Mi-temps</string>
     <string name="player_next_channel">Chaîne suivante</string>
     <string name="player_previous_channel">Chaîne précédente</string>
     <string name="player_error_title">Lecture impossible</string>

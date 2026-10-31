@@ -802,6 +802,9 @@ private fun MatchScore(match: PlayerMatch) {
         )
         Text(match.away, style = MaterialTheme.typography.titleMedium, color = Color.White, maxLines = 1)
         match.awayCrest?.let { ChannelLogo(it, match.away, Modifier.size(32.dp), monogramSize = 11.dp) }
+        // Minute de jeu ou mi-temps.
+        val minute = if (match.halfTime) stringResource(R.string.football_half_time) else match.clock
+        minute?.let { StatusPill(it, NexTvColors.Live) }
     }
 }
 
