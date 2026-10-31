@@ -1,5 +1,6 @@
 package tv.nextv.app.ui.player
 
+import android.view.View
 import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -51,6 +52,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -85,6 +87,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
@@ -149,6 +152,21 @@ fun PlayerScreen(onBack: () -> Unit) {
 
     // Bandeau et touches du lecteur : direct, et replay (programme lu depuis l'enregistrement du serveur).
     val bannerMode = state.isLive || state.replay != null
+
+    // Lecture en pause (direct, replay, film…) : icône au centre de l'écran.
+    var playWhenReady by remember(player) { mutableStateOf(player?.playWhenReady ?: true) }
+    DisposableEffect(player) {
+        val current = player
+        val listener = object : Player.Listener {
+            override fun onPlayWhenReadyChanged(ready: Boolean, reason: Int) {
+                playWhenReady = ready
+            }
+        }
+        current?.addListener(listener)
+        onDispose { current?.removeListener(listener) }
+    }
+    // Film : les commandes Media3 ont déjà leur bouton lecture au centre quand elles sont affichées.
+    var controllerVisible by remember { mutableStateOf(false) }
 
     LifecycleStartEffect(viewModel) {
         viewModel.onStart()
@@ -251,6 +269,7 @@ fun PlayerScreen(onBack: () -> Unit) {
                 PlayerView(viewContext).apply {
                     layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                     keepScreenOn = true
+                    setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { visibility -> controllerVisible = visibility == View.VISIBLE })
                 }
             },
             update = { view ->
@@ -281,6 +300,15 @@ fun PlayerScreen(onBack: () -> Unit) {
             onRetry = viewModel::retry,
             onOpenMenu = viewModel::openMenu,
             onInfo = { infoVisible = !infoVisible },
+        )
+
+        // Saut en cours (« +30 s ») ou pause : en grand au centre de l'écran.
+        CenterIndicator(
+            jumpSeconds = state.pendingJumpSeconds,
+            paused = (state.paused || !playWhenReady) && state.error == null && state.resumePrompt == null &&
+                !(controllerVisible && !bannerMode),
+            visible = !menu.open,
+            modifier = Modifier.align(Alignment.Center),
         )
 
         PlaybackInfoPanel(
@@ -602,14 +630,6 @@ private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Mo
                 }
             }
             if (state.replay != null) StatusPill(stringResource(R.string.player_replay), NexTvColors.Primary, Modifier.align(Alignment.CenterVertically))
-            if (state.pendingJumpSeconds != 0) {
-                val jump = state.pendingJumpSeconds
-                StatusPill(
-                    stringResource(if (jump > 0) R.string.player_jump_forward else R.string.player_jump_back, jumpLabel(abs(jump))),
-                    NexTvColors.Primary,
-                    Modifier.align(Alignment.CenterVertically),
-                )
-            }
             state.quality?.let { Badge(it, Modifier.align(Alignment.CenterVertically), color = NexTvColors.Primary) }
             state.bandwidthMbps?.let { SpeedLabel(it, Modifier.align(Alignment.CenterVertically)) }
         }
@@ -1014,6 +1034,50 @@ private fun channelsLabel(count: Int): String = when (count) {
     6 -> "5.1"
     8 -> "7.1"
     else -> stringResource(R.string.player_info_channels, count)
+}
+
+/**
+ * Indicateur au centre de l'écran : saut demandé dans un replay (« +30 s », flèches d'avance ou de
+ * retour), sinon icône de pause quand la lecture est en pause.
+ */
+@Composable
+fun CenterIndicator(jumpSeconds: Int, paused: Boolean, visible: Boolean, modifier: Modifier = Modifier) {
+    AnimatedVisibility(
+        visible = visible && (jumpSeconds != 0 || paused),
+        enter = fadeIn(),
+        exit = fadeOut(),
+        modifier = modifier,
+    ) {
+        if (jumpSeconds != 0) {
+            Row(
+                Modifier
+                    .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+                    .padding(horizontal = 32.dp, vertical = 18.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Icon(
+                    if (jumpSeconds > 0) NexTvIcons.FastForward else NexTvIcons.FastRewind,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(44.dp),
+                )
+                Text(
+                    stringResource(if (jumpSeconds > 0) R.string.player_jump_forward else R.string.player_jump_back, jumpLabel(abs(jumpSeconds))),
+                    style = MaterialTheme.typography.displaySmall,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                )
+            }
+        } else {
+            Box(
+                Modifier.size(112.dp).background(Color.Black.copy(alpha = 0.6f), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(NexTvIcons.Pause, contentDescription = stringResource(R.string.player_paused), tint = Color.White, modifier = Modifier.size(64.dp))
+            }
+        }
+    }
 }
 
 /** « 30 s », « 1 min », « 2 min 30 s ». */

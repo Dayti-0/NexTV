@@ -58,6 +58,7 @@ import tv.nextv.app.ui.startup.StartupStep
 import tv.nextv.app.ui.startup.WelcomeScreen
 import tv.nextv.app.ui.theme.NexTvTheme
 import tv.nextv.app.ui.theme.ThemeStyle
+import tv.nextv.app.ui.player.CenterIndicator
 import tv.nextv.app.ui.player.PlayerMatch
 import tv.nextv.app.ui.player.PlayerProgramme
 import tv.nextv.core.log.Redactor
@@ -335,6 +336,14 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
+    fun playerJump() = capture("13h_lecteur_saut") {
+        FakeVideo()
+        Box(Modifier.fillMaxSize()) {
+            CenterIndicator(jumpSeconds = 90, paused = false, visible = true, modifier = Modifier.align(Alignment.Center))
+        }
+    }
+
+    @Test
         fun playerRestart() = capture("13f_lecteur_depuis_le_debut") {
         FakeVideo()
         PlayerOverlay(
@@ -378,6 +387,9 @@ abstract class ScreenshotSuite(private val device: String) {
         FakeVideo()
         val state = SampleData.player.copy(paused = true, pausedAtMillis = SampleData.NOW - 83_000, qualityNotice = null)
         PlayerOverlay(state = state, now = SampleData.NOW, visible = true, showTouchControls = device == "phone", onBack = {}, onZap = {}, onRetry = {})
+        Box(Modifier.fillMaxSize()) {
+            CenterIndicator(jumpSeconds = 0, paused = true, visible = true, modifier = Modifier.align(Alignment.Center))
+        }
     }
 
     @Test
