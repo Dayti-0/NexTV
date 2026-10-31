@@ -1,6 +1,7 @@
 package tv.nextv.app.ui.home
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.background
@@ -176,6 +177,10 @@ fun HomeScreen(
             channels.refresh()
         }
     }
+    // « Retour » depuis l'accueil : l'application ne se ferme qu'après confirmation (pas de sortie par
+    // maladresse). Déclaré en premier : les autres usages de « Retour » à l'accueil passent avant.
+    var confirmExit by remember { mutableStateOf(false) }
+    BackHandler { confirmExit = true }
     // Interface « Streaming » : « Retour » ramène d'une catégorie ou d'une recherche aux rangées.
     BackHandler(enabled = layout == HomeLayout.STREAMING && section.kind() != null && (category != Category.All || query.isNotEmpty())) {
         viewModel.showRows()
@@ -247,6 +252,26 @@ fun HomeScreen(
         layout = layout,
         rows = viewModel.rows,
     )
+
+    if (confirmExit) {
+        val activity = LocalActivity.current
+        val stay = remember { FocusRequester() }
+        // « Non » sélectionné d'office : un appui de trop sur OK ne ferme pas l'application.
+        LaunchedEffect(Unit) { runCatching { stay.requestFocus() } }
+        AlertDialog(
+            onDismissRequest = { confirmExit = false },
+            title = { Text(stringResource(R.string.exit_title)) },
+            text = { Text(stringResource(R.string.exit_message)) },
+            confirmButton = {
+                TextButton(onClick = { activity?.finish() }) { Text(stringResource(R.string.exit_yes)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmExit = false }, modifier = Modifier.focusRequester(stay)) { Text(stringResource(R.string.exit_no)) }
+            },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            modifier = Modifier.ignoreHeldOk(),
+        )
+    }
 
     pendingHide?.let { title ->
         val name = title.ifEmpty { stringResource(R.string.channels_no_group) }

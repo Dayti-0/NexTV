@@ -354,6 +354,10 @@
     <string name="settings_channel_preview_help">À l’accueil, la chaîne sélectionnée démarre en petit, sans le son, au bout d’une seconde. À désactiver si l’abonnement n’autorise qu’une connexion à la fois ou si l’appareil est lent.</string>
     <string name="settings_channel_groups">Catégories de chaînes</string>
     <string name="settings_movie_groups">Catégories de films</string>
+    <string name="exit_title">Quitter NexTV ?</string>
+    <string name="exit_message">Vous êtes sûr de vouloir quitter l’application ?</string>
+    <string name="exit_yes">Oui, quitter</string>
+    <string name="exit_no">Non</string>
     <string name="settings_home_layout">Interface de l’accueil</string>
     <string name="home_layout_classic">Classique</string>
     <string name="home_layout_streaming">Streaming</string>

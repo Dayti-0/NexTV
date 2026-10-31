@@ -76,7 +76,8 @@ Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3, enti�
   réglages dans un fichier JSON, à restaurer après une réinstallation ou sur un autre appareil (sans sélecteur de
   fichiers, comme sur Fire TV, le fichier va dans le dossier de l'application).
 - **Affichage** : nombre de chaînes (3 à 9) et d'affiches (4 à 10) par ligne réglable sur TV et tablette.
-- **Retour à l'accueil** : double appui rapide sur Retour, depuis n'importe quel écran.
+- **Retour à l'accueil** : double appui rapide sur Retour, depuis n'importe quel écran. Depuis l'accueil, Retour
+  demande confirmation avant de quitter l'application (« Non » sélectionné d'office) : pas de sortie par maladresse.
 - **Ajout d'une playlist depuis un ordinateur** (adb), pour éviter la saisie à la télécommande : l'éditeur s'ouvre
   prérempli, il reste à confirmer avec OK.
 
