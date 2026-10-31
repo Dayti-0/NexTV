@@ -532,14 +532,15 @@ interface ChannelDao {
     suspend fun primaryOf(sourceId: Long, variantKey: String): ChannelEntity?
 
     /**
-     * Chaînes visibles associées au guide, la meilleure version d'abord : la première de chaque
-     * identifiant de guide est celle qui diffuse ses programmes (section Foot).
+     * Chaînes associées au guide, la meilleure version visible d'abord : la première de chaque
+     * identifiant de guide est celle qui diffuse ses programmes (section Foot). Une chaîne rangée
+     * dans une catégorie masquée vient en dernier : un match qu'elle seule diffuse reste visible.
      */
     @Query(
         """
         SELECT c.epgChannelId, c.id, c.name, c.title, c.logoUrl FROM channels c
-        WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.epgChannelId IS NOT NULL AND $NOT_HIDDEN
-        ORDER BY c.qualityRank DESC, c.position
+        WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.epgChannelId IS NOT NULL
+        ORDER BY NOT ($NOT_HIDDEN), c.qualityRank DESC, c.position
         """,
     )
     suspend fun epgChannels(sourceId: Long): List<EpgChannelRow>

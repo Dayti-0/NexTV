@@ -210,6 +210,13 @@ class EpgImporter(
     }
 
     companion object {
+        /**
+         * Version des règles d'import (association des chaînes, programmes gardés). Un guide importé
+         * avec une version antérieure est réimporté dès le lancement suivant, sans attendre sa
+         * réimportation quotidienne.
+         */
+        const val VERSION = 2
+
         private const val CANCELLATION_CHECK_INTERVAL = 500
         private val NON_ALPHANUMERIC = Regex("[^\\p{L}\\p{Nd}]+")
         private val DIACRITICS = Regex("\\p{Mn}+")

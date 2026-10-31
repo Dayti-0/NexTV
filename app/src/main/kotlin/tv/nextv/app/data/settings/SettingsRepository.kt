@@ -140,6 +140,13 @@ class SettingsRepository(
         dataStore.edit { prefs -> if (category == null) prefs.remove(GUIDE_CATEGORY) else prefs[GUIDE_CATEGORY] = category }
     }
 
+    /** Version des règles d'import du dernier guide importé ([tv.nextv.core.epg.EpgImporter.VERSION]). */
+    val epgImportVersion: Flow<Int> = dataStore.data.map { it[EPG_IMPORT_VERSION] ?: 0 }.distinctUntilChanged()
+
+    suspend fun setEpgImportVersion(version: Int) {
+        dataStore.edit { it[EPG_IMPORT_VERSION] = version }
+    }
+
     /** Interface de l'accueil : classique, streaming ou box TV. */
     val homeLayout: Flow<HomeLayout> = dataStore.data
         .map { prefs -> prefs[HOME_LAYOUT]?.let { name -> HomeLayout.entries.firstOrNull { it.name == name } } ?: HomeLayout.CLASSIC }
@@ -352,13 +359,14 @@ class SettingsRepository(
         val THEME_STYLE = stringPreferencesKey("theme_style")
         val HOME_LAYOUT = stringPreferencesKey("home_layout")
         val GUIDE_CATEGORY = stringPreferencesKey("guide_category")
+        val EPG_IMPORT_VERSION = intPreferencesKey("epg_import_version")
         val CHANNEL_LIST = booleanPreferencesKey("channel_list")
 
         /** Réglages de la version 0.2.10 retirés depuis (rappels, code parental). */
         val OBSOLETE = setOf("reminders", "parental_pin")
 
         /** Secrets chiffrés pour cet appareil, playlist active (numéro local), réglages retirés. */
-        val NOT_PORTABLE = setOf(PROXY_CREDENTIALS, TMDB_KEY, FOOTBALL_KEY, ACTIVE_PLAYLIST).map { it.name }.toSet() + OBSOLETE
+        val NOT_PORTABLE = setOf(PROXY_CREDENTIALS, TMDB_KEY, FOOTBALL_KEY, ACTIVE_PLAYLIST, EPG_IMPORT_VERSION).map { it.name }.toSet() + OBSOLETE
         val NOT_PORTABLE_PREFIXES = listOf(DECODER_PREFIX, RECENT_PREFIX, QUALITY_PREFIX)
         const val DECODER_PREFIX = "decoder_"
         const val RECENT_PREFIX = "recent_channels_"

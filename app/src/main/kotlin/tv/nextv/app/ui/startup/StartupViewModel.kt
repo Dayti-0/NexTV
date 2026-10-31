@@ -15,6 +15,7 @@ import tv.nextv.app.ui.common.describe
 import tv.nextv.core.io.LoadProgress
 import tv.nextv.core.io.LoadStep
 import tv.nextv.core.io.ProgressListener
+import tv.nextv.core.epg.EpgImporter
 import tv.nextv.core.model.ContentKind
 import tv.nextv.core.repository.RefreshResult
 
@@ -96,9 +97,12 @@ class StartupViewModel(
         val lastSuccess = source.status.lastSuccessAtMillis
         val hasData = lastSuccess != null && source.status.channelCount > 0
         val stale = lastSuccess == null || System.currentTimeMillis() - lastSuccess > PLAYLIST_MAX_AGE_MILLIS
+        // Mise à jour qui change les règles d'import du guide (chaînes des matchs…) : réimport tout de suite.
+        val reimportGuide = container.settings.epgImportVersion.first() < EpgImporter.VERSION
+        if (reimportGuide) container.settings.setEpgImportVersion(EpgImporter.VERSION)
         if (hasData && !forceRefresh) {
             // Données déjà enregistrées : accueil immédiat, actualisation (playlist ou guide) en arrière-plan.
-            if (stale) container.refreshController.refresh(source.id) else container.refreshController.refreshEpg(source.id)
+            if (stale) container.refreshController.refresh(source.id) else container.refreshController.refreshEpg(source.id, force = reimportGuide)
             finish(source.id)
             return
         }
