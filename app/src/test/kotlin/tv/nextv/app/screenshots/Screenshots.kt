@@ -309,7 +309,22 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
-    fun playerMatch() = capture("13e_lecteur_match") {
+    fun playerRestart() = capture("13f_lecteur_depuis_le_debut") {
+        FakeVideo()
+        PlayerOverlay(
+            // « Depuis le début » d'un programme commencé il y a 25 min : bandeau du direct, différé affiché.
+            state = SampleData.player.copy(liveDelayMs = 25 * 60_000L + 12_000),
+            now = SampleData.NOW,
+            visible = true,
+            showTouchControls = false,
+            onBack = {},
+            onZap = {},
+            onRetry = {},
+        )
+    }
+
+    @Test
+        fun playerMatch() = capture("13e_lecteur_match") {
         FakeVideo()
         PlayerOverlay(
             state = SampleData.player.copy(match = PlayerMatch("PSG", "Marseille", null, null, "1 – 0", live = true), adMuted = true),

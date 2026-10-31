@@ -200,9 +200,18 @@ class PlayerViewModel(
 
     private var channelId: Long = checkNotNull(handle.get<Long>(ARG_CHANNEL_ID))
 
-    /** Replay d'un programme passé (début, fin) ; `null` : lecture normale. */
-    private val replay: Pair<Long, Long>? = handle.get<Long>(ARG_REPLAY_START)?.takeIf { it > 0 }
+    /**
+     * Replay d'un programme (début, fin) ; `null` : lecture normale. Oublié au changement de chaîne
+     * et au retour au direct.
+     */
+    private var replay: Pair<Long, Long>? = handle.get<Long>(ARG_REPLAY_START)?.takeIf { it > 0 }
         ?.let { start -> handle.get<Long>(ARG_REPLAY_STOP)?.takeIf { it > start }?.let { start to it } }
+
+    /**
+     * « Depuis le début » d'un programme en cours : lu depuis l'enregistrement du serveur, mais comme
+     * le direct (bandeau, menu des chaînes, zapping), avec le retard affiché et → pour le rattraper.
+     */
+    private var restarting = false
     /** Chaîne affichée (meilleure version), base du zapping. */
     private var channel: ChannelEntity? = null
     /** Ligne choisie dans les listes (une version précise : celle de sa catégorie). */
@@ -641,6 +650,8 @@ class PlayerViewModel(
     }
 
     private fun load(id: Long) {
+        // Autre chaîne : fin du replay (le programme revu appartenait à la chaîne quittée).
+        if (id != channelId) leaveReplay()
         stopTimeshift()
         channelId = id
         handle[ARG_CHANNEL_ID] = id
@@ -661,10 +672,13 @@ class PlayerViewModel(
         val primary = if (isLive && requested.variantKey.isNotEmpty()) dao.primaryOf(requested.sourceId, requested.variantKey) ?: requested else requested
         channel = primary
         listed = requested
-        if (replay != null && isLive) {
-            playReplay(requested, primary, replay)
+        val replayed = replay
+        if (replayed != null && isLive) {
+            // Programme encore en cours : « Depuis le début », avec le bandeau du direct.
+            playReplay(requested, primary, replayed, restart = replayed.second > System.currentTimeMillis())
             return
         }
+        restarting = false
         // Chaînes récentes de l'accueil.
         if (isLive) container.settings.addRecentChannel(primary.sourceId, primary.itemKey)
         sourceId.value = primary.sourceId
@@ -725,10 +739,15 @@ class PlayerViewModel(
         playVariant(variant, notice = null)
     }
 
-    /** Programme passé, lu depuis l'enregistrement du serveur Xtream (replay), avec les commandes d'un film. */
-    private suspend fun playReplay(requested: ChannelEntity, primary: ChannelEntity, programme: Pair<Long, Long>) {
+    /**
+     * Programme lu depuis l'enregistrement du serveur Xtream : un programme passé avec les commandes
+     * d'un film, ou ([restart]) le programme en cours depuis son début, présenté comme le direct en
+     * différé.
+     */
+    private suspend fun playReplay(requested: ChannelEntity, primary: ChannelEntity, programme: Pair<Long, Long>, restart: Boolean) {
         val (start, stop) = programme
         switcher = null
+        restarting = restart
         // Version enregistrée par le serveur : toutes les qualités ne le sont pas forcément.
         val recorded = requested.takeIf { it.catchupDays > 0 }
             ?: container.channelDao.recordedVersion(primary.sourceId, primary.variantKey)
@@ -743,23 +762,51 @@ class PlayerViewModel(
             DateUtils.FORMAT_SHOW_WEEKDAY or DateUtils.FORMAT_ABBREV_WEEKDAY or DateUtils.FORMAT_SHOW_DATE or
                 DateUtils.FORMAT_ABBREV_MONTH or DateUtils.FORMAT_SHOW_TIME,
         )
-        mutableState.update {
-            it.copy(
-                channelName = title ?: channelName,
-                channelNumber = null,
-                logoUrl = primary.logoUrl,
-                sourceName = source?.name.orEmpty(),
-                isLive = false,
-                replay = "$channelName  ·  $time",
-                now = null,
-                next = null,
-                match = null,
-                error = null,
-                quality = null,
-                qualityNotice = null,
-                buffering = true,
-                channelVersion = it.channelVersion + 1,
-            )
+        if (restart) {
+            container.settings.addRecentChannel(primary.sourceId, primary.itemKey)
+            sourceId.value = primary.sourceId
+            mutableState.update {
+                it.copy(
+                    channelName = channelName,
+                    channelNumber = primary.channelNumber,
+                    logoUrl = primary.logoUrl,
+                    sourceName = source?.name.orEmpty(),
+                    isLive = true,
+                    replay = null,
+                    // Retard sur le direct : il reste le même pendant la lecture, la pause l'augmente.
+                    liveDelayMs = (System.currentTimeMillis() - start).coerceAtLeast(0),
+                    paused = false,
+                    pausedAtMillis = null,
+                    now = null,
+                    next = null,
+                    match = null,
+                    error = null,
+                    quality = null,
+                    qualityNotice = null,
+                    buffering = true,
+                    channelVersion = it.channelVersion + 1,
+                )
+            }
+            refreshProgrammes()
+        } else {
+            mutableState.update {
+                it.copy(
+                    channelName = title ?: channelName,
+                    channelNumber = null,
+                    logoUrl = primary.logoUrl,
+                    sourceName = source?.name.orEmpty(),
+                    isLive = false,
+                    replay = "$channelName  ·  $time",
+                    now = null,
+                    next = null,
+                    match = null,
+                    error = null,
+                    quality = null,
+                    qualityNotice = null,
+                    buffering = true,
+                    channelVersion = it.channelVersion + 1,
+                )
+            }
         }
         val account = (source?.location as? SourceLocation.Remote)?.url?.let(XtreamAccount::parse)
         val url = if (source != null && account != null) {
@@ -840,8 +887,10 @@ class PlayerViewModel(
 
     private suspend fun refreshProgrammes() {
         val current = channel ?: return
-        if (current.kind != ContentKind.LIVE.name || replay != null) return
-        val now = System.currentTimeMillis()
+        if (current.kind != ContentKind.LIVE.name || (replay != null && !restarting)) return
+        // En différé : le programme à l'écran, pas celui du direct.
+        val shown = state.value
+        val now = System.currentTimeMillis() - shown.liveDelayMs - (shown.pausedAtMillis?.let { System.currentTimeMillis() - it } ?: 0)
         val upcoming = container.programmeDao.upcoming(current.id, now, limit = 2)
             .map { PlayerProgramme(it.title, it.startMillis, it.stopMillis) }
         val live = upcoming.firstOrNull()?.takeIf { it.startMillis <= now }
@@ -999,7 +1048,8 @@ class PlayerViewModel(
         val playback = request
         // Flux continu (MPEG-TS…) : le serveur le coupe si on cesse de le lire. Il est donc
         // enregistré pendant la pause, puis relu depuis l'enregistrement.
-        if (timeshift == null && playback != null && !playingAsHls && playback.stream.format in RECORDABLE_FORMATS) {
+        // « Depuis le début » : l'enregistrement est celui du serveur, il suffit d'arrêter la lecture.
+        if (!restarting && timeshift == null && playback != null && !playingAsHls && playback.stream.format in RECORDABLE_FORMATS) {
             // Le lecteur libère d'abord sa connexion (l'image reste affichée) : beaucoup de
             // fournisseurs n'acceptent qu'une connexion à la fois.
             player.stop()
@@ -1039,8 +1089,13 @@ class PlayerViewModel(
         mutablePlayer.value = player
     }
 
-    /** Retour au direct : fin du différé. */
+    /** Retour au direct : fin du différé (ou de « Depuis le début »). */
     fun backToLive() {
+        if (restarting) {
+            leaveReplay()
+            load(channelId)
+            return
+        }
         val wasDelayed = state.value.liveDelayMs > 0 || state.value.paused
         val hadRecording = timeshift != null
         stopTimeshift()
@@ -1055,6 +1110,16 @@ class PlayerViewModel(
         }
     }
 
+    /** Fin du replay : la chaîne se lit de nouveau en direct (aussi après une recréation de l'écran). */
+    private fun leaveReplay() {
+        if (replay == null && !restarting) return
+        replay = null
+        restarting = false
+        handle[ARG_REPLAY_START] = 0L
+        handle[ARG_REPLAY_STOP] = 0L
+        mutableState.update { it.copy(replay = null) }
+    }
+
     private fun stopTimeshift() {
         recorder?.stop()
         recorder = null
@@ -1067,7 +1132,8 @@ class PlayerViewModel(
     private fun timeshiftLimit(): Long = minOf(TIMESHIFT_MAX_BYTES, context.cacheDir.usableSpace / 2)
 
     private fun onEnded() {
-        if (playingTimeshift) {
+        // « Depuis le début » : l'enregistrement a rattrapé le direct.
+        if (playingTimeshift || restarting) {
             // Fin de l'enregistrement (limite atteinte ou flux arrêté) : retour au direct.
             backToLive()
             return

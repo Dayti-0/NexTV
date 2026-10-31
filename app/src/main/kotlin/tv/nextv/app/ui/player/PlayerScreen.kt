@@ -579,14 +579,16 @@ private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Mo
             Text(it, style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.85f), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         state.now?.let { programme ->
+            // En différé (pause, « Depuis le début ») : la progression de ce qui est à l'écran.
+            val watched = if (state.isLive) now - liveDelay(state, now) else now
             Text(programme.title, style = MaterialTheme.typography.titleLarge, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
             state.match?.let { MatchScore(it) }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.widthIn(max = 640.dp)) {
                 Text(timeOf(programme.startMillis), style = MaterialTheme.typography.labelLarge, color = Color.White)
-                LiveProgress(programme.startMillis, programme.stopMillis, now, Modifier.weight(1f))
+                LiveProgress(programme.startMillis, programme.stopMillis, watched, Modifier.weight(1f))
                 Text(timeOf(programme.stopMillis), style = MaterialTheme.typography.labelLarge, color = Color.White)
                 Text(
-                    stringResource(R.string.player_remaining, formatDuration((programme.stopMillis - now).coerceAtLeast(0))),
+                    stringResource(R.string.player_remaining, formatDuration((programme.stopMillis - watched).coerceAtLeast(0))),
                     style = MaterialTheme.typography.labelMedium,
                     color = Color.White.copy(alpha = 0.7f),
                 )

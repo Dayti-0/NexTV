@@ -67,7 +67,8 @@ Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3, enti�
   catégories choisie est reprise à l'ouverture du guide.
 - **Replay** (comptes Xtream dont le serveur enregistre les chaînes) : les programmes passés disponibles portent
   l'icône ↺ dans le guide ; « Revoir » les lit depuis l'enregistrement du serveur (avance / retour comme un film),
-  « Depuis le début » relance le programme en cours.
+  « Depuis le début » relance le programme en cours en différé, comme le direct : bandeau avec le retard
+  (« Différé −25:12 »), → pour rattraper le direct, liste des chaînes sur « Retour », zapping et options.
 - **Sauvegarde** (Réglages › Sauvegarde) : playlists avec leurs identifiants, favoris, catégories masquées et
   réglages dans un fichier JSON, à restaurer après une réinstallation ou sur un autre appareil (sans sélecteur de
   fichiers, comme sur Fire TV, le fichier va dans le dossier de l'application).
