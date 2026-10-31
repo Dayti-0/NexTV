@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import tv.nextv.app.data.security.KeystoreSecretCipher
+import tv.nextv.app.ui.theme.ThemeStyle
 import tv.nextv.core.backup.SettingBackup
 import tv.nextv.core.net.DnsProvider
 import tv.nextv.core.net.ProxyScope
@@ -99,6 +100,7 @@ class SettingsRepository(
             GridColumns(
                 channels = (prefs[CHANNEL_COLUMNS] ?: GridColumns.DEFAULT_CHANNELS).coerceIn(GridColumns.CHANNELS),
                 posters = (prefs[POSTER_COLUMNS] ?: GridColumns.DEFAULT_POSTERS).coerceIn(GridColumns.POSTERS),
+                channelList = prefs[CHANNEL_LIST] ?: false,
             )
         }
         .distinctUntilChanged()
@@ -107,7 +109,17 @@ class SettingsRepository(
         dataStore.edit { prefs ->
             prefs[CHANNEL_COLUMNS] = columns.channels.coerceIn(GridColumns.CHANNELS)
             prefs[POSTER_COLUMNS] = columns.posters.coerceIn(GridColumns.POSTERS)
+            prefs[CHANNEL_LIST] = columns.channelList
         }
+    }
+
+    /** Thème de l'interface. */
+    val themeStyle: Flow<ThemeStyle> = dataStore.data
+        .map { prefs -> prefs[THEME_STYLE]?.let { name -> ThemeStyle.entries.firstOrNull { it.name == name } } ?: ThemeStyle.NIGHT }
+        .distinctUntilChanged()
+
+    suspend fun setThemeStyle(style: ThemeStyle) {
+        dataStore.edit { it[THEME_STYLE] = style.name }
     }
 
     /** Format de l'image dans le lecteur. */
@@ -309,6 +321,8 @@ class SettingsRepository(
         val START_ON_LAST_CHANNEL = booleanPreferencesKey("start_on_last_channel")
         val FAVORITE_TEAMS = stringPreferencesKey("favorite_teams")
         val LOWER_AD_VOLUME = booleanPreferencesKey("lower_ad_volume")
+        val THEME_STYLE = stringPreferencesKey("theme_style")
+        val CHANNEL_LIST = booleanPreferencesKey("channel_list")
 
         /** Réglages de la version 0.2.10 retirés depuis (rappels, code parental). */
         val OBSOLETE = setOf("reminders", "parental_pin")
@@ -328,7 +342,12 @@ class SettingsRepository(
 enum class AspectMode { FIT, FILL, ZOOM }
 
 /** Éléments par ligne des grilles de l'accueil sur TV et tablette (le téléphone garde sa disposition). */
-data class GridColumns(val channels: Int = DEFAULT_CHANNELS, val posters: Int = DEFAULT_POSTERS) {
+data class GridColumns(
+    val channels: Int = DEFAULT_CHANNELS,
+    val posters: Int = DEFAULT_POSTERS,
+    /** Chaînes en liste (logo, nom, programme en cours) plutôt qu'en mosaïque. */
+    val channelList: Boolean = false,
+) {
     companion object {
         val CHANNELS = 3..9
         val POSTERS = 4..10

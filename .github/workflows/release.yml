@@ -132,11 +132,12 @@ jobs:
           **Fonctionnalités**
           - Démarrage direct sur la dernière playlist, avec progression réelle du chargement
           - Accueil TV, Films, Séries, Guide TV et Foot, favoris (appui long sur OK) réorganisables, chaînes récentes
-          - Section TV : aperçu vidéo et programme de la chaîne sélectionnée ; catégories masquables
+          - Section TV : aperçu vidéo et programme de la chaîne sélectionnée ; catégories de chaînes, films et séries masquables
+          - Interface au choix : thèmes bleu nuit, noir profond, cinéma ou violet ; chaînes en mosaïque ou en liste
           - Foot : matchs à venir (Ligue 1, Premier League, Liga, Serie A, Bundesliga, coupes d'Europe, équipes nationales) avec la chaîne qui les diffuse, scores en direct, classements et « Mes équipes »
           - Guide TV depuis la veille, replay des programmes passés (comptes Xtream qui enregistrent)
           - Fiches films et séries enrichies par TMDB (clé d'API à saisir dans les réglages)
-          - Lecteur : bandeau avec heure, programme et débit, zapping haut/bas, liste des chaînes sur « Retour » (catégories avec gauche/droite), options sur Menu (audio, sous-titres, format de l'image), dernière chaîne regardée sur ⏪
+          - Lecteur : bandeau avec heure, programme et débit, zapping haut/bas, liste des chaînes sur « Retour » (catégories avec gauche/droite), options sur Menu (audio, sous-titres, format de l'image), dernière chaîne regardée sur ⏪, score des matchs en direct, option pour baisser le son des pubs
           - Pause du direct (OK) avec affichage du retard sur le direct, retour au direct avec droite
           - Reprise de lecture des films et séries (catégorie « Reprendre la lecture », bouton sur les fiches)
           - Qualité automatique FHD → HD → SD → LOW entre les versions de la playlist (désactivable) : baisse en cas de blocage ou si l'appareil perd des images, remonte à l'essai quand la lecture est stable

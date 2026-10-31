@@ -12,8 +12,11 @@ Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3, enti�
   Section TV sur TV et tablette : panneau du haut avec l'aperçu vidéo (sans le son) de la chaîne sélectionnée, son
   programme en cours (horaires, progression, description) et le suivant ; désactivable dans Réglages › Affichage.
   Catégorie « Récentes » : les 30 dernières chaînes regardées.
-  Catégories de chaînes masquables (appui long sur une catégorie, ou Réglages › Catégories de chaînes) :
-  leurs chaînes disparaissent des listes, de la recherche, du zapping et du guide ; les favoris restent visibles.
+  Catégories masquables, pour les chaînes comme pour les films et les séries (appui long sur une catégorie, ou
+  Réglages › Affichage) : leur contenu disparaît des listes et de la recherche (et du zapping et du guide pour les
+  chaînes) ; les favoris restent visibles.
+  Interface au choix (Réglages › Affichage) : thème bleu nuit, noir profond, cinéma (noir et rouge) ou violet ;
+  chaînes en mosaïque de vignettes ou en liste avec le programme en cours.
 - **Foot** : matchs des 8 prochains jours par compétition (Ligue 1, Premier League, Liga, Serie A, Bundesliga, Ligue
   des champions, Ligue Europa, Ligue Conférence, équipes nationales), par jour, avec les écussons et la chaîne de la
   playlist qui les diffuse ; score en direct pendant les matchs (actualisé toutes les 2 min), classement des
@@ -31,7 +34,11 @@ Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3, enti�
   lancer, appui long sur OK pour la fiche du programme avec sa description), un second Retour la ferme.
   Touche Menu : piste audio, sous-titres, format de l'image (adapté, étiré, agrandi) ; ⏪ ou « chaîne précédente »
   de la télécommande : retour à la dernière chaîne regardée. Option « Démarrer sur la dernière chaîne » (Réglages ›
-  Lecture). Chaque chaîne démarre sur la qualité qui a fonctionné la dernière fois.
+  Lecture). Chaque chaîne démarre sur la qualité qui a fonctionné la dernière fois. Pendant un match connu de
+  football-data.org, le bandeau affiche les écussons et le score.
+  Option « Baisser le son des pubs » (Réglages › Lecture ou touche Menu) : les flux IPTV ne signalent pas les
+  publicités, elles sont repérées à leur niveau sonore (nettement plus fort que le programme pendant quelques
+  secondes) ; le son est alors baissé presque au minimum, puis rétabli au retour du programme.
 - **Serveurs de secours** (éditeur de playlist, lien ou compte Xtream) : autres adresses du même fournisseur ; si le
   serveur principal ne répond pas, la playlist et les flux passent par elles avec les mêmes identifiants. Les
   comptes Xtream affichent leur abonnement dans les réglages (actif, date de fin, connexions simultanées).

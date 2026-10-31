@@ -54,6 +54,8 @@ import tv.nextv.app.ui.startup.StartupContent
 import tv.nextv.app.ui.startup.StartupStep
 import tv.nextv.app.ui.startup.WelcomeScreen
 import tv.nextv.app.ui.theme.NexTvTheme
+import tv.nextv.app.ui.theme.ThemeStyle
+import tv.nextv.app.ui.player.PlayerMatch
 import tv.nextv.core.log.Redactor
 import tv.nextv.core.model.ContentKind
 import java.util.TimeZone
@@ -69,9 +71,9 @@ abstract class ScreenshotSuite(private val device: String) {
         TimeZone.setDefault(TimeZone.getTimeZone("Europe/Paris"))
     }
 
-    private fun capture(name: String, content: @Composable () -> Unit) {
+    private fun capture(name: String, theme: ThemeStyle = ThemeStyle.NIGHT, content: @Composable () -> Unit) {
         captureRoboImage("build/screenshots/${device}_$name.png") {
-            NexTvTheme { content() }
+            NexTvTheme(theme) { content() }
         }
     }
 
@@ -139,6 +141,21 @@ abstract class ScreenshotSuite(private val device: String) {
     @Test
     fun homeContinue() = capture("08b_reprendre") {
         Home(HomeSection.SERIES, Category.ContinueWatching)
+    }
+
+    @Test
+    fun homeCinema() = capture("05d_accueil_cinema", ThemeStyle.CINEMA) {
+        Home(HomeSection.TV, Category.All)
+    }
+
+    @Test
+    fun homeList() = capture("05e_accueil_liste") {
+        Home(HomeSection.TV, Category.All, grid = GridColumns(channelList = true))
+    }
+
+    @Test
+    fun homeViolet() = capture("05f_accueil_violet", ThemeStyle.VIOLET) {
+        Home(HomeSection.MOVIES, Category.All)
     }
 
     @Test
@@ -244,6 +261,20 @@ abstract class ScreenshotSuite(private val device: String) {
             now = SampleData.NOW,
             visible = true,
             showTouchControls = device == "phone",
+            onBack = {},
+            onZap = {},
+            onRetry = {},
+        )
+    }
+
+    @Test
+    fun playerMatch() = capture("13e_lecteur_match") {
+        FakeVideo()
+        PlayerOverlay(
+            state = SampleData.player.copy(match = PlayerMatch("PSG", "Marseille", null, null, "1 – 0", live = true), adMuted = true),
+            now = SampleData.NOW,
+            visible = true,
+            showTouchControls = false,
             onBack = {},
             onZap = {},
             onRetry = {},

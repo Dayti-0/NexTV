@@ -78,6 +78,7 @@ import tv.nextv.app.ui.editor.SectionCard
 import tv.nextv.app.ui.editor.ToggleRow
 import tv.nextv.app.ui.theme.NexTvColors
 import tv.nextv.app.ui.theme.NexTvIcons
+import tv.nextv.app.ui.theme.ThemeStyle
 import tv.nextv.core.epg.HttpEpgFeedProvider
 import tv.nextv.core.model.ContentKind
 import tv.nextv.core.net.DnsProvider
@@ -216,6 +217,8 @@ fun SettingsScreen(
         onChannelPreview = viewModel::setChannelPreview,
         onStartOnLastChannel = viewModel::setStartOnLastChannel,
         onLowerAdVolume = viewModel::setLowerAdVolume,
+        onCycleTheme = viewModel::cycleTheme,
+        onToggleChannelList = viewModel::toggleChannelList,
         onCycleDns = viewModel::cycleDns,
         update = update,
         onCheckUpdate = viewModel::checkUpdate,
@@ -251,6 +254,8 @@ fun SettingsContent(
     onChannelPreview: (Boolean) -> Unit = {},
     onStartOnLastChannel: (Boolean) -> Unit = {},
     onLowerAdVolume: (Boolean) -> Unit = {},
+    onCycleTheme: () -> Unit = {},
+    onToggleChannelList: () -> Unit = {},
     onCycleDns: () -> Unit = {},
     update: UpdateState = UpdateState.Idle,
     onCheckUpdate: () -> Unit = {},
@@ -341,6 +346,17 @@ fun SettingsContent(
                     // Affichage de l'accueil.
                     SectionCard(stringResource(R.string.settings_display), icon = NexTvIcons.Grid) {
                         val grid = state.gridColumns
+                        // Interface : thème de couleurs et disposition des chaînes.
+                        ValueRow(
+                            title = stringResource(R.string.settings_theme),
+                            value = themeLabel(state.theme),
+                            onClick = onCycleTheme,
+                        )
+                        ValueRow(
+                            title = stringResource(R.string.settings_channel_layout),
+                            value = stringResource(if (grid.channelList) R.string.settings_channel_layout_list else R.string.settings_channel_layout_grid),
+                            onClick = onToggleChannelList,
+                        )
                         NumberRow(
                             title = stringResource(R.string.settings_channel_columns),
                             value = grid.channels,
@@ -630,6 +646,16 @@ private fun ReleaseInfo(release: AppRelease, installed: String) {
 }
 
 private fun megabytes(bytes: Long): String = String.format(Locale.FRANCE, "%.1f", bytes / 1_000_000.0)
+
+@Composable
+private fun themeLabel(style: ThemeStyle): String = stringResource(
+    when (style) {
+        ThemeStyle.NIGHT -> R.string.theme_night
+        ThemeStyle.BLACK -> R.string.theme_black
+        ThemeStyle.CINEMA -> R.string.theme_cinema
+        ThemeStyle.VIOLET -> R.string.theme_violet
+    },
+)
 
 @Composable
 private fun dnsLabel(dns: DnsProvider): String = when (dns) {

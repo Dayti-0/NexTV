@@ -618,7 +618,10 @@ private fun SectionBody(
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val start = if (window.isWide) 28.dp else window.horizontalPadding
             val usable = maxWidth - start - window.horizontalPadding
-            val columns = if (window.isWide) {
+            val columns = if (section == HomeSection.TV && gridColumns.channelList) {
+                // Disposition « liste » (réglages) : une chaîne par ligne avec son programme.
+                1
+            } else if (window.isWide) {
                 // TV, tablette : nombre choisi dans les réglages, dans la limite de la largeur.
                 val wanted = if (section == HomeSection.TV) gridColumns.channels else gridColumns.posters
                 val fitting = ((usable + gridSpacing(wanted)) / (MIN_CELL + gridSpacing(wanted))).toInt()

@@ -10,6 +10,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.material3.Surface
 import tv.nextv.app.ui.NexTvNavHost
 import tv.nextv.app.ui.theme.NexTvTheme
+import tv.nextv.app.ui.theme.ThemeStyle
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 
 class MainActivity : ComponentActivity() {
 
@@ -24,8 +27,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         if (savedInstanceState == null) readPlaylistImport(intent)
+        val settings = (application as NexTvApplication).container.settings
         setContent {
-            NexTvTheme {
+            val theme by settings.themeStyle.collectAsState(initial = ThemeStyle.NIGHT)
+            NexTvTheme(theme) {
                 Surface {
                     NexTvNavHost()
                 }

@@ -331,6 +331,14 @@
     <string name="settings_channel_preview_help">À l’accueil, la chaîne sélectionnée démarre en petit, sans le son, au bout d’une seconde. À désactiver si l’abonnement n’autorise qu’une connexion à la fois ou si l’appareil est lent.</string>
     <string name="settings_channel_groups">Catégories de chaînes</string>
     <string name="settings_movie_groups">Catégories de films</string>
+    <string name="settings_theme">Thème de l’interface</string>
+    <string name="theme_night">Bleu nuit (par défaut)</string>
+    <string name="theme_black">Noir profond</string>
+    <string name="theme_cinema">Cinéma (noir et rouge)</string>
+    <string name="theme_violet">Violet</string>
+    <string name="settings_channel_layout">Chaînes à l’accueil</string>
+    <string name="settings_channel_layout_grid">Mosaïque de vignettes</string>
+    <string name="settings_channel_layout_list">Liste avec le programme en cours</string>
     <string name="settings_series_groups">Catégories de séries</string>
     <string name="settings_channel_groups_visible">Toutes visibles</string>
     <string name="channel_groups_help">Désactivez une catégorie pour la masquer : ses chaînes n’apparaissent plus dans les listes, la recherche, le zapping ni le guide. Les favoris restent visibles. À l’accueil, un appui long sur une catégorie la masque aussi.</string>
