@@ -20,6 +20,7 @@ object ContentClassifier {
         val episode: EpisodeInfo?,
     )
 
+    private val XTREAM_STREAM = Regex("""\d+(\.(ts|m3u8))?""")
     private val VOD_EXTENSIONS = setOf("mp4", "mkv", "avi", "mov", "m4v", "wmv", "mpg", "mpeg", "webm")
     private val MOVIE_GROUP_WORDS = setOf("VOD", "FILM", "FILMS", "MOVIE", "MOVIES", "CINEMAS VOD")
     private val SERIES_GROUP_WORDS = setOf("SERIE", "SERIES", "TVSHOWS", "TV SHOWS", "SHOWS")
@@ -89,6 +90,9 @@ object ContentClassifier {
             segments.any { it == "movie" || it == "movies" || it == "vod" } -> return ContentKind.MOVIE
             segments.any { it == "series" || it == "serie" } -> return ContentKind.SERIES
             segments.any { it == "live" } -> return ContentKind.LIVE
+            // Flux en direct Xtream sans « /live/ » (« /identifiant/mot-de-passe/1234 » ou « …/1234.ts ») :
+            // les chaînes 24h/24 rangées dans un groupe « Séries » ou « Films » restent des chaînes.
+            segments.size == 3 && XTREAM_STREAM.matches(segments[2]) -> return ContentKind.LIVE
         }
 
         when (groupHint(groupTitle)) {

@@ -60,8 +60,8 @@ data class SettingsUiState(
     /** Chaînes et affiches par ligne à l'accueil. */
     val gridColumns: GridColumns = GridColumns(),
     val dns: DnsProvider = DnsProvider.SYSTEM,
-    /** Catégories de chaînes masquées dans la playlist active. */
-    val hiddenChannelGroups: Int = 0,
+    /** Catégories masquées dans la playlist active, par type de contenu. */
+    val hiddenGroups: Map<ContentKind, Int> = emptyMap(),
     /** Aperçu vidéo de la chaîne sélectionnée à l'accueil. */
     val channelPreview: Boolean = true,
     /** Lecture directe de la dernière chaîne regardée à l'ouverture. */
@@ -88,13 +88,23 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
     private val settings = container.settings
     private val repository = container.sourceRepository
 
-    private val hiddenChannelGroups: Flow<Int> = settings.activePlaylistId.flatMapLatest { id ->
-        if (id == null) flowOf(0) else container.hiddenGroupDao.observeCount(id, ContentKind.LIVE.name)
+    /** Catégories masquées de la playlist active, par type de contenu. */
+    private val hiddenGroups: Flow<Map<ContentKind, Int>> = settings.activePlaylistId.flatMapLatest { id ->
+        if (id == null) {
+            flowOf(emptyMap())
+        } else {
+            val dao = container.hiddenGroupDao
+            combine(
+                dao.observeCount(id, ContentKind.LIVE.name),
+                dao.observeCount(id, ContentKind.MOVIE.name),
+                dao.observeCount(id, ContentKind.SERIES.name),
+            ) { live, movies, series -> mapOf(ContentKind.LIVE to live, ContentKind.MOVIE to movies, ContentKind.SERIES to series) }
+        }
     }
 
-    /** Playlist active, nombre de playlists et catégories de chaînes masquées. */
-    private val activePlaylist: Flow<Triple<PlaylistSource?, Int, Int>> =
-        combine(repository.sources, settings.activePlaylistId, hiddenChannelGroups) { sources, id, hidden ->
+    /** Playlist active, nombre de playlists et catégories masquées. */
+    private val activePlaylist: Flow<Triple<PlaylistSource?, Int, Map<ContentKind, Int>>> =
+        combine(repository.sources, settings.activePlaylistId, hiddenGroups) { sources, id, hidden ->
             Triple(sources.firstOrNull { it.id == id }, sources.size, hidden)
         }
 
@@ -160,7 +170,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             decoders = decoders,
             gridColumns = prefs.grid,
             dns = prefs.dns,
-            hiddenChannelGroups = hidden,
+            hiddenGroups = hidden,
             channelPreview = prefs.channelPreview,
             startOnLastChannel = prefs.startOnLastChannel,
         )

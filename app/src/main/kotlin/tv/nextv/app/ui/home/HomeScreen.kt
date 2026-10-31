@@ -247,7 +247,7 @@ fun HomeScreen(
             text = { Text(stringResource(R.string.category_hide_message)) },
             confirmButton = {
                 TextButton(onClick = {
-                    viewModel.hideChannelGroup(title)
+                    viewModel.hideGroup(title)
                     pendingHide = null
                 }) { Text(stringResource(R.string.category_hide)) }
             },
@@ -472,7 +472,7 @@ private fun CatalogSection(
     body: @Composable (grid: GridLayout) -> Unit,
 ) {
     // Chaînes : appui long sur une catégorie pour la masquer.
-    val hide: (String) -> (() -> Unit)? = { title -> if (section == HomeSection.TV) ({ actions.onHideCategory(title) }) else null }
+    val hide: (String) -> (() -> Unit)? = { title -> if (section.kind() != null) ({ actions.onHideCategory(title) }) else null }
     if (window.isWide) {
         Row(modifier.fillMaxSize()) {
             Column(

@@ -60,6 +60,9 @@ class ContentClassifierTest {
         assertEquals(ContentKind.LIVE, ContentClassifier.classify("TF1", "http://h:8080/live/u/p/1.ts", "FR").kind)
         assertEquals(ContentKind.MOVIE, ContentClassifier.classify("Avatar (2009)", "http://h:8080/movie/u/p/2.mkv", "VOD").kind)
         assertEquals(ContentKind.SERIES, ContentClassifier.classify("Dark S01 E01", "http://h:8080/series/u/p/3.mp4", null).kind)
+        // Chaînes 24h/24 d'un groupe « Séries » : flux en direct Xtream, sans « /live/ ».
+        assertEquals(ContentKind.LIVE, ContentClassifier.classify("FR| Friends 24/7", "http://h:8080/u/p/4", "FR| SÉRIES 24/7").kind)
+        assertEquals(ContentKind.LIVE, ContentClassifier.classify("Kaamelott S01E01", "http://h:8080/u/p/5.ts", "SERIES TV").kind)
     }
 
     @Test

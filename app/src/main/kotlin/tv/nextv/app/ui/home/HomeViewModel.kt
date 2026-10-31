@@ -113,16 +113,18 @@ class HomeViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     init {
-        // Catégorie de chaînes masquée (ici ou dans les réglages) : retour à « Toutes ».
-        viewModelScope.launch {
-            sourceId.filterNotNull()
-                .flatMapLatest { hiddenGroups.observeTitles(it, ContentKind.LIVE.name) }
-                .collect { hidden ->
-                    categories.update { current ->
-                        val selected = current[HomeSection.TV] as? Category.Group
-                        if (selected != null && selected.title in hidden) current + (HomeSection.TV to Category.All) else current
+        // Catégorie masquée (ici ou dans les réglages) : retour à « Toutes » dans sa section.
+        for (section in listOf(HomeSection.TV, HomeSection.MOVIES, HomeSection.SERIES)) {
+            viewModelScope.launch {
+                sourceId.filterNotNull()
+                    .flatMapLatest { hiddenGroups.observeTitles(it, checkNotNull(section.kind()).name) }
+                    .collect { hidden ->
+                        categories.update { current ->
+                            val selected = current[section] as? Category.Group
+                            if (selected != null && selected.title in hidden) current + (section to Category.All) else current
+                        }
                     }
-                }
+            }
         }
     }
 
@@ -292,10 +294,12 @@ class HomeViewModel(
     }
 
     /** Masque une catégorie de chaînes ([title] vide : chaînes sans groupe). */
-    fun hideChannelGroup(title: String) {
+    /** Masque la catégorie [title] de la section affichée (chaînes, films ou séries). */
+    fun hideGroup(title: String) {
         val id = sourceId.value ?: return
+        val kind = section.value.kind() ?: return
         viewModelScope.launch {
-            hiddenGroups.hide(HiddenGroupEntity(id, ContentKind.LIVE.name, title))
+            hiddenGroups.hide(HiddenGroupEntity(id, kind.name, title))
             val name = title.ifEmpty { resources.getString(R.string.channels_no_group) }
             mutableMessages.emit(resources.getString(R.string.category_hidden, name))
         }

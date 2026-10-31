@@ -183,8 +183,8 @@
     <string name="favorite_removed">« %1$s » retiré des favoris</string>
     <string name="category_hide">Masquer</string>
     <string name="category_hide_title">Masquer « %1$s » ?</string>
-    <string name="category_hide_message">Ses chaînes n’apparaîtront plus dans les listes, la recherche, le zapping ni le guide. Les favoris restent visibles. Pour la réafficher : Réglages › Catégories de chaînes.</string>
-    <string name="category_hidden">« %1$s » masquée. Pour la réafficher : Réglages › Catégories de chaînes</string>
+    <string name="category_hide_message">Son contenu n’apparaîtra plus dans les listes ni la recherche (ni le zapping et le guide pour une catégorie de chaînes). Les favoris restent visibles. Pour la réafficher : Réglages › Affichage.</string>
+    <string name="category_hidden">« %1$s » masquée. Pour la réafficher : Réglages › Affichage</string>
 
     <!-- Fiche film / série -->
     <string name="detail_loading">Recherche des informations…</string>
@@ -326,10 +326,16 @@
     <string name="settings_channel_preview">Aperçu de la chaîne sélectionnée</string>
     <string name="settings_channel_preview_help">À l’accueil, la chaîne sélectionnée démarre en petit, sans le son, au bout d’une seconde. À désactiver si l’abonnement n’autorise qu’une connexion à la fois ou si l’appareil est lent.</string>
     <string name="settings_channel_groups">Catégories de chaînes</string>
+    <string name="settings_movie_groups">Catégories de films</string>
+    <string name="settings_series_groups">Catégories de séries</string>
     <string name="settings_channel_groups_visible">Toutes visibles</string>
     <string name="channel_groups_help">Désactivez une catégorie pour la masquer : ses chaînes n’apparaissent plus dans les listes, la recherche, le zapping ni le guide. Les favoris restent visibles. À l’accueil, un appui long sur une catégorie la masque aussi.</string>
     <string name="channel_groups_show_all">Tout afficher</string>
     <string name="channel_groups_empty">Aucune catégorie de chaînes dans la playlist active.</string>
+    <string name="movie_groups_help">Désactivez une catégorie pour la masquer : ses films n’apparaissent plus dans les listes ni la recherche. Les favoris restent visibles. À l’accueil, un appui long sur une catégorie la masque aussi.</string>
+    <string name="series_groups_help">Désactivez une catégorie pour la masquer : ses séries n’apparaissent plus dans les listes ni la recherche. Les favoris restent visibles. À l’accueil, un appui long sur une catégorie la masque aussi.</string>
+    <string name="movie_groups_empty">Aucune catégorie de films dans la playlist active.</string>
+    <string name="series_groups_empty">Aucune catégorie de séries dans la playlist active.</string>
     <string name="settings_columns_help">Gauche / droite pour changer le nombre, sur TV et tablette. Plus il y en a, plus les vignettes sont petites et plus on en voit à la fois.</string>
     <string name="settings_auto_quality">Qualité automatique</string>
     <string name="settings_auto_quality_help">Passe en qualité inférieure (FHD → HD → SD → LOW) si la connexion faiblit, puis revient à la meilleure dès que possible. Seules les versions de la même chaîne présentes dans la playlist sont utilisées.</string>

@@ -79,6 +79,7 @@ import tv.nextv.app.ui.editor.ToggleRow
 import tv.nextv.app.ui.theme.NexTvColors
 import tv.nextv.app.ui.theme.NexTvIcons
 import tv.nextv.core.epg.HttpEpgFeedProvider
+import tv.nextv.core.model.ContentKind
 import tv.nextv.core.net.DnsProvider
 import tv.nextv.core.backup.BackupFormatException
 import tv.nextv.core.repository.RefreshResult
@@ -96,7 +97,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onPlaylists: () -> Unit,
     onProxy: () -> Unit,
-    onChannelGroups: () -> Unit = {},
+    onGroups: (ContentKind) -> Unit = {},
     onRestored: () -> Unit = {},
 ) {
     val viewModel = appViewModel { container, _ -> SettingsViewModel(container) }
@@ -190,7 +191,7 @@ fun SettingsScreen(
         onSaveFootballKey = viewModel::saveFootballKey,
         onClearFootballKey = viewModel::clearFootballKey,
         onProxy = onProxy,
-        onChannelGroups = onChannelGroups,
+        onGroups = onGroups,
         onBackup = {
             try {
                 createDocument.launch(BACKUP_FILE_NAME)
@@ -243,7 +244,7 @@ fun SettingsContent(
     onProxy: () -> Unit,
     onSaveFootballKey: (String) -> Unit = {},
     onClearFootballKey: () -> Unit = {},
-    onChannelGroups: () -> Unit = {},
+    onGroups: (ContentKind) -> Unit = {},
     onCycleDecoder: (String) -> Unit = {},
     onGridColumns: (GridColumns) -> Unit = {},
     onChannelPreview: (Boolean) -> Unit = {},
@@ -352,15 +353,23 @@ fun SettingsContent(
                             onChange = onChannelPreview,
                         )
                         if (state.playlist != null) {
-                            ValueRow(
-                                title = stringResource(R.string.settings_channel_groups),
-                                value = if (state.hiddenChannelGroups == 0) {
-                                    stringResource(R.string.settings_channel_groups_visible)
-                                } else {
-                                    resources.getQuantityString(R.plurals.channel_groups_hidden, state.hiddenChannelGroups, state.hiddenChannelGroups)
-                                },
-                                onClick = onChannelGroups,
-                            )
+                            // Catégories masquables : chaînes, films, séries.
+                            listOf(
+                                ContentKind.LIVE to R.string.settings_channel_groups,
+                                ContentKind.MOVIE to R.string.settings_movie_groups,
+                                ContentKind.SERIES to R.string.settings_series_groups,
+                            ).forEach { (kind, title) ->
+                                val hidden = state.hiddenGroups[kind] ?: 0
+                                ValueRow(
+                                    title = stringResource(title),
+                                    value = if (hidden == 0) {
+                                        stringResource(R.string.settings_channel_groups_visible)
+                                    } else {
+                                        resources.getQuantityString(R.plurals.channel_groups_hidden, hidden, hidden)
+                                    },
+                                    onClick = { onGroups(kind) },
+                                )
+                            }
                         }
                     }
 

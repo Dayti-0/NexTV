@@ -44,7 +44,7 @@ private object Routes {
     const val SERIES = "series/{$ARG_ITEM}"
     const val SETTINGS = "settings"
     const val PROXY = "proxy"
-    const val CHANNEL_GROUPS = "channel-groups"
+    const val GROUPS = "groups/{$ARG_KIND}"
 
     fun startup(reload: Boolean = false) = "startup?${StartupViewModel.ARG_RELOAD}=$reload"
     fun editor(sourceId: Long? = null) = "editor?${SourceEditorViewModel.ARG_SOURCE_ID}=${sourceId ?: -1}"
@@ -53,11 +53,13 @@ private object Routes {
     /** Programme passé d'une chaîne avec replay. */
     fun replay(channelId: Long, startMillis: Long, stopMillis: Long) =
         "player/$channelId?${PlayerViewModel.ARG_REPLAY_START}=$startMillis&${PlayerViewModel.ARG_REPLAY_STOP}=$stopMillis"
+    fun groups(kind: ContentKind) = "groups/${kind.name}"
     fun movie(channelId: Long) = "movie/$channelId"
     fun series(channelId: Long) = "series/$channelId"
 }
 
 private const val ARG_ITEM = "itemId"
+private const val ARG_KIND = "kind"
 
 /**
  * Démarrage → accueil (ou bienvenue sans playlist). Changer de playlist active repasse par
@@ -172,7 +174,7 @@ private fun AppNavHost(navController: NavHostController) {
                 onBack = { navController.popBackStack() },
                 onPlaylists = { navController.navigate(Routes.PLAYLISTS) },
                 onProxy = { navController.navigate(Routes.PROXY) },
-                onChannelGroups = { navController.navigate(Routes.CHANNEL_GROUPS) },
+                onGroups = { navController.navigate(Routes.groups(it)) },
                 onRestored = { navController.restartAt(Routes.startup(reload = true)) },
             )
         }
@@ -201,8 +203,9 @@ private fun AppNavHost(navController: NavHostController) {
         composable(Routes.PROXY) {
             ProxySettingsScreen(onBack = { navController.popBackStack() })
         }
-        composable(Routes.CHANNEL_GROUPS) {
-            ChannelGroupsScreen(onBack = { navController.popBackStack() })
+        composable(Routes.GROUPS, arguments = listOf(navArgument(ARG_KIND) { type = NavType.StringType })) { entry ->
+            val kind = ContentKind.entries.firstOrNull { it.name == entry.arguments?.getString(ARG_KIND) } ?: ContentKind.LIVE
+            ChannelGroupsScreen(kind = kind, onBack = { navController.popBackStack() })
         }
     }
 }

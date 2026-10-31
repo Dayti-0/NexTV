@@ -321,6 +321,7 @@ interface ChannelDao {
         """
         SELECT id, title, year, logoUrl, groupTitle, itemKey, streamSupport FROM channels
         WHERE sourceId = :sourceId AND kind = 'MOVIE'
+          AND IFNULL(groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'MOVIE')
           AND (:filterGroup = 0 OR IFNULL(groupTitle, '') = :group)
           AND (:query = '' OR title LIKE '%' || :query || '%' ESCAPE '\')
         ORDER BY position
@@ -347,6 +348,7 @@ interface ChannelDao {
         SELECT id, seriesName AS title, year, logoUrl, groupTitle, itemKey, COUNT(*) AS episodeCount, MIN(position) AS position
         FROM channels
         WHERE sourceId = :sourceId AND kind = 'SERIES' AND seriesName IS NOT NULL
+          AND IFNULL(groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'SERIES')
           AND (:filterGroup = 0 OR IFNULL(groupTitle, '') = :group)
           AND (:query = '' OR seriesName LIKE '%' || :query || '%' ESCAPE '\')
         GROUP BY itemKey

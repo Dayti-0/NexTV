@@ -45,9 +45,9 @@ import tv.nextv.app.ui.editor.ToggleRow
 import tv.nextv.app.ui.theme.NexTvIcons
 import tv.nextv.core.model.ContentKind
 
-/** Catégories de chaînes de la playlist active, à afficher ou masquer. */
+/** Catégories de chaînes, de films ou de séries ([kind]) de la playlist active, à afficher ou masquer. */
 @OptIn(ExperimentalCoroutinesApi::class)
-class ChannelGroupsViewModel(container: AppContainer) : ViewModel() {
+class ChannelGroupsViewModel(container: AppContainer, private val kind: ContentKind) : ViewModel() {
 
     private val hiddenGroups = container.hiddenGroupDao
 
@@ -56,7 +56,7 @@ class ChannelGroupsViewModel(container: AppContainer) : ViewModel() {
 
     /** `null` pendant le chargement. */
     val groups: StateFlow<List<GroupVisibilityRow>?> = sourceId.flatMapLatest { id ->
-        if (id == null) flowOf(emptyList()) else container.channelDao.observeAllGroups(id, ContentKind.LIVE.name)
+        if (id == null) flowOf(emptyList()) else container.channelDao.observeAllGroups(id, kind.name)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /** [title] vide : chaînes sans groupe. */
@@ -64,38 +64,40 @@ class ChannelGroupsViewModel(container: AppContainer) : ViewModel() {
         val id = sourceId.value ?: return
         viewModelScope.launch {
             if (visible) {
-                hiddenGroups.show(id, ContentKind.LIVE.name, title)
+                hiddenGroups.show(id, kind.name, title)
             } else {
-                hiddenGroups.hide(HiddenGroupEntity(id, ContentKind.LIVE.name, title))
+                hiddenGroups.hide(HiddenGroupEntity(id, kind.name, title))
             }
         }
     }
 
     fun showAll() {
         val id = sourceId.value ?: return
-        viewModelScope.launch { hiddenGroups.showAll(id, ContentKind.LIVE.name) }
+        viewModelScope.launch { hiddenGroups.showAll(id, kind.name) }
     }
 }
 
 @Composable
-fun ChannelGroupsScreen(onBack: () -> Unit) {
-    val viewModel = appViewModel { container, _ -> ChannelGroupsViewModel(container) }
+fun ChannelGroupsScreen(kind: ContentKind, onBack: () -> Unit) {
+    val viewModel = appViewModel(key = "groups-${kind.name}") { container, _ -> ChannelGroupsViewModel(container, kind) }
     val groups by viewModel.groups.collectAsStateWithLifecycle()
     ChannelGroupsContent(
         groups = groups,
         onVisibility = viewModel::setVisible,
         onShowAll = viewModel::showAll,
         onBack = onBack,
+        kind = kind,
     )
 }
 
-/** Liste des catégories de chaînes, sans dépendance au ViewModel (captures d'écran). */
+/** Liste des catégories d'un type de contenu, sans dépendance au ViewModel (captures d'écran). */
 @Composable
 fun ChannelGroupsContent(
     groups: List<GroupVisibilityRow>?,
     onVisibility: (String, Boolean) -> Unit,
     onShowAll: () -> Unit,
     onBack: () -> Unit,
+    kind: ContentKind = ContentKind.LIVE,
 ) {
     val window = rememberWindowInfo()
     val resources = LocalContext.current.resources
@@ -103,7 +105,13 @@ fun ChannelGroupsContent(
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             ScreenHeader(
-                title = stringResource(R.string.settings_channel_groups),
+                title = stringResource(
+                    when (kind) {
+                        ContentKind.MOVIE -> R.string.settings_movie_groups
+                        ContentKind.SERIES -> R.string.settings_series_groups
+                        else -> R.string.settings_channel_groups
+                    },
+                ),
                 subtitle = if (hiddenCount == 0) {
                     stringResource(R.string.settings_channel_groups_visible)
                 } else {
@@ -123,7 +131,18 @@ fun ChannelGroupsContent(
                 ) {
                     item {
                         Text(
-                            stringResource(if (groups?.isEmpty() == true) R.string.channel_groups_empty else R.string.channel_groups_help),
+                            stringResource(
+                                when {
+                                    groups?.isEmpty() == true -> when (kind) {
+                                        ContentKind.MOVIE -> R.string.movie_groups_empty
+                                        ContentKind.SERIES -> R.string.series_groups_empty
+                                        else -> R.string.channel_groups_empty
+                                    }
+                                    kind == ContentKind.MOVIE -> R.string.movie_groups_help
+                                    kind == ContentKind.SERIES -> R.string.series_groups_help
+                                    else -> R.string.channel_groups_help
+                                },
+                            ),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
@@ -132,7 +151,15 @@ fun ChannelGroupsContent(
                     items(groups.orEmpty(), key = { it.title ?: NO_GROUP_KEY }) { group ->
                         ToggleRow(
                             title = group.title ?: stringResource(R.string.channels_no_group),
-                            description = resources.getQuantityString(R.plurals.channels_count, group.count, group.count),
+                            description = resources.getQuantityString(
+                                when (kind) {
+                                    ContentKind.MOVIE -> R.plurals.movies_count
+                                    ContentKind.SERIES -> R.plurals.series_count
+                                    else -> R.plurals.channels_count
+                                },
+                                group.count,
+                                group.count,
+                            ),
                             checked = !group.hidden,
                             onChange = { visible -> onVisibility(group.title.orEmpty(), visible) },
                         )
