@@ -602,10 +602,10 @@ private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Mo
                 }
             }
             if (state.replay != null) StatusPill(stringResource(R.string.player_replay), NexTvColors.Primary, Modifier.align(Alignment.CenterVertically))
-            if (state.pendingJumpMinutes != 0) {
-                val jump = state.pendingJumpMinutes
+            if (state.pendingJumpSeconds != 0) {
+                val jump = state.pendingJumpSeconds
                 StatusPill(
-                    stringResource(if (jump > 0) R.string.player_jump_forward else R.string.player_jump_back, abs(jump)),
+                    stringResource(if (jump > 0) R.string.player_jump_forward else R.string.player_jump_back, jumpLabel(abs(jump))),
                     NexTvColors.Primary,
                     Modifier.align(Alignment.CenterVertically),
                 )
@@ -645,12 +645,12 @@ private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Mo
             Text(it, style = MaterialTheme.typography.bodySmall, color = NexTvColors.Warning)
         }
         val hint = when {
-            state.seekable && state.isLive -> R.string.player_restart_hint
-            state.seekable -> R.string.player_replay_hint
-            state.isLive && (state.paused || state.liveDelayMs > 0) -> R.string.player_timeshift_hint
+            state.seekable && state.isLive -> stringResource(R.string.player_restart_hint, jumpLabel(state.jumpStepSeconds))
+            state.seekable -> stringResource(R.string.player_replay_hint, jumpLabel(state.jumpStepSeconds))
+            state.isLive && (state.paused || state.liveDelayMs > 0) -> stringResource(R.string.player_timeshift_hint)
             else -> null
         }
-        hint?.let { Text(stringResource(it), style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.75f)) }
+        hint?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.75f)) }
         state.notices.forEach {
             Text(it, style = MaterialTheme.typography.bodySmall, color = NexTvColors.Warning)
         }
@@ -1016,7 +1016,14 @@ private fun channelsLabel(count: Int): String = when (count) {
     else -> stringResource(R.string.player_info_channels, count)
 }
 
-/** ← → maintenu : une minute de plus toutes les [HELD_JUMP_REPEATS] répétitions de la touche. */
+/** « 30 s », « 1 min », « 2 min 30 s ». */
+private fun jumpLabel(seconds: Int): String = when {
+    seconds < 60 -> "$seconds s"
+    seconds % 60 == 0 -> "${seconds / 60} min"
+    else -> "${seconds / 60} min ${seconds % 60} s"
+}
+
+/** ← → maintenu : un pas de plus toutes les [HELD_JUMP_REPEATS] répétitions de la touche. */
 private const val HELD_JUMP_REPEATS = 4
 
 /** → maintenu environ une seconde : appui long (retour au direct en « Depuis le début »). */

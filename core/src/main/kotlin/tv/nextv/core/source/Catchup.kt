@@ -34,8 +34,16 @@ object Catchup {
     /**
      * Adresse du programme enregistré de [startMillis] à [stopMillis], sur le serveur du flux en
      * direct [streamUrl] ; `null` si l'adresse du flux n'est pas celle d'un serveur Xtream.
+     * @param extension « ts » (flux continu) ou « m3u8 » (HLS : on peut s'y déplacer à la seconde).
      */
-    fun xtreamUrl(streamUrl: String, account: XtreamAccount, startMillis: Long, stopMillis: Long, timeZone: TimeZone): String? {
+    fun xtreamUrl(
+        streamUrl: String,
+        account: XtreamAccount,
+        startMillis: Long,
+        stopMillis: Long,
+        timeZone: TimeZone,
+        extension: String = "ts",
+    ): String? {
         val url = streamUrl.toHttpUrlOrNull() ?: return null
         val id = streamId(streamUrl) ?: return null
         val minutes = ((stopMillis - startMillis + MINUTE - 1) / MINUTE).coerceAtLeast(1)
@@ -47,7 +55,7 @@ object Catchup {
             .addPathSegment(account.password)
             .addPathSegment(minutes.toString())
             .addPathSegment(start)
-            .addPathSegment("$id.ts")
+            .addPathSegment("$id.$extension")
             .query(null)
             .fragment(null)
             .build()

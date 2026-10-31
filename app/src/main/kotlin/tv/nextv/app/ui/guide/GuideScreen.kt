@@ -1,5 +1,11 @@
 package tv.nextv.app.ui.guide
 
+import android.widget.Toast
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -95,8 +101,13 @@ fun GuideScreen(
     modifier: Modifier = Modifier,
     onReplay: (Long, Long, Long) -> Unit = { _, _, _ -> },
 ) {
-    val viewModel = appViewModel(key = "guide-$sourceId") { container, _ -> GuideViewModel(container, sourceId) }
+    val context = LocalContext.current
+    val viewModel = appViewModel(key = "guide-$sourceId") { container, _ -> GuideViewModel(container, sourceId, context.resources) }
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val selection by viewModel.selection.collectAsStateWithLifecycle()
+    LaunchedEffect(viewModel) {
+        viewModel.messages.collect { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }
+    }
     val groups by viewModel.groups.collectAsStateWithLifecycle()
     val selectedGroup by viewModel.selectedGroup.collectAsStateWithLifecycle()
     val tonight by viewModel.tonight.collectAsStateWithLifecycle()
@@ -110,6 +121,8 @@ fun GuideScreen(
         onPlay = onPlay,
         onReplay = { channel, programme -> onReplay(channel.id, programme.startMillis, programme.stopMillis) },
         modifier = modifier,
+        selection = selection,
+        onToggleSelection = viewModel::toggleSelection,
     )
 }
 
@@ -132,6 +145,9 @@ fun GuideContent(
     /** Programme du soir (catégorie « Ce soir »). */
     tonight: TonightUiState = TonightUiState(),
     onTonightDay: (Int) -> Unit = {},
+    /** Chaînes de « L'essentiel » (clés) ; appui long sur une chaîne ou bouton de la fiche pour l'y ajouter. */
+    selection: Set<String> = emptySet(),
+    onToggleSelection: (GuideChannel) -> Unit = {},
 ) {
     val window = rememberWindowInfo()
     val minuteWidth = if (window.isWide) 4.6.dp else 3.2.dp
@@ -166,8 +182,20 @@ fun GuideContent(
         } else if (!state.loading && state.channels.isEmpty()) {
             EmptyState(
                 icon = NexTvIcons.Guide,
-                title = stringResource(if (selectedGroup == GuideViewModel.FAVORITES) R.string.guide_no_favorites_title else R.string.guide_empty_title),
-                message = stringResource(if (selectedGroup == GuideViewModel.FAVORITES) R.string.guide_no_favorites_message else R.string.guide_empty_message),
+                title = stringResource(
+                    when (selectedGroup) {
+                        GuideViewModel.FAVORITES -> R.string.guide_no_favorites_title
+                        GuideViewModel.ESSENTIAL -> R.string.guide_selection_empty_title
+                        else -> R.string.guide_empty_title
+                    },
+                ),
+                message = stringResource(
+                    when (selectedGroup) {
+                        GuideViewModel.FAVORITES -> R.string.guide_no_favorites_message
+                        GuideViewModel.ESSENTIAL -> R.string.guide_selection_empty_message
+                        else -> R.string.guide_empty_message
+                    },
+                ),
             )
         } else {
             GuideGrid(
@@ -183,6 +211,8 @@ fun GuideContent(
                 onPlay = onPlay,
                 onFocus = { focused = it },
                 onOpen = { details = it },
+                selection = selection,
+                onToggleSelection = onToggleSelection,
             )
         }
     }
@@ -205,6 +235,8 @@ fun GuideContent(
             } else {
                 null
             },
+            inSelection = (channel.itemKey in selection).takeIf { channel.itemKey.isNotEmpty() },
+            onToggleSelection = { onToggleSelection(channel) },
         )
     }
 }
@@ -223,6 +255,8 @@ private fun GuideGrid(
     onPlay: (Long) -> Unit,
     onFocus: (Pair<GuideChannel, GuideProgramme>) -> Unit,
     onOpen: (Pair<GuideChannel, GuideProgramme>) -> Unit,
+    selection: Set<String> = emptySet(),
+    onToggleSelection: (GuideChannel) -> Unit = {},
 ) {
     val initialFocus = remember { FocusRequester() }
     var initialFocusDone by remember { mutableStateOf(false) }
@@ -308,6 +342,8 @@ private fun GuideGrid(
                     focusAt = pendingFocus?.takeIf { it.first == index }?.second,
                     onFocusAtDone = { pendingFocus = null },
                     onChannelFocus = { focusedRow = -1 },
+                    selected = channel.itemKey in selection,
+                    onToggleSelection = { onToggleSelection(channel) },
                     onPlay = { onPlay(channel.id) },
                     onFocus = { programme ->
                         onProgrammeFocus(index, programme)
@@ -418,6 +454,9 @@ private fun GuideRow(
     focusAt: Long?,
     onFocusAtDone: () -> Unit,
     onChannelFocus: () -> Unit,
+    /** Chaîne de « L'essentiel » ; appui long sur la chaîne pour l'y ajouter ou l'en retirer. */
+    selected: Boolean,
+    onToggleSelection: () -> Unit,
     onPlay: () -> Unit,
     onFocus: (GuideProgramme) -> Unit,
     onOpen: (GuideProgramme) -> Unit,
@@ -436,6 +475,7 @@ private fun GuideRow(
     Row(Modifier.fillMaxWidth().height(rowHeight)) {
         FocusSurface(
             onClick = onPlay,
+            onLongClick = onToggleSelection,
             modifier = Modifier.width(channelColumnWidth).fillMaxHeight(),
             shape = MaterialTheme.shapes.small,
             color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -455,6 +495,7 @@ private fun GuideRow(
                         }
                         Text(channel.name, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
+                    if (selected) Icon(Icons.Filled.Check, contentDescription = null, tint = NexTvColors.Primary, modifier = Modifier.size(16.dp))
                 } else {
                     Text(channel.number ?: "", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -554,10 +595,12 @@ fun ProgrammeSheet(
     onWatch: () -> Unit,
     onDismiss: () -> Unit,
     onReplay: (() -> Unit)? = null,
+    inSelection: Boolean? = null,
+    onToggleSelection: () -> Unit = {},
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Box(Modifier.ignoreHeldOk()) {
-            ProgrammeSheetContent(channel, programme, now, onWatch, onDismiss, onReplay)
+            ProgrammeSheetContent(channel, programme, now, onWatch, onDismiss, onReplay, inSelection, onToggleSelection)
         }
     }
 }
@@ -570,6 +613,9 @@ fun ProgrammeSheetContent(
     onWatch: () -> Unit,
     onDismiss: () -> Unit,
     onReplay: (() -> Unit)? = null,
+    /** Chaîne dans « L'essentiel » ; `null` : pas de bouton (lecteur). */
+    inSelection: Boolean? = null,
+    onToggleSelection: () -> Unit = {},
 ) {
     val watchFocus = remember { FocusRequester() }
     // Programme terminé : « Revoir » passe en premier.
@@ -617,7 +663,7 @@ fun ProgrammeSheetContent(
                     modifier = Modifier.heightIn(max = 220.dp).verticalScroll(rememberScrollState()),
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 4.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 4.dp)) {
                 if (replayFirst && onReplay != null) {
                     PillButton(
                         stringResource(R.string.guide_replay),
@@ -636,6 +682,13 @@ fun ProgrammeSheetContent(
                 )
                 if (!replayFirst && onReplay != null) {
                     PillButton(stringResource(R.string.guide_restart), onReplay, icon = NexTvIcons.Replay)
+                }
+                if (inSelection != null) {
+                    PillButton(
+                        stringResource(if (inSelection) R.string.guide_selection_remove else R.string.guide_selection_add),
+                        onToggleSelection,
+                        icon = if (inSelection) Icons.Filled.Check else Icons.Filled.Add,
+                    )
                 }
                 PillButton(stringResource(R.string.action_close), onDismiss, style = PillStyle.Ghost)
             }

@@ -38,6 +38,21 @@ class CatchupTest {
     }
 
     @Test
+    fun `the recording can be requested in hls`() {
+        val start = 1_793_390_280_000L
+        val url = Catchup.xtreamUrl(
+            "http://backup.example:8080/live/user/pass/1234.ts",
+            account,
+            startMillis = start,
+            stopMillis = start + 60 * 60_000,
+            timeZone = TimeZone.getTimeZone("Europe/Paris"),
+            extension = "m3u8",
+        )
+
+        assertEquals("http://backup.example:8080/timeshift/user/pass/60/2026-10-30:20-58/1234.m3u8", url)
+    }
+
+    @Test
     fun `live channels get the replay days of their stream`() {
         val channels = listOf(
             Channel(0, "TF1", StreamDescriptor("http://line.example/live/user/pass/101.ts")),

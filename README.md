@@ -63,15 +63,18 @@ Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3, enti�
   Un créneau sans donnée reste vide.
   « Ce soir » : le programme du soir comme dans un magazine télé, une ligne par chaîne avec le programme principal
   (vers 21 h, sans la météo ni les programmes courts) et la deuxième partie de soirée ; les chaînes de la TNT d'abord,
-  avec leur numéro, puis les autres ; soirs suivants sur une semaine. « L'essentiel » : la grille avec une seule
-  ligne par chaîne (sans les doublons SD, HD, FHD ni ceux des autres catégories), TNT d'abord. La dernière de ces
-  catégories choisie est reprise à l'ouverture du guide.
+  avec leur numéro, puis les autres ; soirs suivants sur une semaine. « L'essentiel » : la grille réduite aux
+  chaînes que vous choisissez (appui long sur une chaîne du guide, ou « Ajouter à L'essentiel » dans la fiche d'un
+  programme), une seule ligne par chaîne quelle que soit sa qualité, TNT d'abord ; « Ce soir » se limite alors à ces
+  chaînes. La dernière de ces catégories choisie est reprise à l'ouverture du guide.
 - **Replay** (comptes Xtream dont le serveur enregistre les chaînes) : les programmes passés disponibles portent
   l'icône ↺ dans le guide ; « Revoir » les lit depuis l'enregistrement du serveur (avance / retour comme un film),
   « Depuis le début » relance le programme en cours en différé, comme le direct : bandeau avec le retard
   (« Différé −25:12 »), appui long sur → pour rattraper le direct, liste des chaînes sur « Retour », zapping et
-  options. En replay comme en « Depuis le début », ← → reculent ou avancent d'une minute (appuis cumulés, touche
-  maintenue pour aller plus loin) : de quoi passer la pub diffusée avant le programme.
+  options. En replay comme en « Depuis le début », ← → reculent ou avancent (appuis cumulés, touche maintenue pour
+  aller plus loin) : de quoi passer la pub diffusée avant le programme. Le replay est demandé en HLS, où l'on se
+  déplace de 30 s en 30 s ; si le serveur ne le propose pas (et en « Depuis le début »), l'enregistrement est relu
+  à la minute près.
 - **Sauvegarde** (Réglages › Sauvegarde) : playlists avec leurs identifiants, favoris, catégories masquées et
   réglages dans un fichier JSON, à restaurer après une réinstallation ou sur un autre appareil (sans sélecteur de
   fichiers, comme sur Fire TV, le fichier va dans le dossier de l'application).

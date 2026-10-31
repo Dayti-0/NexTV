@@ -107,15 +107,30 @@ class FavoritesRepository(private val database: NexTvDatabase) {
 
     /** Ajoute ou retire un favori. @return vrai s'il est désormais favori. */
     suspend fun toggle(sourceId: Long, kind: ContentKind, itemKey: String, title: String, logoUrl: String?): Boolean =
+        toggle(sourceId, kind.name, itemKey, title, logoUrl)
+
+    /** Chaînes de « L'essentiel » (guide TV), choisies une à une. */
+    fun observeGuideSelection(sourceId: Long) = dao.observeKeys(sourceId, GUIDE_SELECTION)
+
+    /** Ajoute une chaîne à « L'essentiel » ou l'en retire. @return vrai si elle y figure désormais. */
+    suspend fun toggleGuideSelection(sourceId: Long, itemKey: String, title: String, logoUrl: String?): Boolean =
+        toggle(sourceId, GUIDE_SELECTION, itemKey, title, logoUrl)
+
+    private suspend fun toggle(sourceId: Long, kind: String, itemKey: String, title: String, logoUrl: String?): Boolean =
         database.withTransaction {
-            if (dao.delete(sourceId, kind.name, itemKey) > 0) {
+            if (dao.delete(sourceId, kind, itemKey) > 0) {
                 false
             } else {
-                val position = dao.maxPosition(sourceId, kind.name) + 1
-                dao.insert(FavoriteEntity(sourceId = sourceId, kind = kind.name, itemKey = itemKey, title = title, logoUrl = logoUrl, position = position))
+                val position = dao.maxPosition(sourceId, kind) + 1
+                dao.insert(FavoriteEntity(sourceId = sourceId, kind = kind, itemKey = itemKey, title = title, logoUrl = logoUrl, position = position))
                 true
             }
         }
+
+    companion object {
+        /** Type des entrées de « L'essentiel » dans la table des favoris (chaînes choisies pour le guide). */
+        const val GUIDE_SELECTION = "GUIDE"
+    }
 
     /** Déplace un favori de [offset] places (négatif : vers le début). */
     suspend fun move(sourceId: Long, kind: ContentKind, itemKey: String, offset: Int) {

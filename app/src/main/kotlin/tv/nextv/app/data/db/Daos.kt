@@ -226,6 +226,7 @@ data class GuideVersionRow(
     val epgChannelId: String,
     val position: Int,
     val catchupDays: Int,
+    val itemKey: String,
 )
 
 /** Chaîne affichée dans la grille du guide. */
@@ -237,6 +238,7 @@ data class GuideChannelRow(
     val channelNumber: String?,
     val epgChannelId: String,
     val catchupDays: Int,
+    val itemKey: String,
 )
 
 @Dao
@@ -545,7 +547,7 @@ interface ChannelDao {
     /** Chaînes associées au guide, pour la grille des programmes (hors catégories masquées). */
     @Query(
         """
-        SELECT c.id, c.name, c.title, c.logoUrl, c.channelNumber, c.epgChannelId, $CATCHUP_DAYS FROM channels c
+        SELECT c.id, c.name, c.title, c.logoUrl, c.channelNumber, c.epgChannelId, c.itemKey, $CATCHUP_DAYS FROM channels c
         WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.epgChannelId IS NOT NULL AND $LISTED
         ORDER BY c.position LIMIT :limit
         """,
@@ -559,17 +561,36 @@ interface ChannelDao {
      */
     @Query(
         """
-        SELECT c.id, c.name, c.title, c.logoUrl, c.epgChannelId, c.position, $CATCHUP_DAYS FROM channels c
+        SELECT c.id, c.name, c.title, c.logoUrl, c.epgChannelId, c.position, c.itemKey, $CATCHUP_DAYS FROM channels c
         WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.epgChannelId IS NOT NULL AND $NOT_HIDDEN
         ORDER BY c.streamSupport = 'UNSUPPORTED', c.qualityRank DESC, c.position
         """,
     )
     suspend fun guideVersions(sourceId: Long): List<GuideVersionRow>
 
+    /**
+     * Chaînes choisies pour « L'essentiel » (dans l'ordre d'ajout), chacune par sa meilleure version
+     * associée au guide : une seule ligne par chaîne, quelle que soit la catégorie d'où elle vient.
+     */
+    @Query(
+        """
+        SELECT c.id, c.name, c.title, c.logoUrl, c.epgChannelId, c.position, c.itemKey, $CATCHUP_DAYS
+        FROM favorites f
+        JOIN channels c ON c.id = (
+            SELECT c2.id FROM channels c2
+            WHERE c2.sourceId = f.sourceId AND c2.kind = 'LIVE' AND c2.itemKey = f.itemKey AND c2.epgChannelId IS NOT NULL
+            ORDER BY c2.streamSupport = 'UNSUPPORTED', c2.qualityRank DESC, c2.position LIMIT 1
+        )
+        WHERE f.sourceId = :sourceId AND f.kind = 'GUIDE'
+        ORDER BY f.position
+        """,
+    )
+    suspend fun guideSelection(sourceId: Long): List<GuideVersionRow>
+
     /** Chaînes favorites associées au guide. */
     @Query(
         """
-        SELECT c.id, c.name, c.title, c.logoUrl, c.channelNumber, c.epgChannelId, $CATCHUP_DAYS
+        SELECT c.id, c.name, c.title, c.logoUrl, c.channelNumber, c.epgChannelId, c.itemKey, $CATCHUP_DAYS
         FROM favorites f
         CROSS JOIN channels c ON c.sourceId = f.sourceId AND c.itemKey = f.itemKey AND c.kind = 'LIVE' AND c.isPrimary = 1
         WHERE f.sourceId = :sourceId AND f.kind = 'LIVE' AND c.epgChannelId IS NOT NULL
@@ -584,8 +605,12 @@ interface FavoriteDao {
     @Query("SELECT * FROM favorites WHERE sourceId = :sourceId AND kind = :kind ORDER BY position")
     suspend fun list(sourceId: Long, kind: String): List<FavoriteEntity>
 
-    @Query("SELECT itemKey FROM favorites WHERE sourceId = :sourceId")
+    /** Favoris (chaînes, films, séries), sans les chaînes de « L'essentiel » du guide. */
+    @Query("SELECT itemKey FROM favorites WHERE sourceId = :sourceId AND kind != 'GUIDE'")
     fun observeKeys(sourceId: Long): Flow<List<String>>
+
+    @Query("SELECT itemKey FROM favorites WHERE sourceId = :sourceId AND kind = :kind")
+    fun observeKeys(sourceId: Long, kind: String): Flow<List<String>>
 
     @Query("SELECT IFNULL(MAX(position), -1) FROM favorites WHERE sourceId = :sourceId AND kind = :kind")
     suspend fun maxPosition(sourceId: Long, kind: String): Int

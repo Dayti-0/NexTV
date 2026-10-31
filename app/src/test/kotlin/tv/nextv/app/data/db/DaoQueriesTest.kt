@@ -215,6 +215,20 @@ class DaoQueriesTest {
     }
 
     @Test
+    fun `l'essentiel lists hand-picked channels once, apart from favourites`() = runBlocking {
+        val dao = db.channelDao()
+        dao.variants(sourceId, "tf1").forEach { dao.setEpg(it.id, "tf1.fr") }
+        val favorites = tv.nextv.app.data.catalog.FavoritesRepository(db)
+        assertEquals(true, favorites.toggleGuideSelection(sourceId, "live:tf1", "TF1", null))
+        // Une seule ligne pour TF1 (sa meilleure version associée au guide), pas d'étoile de favori à l'accueil.
+        assertEquals(listOf("TF1 FHD"), dao.guideSelection(sourceId).map { it.name })
+        assertEquals(emptyList<String>(), db.favoriteDao().observeKeys(sourceId).first())
+        assertEquals(listOf("live:tf1"), favorites.observeGuideSelection(sourceId).first())
+        assertEquals(false, favorites.toggleGuideSelection(sourceId, "live:tf1", "TF1", null))
+        assertEquals(emptyList<GuideVersionRow>(), dao.guideSelection(sourceId))
+    }
+
+    @Test
     fun `ids are listed page by page in id order`() = runBlocking {
         val dao = db.channelDao()
         val first = dao.idsAndUrls(sourceId, 0, 4)

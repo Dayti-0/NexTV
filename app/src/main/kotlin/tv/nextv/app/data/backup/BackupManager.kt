@@ -1,5 +1,6 @@
 package tv.nextv.app.data.backup
 
+import tv.nextv.app.data.catalog.FavoritesRepository
 import kotlinx.coroutines.flow.first
 import tv.nextv.app.data.db.FavoriteDao
 import tv.nextv.app.data.db.FavoriteEntity
@@ -48,7 +49,9 @@ class BackupManager(
                 mirrors = source.mirrors,
                 credentials = if (source.hasCredentials) sources.credentialsFor(source.id) else null,
                 active = source.id == active,
-                favorites = ContentKind.entries.flatMap { kind -> favoriteDao.list(source.id, kind.name) }
+                // Favoris de chaque type, et chaînes de « L'essentiel » du guide.
+                favorites = (ContentKind.entries.map { it.name } + FavoritesRepository.GUIDE_SELECTION)
+                    .flatMap { kind -> favoriteDao.list(source.id, kind) }
                     .map { FavoriteBackup(it.kind, it.itemKey, it.title, it.logoUrl, it.position) },
                 hiddenGroups = ContentKind.entries.flatMap { kind ->
                     hiddenGroupDao.observeTitles(source.id, kind.name).first().map { HiddenGroupBackup(kind.name, it) }

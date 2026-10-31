@@ -145,8 +145,10 @@ data class PlayerUiState(
     val seekable: Boolean = false,
     /** Heure de ce qui est à l'écran pendant un replay (progression du programme). */
     val watchedAt: Long? = null,
-    /** Saut demandé (minutes), appliqué quand les appuis s'arrêtent. */
-    val pendingJumpMinutes: Int = 0,
+    /** Saut demandé (secondes), appliqué quand les appuis s'arrêtent. */
+    val pendingJumpSeconds: Int = 0,
+    /** Durée d'un appui sur ← → : 30 s quand on peut se déplacer dans l'enregistrement, sinon une minute. */
+    val jumpStepSeconds: Int = 60,
     /** Option « baisser le son des pubs » activée. */
     val lowerAdVolume: Boolean = false,
     /** Pub détectée : son baissé. */
@@ -225,8 +227,11 @@ class PlayerViewModel(
 
     /** Adresse de l'enregistrement à partir d'une heure donnée (jusqu'à la fin du programme). */
     private var replayUrlFrom: ((Long) -> String?)? = null
-    private var pendingJumpMinutes = 0
+    private var pendingJumpSeconds = 0
     private var jumpJob: Job? = null
+
+    /** Replay lu en HLS : on s'y déplace à la seconde près (sinon, l'enregistrement est relu à la minute). */
+    private var replayHls = false
     /** Chaîne affichée (meilleure version), base du zapping. */
     private var channel: ChannelEntity? = null
     /** Ligne choisie dans les listes (une version précise : celle de sa catégorie). */
@@ -462,7 +467,7 @@ class PlayerViewModel(
         viewModelScope.launch {
             while (true) {
                 delay(QUALITY_CHECK_MILLIS)
-                if (replayUrlFrom != null && mutablePlayer.value != null && pendingJumpMinutes == 0) {
+                if (replayUrlFrom != null && mutablePlayer.value != null && pendingJumpSeconds == 0) {
                     val at = watchedAt()
                     if (abs(at - (state.value.watchedAt ?: 0)) >= 1_000) mutableState.update { it.copy(watchedAt = at) }
                 }
@@ -828,8 +833,8 @@ class PlayerViewModel(
             }
         }
         val account = (source?.location as? SourceLocation.Remote)?.url?.let(XtreamAccount::parse)
-        val urlFrom: ((Long) -> String?)? = if (source != null && account != null) {
-            val timeZone = container.serverTimeZone(source)
+        val timeZone = source?.let { container.serverTimeZone(it) }
+        val urlFrom: ((Long) -> String?)? = if (account != null && timeZone != null) {
             val url: (Long) -> String? = { from -> Catchup.xtreamUrl(recorded.streamUrl, account, from, stop, timeZone) }
             url
         } else {
@@ -837,8 +842,17 @@ class PlayerViewModel(
         }
         replayUrlFrom = urlFrom
         segmentStart = start
-        mutableState.update { it.copy(seekable = urlFrom != null, watchedAt = start, pendingJumpMinutes = 0) }
-        val url = urlFrom?.invoke(start)
+        // Programme passé : d'abord en HLS (on s'y déplace finement), sauf si ce serveur l'a déjà refusé.
+        val hlsUrl = if (!restart && account != null && timeZone != null && recorded.sourceId !in hlsReplayRefused) {
+            Catchup.xtreamUrl(recorded.streamUrl, account, start, stop, timeZone, extension = "m3u8")
+        } else {
+            null
+        }
+        replayHls = hlsUrl != null
+        mutableState.update {
+            it.copy(seekable = urlFrom != null, watchedAt = start, pendingJumpSeconds = 0, jumpStepSeconds = if (replayHls) FINE_JUMP_SECONDS else MINUTE_SECONDS)
+        }
+        val url = hlsUrl ?: urlFrom?.invoke(start)
         if (source == null || url == null) {
             releasePlayer()
             mutableState.update { it.copy(buffering = false, error = resources.getString(R.string.player_replay_unavailable)) }
@@ -849,13 +863,29 @@ class PlayerViewModel(
         serverRoots = serverRootsOf(source)
         backupUrls = Mirrors.alternatives(url, serverRoots)
         request = PlaybackRequest(
-            stream = recorded.toStream().copy(url = url, format = StreamFormat.PROGRESSIVE),
+            stream = recorded.toStream().copy(url = url, format = if (replayHls) StreamFormat.HLS else StreamFormat.PROGRESSIVE),
             userAgent = source.userAgent,
             credentials = null,
             credentialsOrigin = null,
         )
-        triedHlsFallback = false
+        triedHlsFallback = true
         start(forceHls = false)
+    }
+
+    /** L'enregistrement HLS n'est pas proposé par ce serveur : même programme en flux continu (pas d'une minute). */
+    private fun fallBackToContinuousReplay(): Boolean {
+        if (!replayHls) return false
+        replayHls = false
+        val source = playing?.sourceId ?: return false
+        hlsReplayRefused += source
+        val url = replayUrlFrom?.invoke(segmentStart) ?: return false
+        val playback = request ?: return false
+        container.logger.info(TAG, "Replay HLS refusé par le serveur : flux continu")
+        request = playback.copy(stream = playback.stream.copy(url = url, format = StreamFormat.PROGRESSIVE))
+        backupUrls = Mirrors.alternatives(url, serverRoots)
+        mutableState.update { it.copy(jumpStepSeconds = MINUTE_SECONDS) }
+        start(forceHls = false)
+        return true
     }
 
     /** Lance la lecture d'une version précise de la chaîne. */
@@ -976,6 +1006,7 @@ class PlayerViewModel(
             backToLive()
             return
         }
+        if (fallBackToContinuousReplay()) return
         if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
             // Direct trop en retard sur la fenêtre disponible (pause trop longue) : on revient au direct.
             player.seekToDefaultPosition()
@@ -1142,24 +1173,26 @@ class PlayerViewModel(
         restarting = false
         replayUrlFrom = null
         jumpJob?.cancel()
-        pendingJumpMinutes = 0
+        pendingJumpSeconds = 0
         handle[ARG_REPLAY_START] = 0L
         handle[ARG_REPLAY_STOP] = 0L
-        mutableState.update { it.copy(replay = null, seekable = false, watchedAt = null, pendingJumpMinutes = 0) }
+        replayHls = false
+        mutableState.update { it.copy(replay = null, seekable = false, watchedAt = null, pendingJumpSeconds = 0) }
     }
 
     /** Heure de ce qui est à l'écran dans l'enregistrement en cours. */
     private fun watchedAt(): Long = segmentStart + (mutablePlayer.value?.currentPosition ?: 0)
 
     /**
-     * Replay ou « Depuis le début » : recule ou avance de [minutes] (passer la pub avant le programme).
-     * Les appuis rapprochés s'additionnent ; l'enregistrement est relu à partir de la nouvelle heure
-     * une fois les appuis arrêtés (le serveur ne permet pas d'avancer dans le flux lui-même).
+     * Replay ou « Depuis le début » : recule ou avance de [steps] pas (passer la pub avant le
+     * programme). Un pas vaut 30 s quand on peut se déplacer dans l'enregistrement (HLS), sinon une
+     * minute : l'enregistrement est alors relu à partir de la nouvelle minute (le serveur ne permet
+     * pas d'avancer dans le flux continu). Les appuis rapprochés s'additionnent.
      */
-    fun jump(minutes: Int) {
+    fun jump(steps: Int) {
         if (replayUrlFrom == null) return
-        pendingJumpMinutes += minutes
-        mutableState.update { it.copy(pendingJumpMinutes = pendingJumpMinutes) }
+        pendingJumpSeconds += steps * state.value.jumpStepSeconds
+        mutableState.update { it.copy(pendingJumpSeconds = pendingJumpSeconds) }
         jumpJob?.cancel()
         jumpJob = viewModelScope.launch {
             delay(JUMP_DEBOUNCE_MILLIS)
@@ -1170,12 +1203,21 @@ class PlayerViewModel(
     private fun applyJump() {
         val urlFrom = replayUrlFrom ?: return
         val programme = replay ?: return
-        val minutes = pendingJumpMinutes
-        pendingJumpMinutes = 0
-        mutableState.update { it.copy(pendingJumpMinutes = 0) }
-        if (minutes == 0) return
+        val seconds = pendingJumpSeconds
+        pendingJumpSeconds = 0
+        mutableState.update { it.copy(pendingJumpSeconds = 0) }
+        if (seconds == 0) return
+        val player = mutablePlayer.value
+        // HLS : déplacement dans l'enregistrement, à la seconde près.
+        if (replayHls && player != null && player.isCurrentMediaItemSeekable) {
+            val duration = player.duration.takeIf { it > 0 } ?: (programme.second - segmentStart)
+            val position = (player.currentPosition + seconds * 1_000L).coerceIn(0, (duration - 5_000).coerceAtLeast(0))
+            player.seekTo(position)
+            mutableState.update { it.copy(watchedAt = segmentStart + position) }
+            return
+        }
         val now = System.currentTimeMillis()
-        val wanted = watchedAt() + minutes * MINUTE_MILLIS
+        val wanted = watchedAt() + seconds * 1_000L
         // « Depuis le début » : avancer jusqu'au direct, c'est le rejoindre.
         if (restarting && wanted >= now - MINUTE_MILLIS) {
             backToLive()
@@ -1393,6 +1435,13 @@ class PlayerViewModel(
         private const val FOOTBALL_WINDOW_MILLIS = 8 * 24 * 60 * 60_000L
         private const val QUALITY_CHECK_MILLIS = 500L
         private const val MINUTE_MILLIS = 60_000L
+        private const val MINUTE_SECONDS = 60
+
+        /** Pas de ← → dans un replay où l'on peut se déplacer (HLS). */
+        private const val FINE_JUMP_SECONDS = 30
+
+        /** Serveurs (playlists) qui ne proposent pas le replay en HLS : pas de nouvel essai jusqu'au redémarrage. */
+        private val hlsReplayRefused = java.util.Collections.synchronizedSet(HashSet<Long>())
 
         /** Appuis rapprochés sur ← → : additionnés pendant ce délai. */
         private const val JUMP_DEBOUNCE_MILLIS = 900L

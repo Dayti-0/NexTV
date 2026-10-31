@@ -231,6 +231,12 @@
     <string name="guide_now">En cours</string>
     <string name="guide_tonight">Ce soir</string>
     <string name="guide_essential">L’essentiel</string>
+    <string name="guide_selection_added">%1$s ajoutée à L’essentiel</string>
+    <string name="guide_selection_removed">%1$s retirée de L’essentiel</string>
+    <string name="guide_selection_add">Ajouter à L’essentiel</string>
+    <string name="guide_selection_remove">Retirer de L’essentiel</string>
+    <string name="guide_selection_empty_title">L’essentiel est vide</string>
+    <string name="guide_selection_empty_message">Choisissez vos chaînes : appui long sur une chaîne du guide (colonne de gauche), ou « Ajouter à L’essentiel » dans la fiche d’un programme. Chaque chaîne n’y figure qu’une fois, sans les doublons SD, HD, FHD.</string>
     <string name="tonight_today">Ce soir</string>
     <string name="tonight_tomorrow">Demain soir</string>
     <string name="tonight_first_part">Vers 21 h</string>
@@ -268,10 +274,10 @@
     <string name="player_paused">En pause</string>
     <string name="player_delay">Différé −%1$s</string>
     <string name="player_timeshift_hint">OK : pause / lecture · → : retour au direct</string>
-    <string name="player_replay_hint">← → : reculer / avancer d’une minute (passer la pub) · OK : pause / lecture</string>
-    <string name="player_restart_hint">← → : reculer / avancer d’une minute · appui long sur → : retour au direct · OK : pause</string>
-    <string name="player_jump_forward">+%1$d min</string>
-    <string name="player_jump_back">−%1$d min</string>
+    <string name="player_replay_hint">← → : reculer / avancer de %1$s (passer la pub) · OK : pause / lecture</string>
+    <string name="player_restart_hint">← → : reculer / avancer de %1$s · appui long sur → : retour au direct · OK : pause</string>
+    <string name="player_jump_forward">+%1$s</string>
+    <string name="player_jump_back">−%1$s</string>
     <string name="player_resume_title">Reprendre la lecture ?</string>
     <string name="player_resume_at">Reprendre à %1$s</string>
     <string name="player_resume_episode_at">Reprendre %1$s à %2$s</string>
