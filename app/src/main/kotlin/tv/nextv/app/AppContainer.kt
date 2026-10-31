@@ -81,6 +81,7 @@ class AppContainer(context: Context) {
     val channelDao = database.channelDao()
     val programmeDao = database.programmeDao()
     val hiddenGroupDao = database.hiddenGroupDao()
+    val guideOnlyChannelDao = database.guideOnlyChannelDao()
 
     private val cipher = KeystoreSecretCipher()
     val settings = SettingsRepository(appContext, cipher)

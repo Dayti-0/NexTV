@@ -16,8 +16,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         FavoriteEntity::class,
         TmdbCacheEntity::class,
         HiddenGroupEntity::class,
+        GuideOnlyChannelEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = false,
 )
 abstract class NexTvDatabase : RoomDatabase() {
@@ -28,6 +29,7 @@ abstract class NexTvDatabase : RoomDatabase() {
     abstract fun favoriteDao(): FavoriteDao
     abstract fun tmdbDao(): TmdbDao
     abstract fun hiddenGroupDao(): HiddenGroupDao
+    abstract fun guideOnlyChannelDao(): GuideOnlyChannelDao
 
     companion object {
         /** Année des programmes du guide : nouvelle colonne, les données existantes sont conservées. */
@@ -77,6 +79,17 @@ abstract class NexTvDatabase : RoomDatabase() {
             }
         }
 
+        /** Chaînes du guide absentes de la playlist (section Foot) : nouvelle table, rien à convertir. */
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `guide_only_channels` (`sourceId` INTEGER NOT NULL, `epgChannelId` TEXT NOT NULL, " +
+                        "`name` TEXT NOT NULL, PRIMARY KEY(`sourceId`, `epgChannelId`), " +
+                        "FOREIGN KEY(`sourceId`) REFERENCES `sources`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+                )
+            }
+        }
+
         /**
          * Premier épisode de chaque série (ordre de la playlist) et nombre d'épisodes, comme à l'enregistrement.
          * `position + 0` : le minimum est lu dans l'index par clé, pas en parcourant l'index des positions
@@ -92,7 +105,7 @@ abstract class NexTvDatabase : RoomDatabase() {
 
         fun create(context: Context): NexTvDatabase =
             Room.databaseBuilder(context.applicationContext, NexTvDatabase::class.java, "nextv.db")
-                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
                 // Versions de test antérieures (1) : les données sont rechargées depuis la playlist.
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()

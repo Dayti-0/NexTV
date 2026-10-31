@@ -34,12 +34,16 @@ data class EpgImportOptions(
 /**
  * @property mapping association chaîne de la playlist → identifiant de chaîne XMLTV.
  * @property coveredEpgIds identifiants XMLTV pour lesquels des programmes ont été importés.
+ * @property guideOnlyChannels chaînes de sport du guide sans chaîne de la playlist associée, dont les
+ * matchs de football ont tout de même été importés (identifiant → nom) : la section Foot peut dire
+ * sur quelle chaîne passe un match, même absente de la playlist.
  */
 data class EpgImportResult(
     val mapping: Map<Long, String>,
     val programmeCount: Int,
     val skippedProgrammes: Int,
     val coveredEpgIds: Set<String>,
+    val guideOnlyChannels: Map<String, String> = emptyMap(),
 )
 
 /**
@@ -75,6 +79,9 @@ class EpgImporter(
         val xmltvChannels = ArrayList<XmltvChannel>()
         var mapping: Map<Long, String>? = null
         var relevant: Set<String> = emptySet()
+        // Chaînes de sport du guide sans chaîne de la playlist : seuls leurs matchs de football sont gardés.
+        var sports: Map<String, String> = emptyMap()
+        val sportsKept = HashMap<String, String>()
         val covered = HashSet<String>()
         val batch = ArrayList<Programme>(options.batchSize)
         // Programme sans heure de fin, par chaîne : sa fin sera le début du programme suivant.
@@ -82,7 +89,7 @@ class EpgImporter(
         var written = 0
         var items = 0
 
-        suspend fun emit(programme: XmltvProgramme, stop: Long) {
+        suspend fun emit(programme: XmltvProgramme, stop: Long, guideOnly: Boolean = false) {
             if (stop <= windowStart || programme.startMillis >= windowEnd) return
             val id = normalizeId(programme.channelId)
             batch += Programme(
@@ -95,7 +102,7 @@ class EpgImporter(
                 category = programme.category,
                 year = programme.year,
             )
-            covered += id
+            if (guideOnly) sportsKept[id] = sports.getValue(id) else covered += id
             if (batch.size >= options.batchSize) {
                 sink.write(batch.toList())
                 written += batch.size
@@ -109,15 +116,22 @@ class EpgImporter(
             when (item) {
                 is XmltvChannel -> if (mapping == null) xmltvChannels += item
                 is XmltvProgramme -> {
-                    val currentMapping = mapping ?: match(channels, xmltvChannels, excludedEpgIds).also {
-                        mapping = it
-                        relevant = it.values.toSet()
+                    if (mapping == null) {
+                        val found = match(channels, xmltvChannels, excludedEpgIds)
+                        mapping = found
+                        relevant = found.values.toSet()
+                        sports = xmltvChannels.filter(::isSportsChannel)
+                            .associate { channel -> normalizeId(channel.id) to (channel.displayNames.firstOrNull() ?: channel.id) }
+                            .filterKeys { id -> id !in relevant && id !in excludedEpgIds }
                         // Les programmes des chaînes absentes de la playlist (souvent la majorité) ne sont plus analysés.
-                        reader.programmeFilter = { channelId -> normalizeId(channelId) in relevant }
+                        reader.programmeFilter = { channelId -> normalizeId(channelId).let { it in relevant || it in sports } }
                     }
-                    if (currentMapping.isEmpty()) continue
                     val id = normalizeId(item.channelId)
-                    if (id !in relevant) continue
+                    if (id !in relevant) {
+                        val stop = item.stopMillis
+                        if (id in sports && stop != null && isFootball(item)) emit(item, stop, guideOnly = true)
+                        continue
+                    }
                     openEnded.remove(id)?.let { previous -> emit(previous, item.startMillis) }
                     if (item.stopMillis == null) openEnded[id] = item else emit(item, item.stopMillis)
                 }
@@ -130,7 +144,19 @@ class EpgImporter(
         }
         val finalMapping = (mapping ?: match(channels, xmltvChannels, excludedEpgIds))
             .filterValues { it in covered }
-        return EpgImportResult(finalMapping, written, reader.skippedProgrammes, covered)
+        return EpgImportResult(finalMapping, written, reader.skippedProgrammes, covered, sportsKept)
+    }
+
+    /** Chaîne de sport française du guide (beIN, Ligue 1+, DAZN, Canal+, RMC Sport, L'Équipe…). */
+    private fun isSportsChannel(channel: XmltvChannel): Boolean {
+        if (!channel.id.endsWith(".fr", ignoreCase = true)) return false
+        val names = (channel.displayNames + channel.id).joinToString(" ") { normalizeName(it) }
+        return SPORTS_HINTS.any { it in names }
+    }
+
+    private fun isFootball(programme: XmltvProgramme): Boolean {
+        val text = "${programme.title} ${programme.category.orEmpty()}".lowercase()
+        return "foot" in text || "soccer" in text
     }
 
     /**
@@ -152,13 +178,23 @@ class EpgImporter(
         }
         val ids = HashSet<String>()
         val byName = HashMap<String, String>()
-        for (xmltv in xmltvChannels) {
+        // Même nom dans plusieurs pays (« Canal+ » français et suisse) : la chaîne française d'abord.
+        for (xmltv in xmltvChannels.sortedBy { !it.id.endsWith(".fr", ignoreCase = true) }) {
             val id = normalizeId(xmltv.id)
             if (id in excluded) continue
             ids += id
-            for (name in xmltv.displayNames + xmltv.id) {
+            // Identifiant avec et sans domaine (« Ligue1Plus5.fr » → « Ligue1Plus5 »).
+            for (name in xmltv.displayNames + xmltv.id + xmltv.id.substringBeforeLast('.')) {
                 byName.putIfAbsent(normalizeName(name), id)
             }
+        }
+        // Rapprochement souple, en dernier recours (« LIGUE 1+ MATCH 05 » → « Ligue 1+ 5 »).
+        val loose = lazy(LazyThreadSafetyMode.NONE) {
+            ChannelNames.Index(
+                xmltvChannels.filter { normalizeId(it.id) !in excluded }
+                    .groupBy({ normalizeId(it.id) }) { it.displayNames.ifEmpty { listOf(it.id.substringBeforeLast('.')) } }
+                    .mapValues { (_, names) -> names.flatten() },
+            )
         }
         for (channel in channels) {
             val byId = channel.tvgId?.let(::normalizeId)?.takeIf { it in ids }
@@ -167,6 +203,7 @@ class EpgImporter(
             val matched = byId
                 ?: names.firstNotNullOfOrNull { byName[normalizeName(it)] }
                 ?: names.firstNotNullOfOrNull { byName[normalizeName(ContentClassifier.cleanTitle(it))] }
+                ?: names.firstNotNullOfOrNull { loose.value.find(ContentClassifier.cleanTitle(it)) }
             if (matched != null) result[channel.channelId] = matched
         }
         return result
@@ -176,13 +213,18 @@ class EpgImporter(
         private const val CANCELLATION_CHECK_INTERVAL = 500
         private val NON_ALPHANUMERIC = Regex("[^\\p{L}\\p{Nd}]+")
         private val DIACRITICS = Regex("\\p{Mn}+")
+        private val LEADING_ZEROS = Regex("(?<!\\d)0+(?=\\d)")
+        private val SPORTS_HINTS = listOf("sport", "foot", "ligue1", "bein", "dazn", "canalplus", "rmc", "equipe", "primevideo", "amazon")
 
         fun normalizeId(id: String): String = id.trim().lowercase()
 
-        /** Minuscules, sans accents ni ponctuation ; « + » devient « plus » (« Canal+ » = « CanalPlus », « Ligue 1+ »). */
+        /**
+         * Minuscules, sans accents ni ponctuation ; « + » devient « plus » (« Canal+ » = « CanalPlus »,
+         * « Ligue 1+ ») et les zéros de tête des numéros disparaissent (« Ligue 1+ 05 » = « Ligue 1+ 5 »).
+         */
         fun normalizeName(name: String): String {
             val decomposed = Normalizer.normalize(name.trim().lowercase().replace("+", "plus"), Normalizer.Form.NFD)
-            return NON_ALPHANUMERIC.replace(DIACRITICS.replace(decomposed, ""), "")
+            return NON_ALPHANUMERIC.replace(LEADING_ZEROS.replace(DIACRITICS.replace(decomposed, ""), ""), "")
         }
     }
 }

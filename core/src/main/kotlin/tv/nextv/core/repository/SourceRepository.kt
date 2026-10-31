@@ -311,6 +311,7 @@ class SourceRepository(
             userAgent = source.userAgent,
         )
         val mapping = HashMap<Long, String>()
+        val guideOnly = HashMap<String, String>()
         val covered = HashSet<String>()
         var programmes = 0
         var firstError: SourceError? = null
@@ -321,6 +322,7 @@ class SourceRepository(
                 try {
                     val result = epgLoader.load(location, request, channels, session, excludedEpgIds = covered, progress = progress)
                     result.mapping.forEach { (channelId, epgId) -> mapping.putIfAbsent(channelId, epgId) }
+                    result.guideOnlyChannels.forEach { (epgId, name) -> guideOnly.putIfAbsent(epgId, name) }
                     covered += result.coveredEpgIds
                     programmes += result.programmeCount
                     succeeded++
@@ -337,7 +339,7 @@ class SourceRepository(
                 session.abort()
                 return EpgOutcome(previous.copy(lastAttemptAtMillis = attemptAt, error = firstError), failure = firstError)
             }
-            session.commit(mapping)
+            session.commit(mapping, guideOnly.filterKeys { it !in mapping.values })
         } catch (e: Throwable) {
             withContext(NonCancellable) { session.abort() }
             throw e
@@ -378,7 +380,7 @@ class SourceRepository(
         val session = store.beginEpgImport(source.id)
         try {
             val result = epgLoader.importFile(feed.file, store.getEpgChannelRefs(source.id), session, progress = progress)
-            session.commit(result.mapping)
+            session.commit(result.mapping, result.guideOnlyChannels)
             logger.info(TAG, "Guide : ${result.programmeCount} programmes, ${result.mapping.size} chaînes associées")
             val status = EpgStatus(
                 lastAttemptAtMillis = attemptAt,

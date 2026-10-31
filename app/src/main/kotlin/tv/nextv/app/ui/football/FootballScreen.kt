@@ -421,7 +421,18 @@ private fun Teams(match: FootballMatch, large: Boolean) {
 private fun RowScope.ChannelInfo(match: FootballMatch, logoWidth: Dp, inline: Boolean = false) {
     val channel = match.channel
     if (channel == null) {
-        Text(stringResource(R.string.football_no_channel), style = MaterialTheme.typography.labelLarge, color = NexTvColors.TextMuted, maxLines = 2)
+        // Chaîne connue du guide mais pas reliée à la playlist : son nom, pour la retrouver soi-même.
+        val guideChannel = match.guideChannel
+        if (guideChannel != null) {
+            Text(
+                stringResource(R.string.football_guide_only_channel, guideChannel),
+                style = MaterialTheme.typography.labelLarge,
+                color = NexTvColors.Warning,
+                maxLines = 2,
+            )
+        } else {
+            Text(stringResource(R.string.football_no_channel), style = MaterialTheme.typography.labelLarge, color = NexTvColors.TextMuted, maxLines = 2)
+        }
         return
     }
     ChannelLogo(channel.logoUrl, channel.name, Modifier.size(width = logoWidth, height = logoWidth * 0.68f), monogramSize = 12.dp)

@@ -458,6 +458,8 @@ object SampleData {
                 programme = channel?.let {
                     GuideProgramme("Football : ${competition.label}", start, start + 115 * MINUTE, teams, "Match de ${competition.label}.", "Football")
                 },
+                // Chaîne connue du guide mais absente de la playlist.
+                guideChannel = if (channel == null && competition == Competition.LA_LIGA) "DAZN 1" else null,
                 otherChannels = if (index == 0) 2 else 0,
                 homeScore = if (index == 0) 1 else null,
                 awayScore = if (index == 0) 0 else null,

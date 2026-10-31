@@ -64,7 +64,7 @@ class InMemoryPlaylistStore : PlaylistStore {
             pending += batch
         }
 
-        override suspend fun commit(mapping: Map<Long, String>) {
+        override suspend fun commit(mapping: Map<Long, String>, guideOnlyChannels: Map<String, String>) {
             programmes[sourceId] = pending.toList()
             epgMapping[sourceId] = mapping
         }

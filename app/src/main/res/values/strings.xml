@@ -162,6 +162,7 @@
     <string name="football_empty_title">Aucun match trouvé</string>
     <string name="football_empty_message">Pas de match dans les 8 prochains jours pour cette compétition.</string>
     <string name="football_no_channel">Pas trouvé dans le guide</string>
+    <string name="football_guide_only_channel">Sur %1$s · chaîne pas reliée à la playlist</string>
     <string name="football_loading">Recherche des matchs…</string>
     <string name="football_matches">Matchs</string>
     <string name="football_standings">Classement</string>

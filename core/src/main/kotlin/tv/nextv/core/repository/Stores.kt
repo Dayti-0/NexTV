@@ -46,8 +46,12 @@ interface PlaylistStore {
 }
 
 interface EpgImportSession : ProgrammeSink {
-    /** @param mapping chaîne de la playlist (identifiant en base) → identifiant de chaîne XMLTV. */
-    suspend fun commit(mapping: Map<Long, String>)
+    /**
+     * @param mapping chaîne de la playlist (identifiant en base) → identifiant de chaîne XMLTV.
+     * @param guideOnlyChannels chaînes du guide sans chaîne de la playlist mais dont des matchs ont
+     * été importés (identifiant XMLTV → nom affiché).
+     */
+    suspend fun commit(mapping: Map<Long, String>, guideOnlyChannels: Map<String, String> = emptyMap())
 
     suspend fun abort()
 }

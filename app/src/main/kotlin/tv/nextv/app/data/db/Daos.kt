@@ -630,6 +630,19 @@ interface HiddenGroupDao {
     fun observeCount(sourceId: Long, kind: String): Flow<Int>
 }
 
+/** Chaînes du guide absentes de la playlist (section Foot). */
+@Dao
+interface GuideOnlyChannelDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(channels: List<GuideOnlyChannelEntity>)
+
+    @Query("DELETE FROM guide_only_channels WHERE sourceId = :sourceId")
+    suspend fun deleteForSource(sourceId: Long)
+
+    @Query("SELECT * FROM guide_only_channels WHERE sourceId = :sourceId")
+    suspend fun list(sourceId: Long): List<GuideOnlyChannelEntity>
+}
+
 @Dao
 interface TmdbDao {
     @Query("SELECT * FROM tmdb_cache WHERE cacheKey = :cacheKey")

@@ -71,6 +71,60 @@ class EpgImporterTest {
     }
 
     @Test
+    fun `numbers with leading zeros, extra mentions and word order are tolerated`() {
+        val guide = listOf(
+            XmltvChannel("Ligue1Plus.fr", listOf("Ligue 1+")),
+            XmltvChannel("Ligue1Plus5.fr", listOf("Ligue 1+ 5")),
+            XmltvChannel("DAZN.fr", listOf("DAZN 1")),
+            XmltvChannel("Arte.fr", listOf("Arte")),
+            XmltvChannel("beINSPORTS1.fr", listOf("beIN SPORTS 1")),
+        )
+        val channels = listOf(
+            EpgChannelRef(1, tvgId = null, tvgName = null, name = "FR| LIGUE 1+ 05"),
+            EpgChannelRef(2, tvgId = null, tvgName = null, name = "FR| LIGUE 1+ MATCH 5 FHD"),
+            EpgChannelRef(3, tvgId = null, tvgName = null, name = "FR| DAZN 1 LIVE"),
+            EpgChannelRef(4, tvgId = null, tvgName = null, name = "FR| BEIN SPORT 1"),
+            // Mots qui changent la chaîne : pas d'association hasardeuse.
+            EpgChannelRef(5, tvgId = null, tvgName = null, name = "ARTE CONCERT"),
+            EpgChannelRef(6, tvgId = null, tvgName = null, name = "FR| LIGUE 1+ 6"),
+            EpgChannelRef(7, tvgId = "", tvgName = null, name = "Ligue1Plus5"),
+        )
+
+        val mapping = EpgImporter(parserFactory = { KXmlParser() }).match(channels, guide, emptySet())
+
+        assertEquals(
+            mapOf(1L to "ligue1plus5.fr", 2L to "ligue1plus5.fr", 3L to "dazn.fr", 4L to "beinsports1.fr", 7L to "ligue1plus5.fr"),
+            mapping,
+        )
+    }
+
+    @Test
+    fun `football programmes of sports channels missing from the playlist are kept`() = runBlocking {
+        val guide = """
+            <tv>
+              <channel id="tf1.fr"><display-name>TF1</display-name></channel>
+              <channel id="Ligue1Plus5.fr"><display-name>Ligue 1+ 5</display-name></channel>
+              <channel id="m6.fr"><display-name>M6</display-name></channel>
+              <channel id="beINSPORTS1.ca"><display-name>beIN Sports Canada</display-name></channel>
+              <programme start="20240101190000 +0000" stop="20240101215000 +0000" channel="Ligue1Plus5.fr">
+                <title>Football : Ligue 1 McDonald's | Troyes / Le Mans</title><category>Football</category>
+              </programme>
+              <programme start="20240101170000 +0000" stop="20240101190000 +0000" channel="Ligue1Plus5.fr"><title>Ligue 1+ 5</title><category>Magazine sportif</category></programme>
+              <programme start="20240101190000 +0000" stop="20240101210000 +0000" channel="m6.fr"><title>Football : match amical</title></programme>
+              <programme start="20240101190000 +0000" stop="20240101210000 +0000" channel="beINSPORTS1.ca"><title>Soccer</title></programme>
+              <programme start="20240101120000 +0000" stop="20240101130000 +0000" channel="tf1.fr"><title>Journal</title></programme>
+            </tv>
+        """.trimIndent()
+        val written = mutableListOf<Programme>()
+        val result = importer.import(guide.byteInputStream(), channels, { written += it })
+
+        assertEquals(mapOf(1L to "tf1.fr"), result.mapping)
+        assertEquals(mapOf("ligue1plus5.fr" to "Ligue 1+ 5"), result.guideOnlyChannels)
+        assertEquals(listOf("Football : Ligue 1 McDonald's | Troyes / Le Mans", "Journal"), written.sortedBy { it.epgChannelId }.map { it.title })
+        assertEquals(setOf("tf1.fr"), result.coveredEpgIds)
+    }
+
+    @Test
     fun `matches channels by id then by name and filters programmes`() = runBlocking {
         val (result, programmes) = run(xml)
 

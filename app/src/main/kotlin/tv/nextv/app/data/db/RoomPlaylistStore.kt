@@ -159,11 +159,14 @@ class RoomPlaylistStore(private val database: NexTvDatabase) : PlaylistStore {
             )
         }
 
-        override suspend fun commit(mapping: Map<Long, String>) {
+        override suspend fun commit(mapping: Map<Long, String>, guideOnlyChannels: Map<String, String>) {
             database.withTransaction {
                 if (sourceDao.get(sourceId) == null) return@withTransaction
                 channelDao.clearEpg(sourceId)
                 for ((channelId, epgChannelId) in mapping) channelDao.setEpg(channelId, epgChannelId)
+                val guideOnly = database.guideOnlyChannelDao()
+                guideOnly.deleteForSource(sourceId)
+                guideOnly.insertAll(guideOnlyChannels.map { (id, name) -> GuideOnlyChannelEntity(sourceId, id, name) })
                 sourceDao.setEpgGeneration(sourceId, generation)
                 programmeDao.deleteOtherGenerations(sourceId, generation)
             }

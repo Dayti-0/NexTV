@@ -118,6 +118,23 @@ data class FavoriteEntity(
 )
 
 /**
+ * Chaîne du guide sans chaîne de la playlist associée, dont des matchs ont été importés (version 8
+ * du schéma) : la section Foot indique sur quelle chaîne passe un match, même absente de la playlist.
+ */
+@Entity(
+    tableName = "guide_only_channels",
+    primaryKeys = ["sourceId", "epgChannelId"],
+    foreignKeys = [
+        ForeignKey(entity = SourceEntity::class, parentColumns = ["id"], childColumns = ["sourceId"], onDelete = ForeignKey.CASCADE),
+    ],
+)
+data class GuideOnlyChannelEntity(
+    val sourceId: Long,
+    val epgChannelId: String,
+    val name: String,
+)
+
+/**
  * Catégorie masquée (version 4 du schéma). [title] : nom du groupe, `''` pour les éléments sans
  * groupe ; il ne dépend pas des identifiants de ligne et reste valable après une actualisation.
  */

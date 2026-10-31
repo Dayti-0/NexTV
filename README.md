@@ -22,7 +22,8 @@ Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3, enti�
   noir profond, cinéma (noir et rouge) ou violet.
 - **Foot** : matchs des 8 prochains jours par compétition (Ligue 1, Premier League, Liga, Serie A, Bundesliga, Ligue
   des champions, Ligue Europa, Ligue Conférence, équipes nationales), par jour, avec les écussons et la chaîne de la
-  playlist qui les diffuse ; score en direct pendant les matchs (actualisé toutes les 2 min), classement des
+  playlist qui les diffuse (quand la chaîne du guide — « Ligue 1+ 5 », « DAZN 1 »… — n'est reliée à aucune chaîne
+  de la playlist, son nom est quand même indiqué) ; score en direct pendant les matchs (actualisé toutes les 2 min), classement des
   championnats, « Mes équipes » pour les équipes suivies. OK pour regarder, appui long pour la fiche du match
   (suivre chaque équipe). La liste vient de
   [football-data.org](https://www.football-data.org) (clé gratuite, Réglages › Matchs de foot, ou secret CI

@@ -159,11 +159,12 @@ class DaoQueriesTest {
             execSQL("DROP INDEX `index_channels_sourceId_kind_itemKey_position`")
             execSQL("CREATE INDEX `index_channels_sourceId_kind_seriesName` ON `channels` (`sourceId`, `kind`, `seriesName`)")
             execSQL("UPDATE channels SET isPrimary = 1, variantCount = 1 WHERE kind = 'SERIES'")
+            execSQL("DROP TABLE `guide_only_channels`")
             version = 6
         }
         old.close()
         val migrated = Room.databaseBuilder(context, NexTvDatabase::class.java, name)
-            .addMigrations(NexTvDatabase.MIGRATION_6_7)
+            .addMigrations(NexTvDatabase.MIGRATION_6_7, NexTvDatabase.MIGRATION_7_8)
             .allowMainThreadQueries()
             .build()
         try {
@@ -201,6 +202,16 @@ class DaoQueriesTest {
         // Version FHD masquée : la version HD représente la chaîne.
         db.hiddenGroupDao().hide(HiddenGroupEntity(sourceId, "LIVE", "FHD"))
         assertEquals(listOf("TF1 HD"), dao.guideVersions(sourceId).map { it.name })
+    }
+
+    @Test
+    fun `guide-only sports channels are saved with the guide`() = runBlocking {
+        val session = RoomPlaylistStore(db).beginEpgImport(sourceId)
+        session.commit(emptyMap(), mapOf("ligue1plus5.fr" to "Ligue 1+ 5"))
+        assertEquals(listOf("ligue1plus5.fr" to "Ligue 1+ 5"), db.guideOnlyChannelDao().list(sourceId).map { it.epgChannelId to it.name })
+        // Import suivant : la liste est remplacée.
+        RoomPlaylistStore(db).beginEpgImport(sourceId).commit(emptyMap(), emptyMap())
+        assertEquals(emptyList<GuideOnlyChannelEntity>(), db.guideOnlyChannelDao().list(sourceId))
     }
 
     @Test

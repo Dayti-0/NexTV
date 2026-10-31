@@ -56,6 +56,8 @@ data class FootballMatch(
     val awayCrest: String? = null,
     val channel: GuideChannel? = null,
     val programme: GuideProgramme? = null,
+    /** Chaîne du guide qui diffuse le match quand aucune chaîne de la playlist ne lui est associée. */
+    val guideChannel: String? = null,
     /** Autres chaînes qui le diffusent. */
     val otherChannels: Int = 0,
     /** Score en cours de match (football-data.org). */
@@ -251,8 +253,11 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
             val id = channel.epgChannelId ?: continue
             if (id !in channels) channels[id] = channel
         }
+        // Chaînes de sport du guide absentes de la playlist : le match est affiché avec leur nom.
+        val guideOnly = container.guideOnlyChannelDao.list(sourceId).associate { it.epgChannelId to it.name }
         val rows = container.programmeDao.footballCandidates(sourceId, now, now + WINDOW_MILLIS).mapNotNull { programme ->
-            channels[programme.epgChannelId]?.let { BroadcastRow(it, programme) }
+            channels[programme.epgChannelId]?.let { BroadcastRow(it, null, programme) }
+                ?: guideOnly[programme.epgChannelId]?.let { BroadcastRow(null, it, programme) }
         }
         return GuideData(rows, guideMatches(rows))
     }
@@ -288,11 +293,17 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
     }
 }
 
-/** Programme du guide avec la chaîne de la playlist qui le diffuse. */
-private class BroadcastRow(channel: EpgChannelRow, programme: FootballProgrammeRow) {
-    val channelId = channel.id
-    val channelName = channel.title.ifBlank { channel.name }
-    val logoUrl = channel.logoUrl
+/**
+ * Programme du guide avec la chaîne de la playlist qui le diffuse, ou seulement le nom de la chaîne
+ * du guide ([guideName]) quand elle n'est pas dans la playlist.
+ */
+private class BroadcastRow(channel: EpgChannelRow?, guideName: String?, programme: FootballProgrammeRow) {
+    val channelId: Long? = channel?.id
+    val channelName: String = channel?.let { it.title.ifBlank { it.name } } ?: guideName.orEmpty()
+    val logoUrl = channel?.logoUrl
+
+    /** Chaîne de la playlist, ou à défaut, nom de la chaîne du guide (une ligne par chaîne). */
+    val channelKey: Any = channelId ?: channelName
     val title = programme.title
     val subtitle = programme.subtitle
     val description = programme.description
@@ -314,7 +325,8 @@ private fun apiMatches(matches: List<ScheduledMatch>, rows: List<BroadcastRow>, 
     val broadcasts = rows.map { Broadcast(it, it.title, it.subtitle, it.category, it.description, it.startMillis, it.stopMillis) }
     val found = BroadcastFinder.assign(upcoming, broadcasts)
     return upcoming.map { match ->
-        val shows = found[match].orEmpty().sortedBy { it.startMillis }.distinctBy { it.channelId }
+        // Chaînes de la playlist d'abord : celles du guide seul ne se regardent pas.
+        val shows = found[match].orEmpty().sortedWith(compareBy({ it.channelId == null }, { it.startMillis })).distinctBy { it.channelKey }
         val first = shows.firstOrNull()
         FootballMatch(
             competition = match.competition,
@@ -326,6 +338,7 @@ private fun apiMatches(matches: List<ScheduledMatch>, rows: List<BroadcastRow>, 
             awayCrest = match.away.crestUrl,
             channel = first?.let(::channelOf),
             programme = first?.let(::programmeOf),
+            guideChannel = first?.takeIf { it.channelId == null }?.channelName,
             otherChannels = (shows.size - 1).coerceAtLeast(0),
             homeScore = match.homeScore.takeIf { match.status == MatchStatus.LIVE },
             awayScore = match.awayScore.takeIf { match.status == MatchStatus.LIVE },
@@ -347,11 +360,11 @@ private fun guideMatches(rows: List<BroadcastRow>): List<FootballMatch> {
             ?.let { row to it }
     }
     return found.groupBy { (_, fixture) -> fixture.competition to simplify(fixture.label) }.values.map { group ->
-        val sorted = group.sortedBy { (row, _) -> row.startMillis }
+        val sorted = group.sortedWith(compareBy({ (row, _) -> row.channelId == null }, { (row, _) -> row.startMillis }))
         val (first, fixture) = sorted.first()
         val sameShow = sorted.filter { (row, _) -> row.startMillis - first.startMillis < HALVES_MILLIS }
         val channels = sameShow.filter { (row, _) -> abs(row.startMillis - first.startMillis) <= SAME_SHOW_MILLIS }
-            .map { (row, _) -> row.channelId }
+            .map { (row, _) -> row.channelKey }
             .distinct()
         FootballMatch(
             competition = fixture.competition,
@@ -361,6 +374,7 @@ private fun guideMatches(rows: List<BroadcastRow>): List<FootballMatch> {
             endMillis = sameShow.maxOf { (row, _) -> row.stopMillis },
             channel = channelOf(first),
             programme = programmeOf(first),
+            guideChannel = first.channelName.takeIf { first.channelId == null },
             otherChannels = channels.size - 1,
         )
     }
@@ -375,7 +389,8 @@ private fun simplify(text: String): String =
 
 private val NON_ALPHANUMERIC = Regex("[^a-z0-9]+")
 
-private fun channelOf(row: BroadcastRow) = GuideChannel(row.channelId, row.channelName, null, row.logoUrl, emptyList())
+private fun channelOf(row: BroadcastRow): GuideChannel? =
+    row.channelId?.let { GuideChannel(it, row.channelName, null, row.logoUrl, emptyList()) }
 
 private fun programmeOf(row: BroadcastRow) =
     GuideProgramme(row.title, row.startMillis, row.stopMillis, row.subtitle, row.description, row.category, row.year)
