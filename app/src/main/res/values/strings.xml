@@ -274,8 +274,11 @@
     <string name="player_paused">En pause</string>
     <string name="player_delay">Différé −%1$s</string>
     <string name="player_timeshift_hint">OK : pause / lecture · → : retour au direct</string>
-    <string name="player_replay_hint">← → : reculer / avancer de %1$s (passer la pub) · OK : pause / lecture</string>
-    <string name="player_restart_hint">← → : reculer / avancer de %1$s · appui long sur → : retour au direct · OK : pause</string>
+    <string name="player_replay_hint">← → : reculer / avancer de %1$s (passer la pub) · maintenir ← → : retour / avance rapide x2 · OK : pause / lecture</string>
+    <string name="player_restart_hint">← → : reculer / avancer de %1$s · maintenir ← → : retour / avance rapide x2 · OK : pause</string>
+    <string name="player_back_to_live">Revenir au direct</string>
+    <string name="player_back_to_live_hint">Maintenir OK : revenir au direct</string>
+    <string name="player_fast_speed">x2</string>
     <string name="player_jump_forward">+%1$s</string>
     <string name="player_jump_back">−%1$s</string>
     <string name="player_resume_title">Reprendre la lecture ?</string>

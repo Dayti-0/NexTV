@@ -2,6 +2,7 @@ package tv.nextv.app.ui.player
 
 import android.content.Context
 import android.net.wifi.WifiManager
+import android.os.SystemClock
 import android.text.format.DateUtils
 import java.io.File
 import kotlin.math.abs
@@ -149,6 +150,8 @@ data class PlayerUiState(
     val pendingJumpSeconds: Int = 0,
     /** Durée d'un appui sur ← → : 30 s quand on peut se déplacer dans l'enregistrement, sinon une minute. */
     val jumpStepSeconds: Int = 60,
+    /** Avance (1) ou retour (−1) rapide x2 en cours (← → maintenu), 0 sinon. */
+    val fastSeek: Int = 0,
     /** Option « baisser le son des pubs » activée. */
     val lowerAdVolume: Boolean = false,
     /** Pub détectée : son baissé. */
@@ -232,6 +235,20 @@ class PlayerViewModel(
 
     /** Replay lu en HLS : on s'y déplace à la seconde près (sinon, l'enregistrement est relu à la minute). */
     private var replayHls = false
+
+    /** Avance (1) ou retour (−1) rapide en cours, tant que la touche est maintenue. */
+    private var fastDirection = 0
+    private var fastJob: Job? = null
+    /** Dernier signe de la touche maintenue : sans nouvelles (relâchement perdu), l'avance rapide s'arrête. */
+    private var fastHeartbeat = 0L
+    /** Lecteur auquel la vitesse x2 a été demandée (un saut dans un enregistrement continu en crée un autre). */
+    private var fastPlayer: ExoPlayer? = null
+    /** Son coupé pendant l'avance rapide : sortie audio qui ne suit pas la vitesse (son transmis tel quel à l'ampli). */
+    private var fastAudioOff = false
+    /** Retour rapide par déplacements dans le flux : position visée, et lecture à reprendre ensuite. */
+    private var rewindInPlace = false
+    private var rewindTarget = 0L
+    private var resumeAfterRewind = false
     /** Chaîne affichée (meilleure version), base du zapping. */
     private var channel: ChannelEntity? = null
     /** Ligne choisie dans les listes (une version précise : celle de sa catégorie). */
@@ -676,6 +693,7 @@ class PlayerViewModel(
     private fun load(id: Long) {
         // Autre chaîne : fin du replay (le programme revu appartenait à la chaîne quittée).
         if (id != channelId) leaveReplay()
+        resetFastSeek()
         stopTimeshift()
         channelId = id
         handle[ARG_CHANNEL_ID] = id
@@ -1145,9 +1163,9 @@ class PlayerViewModel(
         mutablePlayer.value = player
     }
 
-    /** Retour au direct : fin du différé (ou de « Depuis le début »). */
+    /** Retour au direct : fin du différé, de « Depuis le début » ou du replay. */
     fun backToLive() {
-        if (restarting) {
+        if (restarting || replay != null) {
             leaveReplay()
             load(channelId)
             return
@@ -1174,6 +1192,7 @@ class PlayerViewModel(
         replayUrlFrom = null
         jumpJob?.cancel()
         pendingJumpSeconds = 0
+        resetFastSeek()
         handle[ARG_REPLAY_START] = 0L
         handle[ARG_REPLAY_STOP] = 0L
         replayHls = false
@@ -1239,6 +1258,138 @@ class PlayerViewModel(
             )
         }
         start(forceHls = false)
+    }
+
+    // --- Avance et retour rapides (x2) ---------------------------------------------------------------
+
+    /**
+     * ← → maintenu : avance ([direction] 1) ou retour (−1) rapide x2, dans un replay, « Depuis le
+     * début », un film ou un épisode. À rappeler tant que la touche reste enfoncée ; [stopFastSeek]
+     * au relâchement. L'avance lit deux fois plus vite ; le retour recule de 2 s par seconde
+     * (dans un enregistrement continu, le recul est appliqué au relâchement, à la minute).
+     */
+    fun fastSeek(direction: Int) {
+        fastHeartbeat = SystemClock.uptimeMillis()
+        if (direction == 0 || direction == fastDirection) return
+        stopFastSeek()
+        val player = mutablePlayer.value ?: return
+        if (state.value.isLive && replayUrlFrom == null) return
+        // Appuis courts encore en attente : appliqués d'abord.
+        if (pendingJumpSeconds != 0) {
+            jumpJob?.cancel()
+            applyJump()
+        }
+        if (direction < 0) {
+            val current = mutablePlayer.value ?: player
+            rewindInPlace = seeksInPlace(current)
+            if (!rewindInPlace && replayUrlFrom == null) return
+            if (rewindInPlace) {
+                resumeAfterRewind = current.playWhenReady
+                rewindTarget = current.currentPosition
+                current.pause()
+            }
+        } else if (state.value.paused) {
+            togglePause()
+        } else {
+            mutablePlayer.value?.play()
+        }
+        fastDirection = direction
+        mutableState.update { it.copy(fastSeek = direction) }
+        fastJob = viewModelScope.launch {
+            while (true) {
+                if (SystemClock.uptimeMillis() - fastHeartbeat > FAST_HEARTBEAT_TIMEOUT_MILLIS) {
+                    stopFastSeek()
+                    return@launch
+                }
+                if (direction > 0) fastForwardTick() else rewindTick()
+                delay(FAST_TICK_MILLIS)
+            }
+        }
+    }
+
+    /** Touche relâchée : lecture normale à l'endroit atteint. */
+    fun stopFastSeek() {
+        val direction = fastDirection
+        if (direction == 0) return
+        val audioOff = fastAudioOff
+        val inPlace = rewindInPlace
+        val resume = resumeAfterRewind
+        resetFastSeek()
+        val player = mutablePlayer.value
+        when {
+            direction > 0 -> {
+                player?.setPlaybackSpeed(1f)
+                if (audioOff) player?.setAudioDisabled(false)
+                if (restarting && player != null) {
+                    val at = watchedAt()
+                    mutableState.update { it.copy(watchedAt = at, liveDelayMs = (System.currentTimeMillis() - at).coerceAtLeast(0)) }
+                }
+            }
+            inPlace -> if (resume) player?.play()
+            pendingJumpSeconds != 0 -> applyJump()
+        }
+    }
+
+    private fun resetFastSeek() {
+        fastJob?.cancel()
+        fastJob = null
+        fastDirection = 0
+        fastPlayer = null
+        fastAudioOff = false
+        rewindInPlace = false
+        if (state.value.fastSeek != 0) mutableState.update { it.copy(fastSeek = 0) }
+    }
+
+    private fun fastForwardTick() {
+        val player = mutablePlayer.value ?: return
+        if (player !== fastPlayer) {
+            // Premier passage, ou nouveau lecteur après un saut : vitesse x2 (et son coupé s'il le fallait).
+            fastPlayer = player
+            if (fastAudioOff) player.setAudioDisabled(true)
+            player.setPlaybackSpeed(FAST_SPEED)
+        } else if (player.playbackParameters.speed != FAST_SPEED && !fastAudioOff) {
+            // Son transmis tel quel à l'ampli (Dolby…) : il ne peut pas être accéléré, l'image seule passe en x2.
+            fastAudioOff = true
+            player.setAudioDisabled(true)
+            player.setPlaybackSpeed(FAST_SPEED)
+        }
+        if (replayUrlFrom != null) {
+            val now = System.currentTimeMillis()
+            val at = watchedAt()
+            // « Depuis le début » : le direct est rattrapé.
+            if (restarting && at >= now - MINUTE_MILLIS) {
+                resetFastSeek()
+                backToLive()
+                return
+            }
+            mutableState.update {
+                it.copy(watchedAt = at, liveDelayMs = if (restarting) (now - at).coerceAtLeast(0) else it.liveDelayMs)
+            }
+        }
+    }
+
+    private fun rewindTick() {
+        if (rewindInPlace) {
+            val player = mutablePlayer.value ?: return
+            rewindTarget = (rewindTarget - FAST_TICK_MILLIS * FAST_SPEED.toLong()).coerceAtLeast(0)
+            player.seekTo(rewindTarget)
+            if (replayUrlFrom != null) mutableState.update { it.copy(watchedAt = segmentStart + rewindTarget) }
+            return
+        }
+        // Enregistrement continu : le recul s'additionne, il est appliqué au relâchement.
+        val programme = replay ?: return
+        val step = (FAST_TICK_MILLIS * FAST_SPEED.toLong() / 1_000).toInt()
+        if (watchedAt() + (pendingJumpSeconds - step) * 1_000L < programme.first - MAX_EARLY_MILLIS) return
+        pendingJumpSeconds -= step
+        mutableState.update { it.copy(pendingJumpSeconds = pendingJumpSeconds) }
+    }
+
+    /** On peut se déplacer dans le flux lu (film, épisode, replay HLS) sans le rouvrir. */
+    private fun seeksInPlace(player: ExoPlayer): Boolean =
+        player.isCurrentMediaItemSeekable && (replayUrlFrom == null || replayHls)
+
+    private fun ExoPlayer.setAudioDisabled(disabled: Boolean) {
+        trackSelectionParameters = trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, disabled).build()
     }
 
     private fun stopTimeshift() {
@@ -1445,6 +1596,13 @@ class PlayerViewModel(
 
         /** Appuis rapprochés sur ← → : additionnés pendant ce délai. */
         private const val JUMP_DEBOUNCE_MILLIS = 900L
+
+        /** Avance et retour rapides : x2. */
+        private const val FAST_SPEED = 2f
+        private const val FAST_TICK_MILLIS = 500L
+
+        /** Sans répétition de la touche maintenue pendant ce délai, l'avance rapide s'arrête. */
+        private const val FAST_HEARTBEAT_TIMEOUT_MILLIS = 1_500L
 
         /** Recul possible avant le début prévu (programme commencé en avance). */
         private const val MAX_EARLY_MILLIS = 15 * MINUTE_MILLIS

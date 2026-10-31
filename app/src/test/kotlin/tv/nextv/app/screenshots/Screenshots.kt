@@ -328,10 +328,11 @@ abstract class ScreenshotSuite(private val device: String) {
             ),
             now = SampleData.NOW,
             visible = true,
-            showTouchControls = false,
+            showTouchControls = device == "phone",
             onBack = {},
             onZap = {},
             onRetry = {},
+            onBackToLive = {},
         )
     }
 
@@ -344,7 +345,15 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
-        fun playerRestart() = capture("13f_lecteur_depuis_le_debut") {
+    fun playerFastSeek() = capture("13i_lecteur_avance_rapide") {
+        FakeVideo()
+        Box(Modifier.fillMaxSize()) {
+            CenterIndicator(jumpSeconds = 0, fastSeek = 1, paused = false, visible = true, modifier = Modifier.align(Alignment.Center))
+        }
+    }
+
+    @Test
+    fun playerRestart() = capture("13f_lecteur_depuis_le_debut") {
         FakeVideo()
         PlayerOverlay(
             // « Depuis le début » d'un programme commencé il y a 25 min : bandeau du direct, différé affiché.
@@ -355,11 +364,12 @@ abstract class ScreenshotSuite(private val device: String) {
             onBack = {},
             onZap = {},
             onRetry = {},
+            onBackToLive = {},
         )
     }
 
     @Test
-        fun playerMatch() = capture("13e_lecteur_match") {
+    fun playerMatch() = capture("13e_lecteur_match") {
         FakeVideo()
         PlayerOverlay(
             state = SampleData.player.copy(match = PlayerMatch("PSG", "Marseille", null, null, "1 – 0", live = true), adMuted = true),

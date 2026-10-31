@@ -167,6 +167,11 @@ fun PlayerScreen(onBack: () -> Unit) {
     }
     // Film : les commandes Media3 ont déjà leur bouton lecture au centre quand elles sont affichées.
     var controllerVisible by remember { mutableStateOf(false) }
+    // Film ou épisode (commandes Media3).
+    val film = !bannerMode && !state.isLive
+    // Replay, « Depuis le début » ou direct en pause / différé : OK maintenu (ou les options) ramène au direct.
+    val canGoLive = state.replay != null || (state.isLive && (state.seekable || state.paused || state.liveDelayMs > 0))
+    val press = remember { HeldKey() }
 
     LifecycleStartEffect(viewModel) {
         viewModel.onStart()
@@ -201,22 +206,58 @@ fun PlayerScreen(onBack: () -> Unit) {
             .fillMaxSize()
             .background(Color.Black)
             .onPreviewKeyEvent { event ->
-                if (event.type != KeyEventType.KeyDown || menu.open || optionsVisible || state.resumePrompt != null) return@onPreviewKeyEvent false
+                if (menu.open || optionsVisible || state.resumePrompt != null) {
+                    press.key = null
+                    return@onPreviewKeyEvent false
+                }
+                val repeat = event.nativeKeyEvent.repeatCount
+                // OK, ← → : l'appui court agit au relâchement, l'appui long tant que la touche est maintenue.
+                // Seulement pour un appui commencé ici (pas le relâchement de la touche qui a lancé la chaîne).
+                if (event.type == KeyEventType.KeyUp) {
+                    if (press.key != event.key) return@onPreviewKeyEvent false
+                    val long = press.long
+                    val consumed = press.consumed
+                    press.key = null
+                    when (event.key) {
+                        Key.DirectionLeft, Key.DirectionRight -> when {
+                            long -> {
+                                viewModel.stopFastSeek()
+                                bannerTrigger++
+                            }
+                            state.seekable -> {
+                                viewModel.jump(if (event.key == Key.DirectionRight) +1 else -1)
+                                bannerTrigger++
+                            }
+                        }
+                        else -> if (!long) {
+                            when {
+                                state.error != null -> viewModel.retry()
+                                bannerVisible || state.paused -> {
+                                    viewModel.togglePause()
+                                    bannerTrigger++
+                                }
+                                else -> bannerTrigger++
+                            }
+                        }
+                    }
+                    return@onPreviewKeyEvent long || consumed
+                }
+                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 val delayed = state.paused || state.liveDelayMs > 0
                 when (event.key) {
                     Key.ChannelUp -> true.also { viewModel.zap(+1) }
                     Key.ChannelDown -> true.also { viewModel.zap(-1) }
                     Key.DirectionUp -> state.isLive.also { if (it) viewModel.zap(+1) }
                     Key.DirectionDown -> state.isLive.also { if (it) viewModel.zap(-1) }
-                    // En erreur, OK relance la lecture ; bandeau affiché : pause / lecture ; sinon il affiche le bandeau.
+                    // OK : bandeau, puis pause / lecture (en erreur : nouvel essai). Maintenu : retour au direct.
                     Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> when {
                         !bannerMode -> false
-                        state.error != null -> true.also { viewModel.retry() }
-                        bannerVisible || state.paused -> true.also {
-                            viewModel.togglePause()
-                            bannerTrigger++
+                        repeat == 0 -> true.also { press.start(event.key, consumed = true) }
+                        press.key == event.key && repeat >= LONG_PRESS_REPEATS && !press.long && canGoLive -> true.also {
+                            press.long = true
+                            viewModel.backToLive()
                         }
-                        else -> true.also { bannerTrigger++ }
+                        else -> true
                     }
                     Key.MediaPlayPause, Key.MediaPlay, Key.MediaPause -> bannerMode.also {
                         if (it) {
@@ -224,26 +265,36 @@ fun PlayerScreen(onBack: () -> Unit) {
                             bannerTrigger++
                         }
                     }
-                    // Replay, « Depuis le début » : ← → reculent / avancent d'une minute (passer la pub) ; appui long
-                    // sur → (ou ⏩) en « Depuis le début » : retour au direct.
-                    Key.DirectionLeft -> state.seekable.also {
-                        if (it && event.nativeKeyEvent.repeatCount % HELD_JUMP_REPEATS == 0) {
-                            viewModel.jump(-1)
-                            bannerTrigger++
-                        }
-                    }
-                    Key.DirectionRight -> when {
-                        state.seekable && state.isLive && event.nativeKeyEvent.repeatCount >= LONG_PRESS_REPEATS -> true.also {
-                            if (event.nativeKeyEvent.repeatCount == LONG_PRESS_REPEATS) viewModel.backToLive()
-                        }
-                        state.seekable -> true.also {
-                            if (event.nativeKeyEvent.repeatCount == 0 || (!state.isLive && event.nativeKeyEvent.repeatCount % HELD_JUMP_REPEATS == 0)) {
-                                viewModel.jump(+1)
-                                bannerTrigger++
+                    // Replay, « Depuis le début », film : ← → reculent / avancent (passer la pub) ; maintenus, retour
+                    // ou avance rapide x2. Film : un appui affiche les commandes, comme avant.
+                    Key.DirectionLeft, Key.DirectionRight -> {
+                        val direction = if (event.key == Key.DirectionRight) 1 else -1
+                        when {
+                            state.seekable -> true.also {
+                                if (repeat == 0) {
+                                    press.start(event.key, consumed = true)
+                                } else if (press.key == event.key && repeat >= FAST_SEEK_REPEATS) {
+                                    if (!press.long) bannerTrigger++
+                                    press.long = true
+                                    viewModel.fastSeek(direction)
+                                }
                             }
+                            film -> when {
+                                repeat == 0 -> false.also {
+                                    // Commandes affichées : ← → s'y déplacent (Media3), sans avance rapide.
+                                    if (controllerVisible) press.key = null else press.start(event.key, consumed = false)
+                                }
+                                press.key == event.key -> true.also {
+                                    if (repeat >= FAST_SEEK_REPEATS) {
+                                        press.long = true
+                                        viewModel.fastSeek(direction)
+                                    }
+                                }
+                                else -> false
+                            }
+                            // Différé (pause du direct) : → retour au direct.
+                            else -> (direction > 0 && state.isLive && delayed).also { if (it) viewModel.backToLive() }
                         }
-                        // Différé (pause du direct) : retour au direct.
-                        else -> (state.isLive && delayed).also { if (it) viewModel.backToLive() }
                     }
                     Key.MediaFastForward -> when {
                         state.seekable && !state.isLive -> true.also {
@@ -254,8 +305,15 @@ fun PlayerScreen(onBack: () -> Unit) {
                     }
                     Key.Info -> true.also { infoVisible = !infoVisible }
                     Key.Menu -> true.also { optionsVisible = true }
-                    // Chaîne regardée juste avant (⏪, ou touche dédiée de certaines télécommandes).
-                    Key.MediaRewind, Key.LastChannel -> state.isLive.also { if (it) viewModel.previousChannel() }
+                    Key.MediaRewind -> when {
+                        state.seekable && !state.isLive -> true.also {
+                            viewModel.jump(-5)
+                            bannerTrigger++
+                        }
+                        // Chaîne regardée juste avant.
+                        else -> state.isLive.also { if (it) viewModel.previousChannel() }
+                    }
+                    Key.LastChannel -> state.isLive.also { if (it) viewModel.previousChannel() }
                     Key.Guide -> true.also { bannerTrigger++ }
                     else -> false
                 }
@@ -293,22 +351,26 @@ fun PlayerScreen(onBack: () -> Unit) {
         PlayerOverlay(
             state = state,
             now = now,
-            visible = (bannerVisible || state.error != null || state.paused) && !menu.open && state.resumePrompt == null,
+            visible = (bannerVisible || state.error != null || state.paused || (state.fastSeek != 0 && bannerMode)) &&
+                !menu.open && state.resumePrompt == null,
             showTouchControls = !window.isTv,
             onBack = onBack,
             onZap = viewModel::zap,
             onRetry = viewModel::retry,
             onOpenMenu = viewModel::openMenu,
             onInfo = { infoVisible = !infoVisible },
+            onBackToLive = if (canGoLive) viewModel::backToLive else null,
         )
 
-        // Saut en cours (« +30 s ») ou pause : en grand au centre de l'écran.
+        // Saut en cours (« +30 s »), avance / retour rapide ou pause : en grand au centre de l'écran (film avec ses
+        // commandes affichées : en haut, pour ne pas cacher les boutons).
+        val filmControls = controllerVisible && !bannerMode
         CenterIndicator(
             jumpSeconds = state.pendingJumpSeconds,
-            paused = (state.paused || !playWhenReady) && state.error == null && state.resumePrompt == null &&
-                !(controllerVisible && !bannerMode),
+            fastSeek = state.fastSeek,
+            paused = (state.paused || !playWhenReady) && state.error == null && state.resumePrompt == null && !filmControls,
             visible = !menu.open,
-            modifier = Modifier.align(Alignment.Center),
+            modifier = if (filmControls) Modifier.align(Alignment.TopCenter).padding(top = 48.dp) else Modifier.align(Alignment.Center),
         )
 
         PlaybackInfoPanel(
@@ -338,6 +400,14 @@ fun PlayerScreen(onBack: () -> Unit) {
             modifier = Modifier.align(Alignment.TopEnd),
             lowerAdVolume = state.lowerAdVolume,
             onLowerAdVolume = viewModel::setLowerAdVolume,
+            onBackToLive = if (canGoLive) {
+                {
+                    optionsVisible = false
+                    viewModel.backToLive()
+                }
+            } else {
+                null
+            },
         )
 
         // Pub détectée : son baissé, signalé discrètement en haut à gauche.
@@ -404,6 +474,7 @@ fun PlayerOptionsPanel(
     modifier: Modifier = Modifier,
     lowerAdVolume: Boolean = false,
     onLowerAdVolume: (Boolean) -> Unit = {},
+    onBackToLive: (() -> Unit)? = null,
 ) {
     AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = modifier) {
         val firstFocus = remember { FocusRequester() }
@@ -430,6 +501,18 @@ fun PlayerOptionsPanel(
             ) {
                 Text(stringResource(R.string.player_options), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
 
+                // Replay, « Depuis le début », différé : le retour au direct en premier.
+                onBackToLive?.let { backToLive ->
+                    OptionRow(
+                        stringResource(R.string.player_back_to_live),
+                        selected = false,
+                        modifier = Modifier.focusRequester(firstFocus),
+                        leading = { LiveDot() },
+                        onClick = backToLive,
+                    )
+                }
+                val focusFirst = onBackToLive == null
+
                 OptionsSection(stringResource(R.string.player_audio))
                 if (tracks.audio.size <= 1) {
                     OptionsNote(tracks.audio.firstOrNull()?.label ?: stringResource(R.string.player_single_track))
@@ -438,7 +521,7 @@ fun PlayerOptionsPanel(
                         OptionRow(
                             track.label,
                             selected = track.selected,
-                            modifier = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier,
+                            modifier = if (index == 0 && focusFirst) Modifier.focusRequester(firstFocus) else Modifier,
                         ) { onAudio(track) }
                     }
                 }
@@ -450,7 +533,7 @@ fun PlayerOptionsPanel(
                     OptionRow(
                         stringResource(R.string.player_subtitles_off),
                         selected = tracks.subtitlesOff,
-                        modifier = if (tracks.audio.size <= 1) Modifier.focusRequester(firstFocus) else Modifier,
+                        modifier = if (tracks.audio.size <= 1 && focusFirst) Modifier.focusRequester(firstFocus) else Modifier,
                     ) { onSubtitles(null) }
                     tracks.subtitles.forEach { track -> OptionRow(track.label, selected = track.selected) { onSubtitles(track) } }
                 }
@@ -462,7 +545,7 @@ fun PlayerOptionsPanel(
                         AspectMode.FILL -> R.string.player_aspect_fill
                         AspectMode.ZOOM -> R.string.player_aspect_zoom
                     }
-                    val first = index == 0 && tracks.audio.size <= 1 && tracks.subtitles.isEmpty()
+                    val first = index == 0 && tracks.audio.size <= 1 && tracks.subtitles.isEmpty() && focusFirst
                     OptionRow(
                         stringResource(label),
                         selected = mode == aspect,
@@ -501,7 +584,13 @@ private fun OptionsNote(text: String) {
 }
 
 @Composable
-private fun OptionRow(label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun OptionRow(
+    label: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    leading: (@Composable () -> Unit)? = null,
+    onClick: () -> Unit,
+) {
     FocusSurface(
         onClick = onClick,
         modifier = modifier.fillMaxWidth().padding(horizontal = 8.dp),
@@ -511,7 +600,12 @@ private fun OptionRow(label: String, selected: Boolean, modifier: Modifier = Mod
         contentColor = Color.White,
         focusScale = 1f,
     ) {
-        Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            leading?.invoke()
             Text(label, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             if (selected) Icon(Icons.Filled.Check, contentDescription = null, tint = NexTvColors.Primary, modifier = Modifier.size(20.dp))
         }
@@ -530,6 +624,7 @@ fun PlayerOverlay(
     onRetry: () -> Unit,
     onOpenMenu: () -> Unit = {},
     onInfo: () -> Unit = {},
+    onBackToLive: (() -> Unit)? = null,
 ) {
     val window = rememberWindowInfo()
     Box(Modifier.fillMaxSize()) {
@@ -547,7 +642,7 @@ fun PlayerOverlay(
                         Modifier.size(width = if (window.isWide) 128.dp else 88.dp, height = if (window.isWide) 84.dp else 58.dp),
                         monogramSize = 24.dp,
                     )
-                    ChannelInfo(state, now, Modifier.weight(1f))
+                    ChannelInfo(state, now, Modifier.weight(1f), canGoLive = onBackToLive != null)
                     // Heure actuelle.
                     Text(
                         timeOf(now),
@@ -567,8 +662,13 @@ fun PlayerOverlay(
         }
 
         if (showTouchControls && visible) {
-            Box(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(8.dp)) {
+            Row(
+                Modifier.align(Alignment.TopStart).statusBarsPadding().padding(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 IconAction(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back), onBack, tint = Color.White)
+                onBackToLive?.let { PillButton(stringResource(R.string.player_back_to_live), it, style = PillStyle.Primary) }
             }
             Box(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(8.dp)) {
                 IconAction(Icons.Filled.Info, stringResource(R.string.player_info_title), onInfo, tint = Color.White)
@@ -604,7 +704,7 @@ fun PlayerOverlay(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Modifier) {
+private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Modifier, canGoLive: Boolean = false) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         // Nom puis pastilles ; sur un écran étroit, les pastilles passent à la ligne.
         FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -671,6 +771,13 @@ private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Mo
             else -> null
         }
         hint?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.75f)) }
+        // Replay, « Depuis le début » : comment revenir au direct, bien visible.
+        if (canGoLive && state.seekable) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                LiveDot()
+                Text(stringResource(R.string.player_back_to_live_hint), style = MaterialTheme.typography.labelLarge, color = Color.White)
+            }
+        }
         state.notices.forEach {
             Text(it, style = MaterialTheme.typography.bodySmall, color = NexTvColors.Warning)
         }
@@ -1041,14 +1148,22 @@ private fun channelsLabel(count: Int): String = when (count) {
  * retour), sinon icône de pause quand la lecture est en pause.
  */
 @Composable
-fun CenterIndicator(jumpSeconds: Int, paused: Boolean, visible: Boolean, modifier: Modifier = Modifier) {
+fun CenterIndicator(jumpSeconds: Int, paused: Boolean, visible: Boolean, modifier: Modifier = Modifier, fastSeek: Int = 0) {
     AnimatedVisibility(
-        visible = visible && (jumpSeconds != 0 || paused),
+        visible = visible && (fastSeek != 0 || jumpSeconds != 0 || paused),
         enter = fadeIn(),
         exit = fadeOut(),
         modifier = modifier,
     ) {
-        if (jumpSeconds != 0) {
+        if (fastSeek != 0 || jumpSeconds != 0) {
+            val forward = if (fastSeek != 0) fastSeek > 0 else jumpSeconds > 0
+            val jump = if (jumpSeconds != 0) {
+                stringResource(if (jumpSeconds > 0) R.string.player_jump_forward else R.string.player_jump_back, jumpLabel(abs(jumpSeconds)))
+            } else {
+                null
+            }
+            // Avance / retour rapide : « x2 » (et le recul additionné, appliqué au relâchement).
+            val label = if (fastSeek != 0) listOfNotNull(stringResource(R.string.player_fast_speed), jump).joinToString("  ·  ") else jump.orEmpty()
             Row(
                 Modifier
                     .background(Color.Black.copy(alpha = 0.6f), CircleShape)
@@ -1057,13 +1172,13 @@ fun CenterIndicator(jumpSeconds: Int, paused: Boolean, visible: Boolean, modifie
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 Icon(
-                    if (jumpSeconds > 0) NexTvIcons.FastForward else NexTvIcons.FastRewind,
+                    if (forward) NexTvIcons.FastForward else NexTvIcons.FastRewind,
                     contentDescription = null,
                     tint = Color.White,
                     modifier = Modifier.size(44.dp),
                 )
                 Text(
-                    stringResource(if (jumpSeconds > 0) R.string.player_jump_forward else R.string.player_jump_back, jumpLabel(abs(jumpSeconds))),
+                    label,
                     style = MaterialTheme.typography.displaySmall,
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
@@ -1087,11 +1202,31 @@ private fun jumpLabel(seconds: Int): String = when {
     else -> "${seconds / 60} min ${seconds % 60} s"
 }
 
-/** ← → maintenu : un pas de plus toutes les [HELD_JUMP_REPEATS] répétitions de la touche. */
-private const val HELD_JUMP_REPEATS = 4
+/** ← → maintenu un peu plus d'une demi-seconde : avance ou retour rapide. */
+private const val FAST_SEEK_REPEATS = 3
 
-/** → maintenu environ une seconde : appui long (retour au direct en « Depuis le début »). */
+/** OK maintenu environ une seconde : retour au direct. */
 private const val LONG_PRESS_REPEATS = 12
+
+/** Touche enfoncée dans le lecteur : l'appui court agit au relâchement, l'appui long pendant l'appui. */
+private class HeldKey {
+    var key: Key? = null
+    var long = false
+    /** L'appui est traité ici (sinon, il va aussi aux commandes du film). */
+    var consumed = false
+
+    fun start(key: Key, consumed: Boolean) {
+        this.key = key
+        this.long = false
+        this.consumed = consumed
+    }
+}
+
+/** Point rouge du direct. */
+@Composable
+private fun LiveDot() {
+    Box(Modifier.size(10.dp).background(NexTvColors.Live, CircleShape))
+}
 
 /** Retard sur le direct, pause en cours comprise. */
 private fun liveDelay(state: PlayerUiState, now: Long): Long =
