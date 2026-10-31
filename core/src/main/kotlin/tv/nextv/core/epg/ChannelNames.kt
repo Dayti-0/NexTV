@@ -54,10 +54,14 @@ object ChannelNames {
     private val NON_ALPHANUMERIC = Regex("[^a-z0-9]+")
     private val LETTER_DIGIT = Regex("(?<=[a-z])(?=[0-9])|(?<=[0-9])(?=[a-z])")
 
-    /** Mentions ajoutées par les fournisseurs, sans rapport avec l'identité de la chaîne (au singulier, comme [tokens]). */
+    /**
+     * Mentions ajoutées par les fournisseurs, sans rapport avec l'identité de la chaîne (au singulier,
+     * comme [tokens]). « Match du dimanche soir » : l'affiche du dimanche, diffusée par la chaîne
+     * principale (« LIGUE 1+| MATCH DU DIMANCHE SOIR » → « Ligue 1+ »).
+     */
     private val NOISE = setOf(
         "fr", "hd", "fhd", "sd", "uhd", "hdr", "hevc", "h265", "h264", "fp", "low", "high", "raw", "backup", "bkp",
         "live", "direct", "match", "event", "evenement", "multi", "vf", "vo", "vostfr", "ppv", "exclusive", "exclusif",
-        "only", "tv", "channel", "chaine", "la", "officiel", "official", "k", "p",
+        "only", "tv", "channel", "chaine", "la", "officiel", "official", "k", "p", "du", "dimanche", "samedi", "soir",
     )
 }
