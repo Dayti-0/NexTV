@@ -27,7 +27,7 @@ fun ChannelEntity.toStream() = StreamDescriptor(
 )
 
 /**
- * Aperçu vidéo de l'accueil : un seul lecteur, sans le son, pour la chaîne sélectionnée.
+ * Aperçu vidéo de l'accueil : un seul lecteur, au son réduit (réglages), pour la chaîne sélectionnée.
  * À libérer avant de lancer une chaîne en plein écran : beaucoup d'abonnements n'autorisent
  * qu'une connexion à la fois.
  */
@@ -43,6 +43,13 @@ class ChannelPreviewPlayer(
 
     private var channelId: Long? = null
 
+    /** Volume de l'aperçu (0 : sans le son), appliqué aussi à l'aperçu en cours. Fil principal. */
+    var volume: Float = 0f
+        set(value) {
+            field = value
+            mutablePlayer.value?.volume = value
+        }
+
     /** Montre [channel] (sans effet si c'est déjà la chaîne de l'aperçu). Fil principal. */
     suspend fun show(channel: ChannelEntity) {
         if (channel.id == channelId && mutablePlayer.value != null) return
@@ -57,8 +64,8 @@ class ChannelPreviewPlayer(
             credentialsOrigin = (source?.location as? SourceLocation.Remote)?.url,
         )
         channelId = channel.id
-        mutablePlayer.value = factory.create(request).apply {
-            volume = 0f
+        mutablePlayer.value = factory.create(request, preview = true).apply {
+            volume = this@ChannelPreviewPlayer.volume
             addListener(object : Player.Listener {
                 // Flux en erreur : l'aperçu s'efface (le logo reste affiché).
                 override fun onPlayerError(error: PlaybackException) = stop()

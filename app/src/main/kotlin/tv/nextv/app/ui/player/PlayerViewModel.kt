@@ -41,6 +41,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -188,6 +189,9 @@ data class PlaybackInfo(
 /** Chaîne du menu, avec la catégorie dont elle provient : la liste affichée correspond-elle au choix ? */
 data class MenuChannel(val category: Category, val row: ChannelListRow)
 
+/** Volet du menu des chaînes : programme en cours (avec sa description) et suivant de la chaîne sélectionnée. */
+data class MenuProgramme(val channel: ChannelListRow, val now: GuideProgramme?, val next: GuideProgramme?)
+
 /** Fiche du programme d'une chaîne du menu (appui long sur OK) ; [programme] `null` : rien dans le guide. */
 data class ProgrammeSheetState(val channel: GuideChannel, val programme: GuideProgramme?)
 
@@ -268,6 +272,27 @@ class PlayerViewModel(
 
     private val mutableProgrammeSheet = MutableStateFlow<ProgrammeSheetState?>(null)
     val programmeSheet: StateFlow<ProgrammeSheetState?> = mutableProgrammeSheet.asStateFlow()
+
+    /** Chaîne sélectionnée dans le menu des chaînes. */
+    private val menuFocus = MutableStateFlow<ChannelListRow?>(null)
+
+    /** Programme de la chaîne sélectionnée dans le menu (volet de droite), lu après un court arrêt dessus. */
+    val menuProgramme: StateFlow<MenuProgramme?> = menuFocus
+        .mapLatest { row ->
+            if (row == null) return@mapLatest null
+            delay(MENU_PROGRAMME_DELAY_MILLIS)
+            val now = System.currentTimeMillis()
+            val upcoming = container.programmeDao.upcoming(row.id, now, limit = 2)
+                .map { GuideProgramme(it.title, it.startMillis, it.stopMillis, it.subtitle, it.description, it.category, it.year) }
+            val current = upcoming.firstOrNull()?.takeIf { it.startMillis <= now }
+            MenuProgramme(row, current, upcoming.firstOrNull { it != current })
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** Chaîne sélectionnée dans le menu : son programme s'affiche à côté. */
+    fun focusMenuChannel(row: ChannelListRow) {
+        menuFocus.value = row
+    }
 
     private val sourceId = MutableStateFlow<Long?>(null)
 
@@ -662,6 +687,7 @@ class PlayerViewModel(
 
     fun closeMenu() {
         mutableMenu.update { it.copy(open = false) }
+        menuFocus.value = null
     }
 
     fun selectMenuCategory(category: Category) {
@@ -1596,6 +1622,9 @@ class PlayerViewModel(
 
         /** Appuis rapprochés sur ← → : additionnés pendant ce délai. */
         private const val JUMP_DEBOUNCE_MILLIS = 900L
+
+        /** Défilement rapide dans le menu des chaînes : le programme n'est lu qu'à l'arrêt sur une chaîne. */
+        private const val MENU_PROGRAMME_DELAY_MILLIS = 150L
 
         /** Avance et retour rapides : x2. */
         private const val FAST_SPEED = 2f

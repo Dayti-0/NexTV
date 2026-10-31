@@ -230,6 +230,8 @@ class HomeViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     init {
+        // Son de l'aperçu (réglages).
+        viewModelScope.launch { container.settings.previewVolume.collect { previewer.volume = it.volume } }
         // Aperçu : la chaîne sélectionnée démarre après un court arrêt dessus, section TV affichée.
         viewModelScope.launch {
             combine(focusedChannel, previewActive, previewEnabled, section) { row, active, enabled, current ->

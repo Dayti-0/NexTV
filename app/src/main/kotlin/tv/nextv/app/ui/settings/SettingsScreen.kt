@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -51,14 +52,18 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import tv.nextv.app.R
+import tv.nextv.app.data.settings.PlaylistRefresh
+import tv.nextv.app.data.settings.PreviewVolume
 import tv.nextv.app.player.VideoDecoders
 import tv.nextv.app.ui.common.appViewModel
 import tv.nextv.app.ui.common.describe
@@ -222,6 +227,9 @@ fun SettingsScreen(
         onCycleTheme = viewModel::cycleTheme,
         onCycleHomeLayout = viewModel::cycleHomeLayout,
         onCycleQualityTarget = viewModel::cycleQualityTarget,
+        onCyclePreviewVolume = viewModel::cyclePreviewVolume,
+        onCyclePlaylistRefresh = viewModel::cyclePlaylistRefresh,
+        onClearCrash = viewModel::clearCrash,
         onToggleChannelList = viewModel::toggleChannelList,
         onCycleDns = viewModel::cycleDns,
         update = update,
@@ -261,6 +269,9 @@ fun SettingsContent(
     onCycleTheme: () -> Unit = {},
     onCycleHomeLayout: () -> Unit = {},
     onCycleQualityTarget: () -> Unit = {},
+    onCyclePreviewVolume: () -> Unit = {},
+    onCyclePlaylistRefresh: () -> Unit = {},
+    onClearCrash: () -> Unit = {},
     onToggleChannelList: () -> Unit = {},
     onCycleDns: () -> Unit = {},
     update: UpdateState = UpdateState.Idle,
@@ -289,6 +300,22 @@ fun SettingsContent(
                     Modifier.widthIn(max = 760.dp).fillMaxWidth().padding(horizontal = window.horizontalPadding, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
+                    // Dernier plantage : en tête, pour pouvoir le signaler (photo de l'écran).
+                    state.lastCrash?.let { crash ->
+                        SectionCard(stringResource(R.string.settings_crash), icon = Icons.Filled.Warning) {
+                            InfoText(stringResource(R.string.settings_crash_help, relativeTime(crash.atMillis, now).lowercaseFirst(), crash.version))
+                            Text(crash.summary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+                            Text(
+                                crash.details,
+                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = CRASH_LINES,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            PillButton(stringResource(R.string.settings_crash_clear), onClearCrash, icon = Icons.Filled.Delete, style = PillStyle.Ghost)
+                        }
+                    }
+
                     // Playlist active.
                     SectionCard(stringResource(R.string.settings_playlist), icon = NexTvIcons.Tv) {
                         val playlist = state.playlist
@@ -306,6 +333,13 @@ fun SettingsContent(
                             status.error?.let { ErrorText(resources.describe(it)) }
                             account?.let { AccountText(it, now) }
                             if (state.refreshing) LinearProgressIndicator(Modifier.fillMaxWidth(), color = NexTvColors.Live)
+                            // Fréquence de mise à jour automatique (le guide TV, lui, se met à jour chaque jour).
+                            ValueRow(
+                                title = stringResource(R.string.settings_playlist_refresh),
+                                value = playlistRefreshLabel(state.playlistRefresh),
+                                onClick = onCyclePlaylistRefresh,
+                            )
+                            InfoText(stringResource(R.string.settings_playlist_refresh_help))
                         }
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             PillButton(
@@ -316,7 +350,7 @@ fun SettingsContent(
                             )
                             if (playlist != null) {
                                 PillButton(
-                                    stringResource(R.string.action_refresh),
+                                    stringResource(R.string.settings_refresh_playlist_now),
                                     onRefreshPlaylist,
                                     icon = Icons.Filled.Refresh,
                                     enabled = !state.refreshing,
@@ -397,6 +431,13 @@ fun SettingsContent(
                             checked = state.channelPreview,
                             onChange = onChannelPreview,
                         )
+                        if (state.channelPreview) {
+                            ValueRow(
+                                title = stringResource(R.string.settings_preview_volume),
+                                value = previewVolumeLabel(state.previewVolume),
+                                onClick = onCyclePreviewVolume,
+                            )
+                        }
                         if (state.playlist != null) {
                             // Catégories masquables : chaînes, films, séries.
                             listOf(
@@ -667,6 +708,31 @@ private fun ReleaseInfo(release: AppRelease, installed: String) {
 }
 
 private fun megabytes(bytes: Long): String = String.format(Locale.FRANCE, "%.1f", bytes / 1_000_000.0)
+
+@Composable
+private fun previewVolumeLabel(volume: PreviewVolume): String = stringResource(
+    when (volume) {
+        PreviewVolume.OFF -> R.string.preview_volume_off
+        PreviewVolume.LOW -> R.string.preview_volume_low
+        PreviewVolume.MEDIUM -> R.string.preview_volume_medium
+    },
+)
+
+/** « À chaque démarrage », « Toutes les 12 h », « Tous les 3 jours ». */
+@Composable
+private fun playlistRefreshLabel(refresh: PlaylistRefresh): String {
+    val hours = (refresh.maxAgeMillis / HOUR_MILLIS).toInt()
+    return when {
+        refresh == PlaylistRefresh.EVERY_START -> stringResource(R.string.playlist_refresh_every_start)
+        hours <= 24 -> stringResource(R.string.playlist_refresh_hours, hours)
+        else -> stringResource(R.string.playlist_refresh_days, hours / 24)
+    }
+}
+
+private const val HOUR_MILLIS = 60 * 60_000L
+
+/** Lignes de la trace d'un plantage montrées dans les réglages. */
+private const val CRASH_LINES = 14
 
 @Composable
 private fun qualityTargetLabel(target: QualityTarget): String = stringResource(

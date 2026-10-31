@@ -96,7 +96,8 @@ class StartupViewModel(
         val listener = ProgressListener { onProgress(it) }
         val lastSuccess = source.status.lastSuccessAtMillis
         val hasData = lastSuccess != null && source.status.channelCount > 0
-        val stale = lastSuccess == null || System.currentTimeMillis() - lastSuccess > PLAYLIST_MAX_AGE_MILLIS
+        // Fréquence choisie dans les réglages (« à chaque démarrage », 12 h… 7 jours).
+        val stale = container.settings.playlistRefresh.first().dueAtStart(lastSuccess, System.currentTimeMillis())
         // Mise à jour qui change les règles d'import du guide (chaînes des matchs…) : réimport tout de suite.
         val reimportGuide = container.settings.epgImportVersion.first() < EpgImporter.VERSION
         if (reimportGuide) container.settings.setEpgImportVersion(EpgImporter.VERSION)
@@ -154,8 +155,6 @@ class StartupViewModel(
 
     companion object {
         const val ARG_RELOAD = "reload"
-
-        private const val PLAYLIST_MAX_AGE_MILLIS = 12 * 60 * 60_000L
 
         private val RANGES = mapOf(
             StartupStep.PREPARING to (0 to 2),

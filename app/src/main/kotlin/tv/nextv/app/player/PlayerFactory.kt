@@ -61,12 +61,14 @@ class PlayerFactory(
     /**
      * @param preferredDecoders décodeur choisi par type de flux (réglages), essayé en premier.
      * @param adVolume option « baisser le son des pubs », appliquée au son décodé.
+     * @param preview aperçu de l'accueil : petite mémoire tampon (il cède vite la place au plein écran).
      */
     fun create(
         request: PlaybackRequest,
         bandwidthMeter: DefaultBandwidthMeter? = null,
         preferredDecoders: Map<String, String> = emptyMap(),
         adVolume: AdVolumeControl? = null,
+        preview: Boolean = false,
     ): ExoPlayer {
         val httpFactory = OkHttpDataSource.Factory(httpClient(request))
             .setUserAgent(userAgent(request))
@@ -86,7 +88,7 @@ class PlayerFactory(
             .setMediaCodecSelector(VideoDecoders.selector(preferredDecoders))
         val builder = ExoPlayer.Builder(context, renderers)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
-            .setLoadControl(loadControl())
+            .setLoadControl(if (preview) previewLoadControl() else loadControl())
         if (bandwidthMeter != null) builder.setBandwidthMeter(bandwidthMeter)
         return builder.build()
     }
@@ -126,6 +128,15 @@ class PlayerFactory(
             START_BUFFER_MILLIS,
             RESUME_BUFFER_MILLIS,
         )
+        // Mémoire des petites box (Fire TV) : au plus ~48 Mo de flux d'avance, même en très haut débit
+        // (sinon jusqu'à 130 Mo pour 50 s de 4K, de quoi faire fermer l'application faute de mémoire).
+        .setTargetBufferBytes(MAX_BUFFER_BYTES)
+        .build()
+
+    /** Aperçu : quelques secondes d'avance seulement. */
+    private fun previewLoadControl(): DefaultLoadControl = DefaultLoadControl.Builder()
+        .setBufferDurationsMs(PREVIEW_MIN_BUFFER_MILLIS, PREVIEW_MAX_BUFFER_MILLIS, START_BUFFER_MILLIS, RESUME_BUFFER_MILLIS)
+        .setTargetBufferBytes(PREVIEW_BUFFER_BYTES)
         .build()
 
     private fun userAgent(request: PlaybackRequest): String =
@@ -154,3 +165,7 @@ class PlayerFactory(
 
 private const val START_BUFFER_MILLIS = 1_500
 private const val RESUME_BUFFER_MILLIS = 3_000
+private const val MAX_BUFFER_BYTES = 48 * 1024 * 1024
+private const val PREVIEW_MIN_BUFFER_MILLIS = 4_000
+private const val PREVIEW_MAX_BUFFER_MILLIS = 8_000
+private const val PREVIEW_BUFFER_BYTES = 12 * 1024 * 1024

@@ -25,6 +25,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import tv.nextv.app.CrashLog
 import tv.nextv.app.data.db.GroupVisibilityRow
 import tv.nextv.app.data.settings.GridColumns
 import tv.nextv.app.ui.detail.DetailContent
@@ -40,6 +41,7 @@ import tv.nextv.app.ui.home.HomeSection
 import tv.nextv.app.ui.home.ReorderState
 import tv.nextv.app.ui.player.MenuChannel
 import tv.nextv.app.ui.player.ChannelMenu
+import tv.nextv.app.ui.player.MenuProgramme
 import tv.nextv.app.ui.player.PlaybackInfoPanel
 import tv.nextv.app.ui.player.ResumePrompt
 import tv.nextv.app.ui.player.ResumePromptCard
@@ -424,6 +426,21 @@ abstract class ScreenshotSuite(private val device: String) {
             now = SampleData.NOW,
             onCategory = {},
             onPlay = {},
+            // Volet du programme de la chaîne sélectionnée.
+            programme = MenuProgramme(
+                SampleData.channels[0],
+                GuideProgramme(
+                    "Le journal du soir",
+                    SampleData.NOW - 15 * 60_000L,
+                    SampleData.NOW + 25 * 60_000L,
+                    subtitle = "Édition spéciale",
+                    description = "Toute l’actualité du jour en France et dans le monde, avec les invités du journal, " +
+                        "les reportages de nos envoyés spéciaux et la météo du week-end. En seconde partie, le débat de la " +
+                        "semaine avec les représentants des partis et les questions des téléspectateurs.",
+                    category = "Information",
+                ),
+                GuideProgramme("Météo", SampleData.NOW + 25 * 60_000L, SampleData.NOW + 30 * 60_000L),
+            ),
         )
     }
 
@@ -438,6 +455,32 @@ abstract class ScreenshotSuite(private val device: String) {
             onBack = {},
             onZap = {},
             onRetry = {},
+        )
+    }
+
+    @Test
+    fun settingsCrash() = capture("16b_reglages_incident") {
+        SettingsContent(
+            state = SampleData.settings.copy(
+                lastCrash = CrashLog.Entry(
+                    SampleData.NOW - 20 * 60_000L,
+                    "0.2.15",
+                    "java.lang.OutOfMemoryError: Failed to allocate a 65552 byte allocation\ntv.nextv.app.ui.player.PlayerViewModel.start(PlayerViewModel.kt:1012)",
+                    "java.lang.OutOfMemoryError: Failed to allocate a 65552 byte allocation\n" +
+                        "\tat androidx.media3.exoplayer.upstream.DefaultAllocator.allocate(DefaultAllocator.java:106)\n" +
+                        "\tat tv.nextv.app.ui.player.PlayerViewModel.start(PlayerViewModel.kt:1012)",
+                ),
+            ),
+            snackbarHostState = remember { SnackbarHostState() },
+            onBack = {},
+            onPlaylists = {},
+            onRefreshPlaylist = {},
+            onRefreshGuide = {},
+            onAutoQuality = {},
+            onSaveTmdbKey = {},
+            onClearTmdbKey = {},
+            onProxy = {},
+            now = SampleData.NOW,
         )
     }
 

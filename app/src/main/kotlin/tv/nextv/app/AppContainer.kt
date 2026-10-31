@@ -62,6 +62,9 @@ class AppContainer(context: Context) {
 
     private val appContext = context.applicationContext
 
+    /** Dernier plantage enregistré (absent hors de l'application, dans les tests). */
+    val crashLog: CrashLog? get() = (appContext as? NexTvApplication)?.crashLog
+
     /** Portée des tâches qui doivent survivre à la navigation (actualisations). */
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -223,31 +226,27 @@ class AppContainer(context: Context) {
             sourceRepository.cleanStoredNames()
         }
 
-        // Actualisations automatiques tant que l'application tourne (les TV restent souvent allumées).
+        // Actualisations automatiques tant que l'application tourne (les TV restent souvent allumées) :
+        // la playlist selon la fréquence choisie dans les réglages, le guide dès qu'il a vieilli.
         applicationScope.launch {
-            delay(PERIODIC_FIRST_DELAY_MILLIS)
-            var elapsed = 0L
             while (true) {
-                val active = settings.activePlaylistId.firstOrNull()
-                if (active != null) {
-                    if (elapsed % PLAYLIST_REFRESH_MILLIS == 0L && elapsed > 0) {
-                        refreshController.refresh(active)
-                    } else {
-                        // Ne retélécharge le guide que s'il a plus de 12 h.
-                        refreshController.refreshEpg(active)
-                    }
-                }
                 delay(PERIODIC_CHECK_MILLIS)
-                elapsed += PERIODIC_CHECK_MILLIS
+                val active = settings.activePlaylistId.firstOrNull() ?: continue
+                val lastSuccess = sourceRepository.getSource(active)?.status?.lastSuccessAtMillis
+                if (settings.playlistRefresh.first().dueWhileRunning(lastSuccess, System.currentTimeMillis())) {
+                    // Playlist puis guide.
+                    refreshController.refresh(active)
+                } else {
+                    // Ne retélécharge le guide que s'il a vieilli.
+                    refreshController.refreshEpg(active)
+                }
             }
         }
     }
 
     private companion object {
         const val HOUR = 60 * 60_000L
-        const val PERIODIC_FIRST_DELAY_MILLIS = 3 * HOUR
         const val PERIODIC_CHECK_MILLIS = 3 * HOUR
-        const val PLAYLIST_REFRESH_MILLIS = 12 * HOUR
     }
 }
 

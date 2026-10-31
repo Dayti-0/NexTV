@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -21,9 +22,12 @@ import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.launch
 import tv.nextv.app.AppContainer
 import tv.nextv.app.BuildConfig
+import tv.nextv.app.CrashLog
 import tv.nextv.app.RefreshController
 import tv.nextv.app.data.backup.RestoreResult
 import tv.nextv.app.data.settings.GridColumns
+import tv.nextv.app.data.settings.PlaylistRefresh
+import tv.nextv.app.data.settings.PreviewVolume
 import tv.nextv.app.data.update.UpdateState
 import tv.nextv.app.ui.home.HomeLayout
 import tv.nextv.app.ui.theme.ThemeStyle
@@ -77,6 +81,12 @@ data class SettingsUiState(
     val homeLayout: HomeLayout = HomeLayout.CLASSIC,
     /** Qualité visée à l'ouverture d'une chaîne. */
     val qualityTarget: QualityTarget = QualityTarget.BEST,
+    /** Son de l'aperçu vidéo de l'accueil. */
+    val previewVolume: PreviewVolume = PreviewVolume.LOW,
+    /** Fréquence de mise à jour automatique de la playlist. */
+    val playlistRefresh: PlaylistRefresh = PlaylistRefresh.HOURS_12,
+    /** Dernier plantage de l'application, à signaler. */
+    val lastCrash: CrashLog.Entry? = null,
 )
 
 /** Abonnement Xtream de la playlist active. */
@@ -161,13 +171,20 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         Preferences(autoQuality, preview, startLast, tmdbKey, footballKey, proxy, grid, dns, ads, theme, layout, target)
     }
 
+    private val lastCrash = MutableStateFlow(container.crashLog?.last())
+
+    /** Réglages ajoutés depuis : son de l'aperçu, fréquence de mise à jour, dernier plantage. */
+    private val extras = combine(settings.previewVolume, settings.playlistRefresh, lastCrash, ::Triple)
+
     val state: StateFlow<SettingsUiState> = combine(
-        activePlaylist,
+        combine(activePlaylist, extras, ::Pair),
         repository.refreshing,
         guideDownloadedAt,
         preferences,
         decoderChoices,
-    ) { (playlist, count, hidden), refreshing, downloadedAt, prefs, decoders ->
+    ) { (active, extra), refreshing, downloadedAt, prefs, decoders ->
+        val (playlist, count, hidden) = active
+        val (previewVolume, playlistRefresh, crash) = extra
         val proxy = prefs.proxy
         SettingsUiState(
             loaded = true,
@@ -193,6 +210,9 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             theme = prefs.theme,
             homeLayout = prefs.homeLayout,
             qualityTarget = prefs.qualityTarget,
+            previewVolume = previewVolume,
+            playlistRefresh = playlistRefresh,
+            lastCrash = crash,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
@@ -265,6 +285,25 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     /** Qualité visée suivante : meilleure, HD maximum, économie. */
+    /** Son de l'aperçu suivant : coupé, faible, moyen. */
+    fun cyclePreviewVolume() {
+        val values = PreviewVolume.entries
+        val next = values[(values.indexOf(state.value.previewVolume) + 1) % values.size]
+        viewModelScope.launch { settings.setPreviewVolume(next) }
+    }
+
+    /** Fréquence de mise à jour suivante : à chaque démarrage, 12 h, 24 h, 2 à 7 jours. */
+    fun cyclePlaylistRefresh() {
+        val values = PlaylistRefresh.entries
+        val next = values[(values.indexOf(state.value.playlistRefresh) + 1) % values.size]
+        viewModelScope.launch { settings.setPlaylistRefresh(next) }
+    }
+
+    fun clearCrash() {
+        container.crashLog?.clear()
+        lastCrash.value = null
+    }
+
     fun cycleQualityTarget() {
         val values = QualityTarget.entries
         val next = values[(values.indexOf(state.value.qualityTarget) + 1) % values.size]

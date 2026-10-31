@@ -147,6 +147,24 @@ class SettingsRepository(
         dataStore.edit { it[EPG_IMPORT_VERSION] = version }
     }
 
+    /** Son de l'aperçu vidéo de l'accueil (faible par défaut). */
+    val previewVolume: Flow<PreviewVolume> = dataStore.data
+        .map { prefs -> prefs[PREVIEW_VOLUME]?.let { name -> PreviewVolume.entries.firstOrNull { it.name == name } } ?: PreviewVolume.LOW }
+        .distinctUntilChanged()
+
+    suspend fun setPreviewVolume(volume: PreviewVolume) {
+        dataStore.edit { it[PREVIEW_VOLUME] = volume.name }
+    }
+
+    /** Fréquence de mise à jour automatique de la playlist (12 h par défaut). */
+    val playlistRefresh: Flow<PlaylistRefresh> = dataStore.data
+        .map { prefs -> prefs[PLAYLIST_REFRESH]?.let { name -> PlaylistRefresh.entries.firstOrNull { it.name == name } } ?: PlaylistRefresh.HOURS_12 }
+        .distinctUntilChanged()
+
+    suspend fun setPlaylistRefresh(refresh: PlaylistRefresh) {
+        dataStore.edit { it[PLAYLIST_REFRESH] = refresh.name }
+    }
+
     /** Interface de l'accueil : classique, streaming ou box TV. */
     val homeLayout: Flow<HomeLayout> = dataStore.data
         .map { prefs -> prefs[HOME_LAYOUT]?.let { name -> HomeLayout.entries.firstOrNull { it.name == name } } ?: HomeLayout.CLASSIC }
@@ -358,6 +376,8 @@ class SettingsRepository(
         val LOWER_AD_VOLUME = booleanPreferencesKey("lower_ad_volume")
         val THEME_STYLE = stringPreferencesKey("theme_style")
         val HOME_LAYOUT = stringPreferencesKey("home_layout")
+        val PREVIEW_VOLUME = stringPreferencesKey("preview_volume")
+        val PLAYLIST_REFRESH = stringPreferencesKey("playlist_refresh")
         val GUIDE_CATEGORY = stringPreferencesKey("guide_category")
         val EPG_IMPORT_VERSION = intPreferencesKey("epg_import_version")
         val CHANNEL_LIST = booleanPreferencesKey("channel_list")

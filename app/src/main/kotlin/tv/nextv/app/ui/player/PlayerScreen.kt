@@ -10,6 +10,8 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
@@ -135,6 +137,7 @@ fun PlayerScreen(onBack: () -> Unit) {
     val menuFavorites by viewModel.menuFavorites.collectAsStateWithLifecycle()
     val menuChannels = viewModel.menuChannels.collectAsLazyPagingItems()
     val programmeSheet by viewModel.programmeSheet.collectAsStateWithLifecycle()
+    val menuProgramme by viewModel.menuProgramme.collectAsStateWithLifecycle()
     val window = rememberWindowInfo()
     var bannerTrigger by remember { mutableIntStateOf(0) }
     var bannerVisible by remember { mutableStateOf(true) }
@@ -437,6 +440,8 @@ fun PlayerScreen(onBack: () -> Unit) {
                 viewModel.closeMenu()
                 infoVisible = true
             },
+            programme = menuProgramme,
+            onFocusChannel = viewModel::focusMenuChannel,
         )
 
         programmeSheet?.let { sheet ->
@@ -831,6 +836,9 @@ fun ChannelMenu(
     /** Appui long sur OK : fiche du programme de la chaîne. */
     onProgramme: (ChannelListRow) -> Unit = {},
     onInfo: () -> Unit = {},
+    /** Programme de la chaîne sélectionnée, montré en grand à côté de la liste (écran large). */
+    programme: MenuProgramme? = null,
+    onFocusChannel: (ChannelListRow) -> Unit = {},
 ) {
     val window = rememberWindowInfo()
     val listState = rememberLazyListState()
@@ -945,6 +953,7 @@ fun ChannelMenu(
                         onClick = { onPlay(channel.id) },
                         onLongClick = { onProgramme(channel) },
                         modifier = Modifier
+                            .onFocusChanged { if (it.isFocused) onFocusChannel(channel) }
                             .then(if (current) Modifier.focusRequester(currentFocus) else Modifier)
                             .then(if (index == 0) Modifier.focusRequester(firstFocus) else Modifier),
                     )
@@ -979,10 +988,80 @@ fun ChannelMenu(
                     .weight(1f)
                     .fillMaxHeight()
                     .background(Brush.horizontalGradient(listOf(Color.Black.copy(alpha = 0.55f), Color.Transparent))),
-            )
+            ) {
+                // Programme de la chaîne sélectionnée, en grand : sa description sans passer par le guide.
+                if (window.isWide) {
+                    programme?.let {
+                        MenuProgrammePanel(
+                            it,
+                            now,
+                            Modifier.align(Alignment.TopStart).padding(start = 28.dp, end = 40.dp, top = window.topPadding + 12.dp, bottom = 24.dp),
+                        )
+                    }
+                }
+            }
         }
     }
 }
+
+/** Volet du menu des chaînes : programme en cours (titre, horaires, description complète) et suivant. */
+@Composable
+fun MenuProgrammePanel(info: MenuProgramme, now: Long, modifier: Modifier = Modifier) {
+    val channel = info.channel
+    Column(
+        modifier
+            .widthIn(max = 620.dp)
+            .background(Color.Black.copy(alpha = 0.78f), RoundedCornerShape(20.dp))
+            .padding(horizontal = 28.dp, vertical = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            ChannelLogo(channel.logoUrl, channel.title.ifBlank { channel.name }, Modifier.size(width = 72.dp, height = 48.dp), monogramSize = 16.dp)
+            channel.channelNumber?.let { Badge(it, color = Color.White) }
+            Text(channel.title.ifBlank { channel.name }, style = MaterialTheme.typography.titleLarge, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        val current = info.now
+        if (current == null) {
+            Text(stringResource(R.string.channels_no_epg), style = MaterialTheme.typography.bodyLarge, color = Color.White.copy(alpha = 0.7f))
+        } else {
+            Text(
+                stringResource(R.string.box_now).uppercase(),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(current.title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("${timeOf(current.startMillis)} – ${timeOf(current.stopMillis)}", style = MaterialTheme.typography.titleMedium, color = Color.White)
+                LiveProgress(current.startMillis, current.stopMillis, now, Modifier.weight(1f))
+                Text(
+                    stringResource(R.string.player_remaining, formatDuration((current.stopMillis - now).coerceAtLeast(0))),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = Color.White.copy(alpha = 0.7f),
+                )
+            }
+            listOfNotNull(current.subtitle, current.category, current.year?.toString()).takeIf { it.isNotEmpty() }?.let { details ->
+                Text(details.joinToString("  ·  "), style = MaterialTheme.typography.titleSmall, color = Color.White.copy(alpha = 0.8f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            current.description?.let {
+                Text(it, style = MaterialTheme.typography.bodyLarge, color = Color.White.copy(alpha = 0.9f), maxLines = MENU_DESCRIPTION_LINES, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        info.next?.let { next ->
+            Spacer(Modifier.height(4.dp))
+            Text(
+                stringResource(R.string.box_later).uppercase(),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold,
+            )
+            Text("${timeOf(next.startMillis)}  ${next.title}", style = MaterialTheme.typography.titleMedium, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/** Lignes de description dans le volet du menu des chaînes. */
+private const val MENU_DESCRIPTION_LINES = 6
 
 @Composable
 private fun MenuChip(name: String, selected: Boolean, star: Boolean = false, onClick: () -> Unit) {
