@@ -731,8 +731,11 @@ private fun playlistRefreshLabel(refresh: PlaylistRefresh): String {
 
 private const val HOUR_MILLIS = 60 * 60_000L
 
-/** Lignes de la trace d'un plantage montrées dans les réglages. */
-private const val CRASH_LINES = 14
+/**
+ * Lignes de la trace d'un plantage montrées dans les réglages : toutes celles enregistrées (les noms
+ * du code de NexTV sont raccourcis dans les versions publiées, l'endroit en cause est souvent bas).
+ */
+private const val CRASH_LINES = 40
 
 @Composable
 private fun qualityTargetLabel(target: QualityTarget): String = stringResource(

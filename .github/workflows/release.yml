@@ -119,6 +119,9 @@ jobs:
           APK="NexTV-${TAG}.apk"
           cp app/build/outputs/apk/release/app-release.apk "$APK"
           sha256sum "$APK" > "$APK.sha256"
+          # Table de correspondance de R8 : décode les traces des plantages (« Dernier incident » des réglages).
+          MAPPING="NexTV-${TAG}-mapping.txt"
+          cp app/build/outputs/mapping/release/mapping.txt "$MAPPING"
           # Nom fixe : lien stable vers la dernière version (…/releases/latest/download/NexTV.apk).
           cp "$APK" NexTV.apk
           if [ -n "$PRIVATE_KEY" ]; then
@@ -156,6 +159,7 @@ jobs:
           ${SIGNING}
           NOTES
           echo "APK=$APK" >> "$GITHUB_ENV"
+          echo "MAPPING=$MAPPING" >> "$GITHUB_ENV"
 
       - name: Publish GitHub release
         env:
@@ -163,7 +167,7 @@ jobs:
         run: |
           PRERELEASE=""
           case "$TAG" in *-*) PRERELEASE="--prerelease" ;; esac
-          gh release create "$TAG" "$APK" "$APK.sha256" NexTV.apk \
+          gh release create "$TAG" "$APK" "$APK.sha256" NexTV.apk "$MAPPING" \
             --target "$GITHUB_SHA" \
             --title "NexTV ${TAG}" \
             --notes-file notes.md \
