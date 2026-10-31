@@ -198,12 +198,14 @@ class TmdbClient(
 
     private fun normalize(text: String): String =
         Normalizer.normalize(text.lowercase(), Normalizer.Form.NFD)
-            .replace(Regex("\\p{Mn}+"), "")
-            .replace(Regex("[^a-z0-9]+"), "")
+            .replace(MARKS, "")
+            .replace(NON_ALPHANUMERIC, "")
 
     private companion object {
         const val TAG = "Tmdb"
         val BRACKETED = Regex("""\s*[(\[][^)\]]*[)\]]?""")
         val SPACES = Regex("""\s{2,}""")
+        val MARKS = Regex("\\p{Mn}+")
+        val NON_ALPHANUMERIC = Regex("[^a-z0-9]+")
     }
 }

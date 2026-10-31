@@ -5,8 +5,11 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.RawQuery
 import androidx.room.Update
 import androidx.room.Upsert
+import androidx.sqlite.db.SimpleSQLiteQuery
+import androidx.sqlite.db.SupportSQLiteQuery
 import kotlinx.coroutines.flow.Flow
 
 /*
@@ -39,9 +42,47 @@ private const val CATCHUP_DAYS =
     "MAX(c.catchupDays, IFNULL((SELECT MAX(v.catchupDays) FROM channels v " +
         "WHERE v.sourceId = c.sourceId AND v.variantKey = c.variantKey AND c.variantKey != ''), 0)) AS catchupDays"
 
+/*
+ * Favoris : `favorites f CROSS JOIN channels c` fait lire les quelques favoris d'abord, puis leur
+ * ligne par l'index des clés (sans statistiques, SQLite parcourrait sinon toutes les chaînes).
+ */
+
 /** `c` affichée dans la liste : catégorie `:group` si `:filterGroup` vaut 1, sinon toutes. */
 private const val LISTED =
     "$NOT_HIDDEN AND CASE WHEN :filterGroup = 1 THEN IFNULL(c.groupTitle, '') = :group AND $BEST_IN_GROUP ELSE $BEST_VISIBLE END"
+
+/**
+ * Liste des chaînes avec le programme en cours ([ChannelDao.pageChannels]). Requête brute : les
+ * paramètres nommés deviennent des paramètres numérotés (`?1`… dans l'ordre de [PAGE_CHANNELS_PARAMETERS]).
+ */
+private val PAGE_CHANNELS_PARAMETERS = listOf("sourceId", "filterGroup", "group", "query", "now")
+
+internal val PAGE_CHANNELS: String = numberParameters(
+    """
+    SELECT c.id, c.name, c.title, c.groupTitle, c.logoUrl, c.channelNumber, c.streamSupport, c.streamIssues,
+        c.quality, c.variantCount, c.itemKey,
+        p.title AS nowTitle, p.startMillis AS nowStart, p.stopMillis AS nowStop
+    FROM channels c
+    LEFT JOIN programmes p ON p.id = (
+        SELECT p2.id FROM programmes p2 JOIN sources s ON s.id = p2.sourceId
+        WHERE p2.sourceId = c.sourceId AND p2.generation = s.epgGeneration AND p2.epgChannelId = c.epgChannelId
+          AND p2.startMillis <= :now AND p2.stopMillis > :now
+        ORDER BY p2.startMillis DESC LIMIT 1
+    )
+    WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND $LISTED
+      AND (:query = '' OR c.name LIKE '%' || :query || '%' ESCAPE '\')
+    ORDER BY c.position
+    """.trimIndent(),
+    PAGE_CHANNELS_PARAMETERS,
+)
+
+/** Remplace `:nom` par `?n`, n étant la place du nom dans [names] (à partir de 1). */
+internal fun numberParameters(sql: String, names: List<String>): String =
+    Regex(":(\\w+)").replace(sql) { match ->
+        val index = names.indexOf(match.groupValues[1])
+        require(index >= 0) { "Paramètre inconnu : ${match.value}" }
+        "?${index + 1}"
+    }
 
 @Dao
 interface SourceDao {
@@ -195,8 +236,11 @@ interface ChannelDao {
     @Query("DELETE FROM channels WHERE sourceId = :sourceId")
     suspend fun deleteForSource(sourceId: Long)
 
-    /** Identifiants et URL des chaînes, par pages (conservation des identifiants à l'actualisation). */
-    @Query("SELECT id, streamUrl FROM channels WHERE sourceId = :sourceId AND id > :after ORDER BY id LIMIT :limit")
+    /**
+     * Identifiants et URL des chaînes, par pages (conservation des identifiants à l'actualisation).
+     * `+sourceId` : parcours dans l'ordre des identifiants, sans trier toute la playlist à chaque page.
+     */
+    @Query("SELECT id, streamUrl FROM channels WHERE +sourceId = :sourceId AND id > :after ORDER BY id LIMIT :limit")
     suspend fun idsAndUrls(sourceId: Long, after: Long, limit: Int): List<ChannelUrlRow>
 
     @Query("SELECT tvgId, name, epgChannelId FROM channels WHERE sourceId = :sourceId AND epgChannelId IS NOT NULL")
@@ -214,11 +258,9 @@ interface ChannelDao {
     @Query("SELECT * FROM channels WHERE id = :id")
     suspend fun get(id: Long): ChannelEntity?
 
+    /** Chaînes, films ou séries (une ligne par série : son premier épisode). */
     @Query("SELECT COUNT(*) FROM channels WHERE sourceId = :sourceId AND kind = :kind AND isPrimary = 1")
     suspend fun count(sourceId: Long, kind: String): Int
-
-    @Query("SELECT COUNT(DISTINCT seriesName) FROM channels WHERE sourceId = :sourceId AND kind = 'SERIES'")
-    suspend fun seriesCount(sourceId: Long): Int
 
     /**
      * Groupes visibles d'un type de contenu (chaînes : une ligne par chaîne de la catégorie ; séries :
@@ -226,8 +268,7 @@ interface ChannelDao {
      */
     @Query(
         """
-        SELECT c.groupTitle AS title,
-            CASE WHEN :kind = 'SERIES' THEN COUNT(DISTINCT c.seriesName) ELSE COUNT(*) END AS count
+        SELECT c.groupTitle AS title, COUNT(*) AS count
         FROM channels c
         WHERE c.sourceId = :sourceId AND c.kind = :kind
           AND CASE WHEN :kind = 'LIVE' THEN $BEST_IN_GROUP ELSE c.isPrimary = 1 END
@@ -240,8 +281,7 @@ interface ChannelDao {
     /** Tous les groupes d'un type de contenu, avec leur visibilité (réglages). */
     @Query(
         """
-        SELECT c.groupTitle AS title,
-            CASE WHEN :kind = 'SERIES' THEN COUNT(DISTINCT c.seriesName) ELSE COUNT(*) END AS count,
+        SELECT c.groupTitle AS title, COUNT(*) AS count,
             EXISTS (
                 SELECT 1 FROM hidden_groups h
                 WHERE h.sourceId = :sourceId AND h.kind = :kind AND h.title = IFNULL(c.groupTitle, '')
@@ -257,27 +297,18 @@ interface ChannelDao {
     /**
      * Chaînes en direct, hors catégories masquées : toutes les chaînes de la catégorie [group], ou
      * une ligne par chaîne (sa meilleure version visible).
+     *
+     * La liste ne se recharge pas à chaque lot de programmes écrit pendant l'import du guide : les
+     * nouveaux programmes ne deviennent visibles qu'à la validation de l'import, qui modifie les
+     * chaînes et la playlist (tables observées).
      * @param filterGroup 1 pour ne garder que [group] (`''` = sans groupe), 0 pour tout afficher.
      * @param query texte recherché, déjà échappé pour LIKE (caractère d'échappement `\`).
      */
-    @Query(
-        """
-        SELECT c.id, c.name, c.title, c.groupTitle, c.logoUrl, c.channelNumber, c.streamSupport, c.streamIssues,
-            c.quality, c.variantCount, c.itemKey,
-            p.title AS nowTitle, p.startMillis AS nowStart, p.stopMillis AS nowStop
-        FROM channels c
-        LEFT JOIN programmes p ON p.id = (
-            SELECT p2.id FROM programmes p2 JOIN sources s ON s.id = p2.sourceId
-            WHERE p2.sourceId = c.sourceId AND p2.generation = s.epgGeneration AND p2.epgChannelId = c.epgChannelId
-              AND p2.startMillis <= :now AND p2.stopMillis > :now
-            ORDER BY p2.startMillis DESC LIMIT 1
-        )
-        WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND $LISTED
-          AND (:query = '' OR c.name LIKE '%' || :query || '%' ESCAPE '\')
-        ORDER BY c.position
-        """,
-    )
-    fun pageChannels(sourceId: Long, filterGroup: Int, group: String, query: String, now: Long): PagingSource<Int, ChannelListRow>
+    fun pageChannels(sourceId: Long, filterGroup: Int, group: String, query: String, now: Long): PagingSource<Int, ChannelListRow> =
+        pageChannels(SimpleSQLiteQuery(PAGE_CHANNELS, arrayOf(sourceId, filterGroup, group, query, now)))
+
+    @RawQuery(observedEntities = [ChannelEntity::class, SourceEntity::class, HiddenGroupEntity::class])
+    fun pageChannels(query: SupportSQLiteQuery): PagingSource<Int, ChannelListRow>
 
     /** Chaînes favorites, dans l'ordre choisi. */
     @Query(
@@ -286,7 +317,7 @@ interface ChannelDao {
             c.quality, c.variantCount, c.itemKey,
             p.title AS nowTitle, p.startMillis AS nowStart, p.stopMillis AS nowStop
         FROM favorites f
-        JOIN channels c ON c.sourceId = f.sourceId AND c.itemKey = f.itemKey AND c.kind = 'LIVE' AND c.isPrimary = 1
+        CROSS JOIN channels c ON c.sourceId = f.sourceId AND c.itemKey = f.itemKey AND c.kind = 'LIVE' AND c.isPrimary = 1
         LEFT JOIN programmes p ON p.id = (
             SELECT p2.id FROM programmes p2 JOIN sources s ON s.id = p2.sourceId
             WHERE p2.sourceId = c.sourceId AND p2.generation = s.epgGeneration AND p2.epgChannelId = c.epgChannelId
@@ -343,15 +374,15 @@ interface ChannelDao {
     )
     fun observeFavoriteMovies(sourceId: Long): Flow<List<MovieRow>>
 
+    /** Séries : la ligne de chaque série est son premier épisode, qui porte le nombre d'épisodes. */
     @Query(
         """
-        SELECT id, seriesName AS title, year, logoUrl, groupTitle, itemKey, COUNT(*) AS episodeCount, MIN(position) AS position
+        SELECT id, seriesName AS title, year, logoUrl, groupTitle, itemKey, variantCount AS episodeCount
         FROM channels
-        WHERE sourceId = :sourceId AND kind = 'SERIES' AND seriesName IS NOT NULL
+        WHERE sourceId = :sourceId AND kind = 'SERIES' AND isPrimary = 1 AND seriesName IS NOT NULL
           AND IFNULL(groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'SERIES')
           AND (:filterGroup = 0 OR IFNULL(groupTitle, '') = :group)
           AND (:query = '' OR seriesName LIKE '%' || :query || '%' ESCAPE '\')
-        GROUP BY itemKey
         ORDER BY position
         """,
     )
@@ -359,13 +390,9 @@ interface ChannelDao {
 
     @Query(
         """
-        SELECT c.id, c.seriesName AS title, c.year, c.logoUrl, c.groupTitle, c.itemKey,
-            (SELECT COUNT(*) FROM channels e WHERE e.sourceId = c.sourceId AND e.kind = 'SERIES' AND e.itemKey = c.itemKey) AS episodeCount
-        FROM favorites f JOIN channels c ON c.id = (
-            SELECT c2.id FROM channels c2
-            WHERE c2.sourceId = f.sourceId AND c2.itemKey = f.itemKey AND c2.kind = 'SERIES'
-            ORDER BY c2.position LIMIT 1
-        )
+        SELECT c.id, c.seriesName AS title, c.year, c.logoUrl, c.groupTitle, c.itemKey, c.variantCount AS episodeCount
+        FROM favorites f
+        CROSS JOIN channels c ON c.sourceId = f.sourceId AND c.itemKey = f.itemKey AND c.kind = 'SERIES' AND c.isPrimary = 1
         WHERE f.sourceId = :sourceId AND f.kind = 'SERIES'
         ORDER BY f.position
         """,
@@ -489,7 +516,7 @@ interface ChannelDao {
         """
         SELECT c.id, c.name, c.title, c.logoUrl, c.channelNumber, c.epgChannelId, $CATCHUP_DAYS
         FROM favorites f
-        JOIN channels c ON c.sourceId = f.sourceId AND c.itemKey = f.itemKey AND c.kind = 'LIVE' AND c.isPrimary = 1
+        CROSS JOIN channels c ON c.sourceId = f.sourceId AND c.itemKey = f.itemKey AND c.kind = 'LIVE' AND c.isPrimary = 1
         WHERE f.sourceId = :sourceId AND f.kind = 'LIVE' AND c.epgChannelId IS NOT NULL
         ORDER BY f.position
         """,

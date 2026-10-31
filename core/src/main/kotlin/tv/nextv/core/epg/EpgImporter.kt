@@ -112,6 +112,8 @@ class EpgImporter(
                     val currentMapping = mapping ?: match(channels, xmltvChannels, excludedEpgIds).also {
                         mapping = it
                         relevant = it.values.toSet()
+                        // Les programmes des chaînes absentes de la playlist (souvent la majorité) ne sont plus analysés.
+                        reader.programmeFilter = { channelId -> normalizeId(channelId) in relevant }
                     }
                     if (currentMapping.isEmpty()) continue
                     val id = normalizeId(item.channelId)

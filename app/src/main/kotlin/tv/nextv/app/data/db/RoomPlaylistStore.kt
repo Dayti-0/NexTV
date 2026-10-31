@@ -294,14 +294,22 @@ class RoomPlaylistStore(private val database: NexTvDatabase) : PlaylistStore {
     }
 }
 
-/** Version affichée (la meilleure qualité, puis la première dans la playlist) et nombre de versions. */
+/**
+ * Version affichée (la meilleure qualité, puis la première dans la playlist) et nombre de versions.
+ * Les épisodes d'une série sont les « versions » de la série : le premier la représente dans les
+ * listes, avec le nombre d'épisodes (pas de regroupement à chaque page affichée).
+ */
 internal data class VariantInfo(val primary: Boolean, val count: Int) {
     companion object {
         /** @return informations par position de chaîne dans la playlist. */
         fun compute(channels: List<Channel>): Map<Int, VariantInfo> {
             val result = HashMap<Int, VariantInfo>(channels.size)
             val groups = channels.groupBy { channel ->
-                if (channel.kind == ContentKind.LIVE && channel.variantKey.isNotEmpty()) channel.variantKey else "\u0000${channel.position}"
+                when {
+                    channel.kind == ContentKind.LIVE && channel.variantKey.isNotEmpty() -> channel.variantKey
+                    channel.kind == ContentKind.SERIES -> "\u0001" + ItemKeys.of(channel)
+                    else -> "\u0000${channel.position}"
+                }
             }
             for (group in groups.values) {
                 val best = group.maxWith(compareBy<Channel> { StreamQuality.rankOf(it.quality) }.thenByDescending { it.position })
@@ -320,9 +328,31 @@ object ItemKeys {
         ContentKind.SERIES -> "series:" + normalize(channel.episode?.seriesName ?: channel.title)
     }
 
-    private fun normalize(text: String): String =
-        java.text.Normalizer.normalize(text.lowercase(), java.text.Normalizer.Form.NFD)
-            .replace(Regex("\\p{Mn}+"), "")
-            .replace(Regex("[^a-z0-9]+"), " ")
-            .trim()
+    /**
+     * Minuscules sans accents, mots séparés par une espace (`[^a-z0-9]+` → « »). Appelé pour chaque
+     * entrée de la playlist : un seul passage, sans expression régulière, et sans décomposition
+     * Unicode pour un texte ASCII (le cas courant).
+     */
+    internal fun normalize(text: String): String {
+        val lower = text.lowercase()
+        val folded = if (lower.all { it.code < 0x80 }) {
+            lower
+        } else {
+            MARKS.replace(java.text.Normalizer.normalize(lower, java.text.Normalizer.Form.NFD), "")
+        }
+        val out = StringBuilder(folded.length)
+        var separator = false
+        for (c in folded) {
+            if (c in 'a'..'z' || c in '0'..'9') {
+                if (separator && out.isNotEmpty()) out.append(' ')
+                separator = false
+                out.append(c)
+            } else {
+                separator = true
+            }
+        }
+        return out.toString()
+    }
+
+    private val MARKS = Regex("\\p{Mn}+")
 }

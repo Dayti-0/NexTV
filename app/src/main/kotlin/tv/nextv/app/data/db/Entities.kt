@@ -51,7 +51,7 @@ data class SourceEntity(
         Index(value = ["sourceId", "position"]),
         Index(value = ["sourceId", "kind", "groupTitle"]),
         Index(value = ["sourceId", "variantKey"]),
-        Index(value = ["sourceId", "kind", "seriesName"]),
+        Index(value = ["sourceId", "kind", "itemKey", "position"]),
     ],
 )
 data class ChannelEntity(
@@ -86,9 +86,9 @@ data class ChannelEntity(
     val episode: Int? = null,
     /** Rang de qualité ([tv.nextv.core.model.StreamQuality.rankOf]) pour choisir la meilleure version. */
     val qualityRank: Int = 2,
-    /** Version affichée dans les listes (la meilleure de sa chaîne). */
+    /** Version affichée dans les listes (la meilleure de sa chaîne ; pour une série, son premier épisode). */
     val isPrimary: Boolean = true,
-    /** Nombre de versions (qualités) de la chaîne. */
+    /** Nombre de versions (qualités) de la chaîne ; pour le premier épisode d'une série, nombre d'épisodes. */
     val variantCount: Int = 1,
     /** Clé stable (favoris, cache TMDB) : ne change pas d'une actualisation à l'autre. */
     val itemKey: String = "",

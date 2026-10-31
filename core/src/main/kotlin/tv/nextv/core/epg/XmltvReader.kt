@@ -54,6 +54,12 @@ class XmltvReader(
     var skippedProgrammes: Int = 0
         private set
 
+    /**
+     * Chaînes dont les programmes sont lus (identifiant XMLTV tel qu'écrit dans le guide) ; les
+     * programmes des autres chaînes sont sautés sans lire leur contenu. `null` : tous sont lus.
+     */
+    var programmeFilter: ((String) -> Boolean)? = null
+
     /** @return l'élément suivant, ou `null` en fin de document. */
     fun next(): XmltvItem? {
         try {
@@ -72,7 +78,14 @@ class XmltvReader(
                         if (parser.depth != 2) continue
                         when (parser.name) {
                             "channel" -> readChannel()?.let { return it }
-                            "programme" -> readProgramme()?.let { return it } ?: skippedProgrammes++
+                            "programme" -> {
+                                val filter = programmeFilter
+                                if (filter != null && !filter(parser.getAttributeValue(null, "channel").orEmpty())) {
+                                    skipElement()
+                                    continue
+                                }
+                                readProgramme()?.let { return it } ?: skippedProgrammes++
+                            }
                             else -> skipElement()
                         }
                     }

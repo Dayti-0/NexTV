@@ -149,8 +149,9 @@ Points d'extension :
 ## Compilation et tests
 
 ```bash
-./gradlew -p core test          # tests du cœur (JVM, sans SDK Android)
-./gradlew :app:assembleDebug    # application (SDK Android requis)
+./gradlew -p core test               # tests du cœur (JVM, sans SDK Android)
+./gradlew :app:testDebugUnitTest     # requêtes de la base et interface (Robolectric, SDK Android requis)
+./gradlew :app:assembleDebug         # application (SDK Android requis)
 ```
 
 La CI GitHub Actions exécute les tests du cœur, la compilation de l'application (debug et release), le lint Android

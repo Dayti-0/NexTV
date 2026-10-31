@@ -301,7 +301,7 @@ class FootballDataClient(
             shortName = json.text("shortName"),
             code = json.text("tla"),
             // Écussons au format SVG ou PNG : la version PNG s'affiche sans décodeur supplémentaire.
-            crestUrl = json.text("crest")?.replace(Regex("""\.svg$""", RegexOption.IGNORE_CASE), ".png"),
+            crestUrl = json.text("crest")?.replace(SVG_EXTENSION, ".png"),
             id = json.text("id")?.toLongOrNull(),
         )
     }
@@ -325,5 +325,6 @@ class FootballDataClient(
         const val DAY_MILLIS = 86_400_000L
         const val TEAM_RANGE_MILLIS = 60 * DAY_MILLIS
         const val TEAM_MATCHES = 5
+        val SVG_EXTENSION = Regex("""\.svg$""", RegexOption.IGNORE_CASE)
     }
 }

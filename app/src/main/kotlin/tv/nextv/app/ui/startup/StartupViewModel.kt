@@ -117,7 +117,7 @@ class StartupViewModel(
         val summary = ContentSummary(
             channels = dao.count(sourceId, ContentKind.LIVE.name),
             movies = dao.count(sourceId, ContentKind.MOVIE.name),
-            series = dao.seriesCount(sourceId),
+            series = dao.count(sourceId, ContentKind.SERIES.name),
         )
         mutableState.update { it.copy(summary = summary) }
         report(StartupStep.READY, 1f)

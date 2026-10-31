@@ -371,7 +371,9 @@ private fun isMatchHour(millis: Long): Boolean =
     Calendar.getInstance().apply { timeInMillis = millis }.get(Calendar.HOUR_OF_DAY) >= 11
 
 private fun simplify(text: String): String =
-    Normalizer.normalize(text.lowercase(), Normalizer.Form.NFD).replace(Regex("[^a-z0-9]+"), "")
+    Normalizer.normalize(text.lowercase(), Normalizer.Form.NFD).replace(NON_ALPHANUMERIC, "")
+
+private val NON_ALPHANUMERIC = Regex("[^a-z0-9]+")
 
 private fun channelOf(row: BroadcastRow) = GuideChannel(row.channelId, row.channelName, null, row.logoUrl, emptyList())
 

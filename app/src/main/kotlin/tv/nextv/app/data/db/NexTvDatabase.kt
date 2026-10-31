@@ -17,7 +17,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         TmdbCacheEntity::class,
         HiddenGroupEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = false,
 )
 abstract class NexTvDatabase : RoomDatabase() {
@@ -62,9 +62,37 @@ abstract class NexTvDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Listes plus rapides : index par clé (épisodes d'une série, favoris), et une ligne par série
+         * (son premier épisode, qui porte le nombre d'épisodes) au lieu d'un regroupement à chaque page.
+         */
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP INDEX IF EXISTS `index_channels_sourceId_kind_seriesName`")
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_channels_sourceId_kind_itemKey_position` " +
+                        "ON `channels` (`sourceId`, `kind`, `itemKey`, `position`)",
+                )
+                db.execSQL(SERIES_PRIMARY_SQL)
+            }
+        }
+
+        /**
+         * Premier épisode de chaque série (ordre de la playlist) et nombre d'épisodes, comme à l'enregistrement.
+         * `position + 0` : le minimum est lu dans l'index par clé, pas en parcourant l'index des positions
+         * (sans statistiques, SQLite pourrait le choisir, au prix d'un parcours par épisode).
+         */
+        internal const val SERIES_PRIMARY_SQL =
+            "UPDATE channels SET " +
+                "isPrimary = (position = (SELECT MIN(e.position + 0) FROM channels e " +
+                "WHERE e.sourceId = channels.sourceId AND e.kind = 'SERIES' AND e.itemKey = channels.itemKey)), " +
+                "variantCount = (SELECT COUNT(*) FROM channels e " +
+                "WHERE e.sourceId = channels.sourceId AND e.kind = 'SERIES' AND e.itemKey = channels.itemKey) " +
+                "WHERE kind = 'SERIES'"
+
         fun create(context: Context): NexTvDatabase =
             Room.databaseBuilder(context.applicationContext, NexTvDatabase::class.java, "nextv.db")
-                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 // Versions de test antérieures (1) : les données sont rechargées depuis la playlist.
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
