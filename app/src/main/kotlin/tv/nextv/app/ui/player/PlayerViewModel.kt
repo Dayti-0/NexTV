@@ -77,6 +77,7 @@ import tv.nextv.core.source.Mirrors
 import tv.nextv.core.source.XtreamAccount
 import tv.nextv.core.stream.QualityOption
 import tv.nextv.core.stream.QualitySwitcher
+import tv.nextv.core.stream.QualityTarget
 import java.util.Locale
 
 private const val WORKING_QUALITY_MILLIS = 60_000L
@@ -410,6 +411,7 @@ class PlayerViewModel(
         viewModelScope.launch {
             container.settings.autoQuality.collect { autoQuality = it }
         }
+
         viewModelScope.launch {
             container.settings.preferredDecoders.collect { preferredDecoders = it }
         }
@@ -681,8 +683,11 @@ class PlayerViewModel(
             val rank = StreamQuality.rankOf(quality)
             options.sortedByDescending { StreamQuality.rankOf(it.quality) }.firstOrNull { StreamQuality.rankOf(it.quality) <= rank }?.channelId
         }
-        val startId = rememberedStart
+        val preferredId = rememberedStart
             ?: if (options.any { it.channelId == requested.id }) requested.id else options.firstOrNull()?.channelId ?: requested.id
+        // Qualité visée (réglages) : au plus HD, ou SD pour économiser la connexion.
+        val qualityTarget = container.settings.qualityTarget.first()
+        val startId = if (options.size > 1) qualityTarget.start(options, preferredId) else preferredId
         switcher = if (options.size > 1) {
             QualitySwitcher(
                 options,
@@ -690,6 +695,7 @@ class PlayerViewModel(
                 enabled = autoQuality,
                 clock = System::currentTimeMillis,
                 decoderCeilingRank = decoderCeilingRank,
+                maxRank = qualityTarget.maxRank(options),
             )
         } else {
             null

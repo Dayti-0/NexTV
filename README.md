@@ -51,11 +51,19 @@ Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3, enti�
   d'un direct MPEG-TS ne dépasse jamais celui de la vidéo). Un essai qui ne démarre pas en 5 s revient à la version
   qui fonctionnait, et le suivant attend plus longtemps (5 min, puis 10, 20… jusqu'à 1 h). Jamais de bascule vers une
   autre chaîne ; désactivable dans les réglages.
+  **Qualité visée** (Réglages › Lecture) : « Meilleure qualité » (4K, FHD…), « HD maximum » (jamais au-dessus de la
+  HD quand une version HD ou inférieure existe) ou « Économie » (SD ou LOW si la chaîne en a une version, sinon HD) ;
+  la qualité automatique ne remonte jamais au-dessus de la qualité visée.
   Chaque catégorie affiche toutes ses chaînes dans l'ordre de la playlist (TF1 SD dans « FR TV SD »…) ; « Toutes »,
   la recherche et le zapping n'en gardent qu'une ligne par chaîne, sa meilleure version visible.
 - **Guide TV** : grille chaînes × horaires depuis la veille, avec repère de l'heure actuelle et programme en cours
   mis en valeur ; OK ouvre la fiche du programme (horaires, durée, description) avec « Regarder ».
   Un créneau sans donnée reste vide.
+  « Ce soir » : le programme du soir comme dans un magazine télé, une ligne par chaîne avec le programme principal
+  (vers 21 h, sans la météo ni les programmes courts) et la deuxième partie de soirée ; les chaînes de la TNT d'abord,
+  avec leur numéro, puis les autres ; soirs suivants sur une semaine. « L'essentiel » : la grille avec une seule
+  ligne par chaîne (sans les doublons SD, HD, FHD ni ceux des autres catégories), TNT d'abord. La dernière de ces
+  catégories choisie est reprise à l'ouverture du guide.
 - **Replay** (comptes Xtream dont le serveur enregistre les chaînes) : les programmes passés disponibles portent
   l'icône ↺ dans le guide ; « Revoir » les lit depuis l'enregistrement du serveur (avance / retour comme un film),
   « Depuis le début » relance le programme en cours.

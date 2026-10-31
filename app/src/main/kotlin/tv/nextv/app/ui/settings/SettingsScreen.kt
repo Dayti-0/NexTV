@@ -80,6 +80,7 @@ import tv.nextv.app.ui.theme.NexTvColors
 import tv.nextv.app.ui.theme.NexTvIcons
 import tv.nextv.app.ui.home.HomeLayout
 import tv.nextv.app.ui.theme.ThemeStyle
+import tv.nextv.core.stream.QualityTarget
 import tv.nextv.core.epg.HttpEpgFeedProvider
 import tv.nextv.core.model.ContentKind
 import tv.nextv.core.net.DnsProvider
@@ -220,6 +221,7 @@ fun SettingsScreen(
         onLowerAdVolume = viewModel::setLowerAdVolume,
         onCycleTheme = viewModel::cycleTheme,
         onCycleHomeLayout = viewModel::cycleHomeLayout,
+        onCycleQualityTarget = viewModel::cycleQualityTarget,
         onToggleChannelList = viewModel::toggleChannelList,
         onCycleDns = viewModel::cycleDns,
         update = update,
@@ -258,6 +260,7 @@ fun SettingsContent(
     onLowerAdVolume: (Boolean) -> Unit = {},
     onCycleTheme: () -> Unit = {},
     onCycleHomeLayout: () -> Unit = {},
+    onCycleQualityTarget: () -> Unit = {},
     onToggleChannelList: () -> Unit = {},
     onCycleDns: () -> Unit = {},
     update: UpdateState = UpdateState.Idle,
@@ -324,6 +327,12 @@ fun SettingsContent(
 
                     // Lecture.
                     SectionCard(stringResource(R.string.settings_playback), icon = Icons.Filled.PlayArrow) {
+                        ValueRow(
+                            title = stringResource(R.string.settings_quality_target),
+                            value = qualityTargetLabel(state.qualityTarget),
+                            onClick = onCycleQualityTarget,
+                        )
+                        InfoText(qualityTargetHelp(state.qualityTarget))
                         ToggleRow(
                             title = stringResource(R.string.settings_auto_quality),
                             description = stringResource(R.string.settings_auto_quality_help),
@@ -658,6 +667,24 @@ private fun ReleaseInfo(release: AppRelease, installed: String) {
 }
 
 private fun megabytes(bytes: Long): String = String.format(Locale.FRANCE, "%.1f", bytes / 1_000_000.0)
+
+@Composable
+private fun qualityTargetLabel(target: QualityTarget): String = stringResource(
+    when (target) {
+        QualityTarget.BEST -> R.string.quality_target_best
+        QualityTarget.HD -> R.string.quality_target_hd
+        QualityTarget.ECO -> R.string.quality_target_eco
+    },
+)
+
+@Composable
+private fun qualityTargetHelp(target: QualityTarget): String = stringResource(
+    when (target) {
+        QualityTarget.BEST -> R.string.quality_target_best_help
+        QualityTarget.HD -> R.string.quality_target_hd_help
+        QualityTarget.ECO -> R.string.quality_target_eco_help
+    },
+)
 
 @Composable
 private fun homeLayoutLabel(layout: HomeLayout): String = stringResource(

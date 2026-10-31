@@ -26,6 +26,8 @@ import tv.nextv.app.ui.editor.LocationMode
 import tv.nextv.app.ui.guide.GuideChannel
 import tv.nextv.app.ui.guide.GuideProgramme
 import tv.nextv.app.ui.guide.GuideUiState
+import tv.nextv.app.ui.guide.TonightRow
+import tv.nextv.app.ui.guide.TonightUiState
 import tv.nextv.app.ui.player.ChannelMenuState
 import tv.nextv.app.ui.player.PlaybackInfo
 import tv.nextv.app.ui.player.PlayerProgramme
@@ -392,6 +394,38 @@ object SampleData {
             GuideProgramme("Journal de la nuit", NOW + 125 * MINUTE, NOW + 140 * MINUTE),
         ),
     )
+
+    /** « Ce soir » : programme du soir des chaînes de la TNT puis des autres. */
+    val tonight: TonightUiState = run {
+        val evening = java.util.Calendar.getInstance().apply {
+            timeInMillis = NOW
+            set(java.util.Calendar.HOUR_OF_DAY, 21)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        fun p(title: String, start: Int, minutes: Int, category: String, description: String? = null) =
+            GuideProgramme(title, evening + start * MINUTE, evening + (start + minutes) * MINUTE, description = description, category = category)
+        val lines = listOf(
+            Triple("1", "TF1", p("Le Grand Voyage", 10, 115, "Film", "Un explorateur part sur les traces de son grand-père, disparu dans le Grand Nord il y a cinquante ans.") to p("Esprits criminels", 125, 50, "Série policière")),
+            Triple("2", "France 2", p("Envoyé spécial", 10, 110, "Magazine") to p("Complément d’enquête", 120, 60, "Magazine")),
+            Triple("3", "France 3", p("Meurtres à Collioure", 5, 95, "Téléfilm policier") to p("Le monde en face", 105, 70, "Documentaire")),
+            Triple("4", "France 4", p("Le Lac des cygnes", 0, 140, "Spectacle") to null),
+            Triple("5", "France 5", p("La Grande Librairie", 0, 90, "Magazine littéraire") to p("C dans l’air", 95, 65, "Débat")),
+            Triple("6", "M6", p("Zone interdite", 10, 125, "Magazine") to p("Enquête exclusive", 135, 70, "Magazine")),
+            Triple("7", "Arte", p("Les Gardiens du phare", -5, 105, "Film") to p("Court-circuit", 100, 45, "Courts métrages")),
+            Triple(null, "Ciné Club", p("Nuit blanche à Lisbonne", 0, 100, "Film") to p("Les Faussaires", 105, 110, "Film")),
+        )
+        TonightUiState(
+            loading = false,
+            day = 0,
+            evenings = (0 until 7).map { evening + it * 24 * 60 * MINUTE },
+            rows = lines.mapIndexed { index, (number, name, programmes) ->
+                TonightRow(GuideChannel(500L + index, name, number, null, emptyList()), programmes.first, programmes.second)
+            },
+            now = NOW,
+        )
+    }
 
     /** Rangées de l'interface « Streaming » : éléments de chaque catégorie. */
     val rows = HomeRows(

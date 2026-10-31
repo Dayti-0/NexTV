@@ -27,6 +27,7 @@ import tv.nextv.app.data.settings.GridColumns
 import tv.nextv.app.data.update.UpdateState
 import tv.nextv.app.ui.home.HomeLayout
 import tv.nextv.app.ui.theme.ThemeStyle
+import tv.nextv.core.stream.QualityTarget
 import tv.nextv.app.player.DecoderOption
 import tv.nextv.app.player.VideoDecoders
 import tv.nextv.core.model.ContentKind
@@ -74,6 +75,8 @@ data class SettingsUiState(
     val theme: ThemeStyle = ThemeStyle.NIGHT,
     /** Interface de l'accueil. */
     val homeLayout: HomeLayout = HomeLayout.CLASSIC,
+    /** Qualité visée à l'ouverture d'une chaîne. */
+    val qualityTarget: QualityTarget = QualityTarget.BEST,
 )
 
 /** Abonnement Xtream de la playlist active. */
@@ -142,18 +145,20 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         val lowerAdVolume: Boolean,
         val theme: ThemeStyle,
         val homeLayout: HomeLayout,
+        val qualityTarget: QualityTarget,
     )
 
     private val preferences = combine(
-        combine(settings.autoQuality, settings.channelPreview, settings.startOnLastChannel) { autoQuality, preview, startLast ->
-            Triple(autoQuality, preview, startLast)
+        combine(settings.autoQuality, settings.channelPreview, settings.startOnLastChannel, settings.qualityTarget) { autoQuality, preview, startLast, target ->
+            Triple(autoQuality, preview, startLast) to target
         },
         combine(settings.tmdbApiKey, settings.footballApiKey, settings.lowerAdVolume) { tmdb, football, ads -> Triple(tmdb != null, football != null, ads) },
         settings.proxySettings,
         settings.gridColumns,
         combine(settings.dnsProvider, settings.themeStyle, settings.homeLayout, ::Triple),
-    ) { (autoQuality, preview, startLast), (tmdbKey, footballKey, ads), proxy, grid, (dns, theme, layout) ->
-        Preferences(autoQuality, preview, startLast, tmdbKey, footballKey, proxy, grid, dns, ads, theme, layout)
+    ) { (playback, target), (tmdbKey, footballKey, ads), proxy, grid, (dns, theme, layout) ->
+        val (autoQuality, preview, startLast) = playback
+        Preferences(autoQuality, preview, startLast, tmdbKey, footballKey, proxy, grid, dns, ads, theme, layout, target)
     }
 
     val state: StateFlow<SettingsUiState> = combine(
@@ -187,6 +192,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             lowerAdVolume = prefs.lowerAdVolume,
             theme = prefs.theme,
             homeLayout = prefs.homeLayout,
+            qualityTarget = prefs.qualityTarget,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
@@ -256,6 +262,13 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         val values = ThemeStyle.entries
         val next = values[(values.indexOf(state.value.theme) + 1) % values.size]
         viewModelScope.launch { settings.setThemeStyle(next) }
+    }
+
+    /** Qualité visée suivante : meilleure, HD maximum, économie. */
+    fun cycleQualityTarget() {
+        val values = QualityTarget.entries
+        val next = values[(values.indexOf(state.value.qualityTarget) + 1) % values.size]
+        viewModelScope.launch { settings.setQualityTarget(next) }
     }
 
     /** Interface suivante : classique, streaming, box TV. */

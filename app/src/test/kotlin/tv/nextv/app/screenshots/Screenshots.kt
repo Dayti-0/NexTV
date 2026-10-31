@@ -30,6 +30,7 @@ import tv.nextv.app.data.settings.GridColumns
 import tv.nextv.app.ui.detail.DetailContent
 import tv.nextv.app.ui.editor.SourceEditorContent
 import tv.nextv.app.ui.guide.GuideContent
+import tv.nextv.app.ui.guide.GuideViewModel
 import tv.nextv.app.ui.guide.ProgrammeSheetContent
 import tv.nextv.app.ui.home.Category
 import tv.nextv.app.ui.home.HomeActions
@@ -183,6 +184,20 @@ abstract class ScreenshotSuite(private val device: String) {
     @Test
     fun football() = capture("09b_foot") {
         Home(HomeSection.FOOTBALL, Category.All)
+    }
+
+    @Test
+    fun guideTonight() = capture("09e_guide_ce_soir") {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+            GuideContent(
+                state = SampleData.guide,
+                groups = SampleData.groups,
+                selectedGroup = GuideViewModel.TONIGHT,
+                onSelectGroup = {},
+                onPlay = {},
+                tonight = SampleData.tonight,
+            )
+        }
     }
 
     @Test

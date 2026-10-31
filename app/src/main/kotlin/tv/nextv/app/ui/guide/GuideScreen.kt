@@ -86,11 +86,14 @@ fun GuideScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val groups by viewModel.groups.collectAsStateWithLifecycle()
     val selectedGroup by viewModel.selectedGroup.collectAsStateWithLifecycle()
+    val tonight by viewModel.tonight.collectAsStateWithLifecycle()
     GuideContent(
         state = state,
         groups = groups,
         selectedGroup = selectedGroup,
-        onSelectGroup = { viewModel.selectedGroup.value = it },
+        onSelectGroup = viewModel::selectGroup,
+        tonight = tonight,
+        onTonightDay = { viewModel.tonightDay.value = it },
         onPlay = onPlay,
         onReplay = { channel, programme -> onReplay(channel.id, programme.startMillis, programme.stopMillis) },
         modifier = modifier,
@@ -113,6 +116,9 @@ fun GuideContent(
     modifier: Modifier = Modifier,
     onReplay: (GuideChannel, GuideProgramme) -> Unit = { _, _ -> },
     initialDetails: Pair<GuideChannel, GuideProgramme>? = null,
+    /** Programme du soir (catégorie « Ce soir »). */
+    tonight: TonightUiState = TonightUiState(),
+    onTonightDay: (Int) -> Unit = {},
 ) {
     val window = rememberWindowInfo()
     val minuteWidth = if (window.isWide) 4.6.dp else 3.2.dp
@@ -131,6 +137,9 @@ fun GuideContent(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             item { GuideGroupChip(stringResource(R.string.home_favorites), selectedGroup == GuideViewModel.FAVORITES, star = true) { onSelectGroup(GuideViewModel.FAVORITES) } }
+            // « Ce soir » et « L'essentiel » : une ligne par chaîne, TNT d'abord (sans les doublons SD, HD, FHD).
+            item { GuideGroupChip(stringResource(R.string.guide_tonight), selectedGroup == GuideViewModel.TONIGHT) { onSelectGroup(GuideViewModel.TONIGHT) } }
+            item { GuideGroupChip(stringResource(R.string.guide_essential), selectedGroup == GuideViewModel.ESSENTIAL) { onSelectGroup(GuideViewModel.ESSENTIAL) } }
             item { GuideGroupChip(stringResource(R.string.channels_all_short), selectedGroup == null) { onSelectGroup(null) } }
             items(groups, key = { it.title ?: "\u0000" }) { group ->
                 GuideGroupChip(group.title ?: stringResource(R.string.channels_no_group), selectedGroup == group.title.orEmpty()) {
@@ -139,7 +148,9 @@ fun GuideContent(
             }
         }
 
-        if (!state.loading && state.channels.isEmpty()) {
+        if (selectedGroup == GuideViewModel.TONIGHT) {
+            TonightView(tonight, window, onTonightDay, onOpen = { channel, programme -> details = channel to programme })
+        } else if (!state.loading && state.channels.isEmpty()) {
             EmptyState(
                 icon = NexTvIcons.Guide,
                 title = stringResource(if (selectedGroup == GuideViewModel.FAVORITES) R.string.guide_no_favorites_title else R.string.guide_empty_title),

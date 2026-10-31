@@ -225,6 +225,15 @@
     <string name="guide_restart">Depuis le début</string>
     <string name="guide_yesterday">Hier</string>
     <string name="guide_tomorrow">Demain</string>
+    <string name="guide_now">En cours</string>
+    <string name="guide_tonight">Ce soir</string>
+    <string name="guide_essential">L’essentiel</string>
+    <string name="tonight_today">Ce soir</string>
+    <string name="tonight_tomorrow">Demain soir</string>
+    <string name="tonight_first_part">Vers 21 h</string>
+    <string name="tonight_second_part">Ensuite</string>
+    <string name="tonight_empty_title">Pas de programme pour ce soir-là</string>
+    <string name="tonight_empty_message">Le guide TV ne couvre pas encore cette soirée, ou aucune chaîne de la playlist n’y est associée.</string>
 
     <!-- Lecteur -->
     <string name="player_next">Ensuite %1$s · %2$s</string>
@@ -370,8 +379,15 @@
     <string name="movie_groups_empty">Aucune catégorie de films dans la playlist active.</string>
     <string name="series_groups_empty">Aucune catégorie de séries dans la playlist active.</string>
     <string name="settings_columns_help">Gauche / droite pour changer le nombre, sur TV et tablette. Plus il y en a, plus les vignettes sont petites et plus on en voit à la fois.</string>
+    <string name="settings_quality_target">Qualité visée</string>
+    <string name="quality_target_best">Meilleure qualité</string>
+    <string name="quality_target_hd">HD maximum</string>
+    <string name="quality_target_eco">Économie</string>
+    <string name="quality_target_best_help">Chaque chaîne s’ouvre dans sa meilleure version (4K, FHD…).</string>
+    <string name="quality_target_hd_help">Les chaînes s’ouvrent au plus en HD, même si une version FHD ou 4K existe : image nette, connexion moins sollicitée.</string>
+    <string name="quality_target_eco_help">Les chaînes s’ouvrent en SD (ou LOW) quand cette version existe, sinon en HD : pour une connexion lente ou limitée.</string>
     <string name="settings_auto_quality">Qualité automatique</string>
-    <string name="settings_auto_quality_help">Passe en qualité inférieure (FHD → HD → SD → LOW) si la connexion faiblit, puis revient à la meilleure dès que possible. Seules les versions de la même chaîne présentes dans la playlist sont utilisées.</string>
+    <string name="settings_auto_quality_help">Passe en qualité inférieure (FHD → HD → SD → LOW) si la connexion faiblit, puis remonte jusqu’à la qualité visée dès que possible. Seules les versions de la même chaîne présentes dans la playlist sont utilisées.</string>
     <string name="settings_decoder_hevc">Décodeur H.265 / HEVC (4K)</string>
     <string name="settings_decoder_avc">Décodeur H.264 / AVC</string>
     <string name="settings_decoder_auto">Automatique (matériel en priorité, repli si échec)</string>

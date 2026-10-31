@@ -217,6 +217,17 @@ data class EpgChannelRow(val epgChannelId: String?, val id: Long, val name: Stri
 /** Version (qualité) d'une chaîne. */
 data class VariantRow(val id: Long, val quality: String?, val position: Int, val streamSupport: String)
 
+/** Version d'une chaîne associée au guide (« L'essentiel », « Ce soir » : une ligne par chaîne du guide). */
+data class GuideVersionRow(
+    val id: Long,
+    val name: String,
+    val title: String,
+    val logoUrl: String?,
+    val epgChannelId: String,
+    val position: Int,
+    val catchupDays: Int,
+)
+
 /** Chaîne affichée dans la grille du guide. */
 data class GuideChannelRow(
     val id: Long,
@@ -540,6 +551,20 @@ interface ChannelDao {
         """,
     )
     suspend fun guideChannels(sourceId: Long, filterGroup: Int, group: String, limit: Int): List<GuideChannelRow>
+
+    /**
+     * Versions visibles des chaînes associées au guide, la meilleure d'abord (lisible, puis meilleure
+     * qualité) : la première de chaque identifiant de guide représente la chaîne, sans ses doublons
+     * SD, HD, FHD ni ceux des autres catégories.
+     */
+    @Query(
+        """
+        SELECT c.id, c.name, c.title, c.logoUrl, c.epgChannelId, c.position, $CATCHUP_DAYS FROM channels c
+        WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.epgChannelId IS NOT NULL AND $NOT_HIDDEN
+        ORDER BY c.streamSupport = 'UNSUPPORTED', c.qualityRank DESC, c.position
+        """,
+    )
+    suspend fun guideVersions(sourceId: Long): List<GuideVersionRow>
 
     /** Chaînes favorites associées au guide. */
     @Query(

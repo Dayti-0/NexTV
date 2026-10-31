@@ -191,6 +191,19 @@ class DaoQueriesTest {
     }
 
     @Test
+    fun `guide versions list the best visible version of a channel first`() = runBlocking {
+        val dao = db.channelDao()
+        // Les deux versions de TF1 associées au même identifiant de guide.
+        dao.variants(sourceId, "tf1").forEach { dao.setEpg(it.id, "tf1.fr") }
+        val versions = dao.guideVersions(sourceId)
+        assertEquals(listOf("TF1 FHD", "TF1 HD"), versions.map { it.name })
+        assertEquals(listOf("TF1 FHD"), versions.distinctBy { it.epgChannelId }.map { it.name })
+        // Version FHD masquée : la version HD représente la chaîne.
+        db.hiddenGroupDao().hide(HiddenGroupEntity(sourceId, "LIVE", "FHD"))
+        assertEquals(listOf("TF1 HD"), dao.guideVersions(sourceId).map { it.name })
+    }
+
+    @Test
     fun `ids are listed page by page in id order`() = runBlocking {
         val dao = db.channelDao()
         val first = dao.idsAndUrls(sourceId, 0, 4)

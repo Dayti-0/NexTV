@@ -5,6 +5,40 @@ import tv.nextv.core.model.StreamQuality
 /** Une version (qualité) d'une même chaîne. */
 data class QualityOption(val channelId: Long, val quality: StreamQuality?)
 
+/** Qualité visée (réglages) : la meilleure, au plus HD, ou l'économie de la connexion. */
+enum class QualityTarget {
+    /** Meilleure version disponible. */
+    BEST,
+
+    /** Au plus HD : jamais de FHD ni de 4K s'il existe une version HD ou inférieure. */
+    HD,
+
+    /** SD (ou LOW) si la chaîne en a une version, sinon au plus HD. */
+    ECO,
+    ;
+
+    /** Rang le plus élevé visé parmi les versions [options], `null` : aucune limite. */
+    fun maxRank(options: List<QualityOption>): Int? = when (this) {
+        BEST -> null
+        HD -> StreamQuality.HD.rank
+        ECO -> if (options.any { StreamQuality.rankOf(it.quality) <= StreamQuality.SD.rank }) StreamQuality.SD.rank else StreamQuality.HD.rank
+    }
+
+    /**
+     * Version de départ : [preferred] (version ouverte, ou qualité qui a fonctionné la dernière fois)
+     * si elle respecte la qualité visée, sinon la meilleure version qui la respecte, et à défaut la
+     * moins bonne disponible (une chaîne seulement en FHD reste lisible).
+     */
+    fun start(options: List<QualityOption>, preferred: Long): Long {
+        val limit = maxRank(options) ?: return preferred
+        val preferredOption = options.firstOrNull { it.channelId == preferred }
+        if (preferredOption != null && StreamQuality.rankOf(preferredOption.quality) <= limit) return preferred
+        val allowed = options.filter { StreamQuality.rankOf(it.quality) <= limit }
+        return (allowed.maxByOrNull { StreamQuality.rankOf(it.quality) } ?: options.minByOrNull { StreamQuality.rankOf(it.quality) })?.channelId
+            ?: preferred
+    }
+}
+
 /**
  * Choix automatique de la qualité parmi les versions d'une même chaîne (FHD → HD → SD → LOW).
  *
@@ -23,6 +57,7 @@ data class QualityOption(val channelId: Long, val quality: StreamQuality?)
  *
  * @param decoderCeilingRank limite déjà constatée sur cet appareil (autre chaîne) : la lecture
  * commence directement sous cette qualité si une version le permet.
+ * @param maxRank qualité visée (réglages) : jamais de remontée au-dessus de ce rang.
  */
 class QualitySwitcher(
     options: List<QualityOption>,
@@ -31,6 +66,7 @@ class QualitySwitcher(
     private val config: Config = Config(),
     private val clock: () -> Long = System::currentTimeMillis,
     decoderCeilingRank: Int? = null,
+    private val maxRank: Int? = null,
 ) {
     data class Config(
         /** Blocage en cours de lecture toléré avant de changer de version. */
@@ -194,7 +230,7 @@ class QualitySwitcher(
         val currentRank = StreamQuality.rankOf(current.quality)
         val above = ladder.take(index).filter {
             val rank = StreamQuality.rankOf(it.quality)
-            rank > currentRank && (ceiling == null || rank < ceiling)
+            rank > currentRank && (ceiling == null || rank < ceiling) && (maxRank == null || rank <= maxRank)
         }
         val nextRank = above.lastOrNull()?.let { StreamQuality.rankOf(it.quality) } ?: return null
         return above.lastOrNull { StreamQuality.rankOf(it.quality) == nextRank && (cooldownUntil[it.channelId] ?: 0) <= now }

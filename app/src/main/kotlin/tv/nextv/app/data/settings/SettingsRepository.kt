@@ -22,6 +22,7 @@ import tv.nextv.core.net.DnsProvider
 import tv.nextv.core.net.ProxyScope
 import tv.nextv.core.net.ProxySettings
 import tv.nextv.core.net.ProxyType
+import tv.nextv.core.stream.QualityTarget
 
 private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
@@ -69,6 +70,15 @@ class SettingsRepository(
 
     suspend fun setAutoQuality(enabled: Boolean) {
         dataStore.edit { it[AUTO_QUALITY] = enabled }
+    }
+
+    /** Qualité visée : la meilleure, au plus HD, ou l'économie (SD). */
+    val qualityTarget: Flow<QualityTarget> = dataStore.data
+        .map { prefs -> prefs[QUALITY_TARGET]?.let { name -> QualityTarget.entries.firstOrNull { it.name == name } } ?: QualityTarget.BEST }
+        .distinctUntilChanged()
+
+    suspend fun setQualityTarget(target: QualityTarget) {
+        dataStore.edit { it[QUALITY_TARGET] = target.name }
     }
 
     /**
@@ -121,6 +131,13 @@ class SettingsRepository(
 
     suspend fun setThemeStyle(style: ThemeStyle) {
         dataStore.edit { it[THEME_STYLE] = style.name }
+    }
+
+    /** Dernière catégorie du guide TV (« Ce soir », « L'essentiel », un groupe…), `null` : toutes les chaînes. */
+    val guideCategory: Flow<String?> = dataStore.data.map { it[GUIDE_CATEGORY] }.distinctUntilChanged()
+
+    suspend fun setGuideCategory(category: String?) {
+        dataStore.edit { prefs -> if (category == null) prefs.remove(GUIDE_CATEGORY) else prefs[GUIDE_CATEGORY] = category }
     }
 
     /** Interface de l'accueil : classique, streaming ou box TV. */
@@ -319,6 +336,7 @@ class SettingsRepository(
         val PROXY_BYPASS_LOCAL = booleanPreferencesKey("proxy_bypass_local")
         val ACTIVE_PLAYLIST = longPreferencesKey("active_playlist")
         val AUTO_QUALITY = booleanPreferencesKey("auto_quality")
+        val QUALITY_TARGET = stringPreferencesKey("quality_target")
         val TMDB_KEY = stringPreferencesKey("tmdb_key")
         val FOOTBALL_KEY = stringPreferencesKey("football_key")
         val CHANNEL_COLUMNS = intPreferencesKey("channel_columns")
@@ -333,6 +351,7 @@ class SettingsRepository(
         val LOWER_AD_VOLUME = booleanPreferencesKey("lower_ad_volume")
         val THEME_STYLE = stringPreferencesKey("theme_style")
         val HOME_LAYOUT = stringPreferencesKey("home_layout")
+        val GUIDE_CATEGORY = stringPreferencesKey("guide_category")
         val CHANNEL_LIST = booleanPreferencesKey("channel_list")
 
         /** Réglages de la version 0.2.10 retirés depuis (rappels, code parental). */
