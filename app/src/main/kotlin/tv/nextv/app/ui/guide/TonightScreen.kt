@@ -39,6 +39,7 @@ import tv.nextv.app.ui.components.ChannelLogo
 import tv.nextv.app.ui.components.EmptyState
 import tv.nextv.app.ui.components.FocusSurface
 import tv.nextv.app.ui.components.LiveProgress
+import tv.nextv.app.ui.components.LocalTabsFocused
 import tv.nextv.app.ui.components.StatusPill
 import tv.nextv.app.ui.components.WindowInfo
 import tv.nextv.app.ui.theme.NexTvColors
@@ -66,9 +67,10 @@ internal fun TonightView(
     val shown = focused ?: state.rows.firstOrNull()?.let { row -> row.first?.let { row.channel to it } }
     val firstBlock = remember { FocusRequester() }
     var initialFocusDone by remember { mutableStateOf(false) }
+    val tabsFocused = LocalTabsFocused.current
     if (window.isTv && !initialFocusDone && state.rows.isNotEmpty()) {
         LaunchedEffect(Unit) {
-            runCatching { firstBlock.requestFocus() }
+            if (!tabsFocused()) runCatching { firstBlock.requestFocus() }
             initialFocusDone = true
         }
     }

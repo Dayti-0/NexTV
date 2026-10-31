@@ -76,6 +76,7 @@ import tv.nextv.app.ui.components.ChannelLogo
 import tv.nextv.app.ui.components.EmptyState
 import tv.nextv.app.ui.components.FocusSurface
 import tv.nextv.app.ui.components.LiveProgress
+import tv.nextv.app.ui.components.LocalTabsFocused
 import tv.nextv.app.ui.components.PillButton
 import tv.nextv.app.ui.components.PillStyle
 import tv.nextv.app.ui.components.ignoreHeldOk
@@ -270,9 +271,11 @@ private fun GuideGrid(
         }
     }
     val firstLive = state.channels.firstOrNull()?.let { channel -> channel.programmes.firstOrNull { it.isLive(state.now) } }
+    // Guide ouvert en parcourant les onglets du haut : le focus y reste.
+    val tabsFocused = LocalTabsFocused.current
     if (requestInitialFocus && initialScrollDone && !initialFocusDone && firstLive != null) {
         LaunchedEffect(firstLive) {
-            runCatching { initialFocus.requestFocus() }
+            if (!tabsFocused()) runCatching { initialFocus.requestFocus() }
             initialFocusDone = true
         }
     }

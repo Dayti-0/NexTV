@@ -3,7 +3,10 @@ package tv.nextv.app.ui.home
 import android.app.Application
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -14,6 +17,7 @@ import androidx.paging.PagingData
 import androidx.paging.compose.collectAsLazyPagingItems
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -99,14 +103,37 @@ class HomeFocusTest {
         assertTrue("Chaînes : ${focused.map { it.title }}", focused.map { it.id }.distinct().size >= 10)
     }
 
+    @Test
+    fun tabsChangeSectionWithoutOk() {
+        var section by mutableStateOf(HomeSection.TV)
+        compose.setContent { Home(HomeLayout.CLASSIC, HomeActions(onSection = { section = it }), section) }
+        compose.waitForIdle()
+        // Focus initial sur l'onglet TV : droite, droite → Séries, sans appuyer sur OK.
+        press(Key.DirectionRight)
+        assertEquals(HomeSection.MOVIES, section)
+        press(Key.DirectionRight)
+        assertEquals(HomeSection.SERIES, section)
+        // Dans le contenu, puis retour vers les onglets : la section affichée reste la même.
+        repeat(3) { press(Key.DirectionDown) }
+        repeat(4) { press(Key.DirectionUp) }
+        assertEquals(HomeSection.SERIES, section)
+    }
+
+    /** Appui sur une touche, puis le temps de l'arrêt sur un onglet. */
+    private fun press(key: Key) {
+        compose.onRoot().performKeyInput { pressKey(key) }
+        compose.mainClock.advanceTimeBy(500)
+        compose.waitForIdle()
+    }
+
     @Composable
-    private fun Home(layout: HomeLayout, actions: HomeActions) {
+    private fun Home(layout: HomeLayout, actions: HomeActions, section: HomeSection = HomeSection.TV) {
         NexTvTheme(ThemeStyle.NIGHT) {
             val channels = remember { flowOf(PagingData.from(SampleData.channels)) }.collectAsLazyPagingItems()
             val movies = remember { flowOf(PagingData.from(SampleData.movies)) }.collectAsLazyPagingItems()
             val series = remember { flowOf(PagingData.from(SampleData.series)) }.collectAsLazyPagingItems()
             HomeContent(
-                section = HomeSection.TV,
+                section = section,
                 sourceName = "Bouquet",
                 groups = groups,
                 category = Category.All,

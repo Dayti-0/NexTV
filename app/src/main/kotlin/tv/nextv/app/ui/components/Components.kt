@@ -34,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -598,3 +599,9 @@ fun EmptyState(
 /** Marges de contenu standard d'un écran. */
 fun WindowInfo.contentPadding(top: Dp = 8.dp, bottom: Dp = 24.dp) =
     PaddingValues(start = horizontalPadding, end = horizontalPadding, top = top, bottom = bottom)
+
+/**
+ * Le focus est sur les onglets du haut de l'accueil (on y passe d'une section à l'autre) : une
+ * section qui s'ouvre ne doit pas leur prendre le focus.
+ */
+val LocalTabsFocused = compositionLocalOf<() -> Boolean> { { false } }

@@ -5,6 +5,7 @@ import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -45,6 +46,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
@@ -56,6 +58,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -88,6 +91,7 @@ import tv.nextv.app.data.db.MovieRow
 import tv.nextv.app.data.db.SeriesRow
 import tv.nextv.app.ui.common.appViewModel
 import tv.nextv.app.ui.common.channelCount
+import tv.nextv.app.ui.components.LocalTabsFocused
 import tv.nextv.app.ui.components.ignoreHeldOk
 import tv.nextv.app.ui.components.BrandMark
 import tv.nextv.app.ui.components.EmptyState
@@ -341,116 +345,120 @@ fun HomeContent(
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
+        // Onglets sélectionnés : les sections qui s'ouvrent leur laissent le focus.
+        val tabsFocused = remember { mutableStateOf(false) }
         Column(Modifier.fillMaxSize().padding(padding)) {
-            HomeTopBar(section, sourceName, window, actions)
-            if (section == HomeSection.GUIDE) {
-                guide(Modifier.weight(1f))
-            } else if (section == HomeSection.FOOTBALL) {
-                football(Modifier.weight(1f))
-            } else {
-                val favoritesCount = when (section) {
-                    HomeSection.TV -> favoriteChannels.size
-                    HomeSection.MOVIES -> favoriteMovies.size
-                    else -> favoriteSeries.size
-                }
-                val resumeItems = when (section) {
-                    HomeSection.MOVIES -> continueMovies
-                    HomeSection.SERIES -> continueSeries
-                    else -> null
-                }
-                // Une chaîne peut figurer dans plusieurs catégories (une par qualité) : compte à part.
-                val allCount = channelCount?.takeIf { section == HomeSection.TV } ?: groups.sumOf { it.count }
-                val body: @Composable (GridLayout) -> Unit = { grid ->
-                    if (resumeItems != null && category == Category.ContinueWatching) {
-                        ContinueBody(resumeItems, grid, window, lastOpened, actions, focused)
-                    } else when (section) {
-                        HomeSection.TV -> TvBody(channels, favoriteChannels, recentChannels, category, favoriteKeys, reorder, now, grid, window, lastOpened, actions, focused)
-                        HomeSection.MOVIES -> MoviesBody(movies, favoriteMovies, category, favoriteKeys, reorder, grid, window, lastOpened, actions, focused)
-                        else -> SeriesBody(series, favoriteSeries, category, favoriteKeys, reorder, grid, window, lastOpened, actions, focused)
+            HomeTopBar(section, sourceName, window, actions, onTabsFocused = { tabsFocused.value = it })
+            CompositionLocalProvider(LocalTabsFocused provides { tabsFocused.value }) {
+                if (section == HomeSection.GUIDE) {
+                    guide(Modifier.weight(1f))
+                } else if (section == HomeSection.FOOTBALL) {
+                    football(Modifier.weight(1f))
+                } else {
+                    val favoritesCount = when (section) {
+                        HomeSection.TV -> favoriteChannels.size
+                        HomeSection.MOVIES -> favoriteMovies.size
+                        else -> favoriteSeries.size
                     }
-                }
-                // Mosaïque ou liste : réglage de l'interface classique ; les autres ont leur présentation.
-                val columns = if (layout == HomeLayout.CLASSIC) gridColumns else gridColumns.copy(channelList = false)
-                when {
-                    layout == HomeLayout.STREAMING && category == Category.All -> StreamingHome(
-                        section = section,
-                        window = window,
-                        groups = groups,
-                        rows = rows,
-                        query = query,
-                        channels = channels,
-                        movies = movies,
-                        series = series,
-                        favoriteChannels = favoriteChannels,
-                        recentChannels = recentChannels,
-                        favoriteMovies = favoriteMovies,
-                        favoriteSeries = favoriteSeries,
-                        continueItems = resumeItems.orEmpty(),
-                        favoriteKeys = favoriteKeys,
-                        now = now,
-                        preview = preview,
-                        previewPlayer = previewPlayer.takeIf { showPreview },
-                        lastOpened = lastOpened,
-                        actions = actions,
-                        modifier = Modifier.weight(1f),
-                    )
-                    layout == HomeLayout.BOX && section == HomeSection.TV && window.isWide -> BoxTvSection(
-                        window = window,
-                        groups = groups,
-                        recentCount = recentChannels.size,
-                        allCount = allCount,
-                        category = category,
-                        query = query,
-                        favoritesCount = favoritesCount,
-                        title = categoryTitle(section, category),
-                        count = itemCount(
-                            section,
-                            when (category) {
-                                Category.Favorites -> favoritesCount
-                                Category.Recent -> recentChannels.size
-                                is Category.Group -> groups.firstOrNull { it.title.orEmpty() == category.title }?.count ?: 0
-                                else -> allCount
+                    val resumeItems = when (section) {
+                        HomeSection.MOVIES -> continueMovies
+                        HomeSection.SERIES -> continueSeries
+                        else -> null
+                    }
+                    // Une chaîne peut figurer dans plusieurs catégories (une par qualité) : compte à part.
+                    val allCount = channelCount?.takeIf { section == HomeSection.TV } ?: groups.sumOf { it.count }
+                    val body: @Composable (GridLayout) -> Unit = { grid ->
+                        if (resumeItems != null && category == Category.ContinueWatching) {
+                            ContinueBody(resumeItems, grid, window, lastOpened, actions, focused)
+                        } else when (section) {
+                            HomeSection.TV -> TvBody(channels, favoriteChannels, recentChannels, category, favoriteKeys, reorder, now, grid, window, lastOpened, actions, focused)
+                            HomeSection.MOVIES -> MoviesBody(movies, favoriteMovies, category, favoriteKeys, reorder, grid, window, lastOpened, actions, focused)
+                            else -> SeriesBody(series, favoriteSeries, category, favoriteKeys, reorder, grid, window, lastOpened, actions, focused)
+                        }
+                    }
+                    // Mosaïque ou liste : réglage de l'interface classique ; les autres ont leur présentation.
+                    val columns = if (layout == HomeLayout.CLASSIC) gridColumns else gridColumns.copy(channelList = false)
+                    when {
+                        layout == HomeLayout.STREAMING && category == Category.All -> StreamingHome(
+                            section = section,
+                            window = window,
+                            groups = groups,
+                            rows = rows,
+                            query = query,
+                            channels = channels,
+                            movies = movies,
+                            series = series,
+                            favoriteChannels = favoriteChannels,
+                            recentChannels = recentChannels,
+                            favoriteMovies = favoriteMovies,
+                            favoriteSeries = favoriteSeries,
+                            continueItems = resumeItems.orEmpty(),
+                            favoriteKeys = favoriteKeys,
+                            now = now,
+                            preview = preview,
+                            previewPlayer = previewPlayer.takeIf { showPreview },
+                            lastOpened = lastOpened,
+                            actions = actions,
+                            modifier = Modifier.weight(1f),
+                        )
+                        layout == HomeLayout.BOX && section == HomeSection.TV && window.isWide -> BoxTvSection(
+                            window = window,
+                            groups = groups,
+                            recentCount = recentChannels.size,
+                            allCount = allCount,
+                            category = category,
+                            query = query,
+                            favoritesCount = favoritesCount,
+                            title = categoryTitle(section, category),
+                            count = itemCount(
+                                section,
+                                when (category) {
+                                    Category.Favorites -> favoritesCount
+                                    Category.Recent -> recentChannels.size
+                                    is Category.Group -> groups.firstOrNull { it.title.orEmpty() == category.title }?.count ?: 0
+                                    else -> allCount
+                                },
+                            ),
+                            preview = preview,
+                            previewPlayer = previewPlayer.takeIf { showPreview },
+                            now = now,
+                            actions = actions,
+                            modifier = Modifier.weight(1f),
+                            action = if (category == Category.Favorites && favoritesCount > 1) {
+                                {
+                                    PillButton(
+                                        stringResource(if (reorder.active) R.string.favorites_reorder_done else R.string.favorites_reorder),
+                                        actions.onToggleReorder,
+                                        icon = if (reorder.active) Icons.Filled.Check else Icons.Filled.Edit,
+                                    )
+                                }
+                            } else {
+                                null
                             },
-                        ),
-                        preview = preview,
-                        previewPlayer = previewPlayer.takeIf { showPreview },
-                        now = now,
-                        actions = actions,
-                        modifier = Modifier.weight(1f),
-                        action = if (category == Category.Favorites && favoritesCount > 1) {
-                            {
-                                PillButton(
-                                    stringResource(if (reorder.active) R.string.favorites_reorder_done else R.string.favorites_reorder),
-                                    actions.onToggleReorder,
-                                    icon = if (reorder.active) Icons.Filled.Check else Icons.Filled.Edit,
-                                )
-                            }
-                        } else {
-                            null
-                        },
-                    ) { CatalogGrid(section, window, columns, list = true, body = body) }
-                    else -> CatalogSection(
-                        section = section,
-                        window = window,
-                        groups = groups,
-                        recentCount = recentChannels.size.takeIf { section == HomeSection.TV },
-                        hero = if (section == HomeSection.TV && window.isWide && showPreview) {
-                            { title, count, action -> ChannelHero(title, count, action, preview, previewPlayer, now, window) }
-                        } else {
-                            null
-                        },
-                        allCount = allCount,
-                        category = category,
-                        query = query,
-                        favoritesCount = favoritesCount,
-                        resumeCount = resumeItems?.size,
-                        reorder = reorder,
-                        actions = actions,
-                        modifier = Modifier.weight(1f),
-                        gridColumns = columns,
-                        focusedItem = focused.value,
-                        body = body,
-                    )
+                        ) { CatalogGrid(section, window, columns, list = true, body = body) }
+                        else -> CatalogSection(
+                            section = section,
+                            window = window,
+                            groups = groups,
+                            recentCount = recentChannels.size.takeIf { section == HomeSection.TV },
+                            hero = if (section == HomeSection.TV && window.isWide && showPreview) {
+                                { title, count, action -> ChannelHero(title, count, action, preview, previewPlayer, now, window) }
+                            } else {
+                                null
+                            },
+                            allCount = allCount,
+                            category = category,
+                            query = query,
+                            favoritesCount = favoritesCount,
+                            resumeCount = resumeItems?.size,
+                            reorder = reorder,
+                            actions = actions,
+                            modifier = Modifier.weight(1f),
+                            gridColumns = columns,
+                            focusedItem = focused.value,
+                            body = body,
+                        )
+                    }
                 }
             }
         }
@@ -458,7 +466,13 @@ fun HomeContent(
 }
 
 @Composable
-private fun HomeTopBar(section: HomeSection, sourceName: String, window: WindowInfo, actions: HomeActions) {
+private fun HomeTopBar(
+    section: HomeSection,
+    sourceName: String,
+    window: WindowInfo,
+    actions: HomeActions,
+    onTabsFocused: (Boolean) -> Unit = {},
+) {
     val initialFocus = remember { FocusRequester() }
     // Focus initial sur les onglets au premier affichage seulement (pas au retour d'un autre écran).
     var initialFocusDone by rememberSaveable { mutableStateOf(false) }
@@ -476,7 +490,13 @@ private fun HomeTopBar(section: HomeSection, sourceName: String, window: WindowI
         BrandMark(compact = true, showName = window.isWide)
         Spacer(Modifier.width(if (window.isWide) 32.dp else 12.dp))
         Row(
-            Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+            Modifier
+                .weight(1f)
+                .onFocusChanged { onTabsFocused(it.hasFocus) }
+                // En remontant vers les onglets : celui de la section affichée (pas le plus proche, qui en changerait).
+                .focusProperties { onEnter = { runCatching { initialFocus.requestFocus() } } }
+                .focusGroup()
+                .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             HomeSection.entries.forEach { target ->
@@ -486,6 +506,8 @@ private fun HomeTopBar(section: HomeSection, sourceName: String, window: WindowI
                     showLabel = window.isWide || target == section,
                     selected = target == section,
                     onClick = { actions.onSection(target) },
+                    // Télécommande : la section s'affiche dès que l'onglet est sélectionné (sans OK).
+                    onFocused = { actions.onSection(target) },
                     modifier = if (target == section) Modifier.focusRequester(initialFocus) else Modifier,
                 )
             }
@@ -512,11 +534,19 @@ private fun SectionTab(
     showLabel: Boolean,
     selected: Boolean,
     onClick: () -> Unit,
+    onFocused: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    var focused by remember { mutableStateOf(false) }
+    // Court arrêt sur l'onglet : on traverse les onglets sans ouvrir chaque section au passage.
+    LaunchedEffect(focused, selected) {
+        if (!focused || selected) return@LaunchedEffect
+        delay(TAB_SELECT_DELAY_MILLIS)
+        onFocused()
+    }
     FocusSurface(
         onClick = onClick,
-        modifier = modifier,
+        modifier = modifier.onFocusChanged { focused = it.hasFocus },
         shape = CircleShape,
         color = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
         focusedColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -1199,6 +1229,9 @@ internal fun SearchField(query: String, hint: String, onQueryChange: (String) ->
 }
 
 private val GRID_SPACING = 16.dp
+
+/** Arrêt sur un onglet avant d'afficher sa section (traversée rapide des onglets). */
+private const val TAB_SELECT_DELAY_MILLIS = 250L
 
 /** Vignette la plus étroite acceptée, quel que soit le réglage. */
 private val MIN_CELL = 56.dp
