@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,6 +35,9 @@ import tv.nextv.core.football.MatchStatus
 import tv.nextv.core.football.ScheduledMatch
 import tv.nextv.core.football.Standing
 import tv.nextv.core.football.StandingsResult
+import tv.nextv.core.football.Team
+import tv.nextv.core.football.TeamMatches
+import tv.nextv.core.football.TeamMatchesResult
 import tv.nextv.core.model.ContentKind
 import java.text.Normalizer
 import java.util.Calendar
@@ -72,6 +76,17 @@ data class FootballMatch(
     fun isLive(now: Long): Boolean = kickoffMillis <= now && endMillis > now
 
     fun involves(teams: Set<String>): Boolean = homeTeam in teams || awayTeam in teams
+}
+
+/** Fiche d'un club du classement : ses derniers et prochains matchs. */
+sealed interface TeamMatchesState {
+    val team: Team
+
+    data class Loading(override val team: Team) : TeamMatchesState
+
+    data class Loaded(override val team: Team, val matches: TeamMatches) : TeamMatchesState
+
+    data class Failed(override val team: Team, val notice: FootballNotice) : TeamMatchesState
 }
 
 /** Classement d'une compétition : en chargement, ses lignes, ou la raison de son absence. */
@@ -134,6 +149,30 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
 
     fun toggleTeam(name: String) {
         viewModelScope.launch { container.settings.toggleFavoriteTeam(name) }
+    }
+
+    private val mutableTeamMatches = MutableStateFlow<TeamMatchesState?>(null)
+
+    /** Fiche du club choisi dans le classement, `null` : fermée. */
+    val teamMatches: StateFlow<TeamMatchesState?> = mutableTeamMatches
+
+    private var teamJob: Job? = null
+
+    fun showTeam(team: Team) {
+        val id = team.id ?: return
+        teamJob?.cancel()
+        mutableTeamMatches.value = TeamMatchesState.Loading(team)
+        teamJob = viewModelScope.launch {
+            mutableTeamMatches.value = when (val result = container.footballData.teamMatches(id)) {
+                is TeamMatchesResult.Success -> TeamMatchesState.Loaded(team, result.matches)
+                is TeamMatchesResult.Failed -> TeamMatchesState.Failed(team, noticeOf(result.error))
+            }
+        }
+    }
+
+    fun hideTeam() {
+        teamJob?.cancel()
+        mutableTeamMatches.value = null
     }
 
     /** Programmes susceptibles de diffuser un match, et matchs que le guide annonce seul. */

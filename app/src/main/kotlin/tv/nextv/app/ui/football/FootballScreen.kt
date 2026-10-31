@@ -59,11 +59,14 @@ import tv.nextv.app.ui.components.LiveProgress
 import tv.nextv.app.ui.components.PillButton
 import tv.nextv.app.ui.components.PillStyle
 import tv.nextv.app.ui.components.StatusPill
+import tv.nextv.app.ui.components.ignoreHeldOk
 import tv.nextv.app.ui.components.rememberWindowInfo
 import tv.nextv.app.ui.theme.NexTvColors
 import tv.nextv.app.ui.theme.NexTvIcons
 import tv.nextv.core.football.Competition
+import tv.nextv.core.football.ScheduledMatch
 import tv.nextv.core.football.Standing
+import tv.nextv.core.football.Team
 import java.text.DateFormat
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -80,6 +83,7 @@ fun FootballScreen(sourceId: Long, onPlay: (Long) -> Unit, modifier: Modifier = 
     val favoriteTeams by viewModel.favoriteTeams.collectAsStateWithLifecycle()
     val showStandings by viewModel.showStandings.collectAsStateWithLifecycle()
     val standings by viewModel.standings.collectAsStateWithLifecycle()
+    val teamMatches by viewModel.teamMatches.collectAsStateWithLifecycle()
     FootballContent(
         state = state,
         competition = competition,
@@ -99,6 +103,9 @@ fun FootballScreen(sourceId: Long, onPlay: (Long) -> Unit, modifier: Modifier = 
         showStandings = showStandings,
         onShowStandings = { viewModel.showStandings.value = it },
         onToggleTeam = viewModel::toggleTeam,
+        teamMatches = teamMatches,
+        onTeam = viewModel::showTeam,
+        onCloseTeam = viewModel::hideTeam,
     )
 }
 
@@ -122,6 +129,10 @@ fun FootballContent(
     showStandings: Boolean = false,
     onShowStandings: (Boolean) -> Unit = {},
     onToggleTeam: (String) -> Unit = {},
+    /** Fiche du club choisi dans le classement (derniers et prochains matchs). */
+    teamMatches: TeamMatchesState? = null,
+    onTeam: (Team) -> Unit = {},
+    onCloseTeam: () -> Unit = {},
 ) {
     val window = rememberWindowInfo()
     var details by remember { mutableStateOf<FootballMatch?>(null) }
@@ -148,6 +159,7 @@ fun FootballContent(
                     favoriteTeams = favoriteTeams,
                     horizontalPadding = window.horizontalPadding,
                     compact = !window.isWide,
+                    onTeam = onTeam,
                     onToggleTeam = onToggleTeam,
                     modifier = body,
                 )
@@ -236,6 +248,16 @@ fun FootballContent(
             },
             onToggleTeam = onToggleTeam,
             onDismiss = { details = null },
+        )
+    }
+
+    teamMatches?.let {
+        TeamSheet(
+            state = it,
+            now = state.now,
+            followed = it.team.name in favoriteTeams,
+            onToggleTeam = { onToggleTeam(it.team.name) },
+            onDismiss = onCloseTeam,
         )
     }
 }
@@ -433,7 +455,11 @@ private fun MatchSheet(
     val firstFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { firstFocus.requestFocus() } }
     Dialog(onDismissRequest = onDismiss) {
-        Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.widthIn(max = 680.dp)) {
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            modifier = Modifier.widthIn(max = 680.dp).ignoreHeldOk(),
+        ) {
             Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(match.competition.label, style = MaterialTheme.typography.labelLarge, color = competitionColor(match.competition))
@@ -483,13 +509,17 @@ private fun MatchSheet(
     }
 }
 
-/** Classement : rang, équipe, matchs joués, différence de buts, points. OK sur une équipe : la suivre. */
+/**
+ * Classement : rang, équipe, matchs joués, différence de buts, points. OK sur une équipe : ses
+ * derniers et prochains matchs ; appui long : la suivre.
+ */
 @Composable
 private fun StandingsTable(
     state: StandingsState,
     favoriteTeams: Set<String>,
     horizontalPadding: Dp,
     compact: Boolean,
+    onTeam: (Team) -> Unit,
     onToggleTeam: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -514,6 +544,14 @@ private fun StandingsTable(
                 contentPadding = PaddingValues(start = if (compact) horizontalPadding else 28.dp, end = horizontalPadding, top = 12.dp, bottom = 32.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
+                item(key = "hint") {
+                    Text(
+                        stringResource(R.string.football_standings_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 14.dp, bottom = 4.dp),
+                    )
+                }
                 item(key = "header") {
                     StandingLine(
                         position = "#",
@@ -528,7 +566,8 @@ private fun StandingsTable(
                 }
                 items(state.table, key = { "${it.position}-${it.team.name}" }) { row ->
                     FocusSurface(
-                        onClick = { onToggleTeam(row.team.name) },
+                        onClick = { onTeam(row.team) },
+                        onLongClick = { onToggleTeam(row.team.name) },
                         modifier = Modifier.fillMaxWidth(),
                         shape = MaterialTheme.shapes.small,
                         color = MaterialTheme.colorScheme.surfaceContainer,
@@ -578,6 +617,121 @@ private fun StandingLine(
         Text(played, style = style, color = color, textAlign = TextAlign.End, modifier = Modifier.width(36.dp))
         Text(difference, style = style, color = color, textAlign = TextAlign.End, modifier = Modifier.width(44.dp))
         Text(points, style = style, color = if (header) color else MaterialTheme.colorScheme.primary, textAlign = TextAlign.End, modifier = Modifier.width(40.dp))
+    }
+}
+
+/** Fiche d'un club : derniers résultats et prochains matchs (deux colonnes sur TV), et son suivi. */
+@Composable
+private fun TeamSheet(state: TeamMatchesState, now: Long, followed: Boolean, onToggleTeam: () -> Unit, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss) {
+        TeamSheetContent(state, now, followed, onToggleTeam, onDismiss)
+    }
+}
+
+/** Contenu de la fiche d'un club (captures d'écran). */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun TeamSheetContent(state: TeamMatchesState, now: Long, followed: Boolean, onToggleTeam: () -> Unit, onDismiss: () -> Unit) {
+    val window = rememberWindowInfo()
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { firstFocus.requestFocus() } }
+    val team = state.team
+    Surface(
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier.widthIn(max = if (window.isWide) 860.dp else 560.dp).ignoreHeldOk(),
+    ) {
+        Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                team.crestUrl?.let { ChannelLogo(it, team.displayName, Modifier.size(44.dp), monogramSize = 14.dp) }
+                Text(team.name, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                if (followed) Icon(Icons.Filled.Star, contentDescription = null, tint = NexTvColors.Warning)
+            }
+            when (state) {
+                is TeamMatchesState.Loading -> Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                is TeamMatchesState.Failed -> Text(noticeText(state.notice), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                is TeamMatchesState.Loaded -> {
+                    val last: @Composable (Modifier) -> Unit = { columnModifier ->
+                        TeamMatchColumn(stringResource(R.string.football_team_last), state.matches.last, team, now, past = true, columnModifier)
+                    }
+                    val next: @Composable (Modifier) -> Unit = { columnModifier ->
+                        TeamMatchColumn(stringResource(R.string.football_team_next), state.matches.next, team, now, past = false, columnModifier)
+                    }
+                    if (window.isWide) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                            last(Modifier.weight(1f))
+                            next(Modifier.weight(1f))
+                        }
+                    } else {
+                        Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                            last(Modifier.fillMaxWidth())
+                            next(Modifier.fillMaxWidth())
+                        }
+                    }
+                }
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                PillButton(
+                    stringResource(if (followed) R.string.football_unfollow else R.string.football_follow, team.displayName),
+                    onToggleTeam,
+                    icon = Icons.Filled.Star,
+                    style = PillStyle.Primary,
+                    modifier = Modifier.focusRequester(firstFocus),
+                )
+                PillButton(stringResource(R.string.action_close), onDismiss, style = PillStyle.Ghost)
+            }
+        }
+    }
+}
+
+@Composable
+private fun TeamMatchColumn(title: String, matches: List<ScheduledMatch>, team: Team, now: Long, past: Boolean, modifier: Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+        if (matches.isEmpty()) {
+            Text(stringResource(R.string.football_team_none), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        matches.forEach { TeamMatchLine(it, team, now, past) }
+    }
+}
+
+/** « sam. 25 oct. · Monaco – PSG · 1 – 1 N » (résultat du point de vue du club) ou l'heure du prochain match. */
+@Composable
+private fun TeamMatchLine(match: ScheduledMatch, team: Team, now: Long, past: Boolean) {
+    val home = match.home.id == team.id || (team.id == null && match.home.name == team.name)
+    val opponentFirst = !home
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Box(Modifier.size(8.dp).background(competitionColor(match.competition), CircleShape))
+        Text(
+            SimpleDateFormat(if (past) "EEE d MMM" else "EEE d MMM, HH:mm", Locale.FRANCE).format(Date(match.kickoffMillis)),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.width(if (past) 96.dp else 132.dp),
+            maxLines = 1,
+        )
+        Text(
+            "${match.home.displayName} – ${match.away.displayName}",
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        val homeScore = match.homeScore
+        val awayScore = match.awayScore
+        if (past && homeScore != null && awayScore != null) {
+            val (own, other) = if (opponentFirst) awayScore to homeScore else homeScore to awayScore
+            val (letter, color) = when {
+                own > other -> stringResource(R.string.football_result_win) to NexTvColors.Live
+                own < other -> stringResource(R.string.football_result_loss) to NexTvColors.Error
+                else -> stringResource(R.string.football_result_draw) to MaterialTheme.colorScheme.onSurfaceVariant
+            }
+            Text("$homeScore – $awayScore", style = MaterialTheme.typography.titleSmall)
+            Box(Modifier.size(22.dp).background(color, CircleShape), contentAlignment = Alignment.Center) {
+                Text(letter, style = MaterialTheme.typography.labelSmall, color = Color.Black)
+            }
+        } else if (!past && match.kickoffMillis <= now) {
+            StatusPill(stringResource(R.string.player_live), NexTvColors.Live)
+        }
     }
 }
 

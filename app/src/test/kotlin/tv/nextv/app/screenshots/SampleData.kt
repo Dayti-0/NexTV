@@ -4,7 +4,11 @@ import tv.nextv.app.ui.football.FootballMatch
 import tv.nextv.app.ui.home.ChannelPreview
 import tv.nextv.app.ui.football.FootballUiState
 import tv.nextv.core.football.Competition
+import tv.nextv.core.football.MatchStatus
+import tv.nextv.core.football.ScheduledMatch
 import tv.nextv.core.football.Standing
+import tv.nextv.core.football.TeamMatches
+import tv.nextv.app.ui.football.TeamMatchesState
 import tv.nextv.core.football.Team
 import tv.nextv.app.data.catalog.MetadataState
 import tv.nextv.app.data.progress.ProgressEntity
@@ -413,6 +417,39 @@ object SampleData {
             )
         },
     )
+
+    /** Fiche du PSG : trois derniers matchs et deux prochains. */
+    val teamMatches: TeamMatchesState = run {
+        val psg = Team("Paris Saint-Germain FC", "PSG", "PSG", null, id = 524)
+        fun match(id: Long, competition: Competition, home: Team, away: Team, days: Int, score: Pair<Int, Int>?) = ScheduledMatch(
+            id = id,
+            competition = competition,
+            kickoffMillis = NOW + days * 24 * 60 * MINUTE,
+            status = if (score != null) MatchStatus.FINISHED else MatchStatus.SCHEDULED,
+            home = home,
+            away = away,
+            homeScore = score?.first,
+            awayScore = score?.second,
+        )
+        val om = Team("Olympique de Marseille", "Marseille", "OM", null, id = 516)
+        val monaco = Team("AS Monaco FC", "Monaco", "ASM", null, id = 548)
+        val bayern = Team("FC Bayern München", "Bayern", "FCB", null, id = 5)
+        val lens = Team("Racing Club de Lens", "Lens", "RCL", null, id = 546)
+        TeamMatchesState.Loaded(
+            psg,
+            TeamMatches(
+                last = listOf(
+                    match(1, Competition.LIGUE_1, monaco, psg, -4, 1 to 1),
+                    match(2, Competition.CHAMPIONS_LEAGUE, psg, bayern, -8, 2 to 1),
+                    match(3, Competition.LIGUE_1, om, psg, -12, 1 to 0),
+                ),
+                next = listOf(
+                    match(4, Competition.LIGUE_1, psg, lens, 3, null),
+                    match(5, Competition.CHAMPIONS_LEAGUE, bayern, psg, 7, null),
+                ),
+            ),
+        )
+    }
 
     /** Classement de Ligue 1. */
     val standings = listOf(

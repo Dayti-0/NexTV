@@ -232,15 +232,12 @@ fun FocusSurface(
     if (onFocusChange != null) {
         LaunchedEffect(focused) { onFocusChange(focused) }
     }
-    val okKey = remember { OkKeyState() }
-    val scope = rememberCoroutineScope()
     val currentOnLongClick by rememberUpdatedState(onLongClick)
-    LaunchedEffect(focused) {
-        if (!focused) okKey.reset()
-    }
+    // Appui long : action dès qu'il est reconnu, OK encore tenu ; le menu qu'elle ouvre ignore la fin de l'appui.
     val longClick: (() -> Unit)? = onLongClick?.let {
         {
-            if (okKey.held) okKey.pendingLongClick = true else currentOnLongClick?.invoke()
+            if (HeldOk.held) HeldOk.armed = true
+            currentOnLongClick?.invoke()
         }
     }
     val scale by animateFloatAsState(if (focused) focusScale else 1f, label = "focusScale")
@@ -263,14 +260,10 @@ fun FocusSurface(
             .onPreviewKeyEvent { event ->
                 if (event.key in OK_KEYS) {
                     when (event.type) {
-                        KeyEventType.KeyDown -> okKey.held = true
+                        KeyEventType.KeyDown -> HeldOk.held = true
                         KeyEventType.KeyUp -> {
-                            okKey.held = false
-                            if (okKey.pendingLongClick) {
-                                okKey.pendingLongClick = false
-                                // Après le traitement du relâchement par la surface elle-même.
-                                scope.launch { currentOnLongClick?.invoke() }
-                            }
+                            HeldOk.held = false
+                            HeldOk.armed = false
                         }
                     }
                 }
@@ -289,18 +282,27 @@ fun FocusSurface(
     }
 }
 
-/** Touche OK de la télécommande tenue, et appui long en attente de son relâchement. */
-private class OkKeyState {
+/**
+ * Touche OK de la télécommande tenue. Un appui long agit sans attendre le relâchement ([armed]) :
+ * le menu qu'il ouvre ignore la suite de cet appui (répétitions, relâchement), sans quoi elle
+ * activerait son premier bouton.
+ */
+private object HeldOk {
     var held = false
-    var pendingLongClick = false
-
-    fun reset() {
-        held = false
-        pendingLongClick = false
-    }
+    var armed = false
 }
 
 private val OK_KEYS = setOf(Key.DirectionCenter, Key.Enter, Key.NumPadEnter)
+
+/** À placer sur le contenu d'une boîte de dialogue : ignore la fin de l'appui long qui l'a ouverte. */
+fun Modifier.ignoreHeldOk(): Modifier = onPreviewKeyEvent { event ->
+    if (event.key !in OK_KEYS || !HeldOk.armed) return@onPreviewKeyEvent false
+    if (event.type == KeyEventType.KeyUp) {
+        HeldOk.armed = false
+        HeldOk.held = false
+    }
+    true
+}
 
 /** Bouton icône rond, utilisable au toucher comme à la télécommande. */
 @Composable

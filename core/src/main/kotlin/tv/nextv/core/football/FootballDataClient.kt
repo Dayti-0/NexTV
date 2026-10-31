@@ -63,6 +63,14 @@ sealed interface FootballDataResult {
     data class Failed(val error: FootballDataError) : FootballDataResult
 }
 
+/** Derniers matchs joués (le plus récent en premier) et prochains matchs d'une équipe. */
+data class TeamMatches(val last: List<ScheduledMatch>, val next: List<ScheduledMatch>)
+
+sealed interface TeamMatchesResult {
+    data class Success(val matches: TeamMatches) : TeamMatchesResult
+    data class Failed(val error: FootballDataError) : TeamMatchesResult
+}
+
 sealed interface StandingsResult {
     data class Success(val table: List<Standing>) : StandingsResult
     data class Failed(val error: FootballDataError) : StandingsResult
@@ -95,6 +103,10 @@ class FootballDataClient(
     private class Cached(val key: String, val from: Long, val to: Long, val at: Long, val matches: List<ScheduledMatch>)
 
     private class CachedStandings(val key: String, val at: Long, val table: List<Standing>)
+
+    private val cachedTeams = HashMap<Long, CachedTeam>()
+
+    private class CachedTeam(val key: String, val at: Long, val matches: TeamMatches)
 
     /**
      * Matchs entre [fromMillis] et [toMillis] (10 jours au plus). Une réponse récente pour la même
@@ -132,6 +144,52 @@ class FootballDataClient(
 
     private fun stale(key: String): FootballDataResult? = cached?.takeIf { it.key == key }?.let { FootballDataResult.Success(it.matches) }
 
+    /**
+     * Cinq derniers matchs et cinq prochains matchs d'une équipe (compétitions suivies), sur deux
+     * mois de part et d'autre d'aujourd'hui ; gardés [cacheMillis].
+     */
+    suspend fun teamMatches(teamId: Long): TeamMatchesResult = mutex.withLock {
+        val key = apiKey()?.trim()?.takeIf { it.isNotEmpty() } ?: return@withLock TeamMatchesResult.Failed(FootballDataError.MISSING_KEY)
+        val previous = cachedTeams[teamId]?.takeIf { it.key == key }
+        previous?.takeIf { clock() - it.at < freshness(it.matches.last + it.matches.next) }?.let { return@withLock TeamMatchesResult.Success(it.matches) }
+        try {
+            val today = day(clock())
+            val path = baseUrl.newBuilder().addPathSegment("teams").addPathSegment(teamId.toString()).addPathSegment("matches")
+            val past = get(
+                key,
+                path.addQueryParameter("dateFrom", isoDay(today - TEAM_RANGE_MILLIS)).addQueryParameter("dateTo", isoDay(today))
+                    .addQueryParameter("status", "FINISHED").build(),
+            )
+            val future = get(
+                key,
+                baseUrl.newBuilder().addPathSegment("teams").addPathSegment(teamId.toString()).addPathSegment("matches")
+                    .addQueryParameter("dateFrom", isoDay(today)).addQueryParameter("dateTo", isoDay(today + TEAM_RANGE_MILLIS))
+                    .addQueryParameter("status", "SCHEDULED,TIMED,IN_PLAY,PAUSED").build(),
+            )
+            val matches = TeamMatches(
+                last = parseMatches(past).sortedByDescending { it.kickoffMillis }.take(TEAM_MATCHES),
+                next = parseMatches(future).sortedBy { it.kickoffMillis }.take(TEAM_MATCHES),
+            )
+            cachedTeams[teamId] = CachedTeam(key, clock(), matches)
+            TeamMatchesResult.Success(matches)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: FootballDataException) {
+            previous?.let { TeamMatchesResult.Success(it.matches) } ?: TeamMatchesResult.Failed(e.error)
+        } catch (e: IOException) {
+            logger.warn(TAG, "football-data.org injoignable", e)
+            previous?.let { TeamMatchesResult.Success(it.matches) } ?: TeamMatchesResult.Failed(FootballDataError.NETWORK)
+        } catch (e: JSONException) {
+            logger.warn(TAG, "Matchs d'équipe football-data.org illisibles", e)
+            previous?.let { TeamMatchesResult.Success(it.matches) } ?: TeamMatchesResult.Failed(FootballDataError.SERVER)
+        }
+    }
+
+    private fun parseMatches(json: JSONObject): List<ScheduledMatch> {
+        val items = json.optJSONArray("matches") ?: return emptyList()
+        return (0 until items.length()).mapNotNull { index -> items.optJSONObject(index)?.let(::parseMatch) }
+    }
+
     /** Classement d'un championnat ([Competition.apiId] requis), gardé [standingsCacheMillis]. */
     suspend fun standings(competition: Competition): StandingsResult = mutex.withLock {
         val key = apiKey()?.trim()?.takeIf { it.isNotEmpty() } ?: return@withLock StandingsResult.Failed(FootballDataError.MISSING_KEY)
@@ -162,8 +220,7 @@ class FootballDataClient(
             .addQueryParameter("dateFrom", isoDay(from))
             .addQueryParameter("dateTo", isoDay(to))
             .build()
-        val items = get(key, url).optJSONArray("matches") ?: return emptyList()
-        return (0 until items.length()).mapNotNull { index -> items.optJSONObject(index)?.let(::parseMatch) }
+        return parseMatches(get(key, url))
     }
 
     private suspend fun get(key: String, url: HttpUrl): JSONObject {
@@ -266,5 +323,7 @@ class FootballDataClient(
     private companion object {
         const val TAG = "FootballData"
         const val DAY_MILLIS = 86_400_000L
+        const val TEAM_RANGE_MILLIS = 60 * DAY_MILLIS
+        const val TEAM_MATCHES = 5
     }
 }

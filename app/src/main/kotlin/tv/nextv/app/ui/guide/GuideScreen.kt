@@ -59,6 +59,7 @@ import tv.nextv.app.ui.components.FocusSurface
 import tv.nextv.app.ui.components.LiveProgress
 import tv.nextv.app.ui.components.PillButton
 import tv.nextv.app.ui.components.PillStyle
+import tv.nextv.app.ui.components.ignoreHeldOk
 import tv.nextv.app.ui.components.StatusPill
 import tv.nextv.app.ui.components.rememberWindowInfo
 import tv.nextv.app.ui.theme.NexTvColors
@@ -473,7 +474,9 @@ fun ProgrammeSheet(
     onReplay: (() -> Unit)? = null,
 ) {
     Dialog(onDismissRequest = onDismiss) {
-        ProgrammeSheetContent(channel, programme, now, onWatch, onDismiss, onReplay)
+        Box(Modifier.ignoreHeldOk()) {
+            ProgrammeSheetContent(channel, programme, now, onWatch, onDismiss, onReplay)
+        }
     }
 }
 

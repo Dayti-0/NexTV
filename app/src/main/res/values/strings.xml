@@ -177,6 +177,13 @@
     <string name="football_table_played">J</string>
     <string name="football_table_difference">Diff.</string>
     <string name="football_table_points">Pts</string>
+    <string name="football_standings_hint">OK sur un club : ses derniers et prochains matchs · appui long : le suivre (« Mes équipes »)</string>
+    <string name="football_team_last">Derniers matchs</string>
+    <string name="football_team_next">Prochains matchs</string>
+    <string name="football_team_none">Aucun match</string>
+    <string name="football_result_win">V</string>
+    <string name="football_result_draw">N</string>
+    <string name="football_result_loss">D</string>
     <string name="football_notice_no_key">Matchs trouvés dans le guide TV. Pour la liste complète, ajoutez une clé football-data.org (Réglages › Matchs de foot).</string>
     <string name="football_notice_invalid_key">Clé football-data.org refusée (Réglages › Matchs de foot) : matchs trouvés dans le guide TV.</string>
     <string name="football_notice_unavailable">football-data.org ne répond pas : matchs trouvés dans le guide TV.</string>

@@ -87,6 +87,7 @@ import tv.nextv.app.data.db.MovieRow
 import tv.nextv.app.data.db.SeriesRow
 import tv.nextv.app.ui.common.appViewModel
 import tv.nextv.app.ui.common.channelCount
+import tv.nextv.app.ui.components.ignoreHeldOk
 import tv.nextv.app.ui.components.BrandMark
 import tv.nextv.app.ui.components.EmptyState
 import tv.nextv.app.ui.components.FocusSurface
@@ -255,6 +256,7 @@ fun HomeScreen(
                 TextButton(onClick = { pendingHide = null }) { Text(stringResource(R.string.action_cancel)) }
             },
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            modifier = Modifier.ignoreHeldOk(),
         )
     }
 }

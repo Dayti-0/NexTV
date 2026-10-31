@@ -52,6 +52,7 @@ import tv.nextv.app.R
 import tv.nextv.app.ui.common.appViewModel
 import tv.nextv.app.ui.common.describe
 import tv.nextv.app.ui.common.relativeTime
+import tv.nextv.app.ui.components.ignoreHeldOk
 import tv.nextv.app.ui.components.EmptyState
 import tv.nextv.app.ui.components.FocusSurface
 import tv.nextv.app.ui.components.IconAction
@@ -131,6 +132,7 @@ fun SourcesScreen(
                 TextButton(onClick = { pendingDelete = null }) { Text(stringResource(R.string.action_cancel)) }
             },
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            modifier = Modifier.ignoreHeldOk(),
         )
     }
 }

@@ -44,6 +44,7 @@ import tv.nextv.app.ui.player.ResumePromptCard
 import tv.nextv.app.ui.player.PlayerOverlay
 import tv.nextv.app.ui.football.FootballContent
 import tv.nextv.app.ui.football.StandingsState
+import tv.nextv.app.ui.football.TeamSheetContent
 import tv.nextv.app.ui.guide.GuideProgramme
 import tv.nextv.core.football.Competition
 import tv.nextv.app.ui.settings.ChannelGroupsContent
@@ -180,6 +181,15 @@ abstract class ScreenshotSuite(private val device: String) {
                 standings = StandingsState.Loaded(SampleData.standings),
                 showStandings = true,
             )
+        }
+    }
+
+    @Test
+    fun footballTeam() = capture("09d_foot_club") {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background.copy(alpha = 0.9f)), contentAlignment = Alignment.Center) {
+            Box(Modifier.padding(24.dp)) {
+                TeamSheetContent(SampleData.teamMatches, SampleData.NOW, followed = true, onToggleTeam = {}, onDismiss = {})
+            }
         }
     }
 

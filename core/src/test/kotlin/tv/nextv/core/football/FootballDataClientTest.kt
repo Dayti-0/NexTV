@@ -66,12 +66,26 @@ class FootballDataClientTest {
         }
     """.trimIndent()
 
+    /** Matchs joués du PSG, du plus ancien au plus récent. */
+    private val played = """
+        {"matches": [
+          {"id": 1, "utcDate": "2026-10-04T19:00:00Z", "status": "FINISHED", "competition": {"id": 2015},
+           "homeTeam": {"id": 524, "name": "Paris Saint-Germain FC", "shortName": "PSG"}, "awayTeam": {"id": 516, "name": "Olympique de Marseille", "shortName": "Marseille"},
+           "score": {"fullTime": {"home": 2, "away": 0}}},
+          {"id": 2, "utcDate": "2026-10-25T19:00:00Z", "status": "FINISHED", "competition": {"id": 2015},
+           "homeTeam": {"id": 548, "name": "AS Monaco FC", "shortName": "Monaco"}, "awayTeam": {"id": 524, "name": "Paris Saint-Germain FC", "shortName": "PSG"},
+           "score": {"fullTime": {"home": 1, "away": 1}}}
+        ]}
+    """.trimIndent()
+
     @Before
     fun setUp() {
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse = when {
                 status != 200 -> MockResponse.Builder().code(status).build()
                 request.url.encodedPath.endsWith("/standings") -> MockResponse.Builder().code(200).body(standings).build()
+                request.url.encodedPath.startsWith("/v4/teams/") ->
+                    MockResponse.Builder().code(200).body(if (request.url.queryParameter("status") == "FINISHED") played else body).build()
                 else -> MockResponse.Builder().code(200).body(body).build()
             }
         }
@@ -118,6 +132,18 @@ class FootballDataClientTest {
         now += 2 * 60_000L
         client.matches(now, now + DAY)
         assertEquals(2, server.requestCount)
+    }
+
+    @Test
+    fun `a team's last results come first, then its next matches`() = runBlocking {
+        val result = client.teamMatches(524) as TeamMatchesResult.Success
+
+        assertEquals(listOf(2L, 1L), result.matches.last.map { it.id })
+        assertEquals(1 to 1, result.matches.last.first().homeScore to result.matches.last.first().awayScore)
+        assertEquals(listOf(11L, 12L), result.matches.next.map { it.id })
+        val requests = listOf(server.takeRequest(), server.takeRequest())
+        assertEquals(listOf("/v4/teams/524/matches"), requests.map { it.url.encodedPath }.distinct())
+        assertEquals("2026-09-01", requests[0].url.queryParameter("dateFrom"))
     }
 
     @Test
