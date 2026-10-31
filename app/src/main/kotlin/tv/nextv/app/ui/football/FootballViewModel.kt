@@ -220,8 +220,13 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
 
     private fun assemble(guide: GuideData, api: FootballDataResult): Assembled {
         val matches = when (api) {
-            is FootballDataResult.Success ->
-                apiMatches(api.matches, guide.rows, System.currentTimeMillis()) + guide.fixtures.filter { it.competition.apiId == null }
+            is FootballDataResult.Success -> {
+                // Écussons des matchs du guide seul (coupes d'Europe…) : ceux des équipes connues de football-data.org.
+                val crest = BroadcastFinder.crests(api.matches.flatMap { listOf(it.home, it.away) })
+                apiMatches(api.matches, guide.rows, System.currentTimeMillis()) +
+                    guide.fixtures.filter { it.competition.apiId == null }
+                        .map { it.copy(homeCrest = it.homeCrest ?: crest(it.home), awayCrest = it.awayCrest ?: crest(it.away)) }
+            }
             is FootballDataResult.Failed -> guide.fixtures
         }
         val notice = (api as? FootballDataResult.Failed)?.error?.let(::noticeOf)

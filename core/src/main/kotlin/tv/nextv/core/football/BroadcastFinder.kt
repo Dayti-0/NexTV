@@ -65,6 +65,28 @@ object BroadcastFinder {
         return result
     }
 
+    /**
+     * Écussons des équipes de football-data.org, retrouvés à partir d'un nom écrit dans le guide
+     * (« Lyon », « AS Rome ») ; un nom porté par deux équipes différentes ne donne rien.
+     */
+    fun crests(teams: Collection<Team>): (String) -> String? {
+        val index = HashMap<String, String>()
+        val ambiguous = HashSet<String>()
+        for (team in teams) {
+            val crest = team.crestUrl ?: continue
+            for (alias in aliases(team)) {
+                val known = index.putIfAbsent(alias, crest)
+                if (known != null && known != crest) ambiguous += alias
+            }
+        }
+        ambiguous.forEach(index::remove)
+        return { name ->
+            val normalized = normalize(name)
+            val core = normalized.split(' ').filter { it.isNotEmpty() && it !in AFFIXES }
+            index[normalized] ?: index[core.joinToString(" ")] ?: core.singleOrNull { it in index }?.let(index::get)
+        }
+    }
+
     private fun covers(broadcast: Broadcast<*>, kickoff: Long): Boolean =
         broadcast.startMillis >= kickoff - EARLIEST_START_MILLIS &&
             broadcast.startMillis <= kickoff + LATEST_START_MILLIS &&

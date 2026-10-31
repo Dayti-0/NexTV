@@ -565,6 +565,7 @@ private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Mo
         }
         state.now?.let { programme ->
             Text(programme.title, style = MaterialTheme.typography.titleLarge, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            state.match?.let { MatchScore(it) }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.widthIn(max = 640.dp)) {
                 Text(timeOf(programme.startMillis), style = MaterialTheme.typography.labelLarge, color = Color.White)
                 LiveProgress(programme.startMillis, programme.stopMillis, now, Modifier.weight(1f))
@@ -594,6 +595,22 @@ private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Mo
         state.notices.forEach {
             Text(it, style = MaterialTheme.typography.bodySmall, color = NexTvColors.Warning)
         }
+    }
+}
+
+/** Match en cours sur la chaîne : écussons, équipes et score (football-data.org). */
+@Composable
+private fun MatchScore(match: PlayerMatch) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        match.homeCrest?.let { ChannelLogo(it, match.home, Modifier.size(32.dp), monogramSize = 11.dp) }
+        Text(match.home, style = MaterialTheme.typography.titleMedium, color = Color.White, maxLines = 1)
+        Text(
+            match.score ?: "–",
+            style = MaterialTheme.typography.titleLarge,
+            color = if (match.live) NexTvColors.Live else Color.White,
+        )
+        Text(match.away, style = MaterialTheme.typography.titleMedium, color = Color.White, maxLines = 1)
+        match.awayCrest?.let { ChannelLogo(it, match.away, Modifier.size(32.dp), monogramSize = 11.dp) }
     }
 }
 

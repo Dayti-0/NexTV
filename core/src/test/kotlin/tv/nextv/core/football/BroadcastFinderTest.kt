@@ -36,6 +36,18 @@ class BroadcastFinderTest {
     }
 
     @Test
+    fun `crests are found from the names written in the guide`() {
+        val lyon = Team("Olympique Lyonnais", "Lyon", "OL", "https://crests/523.png")
+        val roma = Team("AS Roma", "Roma", "ROM", "https://crests/100.png")
+        val find = BroadcastFinder.crests(listOf(lyon, roma, psg.copy(crestUrl = "https://crests/524.png")))
+
+        assertEquals("https://crests/523.png", find("Lyon"))
+        assertEquals("https://crests/100.png", find("AS Rome"))
+        assertEquals("https://crests/524.png", find("Paris SG"))
+        assertEquals(null, find("Fenerbahçe"))
+    }
+
+    @Test
     fun `each programme goes to the match it shows`() {
         val classico = match(1, Competition.LIGUE_1, psg, om)
         val derby = match(2, Competition.LIGUE_1, lens, lille)

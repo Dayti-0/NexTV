@@ -60,6 +60,10 @@ import tv.nextv.app.ui.common.describe
 import tv.nextv.app.ui.guide.GuideChannel
 import tv.nextv.app.ui.guide.GuideProgramme
 import tv.nextv.app.ui.home.Category
+import tv.nextv.core.football.Broadcast
+import tv.nextv.core.football.BroadcastFinder
+import tv.nextv.core.football.FootballDataResult
+import tv.nextv.core.football.MatchStatus
 import tv.nextv.core.model.ContentKind
 import tv.nextv.core.model.PlaylistSource
 import tv.nextv.core.model.SourceLocation
@@ -87,6 +91,17 @@ data class PlayerTracks(val audio: List<TrackChoice> = emptyList(), val subtitle
 /** Programme affiché dans le bandeau du lecteur. */
 data class PlayerProgramme(val title: String, val startMillis: Long, val stopMillis: Long)
 
+/** Match diffusé par le programme en cours (football-data.org) : affiche et score dans le bandeau. */
+data class PlayerMatch(
+    val home: String,
+    val away: String,
+    val homeCrest: String?,
+    val awayCrest: String?,
+    /** Score du moment, `null` avant le coup d'envoi. */
+    val score: String?,
+    val live: Boolean,
+)
+
 data class PlayerUiState(
     val channelName: String = "",
     val channelNumber: String? = null,
@@ -100,6 +115,7 @@ data class PlayerUiState(
     val notices: List<String> = emptyList(),
     val now: PlayerProgramme? = null,
     val next: PlayerProgramme? = null,
+    val match: PlayerMatch? = null,
     /** Qualité de la version en cours de lecture (« FHD »…), si la playlist l'indique. */
     val quality: String? = null,
     /** Message après un changement automatique de qualité. */
@@ -668,6 +684,7 @@ class PlayerViewModel(
                 isLive = isLive,
                 now = null,
                 next = null,
+                match = null,
                 error = null,
                 qualityNotice = null,
                 buffering = true,
@@ -710,6 +727,7 @@ class PlayerViewModel(
                 replay = "$channelName  ·  $time",
                 now = null,
                 next = null,
+                match = null,
                 error = null,
                 quality = null,
                 qualityNotice = null,
@@ -802,6 +820,32 @@ class PlayerViewModel(
             .map { PlayerProgramme(it.title, it.startMillis, it.stopMillis) }
         val live = upcoming.firstOrNull()?.takeIf { it.startMillis <= now }
         mutableState.update { it.copy(now = live, next = upcoming.firstOrNull { p -> p != live }) }
+        val match = if (live != null) matchOnAir(current.id, now) else null
+        if (channel?.id == current.id) mutableState.update { it.copy(match = match) }
+    }
+
+    /**
+     * Match de football-data.org que diffuse le programme en cours de la chaîne, avec son score
+     * (réponse partagée avec la section Foot, redemandée toutes les 2 min pendant les matchs).
+     */
+    private suspend fun matchOnAir(channelId: Long, now: Long): PlayerMatch? {
+        val programme = container.programmeDao.upcoming(channelId, now, limit = 1).firstOrNull()?.takeIf { it.startMillis <= now } ?: return null
+        val result = container.footballData.matches(now, now + FOOTBALL_WINDOW_MILLIS) as? FootballDataResult.Success ?: return null
+        val broadcast = Broadcast(Unit, programme.title, programme.subtitle, programme.category, programme.description, programme.startMillis, programme.stopMillis)
+        val match = BroadcastFinder.assign(result.matches, listOf(broadcast)).keys.firstOrNull() ?: return null
+        val live = match.status == MatchStatus.LIVE
+        return PlayerMatch(
+            home = match.home.displayName,
+            away = match.away.displayName,
+            homeCrest = match.home.crestUrl,
+            awayCrest = match.away.crestUrl,
+            score = if (match.homeScore != null && match.awayScore != null && (live || match.status == MatchStatus.FINISHED)) {
+                "${match.homeScore} – ${match.awayScore}"
+            } else {
+                null
+            },
+            live = live,
+        )
     }
 
     private fun start(forceHls: Boolean) {
@@ -1173,6 +1217,9 @@ class PlayerViewModel(
         private val RECORDABLE_FORMATS = setOf(StreamFormat.PROGRESSIVE, StreamFormat.UNKNOWN)
         private const val TAG = "Player"
         private const val PROGRAMME_REFRESH_MILLIS = 30_000L
+
+        /** Même période que la section Foot : la réponse de football-data.org est partagée. */
+        private const val FOOTBALL_WINDOW_MILLIS = 8 * 24 * 60 * 60_000L
         private const val QUALITY_CHECK_MILLIS = 500L
         private val HLS_FALLBACK_FORMATS = setOf(StreamFormat.UNKNOWN, StreamFormat.PROGRESSIVE)
         private val HLS_FALLBACK_ERRORS = setOf(
