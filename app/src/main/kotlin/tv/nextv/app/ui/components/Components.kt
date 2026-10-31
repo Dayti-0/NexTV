@@ -80,6 +80,7 @@ import androidx.compose.foundation.focusable
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import tv.nextv.app.ui.theme.NexTvColors
+import tv.nextv.core.catalog.ContentClassifier
 import tv.nextv.app.ui.theme.NexTvIcons
 
 // --- Disposition adaptative -------------------------------------------------------------------
@@ -396,11 +397,13 @@ fun ChannelLogo(
         contentAlignment = Alignment.Center,
     ) {
         if (!loaded) {
+            val letters = remember(name) { monogram(name) }
             Text(
-                monogram(name),
+                letters,
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
-                fontSize = monogramSize.value.sp,
+                // Sigles de 3 ou 4 caractères (« BFM », « TV78 ») un peu plus petits pour tenir dans la pastille.
+                fontSize = (monogramSize.value * if (letters.length <= 2) 1f else if (letters.length == 3) 0.85f else 0.7f).sp,
                 textAlign = TextAlign.Center,
                 maxLines = 1,
             )
@@ -417,15 +420,26 @@ fun ChannelLogo(
     }
 }
 
-/** Initiales d'un nom de chaîne : « France 2 » → « F2 », « TF1 HD » → « TH ». */
+/**
+ * Pastille d'une chaîne sans logo, d'après son nom sans préfixe de pays ni mention de qualité
+ * (« FR| BFM NICE FHD » → « BFM ») : sigle court gardé tel quel (« TF1 », « M6 », « TV78 »),
+ * sinon initiales (« Télé Nantes » → « TN », « France 2 » → « F2 »).
+ */
 fun monogram(name: String): String {
-    val words = name.trim().split(Regex("[\\s\\-_.|:]+")).filter { it.isNotEmpty() }
-    return when {
-        words.isEmpty() -> "?"
-        words.size == 1 -> words[0].take(2)
-        else -> "${words[0].first()}${words[1].first()}"
-    }.uppercase()
+    val words = ContentClassifier.cleanTitle(name).split(MONOGRAM_SEPARATORS).filter { it.isNotEmpty() }
+    if (words.isEmpty()) return "?"
+    val first = words[0]
+    val second = words.getOrNull(1)
+    val letters = when {
+        first.length <= 3 -> first + second?.takeIf { it.all(Char::isDigit) && first.length + it.length <= 4 }.orEmpty()
+        second == null -> if (first.length <= 4) first else first.take(2)
+        second.all(Char::isDigit) -> first.take(1) + second.take(2)
+        else -> "${first.first()}${second.first()}"
+    }
+    return letters.uppercase()
 }
+
+private val MONOGRAM_SEPARATORS = Regex("[\\s\\-_.|:]+")
 
 /** Pastille d'état : point coloré + libellé. */
 @Composable
