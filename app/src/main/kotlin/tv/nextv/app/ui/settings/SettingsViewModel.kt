@@ -66,6 +66,8 @@ data class SettingsUiState(
     val channelPreview: Boolean = true,
     /** Lecture directe de la dernière chaîne regardée à l'ouverture. */
     val startOnLastChannel: Boolean = false,
+    /** Son baissé pendant les publicités. */
+    val lowerAdVolume: Boolean = false,
 )
 
 /** Abonnement Xtream de la playlist active. */
@@ -131,18 +133,19 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         val proxy: ProxySettings,
         val grid: GridColumns,
         val dns: DnsProvider,
+        val lowerAdVolume: Boolean,
     )
 
     private val preferences = combine(
         combine(settings.autoQuality, settings.channelPreview, settings.startOnLastChannel) { autoQuality, preview, startLast ->
             Triple(autoQuality, preview, startLast)
         },
-        combine(settings.tmdbApiKey, settings.footballApiKey) { tmdb, football -> (tmdb != null) to (football != null) },
+        combine(settings.tmdbApiKey, settings.footballApiKey, settings.lowerAdVolume) { tmdb, football, ads -> Triple(tmdb != null, football != null, ads) },
         settings.proxySettings,
         settings.gridColumns,
         settings.dnsProvider,
-    ) { (autoQuality, preview, startLast), (tmdbKey, footballKey), proxy, grid, dns ->
-        Preferences(autoQuality, preview, startLast, tmdbKey, footballKey, proxy, grid, dns)
+    ) { (autoQuality, preview, startLast), (tmdbKey, footballKey, ads), proxy, grid, dns ->
+        Preferences(autoQuality, preview, startLast, tmdbKey, footballKey, proxy, grid, dns, ads)
     }
 
     val state: StateFlow<SettingsUiState> = combine(
@@ -173,6 +176,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             hiddenGroups = hidden,
             channelPreview = prefs.channelPreview,
             startOnLastChannel = prefs.startOnLastChannel,
+            lowerAdVolume = prefs.lowerAdVolume,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
@@ -236,6 +240,10 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     /** @throws tv.nextv.core.backup.BackupFormatException si ce n'est pas une sauvegarde NexTV. */
     suspend fun restoreBackup(text: String): RestoreResult = container.backup.restore(text)
+
+    fun setLowerAdVolume(enabled: Boolean) {
+        viewModelScope.launch { settings.setLowerAdVolume(enabled) }
+    }
 
     fun setStartOnLastChannel(enabled: Boolean) {
         viewModelScope.launch { settings.setStartOnLastChannel(enabled) }

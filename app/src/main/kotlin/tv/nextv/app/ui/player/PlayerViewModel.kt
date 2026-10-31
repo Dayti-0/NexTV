@@ -50,6 +50,7 @@ import tv.nextv.app.data.db.GroupRow
 import tv.nextv.app.data.progress.ProgressEntity
 import tv.nextv.app.data.progress.ProgressRepository
 import tv.nextv.app.data.settings.AspectMode
+import tv.nextv.app.player.AdVolumeControl
 import tv.nextv.app.player.PlaybackRequest
 import tv.nextv.app.player.toStream
 import tv.nextv.app.player.TimeshiftBuffer
@@ -138,6 +139,10 @@ data class PlayerUiState(
     val tracks: PlayerTracks = PlayerTracks(),
     /** Replay d'un programme passé : chaîne et horaires (« TF1 · ven. 30 oct., 20:58 – 21:50 »). */
     val replay: String? = null,
+    /** Option « baisser le son des pubs » activée. */
+    val lowerAdVolume: Boolean = false,
+    /** Pub détectée : son baissé. */
+    val adMuted: Boolean = false,
 )
 
 /**
@@ -258,6 +263,9 @@ class PlayerViewModel(
     /** Langues choisies en dernier (audio ; sous-titres, `null` : désactivés), proposées en premier. */
     private var audioLanguage: String? = null
     private var subtitleLanguage: String? = null
+
+    /** Option « baisser le son des pubs », lue par le traitement du son de chaque lecteur. */
+    private val adVolume = AdVolumeControl()
 
     /** Format de l'image (réglage commun à toutes les lectures). */
     val aspectMode: StateFlow<AspectMode> = container.settings.aspectMode
@@ -411,6 +419,12 @@ class PlayerViewModel(
         viewModelScope.launch {
             container.settings.subtitleLanguage.collect { subtitleLanguage = it }
         }
+        viewModelScope.launch {
+            container.settings.lowerAdVolume.collect {
+                adVolume.enabled = it
+                mutableState.update { state -> state.copy(lowerAdVolume = it) }
+            }
+        }
         load(channelId)
         viewModelScope.launch {
             while (true) {
@@ -422,6 +436,8 @@ class PlayerViewModel(
         viewModelScope.launch {
             while (true) {
                 delay(QUALITY_CHECK_MILLIS)
+                val adMuted = adVolume.enabled && adVolume.attenuating
+                if (state.value.adMuted != adMuted) mutableState.update { it.copy(adMuted = adMuted) }
                 val dropped = newDroppedFrames()
                 // Pause ou différé : changer de version ramènerait au direct.
                 if (timeshift != null || state.value.paused || state.value.liveDelayMs > 0) continue
@@ -532,6 +548,10 @@ class PlayerViewModel(
         player.trackSelectionParameters = builder.build()
         subtitleLanguage = choice?.language
         viewModelScope.launch { container.settings.setSubtitleLanguage(choice?.language) }
+    }
+
+    fun setLowerAdVolume(enabled: Boolean) {
+        viewModelScope.launch { container.settings.setLowerAdVolume(enabled) }
     }
 
     fun setAspectMode(mode: AspectMode) {
@@ -853,7 +873,7 @@ class PlayerViewModel(
         releasePlayer()
         mutableState.update { it.copy(info = PlaybackInfo()) }
         playingAsHls = forceHls || playbackRequest.stream.format == StreamFormat.HLS
-        val player = container.playerFactory.create(playbackRequest, bandwidthMeter, preferredDecoders).apply {
+        val player = container.playerFactory.create(playbackRequest, bandwidthMeter, preferredDecoders, adVolume).apply {
             applyTrackPreferences()
             addListener(listener)
             addAnalyticsListener(analytics)
@@ -1002,7 +1022,7 @@ class PlayerViewModel(
         val playbackRequest = request ?: return
         releasePlayer()
         playingTimeshift = true
-        val player = container.playerFactory.create(playbackRequest, bandwidthMeter, preferredDecoders).apply {
+        val player = container.playerFactory.create(playbackRequest, bandwidthMeter, preferredDecoders, adVolume).apply {
             applyTrackPreferences()
             addListener(listener)
             addAnalyticsListener(analytics)

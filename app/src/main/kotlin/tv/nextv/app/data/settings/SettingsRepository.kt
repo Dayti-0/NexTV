@@ -133,6 +133,13 @@ class SettingsRepository(
         dataStore.edit { prefs -> if (language != null) prefs[SUBTITLE_LANGUAGE] = language else prefs.remove(SUBTITLE_LANGUAGE) }
     }
 
+    /** Son baissé pendant les publicités (repérées à leur niveau sonore). */
+    val lowerAdVolume: Flow<Boolean> = dataStore.data.map { it[LOWER_AD_VOLUME] ?: false }.distinctUntilChanged()
+
+    suspend fun setLowerAdVolume(enabled: Boolean) {
+        dataStore.edit { it[LOWER_AD_VOLUME] = enabled }
+    }
+
     /** Au lancement, lecture directe de la dernière chaîne regardée (comme une télévision). */
     val startOnLastChannel: Flow<Boolean> = dataStore.data.map { it[START_ON_LAST_CHANNEL] ?: false }.distinctUntilChanged()
 
@@ -301,6 +308,7 @@ class SettingsRepository(
         val SUBTITLE_LANGUAGE = stringPreferencesKey("subtitle_language")
         val START_ON_LAST_CHANNEL = booleanPreferencesKey("start_on_last_channel")
         val FAVORITE_TEAMS = stringPreferencesKey("favorite_teams")
+        val LOWER_AD_VOLUME = booleanPreferencesKey("lower_ad_volume")
 
         /** Réglages de la version 0.2.10 retirés depuis (rappels, code parental). */
         val OBSOLETE = setOf("reminders", "parental_pin")

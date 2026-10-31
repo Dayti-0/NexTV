@@ -238,6 +238,8 @@
     <string name="player_aspect_zoom">Agrandi (bords coupés)</string>
     <string name="player_more">Plus</string>
     <string name="player_last_channel">Dernière chaîne regardée</string>
+    <string name="player_lower_ads">Baisser le son des pubs</string>
+    <string name="player_ad_muted">Pub : son baissé</string>
     <string name="player_replay">Replay</string>
     <string name="player_replay_unavailable">Ce programme n’est pas disponible en replay.</string>
     <string name="player_backup_server">Serveur principal injoignable : lecture par un serveur de secours</string>
@@ -321,6 +323,8 @@
     <string name="settings_channel_columns">Chaînes par ligne</string>
     <string name="settings_poster_columns">Films et séries par ligne</string>
     <string name="settings_columns_value">%1$d (de %2$d à %3$d)</string>
+    <string name="settings_lower_ads">Baisser le son des pubs</string>
+    <string name="settings_lower_ads_help">Quand le son devient nettement plus fort que le programme pendant quelques secondes (publicités), il est baissé presque au minimum, puis remis au niveau normal à la reprise. Le son Dolby envoyé tel quel à l’ampli n’est pas concerné.</string>
     <string name="settings_start_last_channel">Démarrer sur la dernière chaîne</string>
     <string name="settings_start_last_channel_help">À l’ouverture, la dernière chaîne regardée se lance directement, comme une télévision ; Retour mène à l’accueil.</string>
     <string name="settings_channel_preview">Aperçu de la chaîne sélectionnée</string>

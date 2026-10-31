@@ -215,6 +215,7 @@ fun SettingsScreen(
         onGridColumns = viewModel::setGridColumns,
         onChannelPreview = viewModel::setChannelPreview,
         onStartOnLastChannel = viewModel::setStartOnLastChannel,
+        onLowerAdVolume = viewModel::setLowerAdVolume,
         onCycleDns = viewModel::cycleDns,
         update = update,
         onCheckUpdate = viewModel::checkUpdate,
@@ -249,6 +250,7 @@ fun SettingsContent(
     onGridColumns: (GridColumns) -> Unit = {},
     onChannelPreview: (Boolean) -> Unit = {},
     onStartOnLastChannel: (Boolean) -> Unit = {},
+    onLowerAdVolume: (Boolean) -> Unit = {},
     onCycleDns: () -> Unit = {},
     update: UpdateState = UpdateState.Idle,
     onCheckUpdate: () -> Unit = {},
@@ -325,6 +327,12 @@ fun SettingsContent(
                             description = stringResource(R.string.settings_start_last_channel_help),
                             checked = state.startOnLastChannel,
                             onChange = onStartOnLastChannel,
+                        )
+                        ToggleRow(
+                            title = stringResource(R.string.settings_lower_ads),
+                            description = stringResource(R.string.settings_lower_ads_help),
+                            checked = state.lowerAdVolume,
+                            onChange = onLowerAdVolume,
                         )
                         state.decoders.forEach { choice -> DecoderRow(choice) { onCycleDecoder(choice.mimeType) } }
                         if (state.decoders.isNotEmpty()) InfoText(stringResource(R.string.settings_decoder_help))

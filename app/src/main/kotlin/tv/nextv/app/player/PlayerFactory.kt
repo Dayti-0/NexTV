@@ -10,6 +10,9 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.common.audio.AudioProcessor
+import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
@@ -55,11 +58,15 @@ class PlayerFactory(
     /** Mesure du débit réel des téléchargements du flux (voir [create]). */
     fun newBandwidthMeter(): DefaultBandwidthMeter = DefaultBandwidthMeter.Builder(context).build()
 
-    /** @param preferredDecoders décodeur choisi par type de flux (réglages), essayé en premier. */
+    /**
+     * @param preferredDecoders décodeur choisi par type de flux (réglages), essayé en premier.
+     * @param adVolume option « baisser le son des pubs », appliquée au son décodé.
+     */
     fun create(
         request: PlaybackRequest,
         bandwidthMeter: DefaultBandwidthMeter? = null,
         preferredDecoders: Map<String, String> = emptyMap(),
+        adVolume: AdVolumeControl? = null,
     ): ExoPlayer {
         val httpFactory = OkHttpDataSource.Factory(httpClient(request))
             .setUserAgent(userAgent(request))
@@ -67,7 +74,14 @@ class PlayerFactory(
         val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
 
         // Repli automatique sur un autre décodeur si le premier ne démarre pas (box aux décodeurs capricieux).
-        val renderers = DefaultRenderersFactory(context)
+        val renderers = object : DefaultRenderersFactory(context) {
+            override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): AudioSink =
+                DefaultAudioSink.Builder(context)
+                    .setEnableFloatOutput(enableFloatOutput)
+                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                    .setAudioProcessors(listOfNotNull<AudioProcessor>(adVolume?.let(::AdVolumeAudioProcessor)).toTypedArray())
+                    .build()
+        }
             .setEnableDecoderFallback(true)
             .setMediaCodecSelector(VideoDecoders.selector(preferredDecoders))
         val builder = ExoPlayer.Builder(context, renderers)

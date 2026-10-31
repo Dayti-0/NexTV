@@ -278,7 +278,19 @@ fun PlayerScreen(onBack: () -> Unit) {
             },
             onDismiss = { optionsVisible = false },
             modifier = Modifier.align(Alignment.TopEnd),
+            lowerAdVolume = state.lowerAdVolume,
+            onLowerAdVolume = viewModel::setLowerAdVolume,
         )
+
+        // Pub détectée : son baissé, signalé discrètement en haut à gauche.
+        AnimatedVisibility(
+            visible = state.adMuted && !menu.open,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.TopStart).padding(24.dp),
+        ) {
+            StatusPill(stringResource(R.string.player_ad_muted), NexTvColors.Warning)
+        }
 
         state.resumePrompt?.let { prompt ->
             ResumePromptCard(prompt, onAnswer = viewModel::answerResume, modifier = Modifier.align(Alignment.Center))
@@ -332,6 +344,8 @@ fun PlayerOptionsPanel(
     onToggleInfo: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    lowerAdVolume: Boolean = false,
+    onLowerAdVolume: (Boolean) -> Unit = {},
 ) {
     AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = modifier) {
         val firstFocus = remember { FocusRequester() }
@@ -400,6 +414,7 @@ fun PlayerOptionsPanel(
 
                 OptionsSection(stringResource(R.string.player_more))
                 if (isLive) OptionRow(stringResource(R.string.player_last_channel), selected = false, onClick = onPreviousChannel)
+                if (isLive) OptionRow(stringResource(R.string.player_lower_ads), selected = lowerAdVolume) { onLowerAdVolume(!lowerAdVolume) }
                 OptionRow(stringResource(R.string.player_info_title), selected = infoVisible, onClick = onToggleInfo)
                 Text(
                     stringResource(if (isLive) R.string.player_options_hint_live else R.string.player_options_hint),
