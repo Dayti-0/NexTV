@@ -26,8 +26,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
@@ -54,7 +52,6 @@ import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import tv.nextv.app.R
 import tv.nextv.app.data.db.GroupRow
-import tv.nextv.app.data.settings.Reminder
 import tv.nextv.app.ui.common.appViewModel
 import tv.nextv.app.ui.components.ChannelLogo
 import tv.nextv.app.ui.components.EmptyState
@@ -88,7 +85,6 @@ fun GuideScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val groups by viewModel.groups.collectAsStateWithLifecycle()
     val selectedGroup by viewModel.selectedGroup.collectAsStateWithLifecycle()
-    val reminders by viewModel.reminders.collectAsStateWithLifecycle()
     GuideContent(
         state = state,
         groups = groups,
@@ -96,8 +92,6 @@ fun GuideScreen(
         onSelectGroup = { viewModel.selectedGroup.value = it },
         onPlay = onPlay,
         onReplay = { channel, programme -> onReplay(channel.id, programme.startMillis, programme.stopMillis) },
-        reminders = reminders,
-        onToggleReminder = viewModel::toggleReminder,
         modifier = modifier,
     )
 }
@@ -117,9 +111,6 @@ fun GuideContent(
     onPlay: (Long) -> Unit,
     modifier: Modifier = Modifier,
     onReplay: (GuideChannel, GuideProgramme) -> Unit = { _, _ -> },
-    /** Programmes avec un rappel ([Reminder.keyOf]). */
-    reminders: Set<String> = emptySet(),
-    onToggleReminder: (GuideChannel, GuideProgramme) -> Unit = { _, _ -> },
     initialDetails: Pair<GuideChannel, GuideProgramme>? = null,
 ) {
     val window = rememberWindowInfo()
@@ -164,7 +155,6 @@ fun GuideContent(
                 compact = !window.isWide,
                 horizontalPadding = window.horizontalPadding,
                 requestInitialFocus = window.isTv,
-                reminders = reminders,
                 onPlay = onPlay,
                 onFocus = { focused = it },
                 onOpen = { details = it },
@@ -190,8 +180,6 @@ fun GuideContent(
             } else {
                 null
             },
-            reminded = Reminder.keyOf(channel.id, programme.startMillis) in reminders,
-            onRemind = if (programme.startMillis > state.now) ({ onToggleReminder(channel, programme) }) else null,
         )
     }
 }
@@ -207,7 +195,6 @@ private fun GuideGrid(
     compact: Boolean,
     horizontalPadding: Dp,
     requestInitialFocus: Boolean,
-    reminders: Set<String>,
     onPlay: (Long) -> Unit,
     onFocus: (Pair<GuideChannel, GuideProgramme>) -> Unit,
     onOpen: (Pair<GuideChannel, GuideProgramme>) -> Unit,
@@ -254,7 +241,6 @@ private fun GuideGrid(
                     channelColumnWidth = channelColumnWidth,
                     rowHeight = rowHeight,
                     compact = compact,
-                    reminders = reminders,
                     focusRequester = initialFocus.takeIf { channel == state.channels.first() },
                     onPlay = { onPlay(channel.id) },
                     onFocus = { programme -> onFocus(channel to programme) },
@@ -358,7 +344,6 @@ private fun GuideRow(
     channelColumnWidth: Dp,
     rowHeight: Dp,
     compact: Boolean,
-    reminders: Set<String>,
     focusRequester: FocusRequester?,
     onPlay: () -> Unit,
     onFocus: (GuideProgramme) -> Unit,
@@ -412,7 +397,6 @@ private fun GuideRow(
                             live = live,
                             past = programme.stopMillis <= state.now,
                             replay = Catchup.isAvailable(channel.catchupDays, programme.startMillis, state.now),
-                            reminded = Reminder.keyOf(channel.id, programme.startMillis) in reminders,
                             modifier = Modifier
                                 .offset(x = minutes(start - state.windowStart) * minuteWidth)
                                 .width(minutes(end - start) * minuteWidth)
@@ -442,7 +426,6 @@ private fun ProgrammeBlock(
     live: Boolean,
     past: Boolean,
     replay: Boolean,
-    reminded: Boolean,
     modifier: Modifier,
     onClick: () -> Unit,
     onFocus: () -> Unit,
@@ -465,8 +448,6 @@ private fun ProgrammeBlock(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 // Programme passé disponible en replay.
                 if (replay && past) Icon(NexTvIcons.Replay, contentDescription = null, tint = NexTvColors.Primary, modifier = Modifier.size(12.dp))
-                // Rappel programmé.
-                if (reminded) Icon(Icons.Filled.Notifications, contentDescription = null, tint = NexTvColors.Warning, modifier = Modifier.size(12.dp))
                 Text(
                     timeRange(programme.startMillis, programme.stopMillis),
                     style = MaterialTheme.typography.labelSmall,
@@ -490,11 +471,9 @@ fun ProgrammeSheet(
     onWatch: () -> Unit,
     onDismiss: () -> Unit,
     onReplay: (() -> Unit)? = null,
-    reminded: Boolean = false,
-    onRemind: (() -> Unit)? = null,
 ) {
     Dialog(onDismissRequest = onDismiss) {
-        ProgrammeSheetContent(channel, programme, now, onWatch, onDismiss, onReplay, reminded, onRemind)
+        ProgrammeSheetContent(channel, programme, now, onWatch, onDismiss, onReplay)
     }
 }
 
@@ -506,8 +485,6 @@ fun ProgrammeSheetContent(
     onWatch: () -> Unit,
     onDismiss: () -> Unit,
     onReplay: (() -> Unit)? = null,
-    reminded: Boolean = false,
-    onRemind: (() -> Unit)? = null,
 ) {
     val watchFocus = remember { FocusRequester() }
     // Programme terminé : « Revoir » passe en premier.
@@ -574,14 +551,6 @@ fun ProgrammeSheetContent(
                 )
                 if (!replayFirst && onReplay != null) {
                     PillButton(stringResource(R.string.guide_restart), onReplay, icon = NexTvIcons.Replay)
-                }
-                // Programme à venir : bandeau 5 minutes avant le début.
-                if (onRemind != null) {
-                    PillButton(
-                        stringResource(if (reminded) R.string.reminder_on else R.string.reminder_set),
-                        onRemind,
-                        icon = if (reminded) Icons.Filled.Check else Icons.Filled.Notifications,
-                    )
                 }
                 PillButton(stringResource(R.string.action_close), onDismiss, style = PillStyle.Ghost)
             }

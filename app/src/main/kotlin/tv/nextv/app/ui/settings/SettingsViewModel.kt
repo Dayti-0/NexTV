@@ -66,8 +66,6 @@ data class SettingsUiState(
     val channelPreview: Boolean = true,
     /** Lecture directe de la dernière chaîne regardée à l'ouverture. */
     val startOnLastChannel: Boolean = false,
-    /** Code parental demandé pour réafficher les catégories masquées. */
-    val parentalPin: Boolean = false,
 )
 
 /** Abonnement Xtream de la playlist active. */
@@ -123,19 +121,18 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         val proxy: ProxySettings,
         val grid: GridColumns,
         val dns: DnsProvider,
-        val parentalPin: Boolean,
     )
 
     private val preferences = combine(
         combine(settings.autoQuality, settings.channelPreview, settings.startOnLastChannel) { autoQuality, preview, startLast ->
             Triple(autoQuality, preview, startLast)
         },
-        combine(settings.tmdbApiKey, settings.footballApiKey, settings.parentalPinSet) { tmdb, football, pin -> Triple(tmdb != null, football != null, pin) },
+        combine(settings.tmdbApiKey, settings.footballApiKey) { tmdb, football -> (tmdb != null) to (football != null) },
         settings.proxySettings,
         settings.gridColumns,
         settings.dnsProvider,
-    ) { (autoQuality, preview, startLast), (tmdbKey, footballKey, pin), proxy, grid, dns ->
-        Preferences(autoQuality, preview, startLast, tmdbKey, footballKey, proxy, grid, dns, pin)
+    ) { (autoQuality, preview, startLast), (tmdbKey, footballKey), proxy, grid, dns ->
+        Preferences(autoQuality, preview, startLast, tmdbKey, footballKey, proxy, grid, dns)
     }
 
     val state: StateFlow<SettingsUiState> = combine(
@@ -166,7 +163,6 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             hiddenChannelGroups = hidden,
             channelPreview = prefs.channelPreview,
             startOnLastChannel = prefs.startOnLastChannel,
-            parentalPin = prefs.parentalPin,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
@@ -223,13 +219,6 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         val values = DnsProvider.entries
         val next = values[(values.indexOf(state.value.dns) + 1) % values.size]
         viewModelScope.launch { settings.setDnsProvider(next) }
-    }
-
-    suspend fun checkParentalPin(pin: String): Boolean = settings.checkParentalPin(pin)
-
-    /** `null` : code retiré. */
-    fun setParentalPin(pin: String?) {
-        viewModelScope.launch { settings.setParentalPin(pin) }
     }
 
     /** Contenu du fichier de sauvegarde. */

@@ -14,12 +14,11 @@ Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3, enti�
   Catégorie « Récentes » : les 30 dernières chaînes regardées.
   Catégories de chaînes masquables (appui long sur une catégorie, ou Réglages › Catégories de chaînes) :
   leurs chaînes disparaissent des listes, de la recherche, du zapping et du guide ; les favoris restent visibles.
-  Un code parental à 4 chiffres (Réglages › Affichage) peut protéger leur réaffichage.
 - **Foot** : matchs des 8 prochains jours par compétition (Ligue 1, Premier League, Liga, Serie A, Bundesliga, Ligue
   des champions, Ligue Europa, Ligue Conférence, équipes nationales), par jour, avec les écussons et la chaîne de la
   playlist qui les diffuse ; score en direct pendant les matchs (actualisé toutes les 2 min), classement des
   championnats, « Mes équipes » pour les équipes suivies. OK pour regarder, appui long pour la fiche du match
-  (« Me prévenir », suivre chaque équipe). La liste vient de
+  (suivre chaque équipe). La liste vient de
   [football-data.org](https://www.football-data.org) (clé gratuite, Réglages › Matchs de foot, ou secret CI
   `NEXTV_FOOTBALL_API_KEY`) et le guide TV donne la chaîne ; sans clé, et pour les compétitions hors de l'offre
   gratuite, les matchs viennent du guide seul (vrais matchs uniquement, avec les deux équipes, hors autres sports et
@@ -45,8 +44,8 @@ Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3, enti�
   Chaque catégorie affiche toutes ses chaînes dans l'ordre de la playlist (TF1 SD dans « FR TV SD »…) ; « Toutes »,
   la recherche et le zapping n'en gardent qu'une ligne par chaîne, sa meilleure version visible.
 - **Guide TV** : grille chaînes × horaires depuis la veille, avec repère de l'heure actuelle et programme en cours
-  mis en valeur ; OK ouvre la fiche du programme (horaires, durée, description) avec « Regarder » et « Me prévenir »
-  (bandeau 5 min avant le début : OK pour regarder, Retour pour fermer). Un créneau sans donnée reste vide.
+  mis en valeur ; OK ouvre la fiche du programme (horaires, durée, description) avec « Regarder ».
+  Un créneau sans donnée reste vide.
 - **Replay** (comptes Xtream dont le serveur enregistre les chaînes) : les programmes passés disponibles portent
   l'icône ↺ dans le guide ; « Revoir » les lit depuis l'enregistrement du serveur (avance / retour comme un film),
   « Depuis le début » relance le programme en cours.

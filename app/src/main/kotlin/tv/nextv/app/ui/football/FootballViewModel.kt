@@ -22,7 +22,6 @@ import kotlinx.coroutines.launch
 import tv.nextv.app.AppContainer
 import tv.nextv.app.data.db.EpgChannelRow
 import tv.nextv.app.data.db.FootballProgrammeRow
-import tv.nextv.app.data.settings.Reminder
 import tv.nextv.app.ui.guide.GuideChannel
 import tv.nextv.app.ui.guide.GuideProgramme
 import tv.nextv.core.football.Broadcast
@@ -70,9 +69,6 @@ data class FootballMatch(
 
     val key: String get() = "${competition.name}-$kickoffMillis-$label"
 
-    /** Clé de son rappel ([Reminder]). */
-    val reminderKey: String get() = "match-$key"
-
     fun isLive(now: Long): Boolean = kickoffMillis <= now && endMillis > now
 
     fun involves(teams: Set<String>): Boolean = homeTeam in teams || awayTeam in teams
@@ -117,11 +113,6 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
     val favoriteTeams: StateFlow<Set<String>> = container.settings.favoriteTeams
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
 
-    /** Matchs avec un rappel ([FootballMatch.reminderKey]). */
-    val reminders: StateFlow<Set<String>> = container.settings.reminders
-        .map { list -> list.map { it.key }.toSet() }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
-
     val standings: StateFlow<StandingsState?> = combine(competition, showStandings, myTeams) { competition, shown, mine ->
         competition?.takeIf { shown && !mine && it.apiId != null }
     }
@@ -143,12 +134,6 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
 
     fun toggleTeam(name: String) {
         viewModelScope.launch { container.settings.toggleFavoriteTeam(name) }
-    }
-
-    fun toggleReminder(match: FootballMatch) {
-        viewModelScope.launch {
-            container.settings.toggleReminder(Reminder(match.reminderKey, match.kickoffMillis, match.label, match.channel?.id, match.channel?.name))
-        }
     }
 
     /** Programmes susceptibles de diffuser un match, et matchs que le guide annonce seul. */

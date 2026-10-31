@@ -24,8 +24,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.CircularProgressIndicator
@@ -80,7 +78,6 @@ fun FootballScreen(sourceId: Long, onPlay: (Long) -> Unit, modifier: Modifier = 
     val competition by viewModel.competition.collectAsStateWithLifecycle()
     val myTeams by viewModel.myTeams.collectAsStateWithLifecycle()
     val favoriteTeams by viewModel.favoriteTeams.collectAsStateWithLifecycle()
-    val reminders by viewModel.reminders.collectAsStateWithLifecycle()
     val showStandings by viewModel.showStandings.collectAsStateWithLifecycle()
     val standings by viewModel.standings.collectAsStateWithLifecycle()
     FootballContent(
@@ -93,7 +90,6 @@ fun FootballScreen(sourceId: Long, onPlay: (Long) -> Unit, modifier: Modifier = 
         onPlay = onPlay,
         modifier = modifier,
         favoriteTeams = favoriteTeams,
-        reminders = reminders,
         myTeams = myTeams,
         onMyTeams = {
             viewModel.myTeams.value = true
@@ -103,13 +99,12 @@ fun FootballScreen(sourceId: Long, onPlay: (Long) -> Unit, modifier: Modifier = 
         showStandings = showStandings,
         onShowStandings = { viewModel.showStandings.value = it },
         onToggleTeam = viewModel::toggleTeam,
-        onToggleReminder = viewModel::toggleReminder,
     )
 }
 
 /**
  * Compétitions à gauche (en haut sur écran étroit), matchs par jour à droite, ou classement du
- * championnat choisi. OK : regarder la chaîne ; appui long : fiche du match (rappel, équipes suivies).
+ * championnat choisi. OK : regarder la chaîne ; appui long : fiche du match (équipes suivies).
  */
 @Composable
 fun FootballContent(
@@ -120,8 +115,6 @@ fun FootballContent(
     modifier: Modifier = Modifier,
     /** Équipes suivies ([FootballMatch.homeTeam], [FootballMatch.awayTeam]). */
     favoriteTeams: Set<String> = emptySet(),
-    /** Matchs avec un rappel ([FootballMatch.reminderKey]). */
-    reminders: Set<String> = emptySet(),
     /** « Mes équipes » choisi à la place d'une compétition. */
     myTeams: Boolean = false,
     onMyTeams: () -> Unit = {},
@@ -129,7 +122,6 @@ fun FootballContent(
     showStandings: Boolean = false,
     onShowStandings: (Boolean) -> Unit = {},
     onToggleTeam: (String) -> Unit = {},
-    onToggleReminder: (FootballMatch) -> Unit = {},
 ) {
     val window = rememberWindowInfo()
     var details by remember { mutableStateOf<FootballMatch?>(null) }
@@ -183,7 +175,6 @@ fun FootballContent(
                     now = state.now,
                     notice = state.notice,
                     favoriteTeams = favoriteTeams,
-                    reminders = reminders,
                     horizontalPadding = window.horizontalPadding,
                     compact = !window.isWide,
                     onPlay = onPlay,
@@ -237,7 +228,6 @@ fun FootballContent(
             match = match,
             now = state.now,
             favoriteTeams = favoriteTeams,
-            reminded = match.reminderKey in reminders,
             onWatch = match.channel?.let { channel ->
                 {
                     details = null
@@ -245,7 +235,6 @@ fun FootballContent(
                 }
             },
             onToggleTeam = onToggleTeam,
-            onToggleReminder = if (match.kickoffMillis > state.now) ({ onToggleReminder(match) }) else null,
             onDismiss = { details = null },
         )
     }
@@ -257,7 +246,6 @@ private fun MatchList(
     now: Long,
     notice: FootballNotice?,
     favoriteTeams: Set<String>,
-    reminders: Set<String>,
     horizontalPadding: Dp,
     compact: Boolean,
     onPlay: (Long) -> Unit,
@@ -296,7 +284,6 @@ private fun MatchList(
                     now = now,
                     compact = compact,
                     followed = match.involves(favoriteTeams),
-                    reminded = match.reminderKey in reminders,
                     onClick = { if (channel != null) onPlay(channel.id) else onDetails(match) },
                     onLongClick = { onDetails(match) },
                 )
@@ -311,7 +298,6 @@ private fun MatchRow(
     now: Long,
     compact: Boolean,
     followed: Boolean,
-    reminded: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
@@ -323,7 +309,7 @@ private fun MatchRow(
         color = MaterialTheme.colorScheme.surfaceContainer,
         focusScale = 1.01f,
     ) {
-        if (compact) CompactMatch(match, now, followed, reminded) else WideMatch(match, now, followed, reminded)
+        if (compact) CompactMatch(match, now, followed) else WideMatch(match, now, followed)
     }
 }
 
@@ -332,7 +318,7 @@ private fun MatchRow(
  * la largeur (noms d'équipes en entier), puis la chaîne.
  */
 @Composable
-private fun WideMatch(match: FootballMatch, now: Long, followed: Boolean, reminded: Boolean) {
+private fun WideMatch(match: FootballMatch, now: Long, followed: Boolean) {
     val live = match.isLive(now)
     Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         Column(Modifier.width(104.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -345,7 +331,7 @@ private fun WideMatch(match: FootballMatch, now: Long, followed: Boolean, remind
             if (live) StatusPill(stringResource(R.string.player_live), NexTvColors.Live)
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            MatchHeading(match, followed, reminded)
+            MatchHeading(match, followed)
             Teams(match, large = true)
             if (live) LiveProgress(match.kickoffMillis, match.endMillis, now, Modifier.widthIn(max = 480.dp))
             Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -357,7 +343,7 @@ private fun WideMatch(match: FootballMatch, now: Long, followed: Boolean, remind
 
 /** Écran étroit (téléphone) : heure et compétition, affiche, puis chaîne, les uns sous les autres. */
 @Composable
-private fun CompactMatch(match: FootballMatch, now: Long, followed: Boolean, reminded: Boolean) {
+private fun CompactMatch(match: FootballMatch, now: Long, followed: Boolean) {
     val live = match.isLive(now)
     Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -368,7 +354,7 @@ private fun CompactMatch(match: FootballMatch, now: Long, followed: Boolean, rem
                 Text(timeOf(match.kickoffMillis), style = MaterialTheme.typography.titleMedium)
             }
             if (live) StatusPill(stringResource(R.string.player_live), NexTvColors.Live)
-            MatchHeading(match, followed, reminded)
+            MatchHeading(match, followed)
         }
         Teams(match, large = false)
         if (live) LiveProgress(match.kickoffMillis, match.endMillis, now)
@@ -378,12 +364,11 @@ private fun CompactMatch(match: FootballMatch, now: Long, followed: Boolean, rem
     }
 }
 
-/** Compétition, avec une étoile (équipe suivie) et une cloche (rappel programmé). */
+/** Compétition, avec une étoile quand une équipe suivie joue. */
 @Composable
-private fun MatchHeading(match: FootballMatch, followed: Boolean, reminded: Boolean) {
+private fun MatchHeading(match: FootballMatch, followed: Boolean) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         if (followed) Icon(Icons.Filled.Star, contentDescription = null, tint = NexTvColors.Warning, modifier = Modifier.size(16.dp))
-        if (reminded) Icon(Icons.Filled.Notifications, contentDescription = null, tint = NexTvColors.Warning, modifier = Modifier.size(16.dp))
         Text(match.competition.label, style = MaterialTheme.typography.labelLarge, color = competitionColor(match.competition), maxLines = 1)
     }
 }
@@ -432,8 +417,8 @@ private fun RowScope.ChannelInfo(match: FootballMatch, logoWidth: Dp, inline: Bo
 }
 
 /**
- * Fiche d'un match : affiche, chaîne et description du guide, avec « Regarder », « Me prévenir »
- * (match à venir) et le suivi de chaque équipe (« Mes équipes »).
+ * Fiche d'un match : affiche, chaîne et description du guide, avec « Regarder » et le suivi de
+ * chaque équipe (« Mes équipes »).
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -441,10 +426,8 @@ private fun MatchSheet(
     match: FootballMatch,
     now: Long,
     favoriteTeams: Set<String>,
-    reminded: Boolean,
     onWatch: (() -> Unit)?,
     onToggleTeam: (String) -> Unit,
-    onToggleReminder: (() -> Unit)?,
     onDismiss: () -> Unit,
 ) {
     val firstFocus = remember { FocusRequester() }
@@ -484,21 +467,13 @@ private fun MatchSheet(
                             modifier = Modifier.focusRequester(firstFocus),
                         )
                     }
-                    if (onToggleReminder != null) {
-                        PillButton(
-                            stringResource(if (reminded) R.string.reminder_on else R.string.reminder_set),
-                            onToggleReminder,
-                            icon = if (reminded) Icons.Filled.Check else Icons.Filled.Notifications,
-                            modifier = if (onWatch == null) Modifier.focusRequester(firstFocus) else Modifier,
-                        )
-                    }
                     listOf(match.homeTeam to match.home, match.awayTeam to match.away).forEachIndexed { index, (team, name) ->
                         val followed = team in favoriteTeams
                         PillButton(
                             stringResource(if (followed) R.string.football_unfollow else R.string.football_follow, name),
                             { onToggleTeam(team) },
                             icon = Icons.Filled.Star,
-                            modifier = if (index == 0 && onWatch == null && onToggleReminder == null) Modifier.focusRequester(firstFocus) else Modifier,
+                            modifier = if (index == 0 && onWatch == null) Modifier.focusRequester(firstFocus) else Modifier,
                         )
                     }
                     PillButton(stringResource(R.string.action_close), onDismiss, style = PillStyle.Ghost)

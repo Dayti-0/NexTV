@@ -24,7 +24,6 @@ import tv.nextv.app.data.backup.BackupManager
 import tv.nextv.app.data.catalog.FavoritesRepository
 import tv.nextv.app.data.progress.ProgressDatabase
 import tv.nextv.app.data.progress.ProgressRepository
-import tv.nextv.app.data.reminders.ReminderWatcher
 import tv.nextv.app.data.catalog.MetadataRepository
 import tv.nextv.app.data.db.NexTvDatabase
 import tv.nextv.app.data.db.RoomPlaylistStore
@@ -85,9 +84,6 @@ class AppContainer(context: Context) {
 
     private val cipher = KeystoreSecretCipher()
     val settings = SettingsRepository(appContext, cipher)
-
-    /** Rappels des programmes et des matchs (bandeau 5 minutes avant le début). */
-    val reminders = ReminderWatcher(settings, applicationScope)
     val documentAccess = AndroidDocumentAccess(appContext.contentResolver, logger)
 
     private val contentOpener = CompositeContentOpener(

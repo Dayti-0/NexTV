@@ -60,7 +60,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import tv.nextv.app.R
 import tv.nextv.app.player.VideoDecoders
-import tv.nextv.app.ui.common.PinDialog
 import tv.nextv.app.ui.common.appViewModel
 import tv.nextv.app.ui.common.describe
 import tv.nextv.app.ui.common.relativeTime
@@ -89,18 +88,6 @@ import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
 
-/** Étape de la saisie du code parental. */
-private sealed interface PinStep {
-    /** Ouverture des catégories de chaînes. */
-    data object Unlock : PinStep
-
-    data object Create : PinStep
-
-    data class Confirm(val first: String) : PinStep
-
-    data object Remove : PinStep
-}
-
 private const val BACKUP_FILE_NAME = "nextv-sauvegarde.json"
 
 /** [onRestored] : sauvegarde restaurée, la playlist active est à recharger. */
@@ -120,8 +107,6 @@ fun SettingsScreen(
     val resources = context.resources
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    var pinStep by remember { mutableStateOf<PinStep?>(null) }
-    var pinError by remember { mutableStateOf<String?>(null) }
 
     // Sauvegarde : fichier choisi avec le sélecteur du système, sinon dans le dossier de l'application.
     val backupFile = remember { File(context.getExternalFilesDir(null) ?: context.filesDir, BACKUP_FILE_NAME) }
@@ -205,9 +190,7 @@ fun SettingsScreen(
         onSaveFootballKey = viewModel::saveFootballKey,
         onClearFootballKey = viewModel::clearFootballKey,
         onProxy = onProxy,
-        // Code parental : demandé avant de pouvoir réafficher des catégories masquées.
-        onChannelGroups = { if (state.parentalPin) pinStep = PinStep.Unlock else onChannelGroups() },
-        onParentalPin = { pinStep = if (state.parentalPin) PinStep.Remove else PinStep.Create },
+        onChannelGroups = onChannelGroups,
         onBackup = {
             try {
                 createDocument.launch(BACKUP_FILE_NAME)
@@ -242,62 +225,6 @@ fun SettingsScreen(
             if (!opened) scope.launch { snackbar.showSnackbar(resources.getString(R.string.settings_update_permission_manual)) }
         },
     )
-
-    pinStep?.let { step ->
-        PinDialog(
-            title = stringResource(
-                when (step) {
-                    PinStep.Unlock -> R.string.pin_enter
-                    PinStep.Create -> R.string.pin_create
-                    is PinStep.Confirm -> R.string.pin_confirm
-                    PinStep.Remove -> R.string.pin_remove
-                },
-            ),
-            message = stringResource(
-                when (step) {
-                    PinStep.Unlock -> R.string.pin_enter_message
-                    PinStep.Create, is PinStep.Confirm -> R.string.pin_create_message
-                    PinStep.Remove -> R.string.pin_remove_message
-                },
-            ),
-            error = pinError,
-            onPin = { pin ->
-                when (step) {
-                    PinStep.Create -> {
-                        pinError = null
-                        pinStep = PinStep.Confirm(pin)
-                    }
-                    is PinStep.Confirm -> if (pin == step.first) {
-                        viewModel.setParentalPin(pin)
-                        pinStep = null
-                        pinError = null
-                        scope.launch { snackbar.showSnackbar(resources.getString(R.string.pin_set_done)) }
-                    } else {
-                        pinError = resources.getString(R.string.pin_mismatch)
-                        pinStep = PinStep.Create
-                    }
-                    PinStep.Unlock, PinStep.Remove -> scope.launch {
-                        if (viewModel.checkParentalPin(pin)) {
-                            pinStep = null
-                            pinError = null
-                            if (step == PinStep.Unlock) {
-                                onChannelGroups()
-                            } else {
-                                viewModel.setParentalPin(null)
-                                snackbar.showSnackbar(resources.getString(R.string.pin_removed))
-                            }
-                        } else {
-                            pinError = resources.getString(R.string.pin_wrong)
-                        }
-                    }
-                }
-            },
-            onDismiss = {
-                pinStep = null
-                pinError = null
-            },
-        )
-    }
 }
 
 /** Réglages, sans dépendance au ViewModel (captures d'écran). */
@@ -326,7 +253,6 @@ fun SettingsContent(
     onCheckUpdate: () -> Unit = {},
     onInstallUpdate: (AppRelease) -> Unit = {},
     onAllowInstall: () -> Unit = {},
-    onParentalPin: () -> Unit = {},
     onBackup: () -> Unit = {},
     onRestore: () -> Unit = {},
     account: AccountState? = null,
@@ -436,11 +362,6 @@ fun SettingsContent(
                                 onClick = onChannelGroups,
                             )
                         }
-                        ValueRow(
-                            title = stringResource(R.string.settings_parental_pin),
-                            value = stringResource(if (state.parentalPin) R.string.settings_parental_pin_on else R.string.settings_parental_pin_off),
-                            onClick = onParentalPin,
-                        )
                     }
 
                     // Guide TV commun.
