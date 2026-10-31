@@ -181,6 +181,8 @@
     <string name="football_team_last">Derniers matchs</string>
     <string name="football_team_next">Prochains matchs</string>
     <string name="football_team_none">Aucun match</string>
+    <string name="football_home">Domicile</string>
+    <string name="football_away">Extérieur</string>
     <string name="football_result_win">V</string>
     <string name="football_result_draw">N</string>
     <string name="football_result_loss">D</string>
