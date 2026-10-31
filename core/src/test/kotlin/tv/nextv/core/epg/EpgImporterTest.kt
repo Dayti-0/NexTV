@@ -99,6 +99,28 @@ class EpgImporterTest {
     }
 
     @Test
+    fun `ligue 1+ match channels of a provider are linked to the numbered guide channels`() {
+        val guide = listOf(
+            XmltvChannel("Ligue1Plus.fr", listOf("Ligue 1+")),
+            XmltvChannel("Ligue1Plus4.fr", listOf("Ligue 1+ 4")),
+            XmltvChannel("Ligue1Plus5.fr", listOf("Ligue 1+ 5")),
+        )
+        val channels = listOf(
+            EpgChannelRef(1, tvgId = null, tvgName = null, name = "LIGUE 1+| MATCH 5 (2 AUDIOS)"),
+            EpgChannelRef(2, tvgId = null, tvgName = null, name = "LIGUE 1+| MATCH 4 FR (1 AUDIO StadiumFX)"),
+            EpgChannelRef(3, tvgId = null, tvgName = null, name = "FR| LIGUE 1+ LA CHAINE 4K"),
+            EpgChannelRef(4, tvgId = null, tvgName = null, name = "LIGUE 1+| MATCH 8 (FHD)"),
+            // Pas une chaîne numérotée du guide : laissés sans guide.
+            EpgChannelRef(5, tvgId = null, tvgName = null, name = "LIGUE 1+| MULTIPLEX"),
+            EpgChannelRef(6, tvgId = null, tvgName = null, name = "LIGUE 1+| MATCH DU JOUR"),
+        )
+
+        val mapping = EpgImporter(parserFactory = { KXmlParser() }).match(channels, guide, emptySet())
+
+        assertEquals(mapOf(1L to "ligue1plus5.fr", 2L to "ligue1plus4.fr", 3L to "ligue1plus.fr"), mapping)
+    }
+
+    @Test
     fun `football programmes of sports channels missing from the playlist are kept`() = runBlocking {
         val guide = """
             <tv>

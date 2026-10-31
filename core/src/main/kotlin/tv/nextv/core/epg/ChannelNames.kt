@@ -9,9 +9,14 @@ import java.text.Normalizer
  */
 object ChannelNames {
 
-    /** Mots d'un nom : minuscules sans accents, « + » → « plus », lettres et chiffres séparés, zéros de tête et pluriels retirés. */
+    /**
+     * Mots d'un nom : minuscules sans accents, « + » → « plus », lettres et chiffres séparés, zéros de
+     * tête et pluriels retirés. Les précisions entre parenthèses ou crochets sont ignorées
+     * (« MATCH 4 (1 AUDIO StadiumFX) » : ni « audio », ni son « 1 »).
+     */
     fun tokens(name: String): List<String> {
-        val folded = MARKS.replace(Normalizer.normalize(name.lowercase().replace("+", " plus "), Normalizer.Form.NFD), "")
+        val withoutDetails = BRACKETED.replace(name, " ")
+        val folded = MARKS.replace(Normalizer.normalize(withoutDetails.lowercase().replace("+", " plus "), Normalizer.Form.NFD), "")
         return folded.split(NON_ALPHANUMERIC)
             .flatMap { it.split(LETTER_DIGIT) }
             .filter { it.isNotEmpty() }
@@ -45,6 +50,7 @@ object ChannelNames {
     }
 
     private val MARKS = Regex("\\p{Mn}+")
+    private val BRACKETED = Regex("""\([^)]*\)?|\[[^\]]*]?""")
     private val NON_ALPHANUMERIC = Regex("[^a-z0-9]+")
     private val LETTER_DIGIT = Regex("(?<=[a-z])(?=[0-9])|(?<=[0-9])(?=[a-z])")
 
@@ -52,6 +58,6 @@ object ChannelNames {
     private val NOISE = setOf(
         "fr", "hd", "fhd", "sd", "uhd", "hdr", "hevc", "h265", "h264", "fp", "low", "high", "raw", "backup", "bkp",
         "live", "direct", "match", "event", "evenement", "multi", "vf", "vo", "vostfr", "ppv", "exclusive", "exclusif",
-        "only", "tv", "channel", "chaine", "officiel", "official", "k", "p",
+        "only", "tv", "channel", "chaine", "la", "officiel", "official", "k", "p",
     )
 }
