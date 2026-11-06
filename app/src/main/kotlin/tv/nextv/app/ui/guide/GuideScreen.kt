@@ -87,7 +87,6 @@ import tv.nextv.app.ui.components.LocalTabsFocused
 import tv.nextv.app.ui.components.PillButton
 import tv.nextv.app.ui.components.PillStyle
 import tv.nextv.app.ui.components.ignoreHeldOk
-import tv.nextv.app.ui.components.StatusPill
 import tv.nextv.app.ui.components.rememberWindowInfo
 import tv.nextv.app.ui.theme.NexTvColors
 import tv.nextv.app.ui.theme.NexTvIcons

@@ -545,7 +545,6 @@ private fun CatalogBody(
             count = itemCount(section, count),
             actions = actions,
             modifier = modifier,
-            focusedItem = focused.value,
             action = reorderButton,
             hint = if (reorder.active) {
                 { ReorderHint(reorder, window) }

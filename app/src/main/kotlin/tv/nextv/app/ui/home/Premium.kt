@@ -46,9 +46,7 @@ import tv.nextv.app.data.db.SeriesRow
 import tv.nextv.app.ui.components.ChannelLogo
 import tv.nextv.app.ui.components.FocusSurface
 import tv.nextv.app.ui.components.LiveProgress
-import tv.nextv.app.ui.components.StatusPill
 import tv.nextv.app.ui.components.WindowInfo
-import tv.nextv.app.ui.theme.NexTvColors
 
 /**
  * Interface « Cinéma Premium » : la sélection occupe tout l'écran (visuel TMDB d'un film ou d'une

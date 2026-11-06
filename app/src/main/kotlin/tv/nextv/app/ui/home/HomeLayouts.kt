@@ -7,6 +7,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -76,7 +78,6 @@ import tv.nextv.app.ui.components.Badge
 import tv.nextv.app.ui.components.ChannelLogo
 import tv.nextv.app.ui.components.FocusSurface
 import tv.nextv.app.ui.components.LiveProgress
-import tv.nextv.app.ui.components.StatusPill
 import tv.nextv.app.ui.components.WindowInfo
 import tv.nextv.app.ui.guide.formatDuration
 import tv.nextv.app.ui.theme.NexTvColors
@@ -768,11 +769,8 @@ internal fun SpotlightBillboard(section: HomeSection, spotlight: Spotlight?, pad
             )
             spotlight?.let { MetaLine(it) }
             if (!compact) {
-                val overview = spotlight?.overview
-                if (overview != null) {
+                spotlight?.overview?.let { overview ->
                     Text(overview, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                } else {
-                    Text(stringResource(R.string.billboard_hint_poster), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -780,6 +778,7 @@ internal fun SpotlightBillboard(section: HomeSection, spotlight: Spotlight?, pad
 }
 
 /** « 2024 · Action, Aventure · 2 h 05 · ★ 7,8 ». */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun MetaLine(spotlight: Spotlight, color: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
     val details = spotlight.details
@@ -789,8 +788,13 @@ internal fun MetaLine(spotlight: Spotlight, color: Color = MaterialTheme.colorSc
         details?.runtimeMinutes?.let { formatDuration(it * 60_000L) },
         details?.seasonCount?.let { LocalContext.current.resources.getQuantityString(R.plurals.seasons_count, it, it) },
     )
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        if (parts.isNotEmpty()) Text(parts.joinToString("  ·  "), style = MaterialTheme.typography.labelLarge, color = color, maxLines = 1)
+    // Ligne trop longue (volet étroit) : la note passe dessous, rien n'est écrasé ni coupé.
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        itemVerticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (parts.isNotEmpty()) Text(parts.joinToString("  ·  "), style = MaterialTheme.typography.labelLarge, color = color)
         spotlight.rating?.let { rating ->
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                 Icon(Icons.Filled.Star, contentDescription = null, tint = NexTvColors.Warning, modifier = Modifier.size(16.dp))

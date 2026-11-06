@@ -9,12 +9,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -40,7 +38,6 @@ import tv.nextv.app.data.db.GroupRow
 import tv.nextv.app.ui.components.Badge
 import tv.nextv.app.ui.components.ChannelLogo
 import tv.nextv.app.ui.components.LiveProgress
-import tv.nextv.app.ui.components.StatusPill
 import tv.nextv.app.ui.components.WindowInfo
 import tv.nextv.app.ui.guide.GuideProgramme
 import tv.nextv.app.ui.theme.NexTvColors
@@ -65,7 +62,6 @@ internal fun LiveCenterSection(
     count: String,
     actions: HomeActions,
     modifier: Modifier = Modifier,
-    focusedItem: FocusedItem? = null,
     action: (@Composable () -> Unit)? = null,
     hint: (@Composable () -> Unit)? = null,
     pane: @Composable (Modifier) -> Unit,
@@ -80,7 +76,6 @@ internal fun LiveCenterSection(
                     Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(count, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                if (!tv && focusedItem != null) FocusedItemLabel(focusedItem, Modifier.weight(1.2f).padding(start = 16.dp, end = 8.dp))
                 action?.invoke()
             }
             hint?.invoke()
@@ -195,7 +190,5 @@ internal fun SpotlightPane(section: HomeSection, spotlight: Spotlight?, modifier
         spotlight.overview?.let {
             Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 7, overflow = TextOverflow.Ellipsis)
         }
-        Spacer(Modifier.height(4.dp))
-        Text(stringResource(R.string.spotlight_actions), style = MaterialTheme.typography.labelMedium, color = NexTvColors.TextMuted)
     }
 }

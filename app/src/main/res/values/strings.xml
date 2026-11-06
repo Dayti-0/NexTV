@@ -396,7 +396,6 @@
     <string name="box_later">Plus tard</string>
     <string name="box_hint">Sélectionnez une chaîne : son direct et ses programmes s’affichent ici.</string>
     <string name="billboard_hint_channel">OK : regarder · appui long : favori</string>
-    <string name="billboard_hint_poster">OK : ouvrir la fiche · appui long : favori</string>
     <string name="settings_theme">Thème de l’interface</string>
     <string name="theme_night">Classique (bleu)</string>
     <string name="theme_black">Noir</string>
@@ -626,7 +625,6 @@
     <string name="live_remaining">encore %1$d min</string>
     <string name="box_next">Ensuite</string>
     <string name="spotlight_hint">Sélectionnez une affiche : son visuel, ses détails et son résumé apparaissent ici.</string>
-    <string name="spotlight_actions">OK : ouvrir la fiche  ·  appui long : favori</string>
     <string name="premium_hint">Parcourez les affiches : chaque sélection s’affiche en grand.</string>
     <string name="film_ends_at">Fin à %1$s</string>
     <string name="film_back_10">Reculer de 10 secondes</string>

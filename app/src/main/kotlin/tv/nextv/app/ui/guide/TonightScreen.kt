@@ -48,7 +48,6 @@ import tv.nextv.app.ui.components.EmptyState
 import tv.nextv.app.ui.components.FocusSurface
 import tv.nextv.app.ui.components.LiveProgress
 import tv.nextv.app.ui.components.LocalTabsFocused
-import tv.nextv.app.ui.components.StatusPill
 import tv.nextv.app.ui.components.WindowInfo
 import tv.nextv.app.ui.theme.NexTvColors
 import tv.nextv.app.ui.theme.NexTvIcons
