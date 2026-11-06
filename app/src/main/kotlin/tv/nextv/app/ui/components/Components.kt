@@ -44,6 +44,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
+import tv.nextv.app.R
+import androidx.compose.ui.res.stringResource
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.Image
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
@@ -489,10 +494,11 @@ fun Badge(text: String, modifier: Modifier = Modifier, color: Color = MaterialTh
         text,
         modifier = modifier
             .clip(MaterialTheme.shapes.extraSmall)
-            .background(Color.Black.copy(alpha = 0.45f))
+            // Palette claire : fond teinté de la couleur du texte (le gris foncé la rendrait illisible).
+            .background(if (NexTvColors.isLight) color.copy(alpha = 0.14f) else Color.Black.copy(alpha = 0.45f))
             .padding(horizontal = 6.dp, vertical = 2.dp),
         style = MaterialTheme.typography.labelSmall,
-        color = color,
+        color = if (NexTvColors.isLight) NexTvColors.readable(color) else color,
         maxLines = 1,
     )
 }
@@ -518,29 +524,33 @@ fun LiveProgress(startMillis: Long, stopMillis: Long, now: Long, modifier: Modif
     }
 }
 
-/** Marque NexTV : pictogramme dégradé + nom. */
+/**
+ * Logo NixTV, dans ses proportions d'origine : lettres blanches sur une palette sombre, graphite sur
+ * une palette claire (le « TV » garde son dégradé). [compact] : hauteur de barre d'onglets.
+ * [showName] faux : écran étroit, logo réduit.
+ */
 @Composable
 fun BrandMark(modifier: Modifier = Modifier, compact: Boolean = false, showName: Boolean = true) {
-    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Box(
-            Modifier
-                .size(if (compact) 30.dp else 36.dp)
-                .clip(MaterialTheme.shapes.small)
-                .background(Brush.linearGradient(listOf(NexTvColors.Primary, NexTvColors.Accent))),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(NexTvIcons.Tv, contentDescription = null, tint = Color.White, modifier = Modifier.size(if (compact) 18.dp else 20.dp))
-        }
-        if (showName) {
-            Text(
-                "NexTV",
-                style = if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground,
-            )
-        }
-    }
+    NixTvLogo(modifier, height = when {
+        !showName -> 18.dp
+        compact -> 24.dp
+        else -> 32.dp
+    })
 }
+
+/** Logo NixTV à la hauteur [height] (largeur selon ses proportions). */
+@Composable
+fun NixTvLogo(modifier: Modifier = Modifier, height: Dp = 32.dp) {
+    Image(
+        painter = painterResource(if (NexTvColors.isLight) R.drawable.logo_nixtv_dark else R.drawable.logo_nixtv),
+        contentDescription = stringResource(R.string.app_name),
+        contentScale = ContentScale.Fit,
+        modifier = modifier.height(height).aspectRatio(LOGO_RATIO),
+    )
+}
+
+/** Largeur / hauteur du logo (image recadrée). */
+private const val LOGO_RATIO = 1078f / 228f
 
 /**
  * En-tête d'écran : navigation, titre (et sous-titre), actions alignées à droite.

@@ -6,6 +6,7 @@ import tv.nextv.app.data.db.NexTvDatabase
 import tv.nextv.app.data.db.TmdbCacheEntity
 import tv.nextv.core.meta.MediaDetails
 import tv.nextv.core.meta.MediaType
+import tv.nextv.core.meta.TrendingTitle
 import tv.nextv.core.meta.TmdbClient
 import tv.nextv.core.meta.TmdbError
 import tv.nextv.core.meta.TmdbResult
@@ -91,10 +92,22 @@ class MetadataRepository(
         seasonCount = seasonCount,
     )
 
+    /** Tendances de la semaine, gardées quelques heures (une seule demande par type et par période). */
+    private val trending = java.util.concurrent.ConcurrentHashMap<MediaType, Pair<Long, List<TrendingTitle>>>()
+
+    suspend fun trending(type: MediaType): List<TrendingTitle> {
+        val now = clock()
+        trending[type]?.takeIf { now - it.first < TRENDING_TTL && it.second.isNotEmpty() }?.let { return it.second }
+        val titles = client.trending(type)
+        if (titles.isNotEmpty()) trending[type] = now to titles
+        return titles
+    }
+
     private companion object {
         const val DAY = 24 * 60 * 60_000L
         const val FOUND_TTL = 30 * DAY
         const val NOT_FOUND_TTL = 7 * DAY
+        const val TRENDING_TTL = 6 * 60 * 60_000L
     }
 }
 

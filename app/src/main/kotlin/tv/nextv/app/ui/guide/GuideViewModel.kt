@@ -43,6 +43,8 @@ data class GuideProgramme(
     val category: String? = null,
     /** Année de production, si le guide l'indique. */
     val year: Int? = null,
+    /** Image du programme donnée par le guide. */
+    val imageUrl: String? = null,
 )
 
 @Immutable
@@ -210,7 +212,7 @@ class GuideViewModel(
         epgIds.distinct()
             .chunked(SQL_VARIABLES_PER_QUERY)
             .flatMap { ids -> container.programmeDao.inWindow(sourceId, ids, from, to) }
-            .groupBy({ it.epgChannelId }) { GuideProgramme(it.title, it.startMillis, it.stopMillis, it.subtitle, it.description, it.category, it.year) }
+            .groupBy({ it.epgChannelId }) { GuideProgramme(it.title, it.startMillis, it.stopMillis, it.subtitle, it.description, it.category, it.year, it.imageUrl) }
 
     private suspend fun loadTonight(day: Int, now: Long): TonightUiState {
         val evenings = (0 until EVENINGS).map { offset ->
@@ -286,7 +288,7 @@ class GuideViewModel(
                 number = row.channelNumber,
                 logoUrl = row.logoUrl,
                 programmes = programmes[row.epgChannelId].orEmpty().map {
-                    GuideProgramme(it.title, it.startMillis, it.stopMillis, it.subtitle, it.description, it.category, it.year)
+                    GuideProgramme(it.title, it.startMillis, it.stopMillis, it.subtitle, it.description, it.category, it.year, it.imageUrl)
                 },
                 catchupDays = row.catchupDays,
                 itemKey = row.itemKey,

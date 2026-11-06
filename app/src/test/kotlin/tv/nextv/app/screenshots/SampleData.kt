@@ -3,6 +3,9 @@ package tv.nextv.app.screenshots
 import tv.nextv.app.ui.football.FootballMatch
 import tv.nextv.app.ui.home.ChannelPreview
 import tv.nextv.app.ui.home.HomeRows
+import tv.nextv.app.ui.home.Discover
+import tv.nextv.app.ui.home.Spotlight
+import tv.nextv.app.ui.home.toPoster
 import tv.nextv.app.ui.football.FootballUiState
 import tv.nextv.core.football.Competition
 import tv.nextv.core.football.MatchStatus
@@ -98,7 +101,7 @@ object SampleData {
                         channelCount = 42,
                     ),
                 ),
-                refreshing = true,
+                refreshing = false, // Barre de chargement indéterminée : animation infinie, la capture ne se terminerait pas.
             ),
             SourceItem(
                 PlaylistSource(
@@ -432,6 +435,49 @@ object SampleData {
         channels = { group -> channels.filter { it.groupTitle.orEmpty() == group } },
         movies = { group -> movies.filter { it.groupTitle == group }.ifEmpty { movies.reversed() } },
         series = { group -> series.filter { it.groupTitle == group }.ifEmpty { series.reversed() } },
+    )
+
+    val movieDiscover = Discover(
+        trending = movies.take(6).map { it.toPoster().copy(rating = 7.8) },
+        newest = movies.drop(4).take(6).map { it.toPoster() },
+        recommended = movies.drop(2).take(5).map { it.toPoster() },
+        recommendedFrom = movies[1].title,
+    )
+
+    val seriesDiscover = Discover(
+        trending = series.take(5).map { it.toPoster() },
+        newest = series.drop(3).map { it.toPoster() },
+    )
+
+    val spotlight = Spotlight(
+        movies[0].toPoster(),
+        MediaDetails(
+            tmdbId = 1,
+            type = MediaType.MOVIE,
+            title = movies[0].title,
+            overview = "Une enquêtrice reprend une affaire classée depuis vingt ans et découvre que le principal témoin vit toujours dans le village, sous un autre nom.",
+            tagline = "Certaines vérités refont surface.",
+            year = movies[0].year,
+            rating = 7.6,
+            voteCount = 1200,
+            genres = listOf("Thriller", "Drame"),
+            runtimeMinutes = 118,
+        ),
+    )
+
+    val seriesSpotlight = Spotlight(
+        series[0].toPoster(),
+        MediaDetails(
+            tmdbId = 2,
+            type = MediaType.SERIES,
+            title = series[0].title,
+            overview = "Une brigade de police judiciaire enchaîne les affaires dans une ville portuaire où chacun a quelque chose à cacher.",
+            year = series[0].year,
+            rating = 8.1,
+            voteCount = 800,
+            genres = listOf("Policier"),
+            seasonCount = 3,
+        ),
     )
 
     val football = FootballUiState(

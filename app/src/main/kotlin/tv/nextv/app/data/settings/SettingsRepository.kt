@@ -129,8 +129,18 @@ class SettingsRepository(
         .map { prefs -> prefs[THEME_STYLE]?.let { name -> ThemeStyle.entries.firstOrNull { it.name == name } } ?: ThemeStyle.NIGHT }
         .distinctUntilChanged()
 
+    /** Palette choisie avant l'actuelle (« Revenir à … » de l'écran Apparence), `null` : aucune. */
+    val previousThemeStyle: Flow<ThemeStyle?> = dataStore.data
+        .map { prefs -> prefs[PREVIOUS_THEME_STYLE]?.let { name -> ThemeStyle.entries.firstOrNull { it.name == name } } }
+        .distinctUntilChanged()
+
+    /** Nouvelle palette ; l'ancienne devient la précédente. */
     suspend fun setThemeStyle(style: ThemeStyle) {
-        dataStore.edit { it[THEME_STYLE] = style.name }
+        dataStore.edit { prefs ->
+            val current = prefs[THEME_STYLE] ?: ThemeStyle.DEFAULT.name
+            if (current != style.name) prefs[PREVIOUS_THEME_STYLE] = current
+            prefs[THEME_STYLE] = style.name
+        }
     }
 
     /** Dernière catégorie du guide TV (« Ce soir », « L'essentiel », un groupe…), `null` : toutes les chaînes. */
@@ -167,7 +177,7 @@ class SettingsRepository(
 
     /** Interface de l'accueil : classique, streaming ou box TV. */
     val homeLayout: Flow<HomeLayout> = dataStore.data
-        .map { prefs -> prefs[HOME_LAYOUT]?.let { name -> HomeLayout.entries.firstOrNull { it.name == name } } ?: HomeLayout.CLASSIC }
+        .map { prefs -> HomeLayout.fromStored(prefs[HOME_LAYOUT]) }
         .distinctUntilChanged()
 
     suspend fun setHomeLayout(layout: HomeLayout) {
@@ -403,6 +413,7 @@ class SettingsRepository(
         val FAVORITE_TEAMS = stringPreferencesKey("favorite_teams")
         val LOWER_AD_VOLUME = booleanPreferencesKey("lower_ad_volume")
         val THEME_STYLE = stringPreferencesKey("theme_style")
+        val PREVIOUS_THEME_STYLE = stringPreferencesKey("previous_theme_style")
         val HOME_LAYOUT = stringPreferencesKey("home_layout")
         val PREVIEW_VOLUME = stringPreferencesKey("preview_volume")
         val PLAYLIST_REFRESH = stringPreferencesKey("playlist_refresh")

@@ -208,7 +208,7 @@ class RemoteContentOpenerTest {
         open(server.url("/").toString())
         open(server.url("/").toString(), OpenRequest(RequestPurpose.PLAYLIST, userAgent = "VLC/3.0.18"))
 
-        assertEquals("NexTV/1.0", server.takeRequest().headers["User-Agent"])
+        assertEquals("NixTV/1.0", server.takeRequest().headers["User-Agent"])
         assertEquals("VLC/3.0.18", server.takeRequest().headers["User-Agent"])
     }
 
@@ -221,7 +221,7 @@ class RemoteContentOpenerTest {
         content.use { assertEquals("#EXTM3U\n", it.stream.bufferedReader().readText()) }
 
         assertEquals(RemoteContentOpener.FALLBACK_USER_AGENTS[0], content.userAgent)
-        assertEquals("NexTV/1.0", server.takeRequest().headers["User-Agent"])
+        assertEquals("NixTV/1.0", server.takeRequest().headers["User-Agent"])
         assertEquals(RemoteContentOpener.FALLBACK_USER_AGENTS[0], server.takeRequest().headers["User-Agent"])
     }
 
@@ -236,7 +236,7 @@ class RemoteContentOpenerTest {
         val content = runBlocking { opener.open(SourceLocation.Remote(server.url("/").toString()), OpenRequest(RequestPurpose.PLAYLIST)) }
         val text = content.use { it.stream.bufferedReader().readText() }
         assertEquals("#EXTM3U\n", text)
-        assertEquals("NexTV/1.0", server.takeRequest().headers["User-Agent"])
+        assertEquals("NixTV/1.0", server.takeRequest().headers["User-Agent"])
         assertEquals(RemoteContentOpener.FALLBACK_USER_AGENTS[0], content.userAgent)
     }
 

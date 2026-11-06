@@ -25,6 +25,8 @@ data class XmltvProgramme(
     val category: String? = null,
     /** Année de production (`<date>`), si le guide l'indique. */
     val year: Int? = null,
+    /** Image du programme (`<icon src>`), si le guide en donne une. */
+    val iconUrl: String? = null,
 ) : XmltvItem
 
 /**
@@ -123,9 +125,14 @@ class XmltvReader(
         // Tous les genres (« Sport, Football ») : le premier seul est souvent trop vague.
         val categories = mutableListOf<String>()
         var year: Int? = null
+        var icon: String? = null
         forEachChild { name ->
             when (name) {
                 "title" -> readText().let { if (title.isNullOrEmpty()) title = it }
+                "icon" -> {
+                    icon = icon ?: parser.getAttributeValue(null, "src")?.trim()?.takeIf { it.startsWith("http") }
+                    skipElement()
+                }
                 "sub-title" -> readText().let { if (subtitle.isNullOrEmpty()) subtitle = it }
                 "desc" -> readText().let { if (description.isNullOrEmpty()) description = it }
                 "category" -> readText().takeIf { it.isNotEmpty() }?.let { text ->
@@ -148,6 +155,7 @@ class XmltvReader(
             description = description?.takeIf { it.isNotEmpty() }?.take(MAX_DESCRIPTION_LENGTH),
             category = categories.joinToString(", ").takeIf { it.isNotEmpty() }?.take(MAX_TITLE_LENGTH),
             year = year,
+            iconUrl = icon?.take(MAX_URL_LENGTH),
         )
     }
 
@@ -197,5 +205,6 @@ class XmltvReader(
         const val FEATURE_RELAXED = "http://xmlpull.org/v1/doc/features.html#relaxed"
         const val MAX_TITLE_LENGTH = 300
         const val MAX_DESCRIPTION_LENGTH = 2000
+        const val MAX_URL_LENGTH = 500
     }
 }

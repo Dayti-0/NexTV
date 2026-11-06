@@ -9,6 +9,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performKeyInput
@@ -70,9 +71,9 @@ class HomeFocusTest {
     }
 
     @Test
-    fun boxCategoriesCanBeReachedWithDown() {
+    fun liveCenterCategoriesCanBeReachedWithDown() {
         val categories = mutableListOf<Category>()
-        compose.setContent { Home(HomeLayout.BOX, HomeActions(onCategory = { categories += it })) }
+        compose.setContent { Home(HomeLayout.LIVE_CENTER, HomeActions(onCategory = { categories += it })) }
         compose.waitForIdle()
         // Onglets → recherche → catégories.
         repeat(20) {
@@ -87,9 +88,9 @@ class HomeFocusTest {
     }
 
     @Test
-    fun boxChannelListCanBeScrolledWithDown() {
+    fun liveCenterChannelListCanBeScrolledWithDown() {
         val focused = mutableListOf<ChannelListRow>()
-        compose.setContent { Home(HomeLayout.BOX, HomeActions(onChannelFocus = { focused += it })) }
+        compose.setContent { Home(HomeLayout.LIVE_CENTER, HomeActions(onChannelFocus = { focused += it })) }
         compose.waitForIdle()
         compose.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
         compose.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
@@ -104,9 +105,50 @@ class HomeFocusTest {
     }
 
     @Test
+    fun premiumRowsCanBeReachedWithDown() {
+        val focused = mutableListOf<ChannelListRow>()
+        compose.setContent { Home(HomeLayout.PREMIUM, HomeActions(onChannelFocus = { focused += it })) }
+        compose.waitForIdle()
+        repeat(10) {
+            compose.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
+            compose.waitForIdle()
+        }
+        val last = focused.lastOrNull()?.groupTitle
+        println("Cinéma Premium, focus après 10 × bas : $last")
+        assertTrue("Focus : $last", last != null && last.removePrefix("Groupe ").toInt() >= 5)
+    }
+
+    /** Retour du lecteur : la liste revient à sa place et la chaîne ouverte reprend le focus. */
+    @Test
+    fun openedChannelGetsFocusBackAfterReturning() {
+        val tester = StateRestorationTester(compose)
+        val opened = mutableListOf<Long>()
+        val focused = mutableListOf<ChannelListRow>()
+        tester.setContent {
+            Home(HomeLayout.LIVE_CENTER, HomeActions(onPlayChannel = { opened += it }, onChannelFocus = { focused += it }))
+        }
+        compose.waitForIdle()
+        // Onglets → recherche → catégories, puis la liste des chaînes et sa 9e chaîne.
+        press(Key.DirectionDown)
+        press(Key.DirectionDown)
+        press(Key.DirectionRight)
+        repeat(8) { press(Key.DirectionDown) }
+        val chosen = focused.last()
+        press(Key.DirectionCenter)
+        assertEquals(listOf(chosen.id), opened)
+        focused.clear()
+        // Écran recréé (comme au retour du lecteur) avec son état enregistré.
+        tester.emulateSavedInstanceStateRestore()
+        compose.mainClock.advanceTimeBy(1_500)
+        compose.waitForIdle()
+        println("Focus rendu à : ${focused.map { it.title }} (ouverte : ${chosen.title})")
+        assertEquals(chosen.id, focused.lastOrNull()?.id)
+    }
+
+    @Test
     fun tabsChangeSectionWithoutOk() {
         var section by mutableStateOf(HomeSection.TV)
-        compose.setContent { Home(HomeLayout.CLASSIC, HomeActions(onSection = { section = it }), section) }
+        compose.setContent { Home(HomeLayout.LIVE_CENTER, HomeActions(onSection = { section = it }), section) }
         compose.waitForIdle()
         // Focus initial sur l'onglet TV : droite, droite → Séries, sans appuyer sur OK.
         press(Key.DirectionRight)

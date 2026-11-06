@@ -18,7 +18,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         HiddenGroupEntity::class,
         GuideOnlyChannelEntity::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = false,
 )
 abstract class NexTvDatabase : RoomDatabase() {
@@ -90,6 +90,13 @@ abstract class NexTvDatabase : RoomDatabase() {
             }
         }
 
+        /** Images des programmes du guide : nouvelle colonne, remplie au prochain import du guide. */
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE programmes ADD COLUMN imageUrl TEXT")
+            }
+        }
+
         /**
          * Premier épisode de chaque série (ordre de la playlist) et nombre d'épisodes, comme à l'enregistrement.
          * `position + 0` : le minimum est lu dans l'index par clé, pas en parcourant l'index des positions
@@ -105,7 +112,7 @@ abstract class NexTvDatabase : RoomDatabase() {
 
         fun create(context: Context): NexTvDatabase =
             Room.databaseBuilder(context.applicationContext, NexTvDatabase::class.java, "nextv.db")
-                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                 // Versions de test antérieures (1) : les données sont rechargées depuis la playlist.
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()

@@ -80,7 +80,7 @@ data class SettingsUiState(
     /** Thème de l'interface. */
     val theme: ThemeStyle = ThemeStyle.NIGHT,
     /** Interface de l'accueil. */
-    val homeLayout: HomeLayout = HomeLayout.CLASSIC,
+    val homeLayout: HomeLayout = HomeLayout.DEFAULT,
     /** Qualité visée à l'ouverture d'une chaîne. */
     val qualityTarget: QualityTarget = QualityTarget.BEST,
     /** Son de l'aperçu vidéo de l'accueil. */
@@ -325,13 +325,6 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
     /** @throws tv.nextv.core.backup.BackupFormatException si ce n'est pas une sauvegarde NexTV. */
     suspend fun restoreBackup(text: String): RestoreResult = container.backup.restore(text)
 
-    /** Thème suivant : bleu nuit, noir, cinéma, violet. */
-    fun cycleTheme() {
-        val values = ThemeStyle.entries
-        val next = values[(values.indexOf(state.value.theme) + 1) % values.size]
-        viewModelScope.launch { settings.setThemeStyle(next) }
-    }
-
     /** Qualité visée suivante : meilleure, HD maximum, économie. */
     /** Son de l'aperçu suivant : coupé, faible, moyen. */
     fun cyclePreviewVolume() {
@@ -356,13 +349,6 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         val values = QualityTarget.entries
         val next = values[(values.indexOf(state.value.qualityTarget) + 1) % values.size]
         viewModelScope.launch { settings.setQualityTarget(next) }
-    }
-
-    /** Interface suivante : classique, streaming, box TV. */
-    fun cycleHomeLayout() {
-        val values = HomeLayout.entries
-        val next = values[(values.indexOf(state.value.homeLayout) + 1) % values.size]
-        viewModelScope.launch { settings.setHomeLayout(next) }
     }
 
     /** Chaînes de l'accueil en mosaïque ou en liste. */

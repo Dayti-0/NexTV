@@ -1,6 +1,7 @@
 package tv.nextv.app.ui.guide
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -22,9 +23,16 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import kotlinx.coroutines.delay
+import androidx.compose.foundation.lazy.rememberLazyListState
+import tv.nextv.app.ui.home.HomeVisit
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import coil3.compose.AsyncImage
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -68,7 +76,27 @@ internal fun TonightView(
     val firstBlock = remember { FocusRequester() }
     var initialFocusDone by remember { mutableStateOf(false) }
     val tabsFocused = LocalTabsFocused.current
-    if (window.isTv && !initialFocusDone && state.rows.isNotEmpty()) {
+    // Programme ouvert : ligne, colonne (0 : début de soirée, 1 : suite) et affichage de l'accueil.
+    var opened by rememberSaveable { mutableStateOf<List<Int>?>(null) }
+    val visit = HomeVisit.current
+    val back = opened?.takeIf { it.size == 3 && it[2] != visit && it[0] in state.rows.indices }
+    val listState = rememberLazyListState()
+    val backFocus = remember { FocusRequester() }
+    if (back != null) {
+        LaunchedEffect(back) {
+            listState.scrollToItem(back[0])
+            initialFocusDone = true
+            repeat(8) {
+                if (runCatching { backFocus.requestFocus() }.isSuccess) {
+                    opened = null
+                    return@LaunchedEffect
+                }
+                delay(120)
+            }
+            opened = null
+        }
+    }
+    if (window.isTv && !initialFocusDone && state.rows.isNotEmpty() && back == null) {
         LaunchedEffect(Unit) {
             if (!tabsFocused()) runCatching { firstBlock.requestFocus() }
             initialFocusDone = true
@@ -84,11 +112,16 @@ internal fun TonightView(
                 EveningChip(eveningLabel(index, evening), selected = index == state.day) { onDay(index) }
             }
         }
-        // Programme sélectionné : horaires, genre et résumé.
-        Column(
+        // Programme sélectionné : image, horaires, genre et résumé.
+        Row(
             Modifier.fillMaxWidth().heightIn(min = 92.dp).padding(horizontal = window.horizontalPadding, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (shown != null && rememberProgrammeImage(shown.second) != null) {
+                ProgrammeArt(shown.second, Modifier.width(150.dp).aspectRatio(16f / 9f))
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             shown?.let { (channel, programme) ->
                 Text(
                     listOfNotNull(
@@ -108,6 +141,7 @@ internal fun TonightView(
                     Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
             }
+            }
         }
         if (!state.loading && state.rows.isEmpty()) {
             EmptyState(NexTvIcons.Guide, stringResource(R.string.tonight_empty_title), stringResource(R.string.tonight_empty_message))
@@ -123,6 +157,7 @@ internal fun TonightView(
             }
         }
         LazyColumn(
+            state = listState,
             contentPadding = PaddingValues(start = window.horizontalPadding, end = window.horizontalPadding, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
             modifier = Modifier.fillMaxSize(),
@@ -132,9 +167,14 @@ internal fun TonightView(
                     row = row,
                     now = state.now,
                     wide = window.isWide,
-                    firstFocus = firstBlock.takeIf { index == 0 },
+                    firstFocus = firstBlock.takeIf { index == 0 && back?.get(0) != 0 },
+                    backFocus = backFocus.takeIf { back?.get(0) == index },
+                    backColumn = back?.get(1) ?: 0,
                     onFocus = { programme -> focused = row.channel to programme },
-                    onOpen = { programme -> onOpen(row.channel, programme) },
+                    onOpen = { programme ->
+                        opened = listOf(index, if (programme == row.first) 0 else 1, visit)
+                        onOpen(row.channel, programme)
+                    },
                 )
             }
         }
@@ -149,14 +189,18 @@ private fun TonightLine(
     firstFocus: FocusRequester?,
     onFocus: (GuideProgramme) -> Unit,
     onOpen: (GuideProgramme) -> Unit,
+    /** Retour d'un programme ouvert sur cette ligne : colonne [backColumn] à resélectionner. */
+    backFocus: FocusRequester? = null,
+    backColumn: Int = 0,
 ) {
     val channel = row.channel
+    fun requesterFor(column: Int): FocusRequester? = backFocus.takeIf { column == backColumn } ?: firstFocus.takeIf { column == 0 }
     if (wide) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             ChannelCell(channel, Modifier.width(TONIGHT_CHANNEL_WIDTH))
-            row.first?.let { ProgrammeCell(it, now, main = true, Modifier.weight(1.15f).then(firstFocus?.let { r -> Modifier.focusRequester(r) } ?: Modifier), onFocus, onOpen) }
+            row.first?.let { ProgrammeCell(it, now, main = true, Modifier.weight(1.15f).then(requesterFor(0)?.let { r -> Modifier.focusRequester(r) } ?: Modifier), onFocus, onOpen) }
             if (row.second != null) {
-                ProgrammeCell(row.second, now, main = false, Modifier.weight(1f), onFocus, onOpen)
+                ProgrammeCell(row.second, now, main = false, Modifier.weight(1f).then(requesterFor(1)?.let { r -> Modifier.focusRequester(r) } ?: Modifier), onFocus, onOpen)
             } else {
                 Box(Modifier.weight(1f))
             }
@@ -164,8 +208,8 @@ private fun TonightLine(
     } else {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             ChannelCell(channel, Modifier.fillMaxWidth())
-            row.first?.let { ProgrammeCell(it, now, main = true, Modifier.fillMaxWidth().then(firstFocus?.let { r -> Modifier.focusRequester(r) } ?: Modifier), onFocus, onOpen) }
-            row.second?.let { ProgrammeCell(it, now, main = false, Modifier.fillMaxWidth(), onFocus, onOpen) }
+            row.first?.let { ProgrammeCell(it, now, main = true, Modifier.fillMaxWidth().then(requesterFor(0)?.let { r -> Modifier.focusRequester(r) } ?: Modifier), onFocus, onOpen) }
+            row.second?.let { ProgrammeCell(it, now, main = false, Modifier.fillMaxWidth().then(requesterFor(1)?.let { r -> Modifier.focusRequester(r) } ?: Modifier), onFocus, onOpen) }
         }
     }
 }
@@ -201,6 +245,16 @@ private fun ProgrammeCell(
         color = if (main) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surfaceContainer,
         focusScale = 1.02f,
     ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+        // Vignette du programme quand le guide en donne une (soirée : programme principal).
+        if (main && programme.imageUrl != null) {
+            AsyncImage(
+                model = programme.imageUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.padding(start = 8.dp).width(84.dp).aspectRatio(16f / 9f).clip(MaterialTheme.shapes.small),
+            )
+        }
         Column(Modifier.padding(horizontal = 14.dp, vertical = 9.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
@@ -226,6 +280,7 @@ private fun ProgrammeCell(
                 overflow = TextOverflow.Ellipsis,
             )
             if (live) LiveProgress(programme.startMillis, programme.stopMillis, now, Modifier.padding(top = 2.dp))
+        }
         }
     }
 }

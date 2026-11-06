@@ -160,11 +160,12 @@ class DaoQueriesTest {
             execSQL("CREATE INDEX `index_channels_sourceId_kind_seriesName` ON `channels` (`sourceId`, `kind`, `seriesName`)")
             execSQL("UPDATE channels SET isPrimary = 1, variantCount = 1 WHERE kind = 'SERIES'")
             execSQL("DROP TABLE `guide_only_channels`")
+            execSQL("ALTER TABLE `programmes` DROP COLUMN `imageUrl`")
             version = 6
         }
         old.close()
         val migrated = Room.databaseBuilder(context, NexTvDatabase::class.java, name)
-            .addMigrations(NexTvDatabase.MIGRATION_6_7, NexTvDatabase.MIGRATION_7_8)
+            .addMigrations(NexTvDatabase.MIGRATION_6_7, NexTvDatabase.MIGRATION_7_8, NexTvDatabase.MIGRATION_8_9)
             .allowMainThreadQueries()
             .build()
         try {

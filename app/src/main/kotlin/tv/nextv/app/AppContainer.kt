@@ -80,7 +80,7 @@ class AppContainer(context: Context) {
         baseClient = OkHttpClient(),
         logger = logger,
         networkSettings = NetworkSettings(
-            defaultUserAgent = "NexTV/${BuildConfig.VERSION_NAME} (Linux; Android ${Build.VERSION.RELEASE})",
+            defaultUserAgent = "NixTV/${BuildConfig.VERSION_NAME} (Linux; Android ${Build.VERSION.RELEASE})",
         ),
     )
 

@@ -117,6 +117,7 @@ fun SettingsScreen(
     onProxy: () -> Unit,
     onGroups: (ContentKind) -> Unit = {},
     onRestored: () -> Unit = {},
+    onAppearance: () -> Unit = {},
 ) {
     val viewModel = appViewModel { container, _ -> SettingsViewModel(container) }
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -234,8 +235,7 @@ fun SettingsScreen(
         onChannelPreview = viewModel::setChannelPreview,
         onStartOnLastChannel = viewModel::setStartOnLastChannel,
         onLowerAdVolume = viewModel::setLowerAdVolume,
-        onCycleTheme = viewModel::cycleTheme,
-        onCycleHomeLayout = viewModel::cycleHomeLayout,
+        onAppearance = onAppearance,
         onCycleQualityTarget = viewModel::cycleQualityTarget,
         onCyclePreviewVolume = viewModel::cyclePreviewVolume,
         onCyclePlaylistRefresh = viewModel::cyclePlaylistRefresh,
@@ -279,8 +279,7 @@ fun SettingsContent(
     onChannelPreview: (Boolean) -> Unit = {},
     onStartOnLastChannel: (Boolean) -> Unit = {},
     onLowerAdVolume: (Boolean) -> Unit = {},
-    onCycleTheme: () -> Unit = {},
-    onCycleHomeLayout: () -> Unit = {},
+    onAppearance: () -> Unit = {},
     onCycleQualityTarget: () -> Unit = {},
     onCyclePreviewVolume: () -> Unit = {},
     onCyclePlaylistRefresh: () -> Unit = {},
@@ -448,26 +447,12 @@ fun SettingsContent(
                     // Affichage de l'accueil.
                     SectionCard(stringResource(R.string.settings_display), icon = NexTvIcons.Grid) {
                         val grid = state.gridColumns
-                        // Interface : disposition de l'accueil, thème de couleurs et disposition des chaînes.
+                        // Interface de l'accueil et palette de couleurs : écran Apparence.
                         ValueRow(
-                            title = stringResource(R.string.settings_home_layout),
-                            value = homeLayoutLabel(state.homeLayout),
-                            onClick = onCycleHomeLayout,
+                            title = stringResource(R.string.appearance_open),
+                            value = "${homeLayoutLabel(state.homeLayout)}  ·  ${themeLabel(state.theme)}",
+                            onClick = onAppearance,
                         )
-                        InfoText(homeLayoutHelp(state.homeLayout))
-                        ValueRow(
-                            title = stringResource(R.string.settings_theme),
-                            value = themeLabel(state.theme),
-                            onClick = onCycleTheme,
-                        )
-                        // Mosaïque ou liste : interface classique seulement (les autres ont leur propre présentation).
-                        if (state.homeLayout == HomeLayout.CLASSIC) {
-                            ValueRow(
-                                title = stringResource(R.string.settings_channel_layout),
-                                value = stringResource(if (grid.channelList) R.string.settings_channel_layout_list else R.string.settings_channel_layout_grid),
-                                onClick = onToggleChannelList,
-                            )
-                        }
                         NumberRow(
                             title = stringResource(R.string.settings_channel_columns),
                             value = grid.channels,
@@ -808,34 +793,6 @@ private fun qualityTargetHelp(target: QualityTarget): String = stringResource(
         QualityTarget.BEST -> R.string.quality_target_best_help
         QualityTarget.HD -> R.string.quality_target_hd_help
         QualityTarget.ECO -> R.string.quality_target_eco_help
-    },
-)
-
-@Composable
-private fun homeLayoutLabel(layout: HomeLayout): String = stringResource(
-    when (layout) {
-        HomeLayout.CLASSIC -> R.string.home_layout_classic
-        HomeLayout.STREAMING -> R.string.home_layout_streaming
-        HomeLayout.BOX -> R.string.home_layout_box
-    },
-)
-
-@Composable
-private fun homeLayoutHelp(layout: HomeLayout): String = stringResource(
-    when (layout) {
-        HomeLayout.CLASSIC -> R.string.home_layout_classic_help
-        HomeLayout.STREAMING -> R.string.home_layout_streaming_help
-        HomeLayout.BOX -> R.string.home_layout_box_help
-    },
-)
-
-@Composable
-private fun themeLabel(style: ThemeStyle): String = stringResource(
-    when (style) {
-        ThemeStyle.NIGHT -> R.string.theme_night
-        ThemeStyle.BLACK -> R.string.theme_black
-        ThemeStyle.CINEMA -> R.string.theme_cinema
-        ThemeStyle.VIOLET -> R.string.theme_violet
     },
 )
 

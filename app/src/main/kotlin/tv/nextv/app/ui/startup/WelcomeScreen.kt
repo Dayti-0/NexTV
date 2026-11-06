@@ -46,7 +46,7 @@ fun WelcomeScreen(onAdd: () -> Unit, animate: Boolean = true) {
     Box(
         Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(Color(0xFF0B1220), NexTvColors.Background, Color(0xFF07090D)))),
+            .background(screenBackground()),
         contentAlignment = Alignment.Center,
     ) {
         Column(

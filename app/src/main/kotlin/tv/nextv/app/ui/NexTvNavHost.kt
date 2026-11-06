@@ -27,7 +27,9 @@ import tv.nextv.app.ui.settings.ChannelGroupsScreen
 import tv.nextv.app.ui.settings.ProxySettingsScreen
 import tv.nextv.app.ui.settings.SettingsScreen
 import tv.nextv.app.ui.sources.SourcesScreen
+import tv.nextv.app.ui.settings.AppearanceScreen
 import tv.nextv.app.ui.startup.StartupScreen
+import tv.nextv.app.ui.theme.VideoTheme
 import tv.nextv.app.ui.startup.StartupViewModel
 import tv.nextv.app.ui.startup.WelcomeScreen
 import tv.nextv.core.model.ContentKind
@@ -43,6 +45,7 @@ private object Routes {
     const val MOVIE = "movie/{$ARG_ITEM}"
     const val SERIES = "series/{$ARG_ITEM}"
     const val SETTINGS = "settings"
+    const val APPEARANCE = "appearance"
     const val PROXY = "proxy"
     const val GROUPS = "groups/{$ARG_KIND}"
 
@@ -167,7 +170,8 @@ private fun AppNavHost(navController: NavHostController) {
                 },
             ),
         ) {
-            PlayerScreen(onBack = { navController.popBackStack() })
+            // Interface sur l'image : toujours sombre, même avec une palette claire.
+            VideoTheme { PlayerScreen(onBack = { navController.popBackStack() }) }
         }
         composable(Routes.SETTINGS) {
             SettingsScreen(
@@ -176,7 +180,11 @@ private fun AppNavHost(navController: NavHostController) {
                 onProxy = { navController.navigate(Routes.PROXY) },
                 onGroups = { navController.navigate(Routes.groups(it)) },
                 onRestored = { navController.restartAt(Routes.startup(reload = true)) },
+                onAppearance = { navController.navigate(Routes.APPEARANCE) },
             )
+        }
+        composable(Routes.APPEARANCE) {
+            AppearanceScreen(onBack = { navController.popBackStack() })
         }
         composable(Routes.PLAYLISTS) {
             SourcesScreen(

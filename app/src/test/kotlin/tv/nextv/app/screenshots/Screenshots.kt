@@ -38,6 +38,11 @@ import tv.nextv.app.ui.home.Category
 import tv.nextv.app.ui.home.HomeActions
 import tv.nextv.app.ui.home.HomeContent
 import tv.nextv.app.ui.home.HomeLayout
+import tv.nextv.app.ui.player.NextEpisode
+import tv.nextv.app.ui.player.VodInfo
+import tv.nextv.app.ui.player.UpNextCard
+import tv.nextv.app.ui.player.FilmControls
+import tv.nextv.app.ui.settings.AppearanceContent
 import tv.nextv.app.ui.home.HomeSection
 import tv.nextv.app.ui.home.ReorderState
 import tv.nextv.app.ui.player.MenuChannel
@@ -114,18 +119,18 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
-    fun homeTv() = capture("05_accueil_tv") {
-        Home(HomeSection.TV, Category.All)
-    }
-
-    @Test
-    fun homeTvPreview() = capture("05c_accueil_apercu") {
+    fun homeTv() = capture("05_accueil_live_center") {
         Home(HomeSection.TV, Category.All, preview = true)
     }
 
     @Test
+    fun homeTvPreview() = capture("05c_accueil_tout_voir") {
+        Home(HomeSection.TV, Category.Group(SampleData.groups[0].title.orEmpty()), preview = true, layout = HomeLayout.STREAMING)
+    }
+
+    @Test
     fun homeTvDense() = capture("05b_accueil_tv_9_par_ligne") {
-        Home(HomeSection.TV, Category.All, grid = GridColumns(channels = 9))
+        Home(HomeSection.TV, Category.Group(SampleData.groups[0].title.orEmpty()), grid = GridColumns(channels = 9), layout = HomeLayout.STREAMING)
     }
 
     @Test
@@ -145,7 +150,7 @@ abstract class ScreenshotSuite(private val device: String) {
 
     @Test
     fun homeMoviesDense() = capture("07b_accueil_films_10_par_ligne") {
-        Home(HomeSection.MOVIES, Category.All, grid = GridColumns(posters = 10))
+        Home(HomeSection.MOVIES, Category.Group(SampleData.movieGroups[0].title.orEmpty()), grid = GridColumns(posters = 10), layout = HomeLayout.STREAMING)
     }
 
     @Test
@@ -154,13 +159,8 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
-    fun homeCinema() = capture("05d_accueil_cinema", ThemeStyle.CINEMA) {
-        Home(HomeSection.TV, Category.All)
-    }
-
-    @Test
-    fun homeList() = capture("05e_accueil_liste") {
-        Home(HomeSection.TV, Category.All, grid = GridColumns(channelList = true))
+    fun homeCinema() = capture("05d_accueil_rouge", ThemeStyle.CINEMA) {
+        Home(HomeSection.TV, Category.All, preview = true)
     }
 
     @Test
@@ -179,8 +179,80 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
-    fun homeBox() = capture("05i_accueil_box", ThemeStyle.BLACK) {
-        Home(HomeSection.TV, Category.All, preview = true, layout = HomeLayout.BOX)
+    fun homePremiumMovies() = capture("05i_accueil_premium_films") {
+        Home(HomeSection.MOVIES, Category.All, layout = HomeLayout.PREMIUM)
+    }
+
+    @Test
+    fun homePremiumTv() = capture("05j_accueil_premium_tv", ThemeStyle.MIDNIGHT) {
+        Home(HomeSection.TV, Category.All, preview = true, layout = HomeLayout.PREMIUM)
+    }
+
+    @Test
+    fun homeIvory() = capture("05k_palette_blanc_elegant", ThemeStyle.IVORY) {
+        Home(HomeSection.TV, Category.All, preview = true)
+    }
+
+    @Test
+    fun homeGlacier() = capture("05l_palette_bleu_glacier", ThemeStyle.GLACIER) {
+        Home(HomeSection.MOVIES, Category.All, layout = HomeLayout.STREAMING)
+    }
+
+    @Test
+    fun homePowder() = capture("05m_palette_rose_poudre", ThemeStyle.POWDER) {
+        Home(HomeSection.MOVIES, Category.All)
+    }
+
+    @Test
+    fun homeEmerald() = capture("05n_palette_emeraude", ThemeStyle.EMERALD) {
+        Home(HomeSection.SERIES, Category.All, layout = HomeLayout.STREAMING)
+    }
+
+    @Test
+    fun homeAmber() = capture("05o_palette_orange_ambre", ThemeStyle.AMBER) {
+        Home(HomeSection.TV, Category.All, preview = true, layout = HomeLayout.STREAMING)
+    }
+
+    @Test
+    fun appearance() = capture("16d_apparence") {
+        AppearanceContent(theme = ThemeStyle.NIGHT, previous = ThemeStyle.CINEMA, layout = HomeLayout.LIVE_CENTER, onBack = {}, onTheme = {}, onLayout = {})
+    }
+
+    @Test
+    fun appearanceLight() = capture("16e_apparence_claire", ThemeStyle.LAVENDER) {
+        AppearanceContent(theme = ThemeStyle.LAVENDER, previous = ThemeStyle.NIGHT, layout = HomeLayout.PREMIUM, onBack = {}, onTheme = {}, onLayout = {})
+    }
+
+    @Test
+    fun filmPlayer() = capture("13j_lecteur_film") {
+        Box(Modifier.fillMaxSize()) {
+            FakeVideo()
+            FilmControls(
+                player = null,
+                state = SampleData.player.copy(
+                    isLive = false,
+                    buffering = false,
+                    vod = VodInfo("Enquêtes en série", "S02E05  ·  Le Témoin", 2022, null, NextEpisode(9, "S02E06", "La Nuit du port", null)),
+                ),
+                visible = true,
+                onInteraction = {},
+                onSeekBy = {},
+                onSeekTo = {},
+                onPlayPause = {},
+                onNextEpisode = {},
+                onOptions = {},
+                onBack = {},
+                sample = 1_534_000L to 3_120_000L,
+            )
+        }
+    }
+
+    @Test
+    fun filmUpNext() = capture("13k_episode_suivant") {
+        Box(Modifier.fillMaxSize()) {
+            FakeVideo()
+            UpNextCard(NextEpisode(9, "S02E06", "La Nuit du port", null), onPlay = {}, onDismiss = {}, modifier = Modifier.align(Alignment.BottomEnd).padding(36.dp))
+        }
     }
 
     @Test
@@ -600,7 +672,7 @@ abstract class ScreenshotSuite(private val device: String) {
         reorder: ReorderState = ReorderState(),
         grid: GridColumns = GridColumns(),
         preview: Boolean = false,
-        layout: HomeLayout = HomeLayout.CLASSIC,
+        layout: HomeLayout = HomeLayout.LIVE_CENTER,
     ) {
         val channels = remember { flowOf(PagingData.from(SampleData.channels)) }.collectAsLazyPagingItems()
         val movies = remember { flowOf(PagingData.from(SampleData.movies)) }.collectAsLazyPagingItems()
@@ -647,6 +719,8 @@ abstract class ScreenshotSuite(private val device: String) {
             preview = SampleData.channelPreview.takeIf { preview },
             layout = layout,
             rows = SampleData.rows,
+            discover = if (section == HomeSection.SERIES) SampleData.seriesDiscover else SampleData.movieDiscover,
+            spotlight = SampleData.spotlight.takeIf { section == HomeSection.MOVIES } ?: SampleData.seriesSpotlight.takeIf { section == HomeSection.SERIES },
         )
     }
 

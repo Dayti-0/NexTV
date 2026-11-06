@@ -89,7 +89,7 @@ class DetailViewModel(
         } else {
             container.metadata.details(
                 // Version de la recherche : les « introuvables » enregistrés avant son amélioration sont ignorés.
-                cacheKey = "$LOOKUP_VERSION|${entity.itemKey}",
+                cacheKey = metadataCacheKey(entity.itemKey),
                 type = if (kind == ContentKind.SERIES) MediaType.SERIES else MediaType.MOVIE,
                 title = title,
                 year = entity.year,
@@ -102,9 +102,7 @@ class DetailViewModel(
         mutableState.update { it.copy(selectedSeason = index) }
     }
 
-    private companion object {
-        const val LOOKUP_VERSION = "v2"
-    }
+
 
     fun toggleFavorite() {
         val item = state.value.item ?: return
@@ -113,3 +111,9 @@ class DetailViewModel(
         }
     }
 }
+
+/**
+ * Clé de la fiche TMDB d'un film ou d'une série, partagée par la fiche et l'accueil. Version de la
+ * recherche : les « introuvables » enregistrés avant son amélioration sont ignorés.
+ */
+internal fun metadataCacheKey(itemKey: String): String = "v2|$itemKey"

@@ -33,6 +33,7 @@ class EpgImporterTest {
           <channel id="m6.fr"><display-name>M6</display-name></channel>
           <programme start="20240101110000 +0000" stop="20240101130000 +0000" channel="tf1.fr">
             <title lang="fr">Journal &amp; météo</title><desc>Infos <b>du</b> jour</desc><category>News</category><category>Météo</category><category>news</category>
+            <icon src="https://images.example/journal.jpg"/>
           </programme>
           <programme start="20240101130000 +0000" stop="20240101140000 +0000" channel="TF1.FR"><title>Film</title></programme>
           <programme start="20240101120000 +0100" channel="france2.fr"><title>Sans fin 1</title></programme>
@@ -161,6 +162,9 @@ class EpgImporterTest {
         assertEquals("Infos du jour", news.description)
         assertEquals("News, Météo", news.category)
         assertEquals("tf1.fr", news.epgChannelId)
+        // Image du programme, quand le guide en donne une.
+        assertEquals("https://images.example/journal.jpg", news.imageUrl)
+        assertEquals(null, programmes.first { it.title == "Film" }.imageUrl)
     }
 
     @Test

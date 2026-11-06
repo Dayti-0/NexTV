@@ -1,6 +1,8 @@
 package tv.nextv.app.ui.home
 
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
@@ -21,13 +23,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -37,9 +39,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -71,91 +73,108 @@ import tv.nextv.app.ui.components.FocusSurface
 import tv.nextv.app.ui.components.LiveProgress
 import tv.nextv.app.ui.components.StatusPill
 import tv.nextv.app.ui.components.WindowInfo
-import tv.nextv.app.ui.guide.GuideProgramme
 import tv.nextv.app.ui.guide.formatDuration
 import tv.nextv.app.ui.theme.NexTvColors
 import tv.nextv.core.model.ContentKind
 import java.text.DateFormat
 import java.util.Date
+import java.util.Locale
 
 /**
- * Interface de l'accueil (réglages), en plus des thèmes de couleurs :
- * - [CLASSIC] : onglets, catégories à gauche, mosaïque ou liste avec l'aperçu en haut ;
- * - [STREAMING] : grande affiche de la sélection et rangées par catégorie ;
- * - [BOX] : liste des chaînes et grand volet du direct, comme une box d'opérateur (écran large).
+ * Interface de l'accueil (Réglages › Apparence), en plus des palettes de couleurs :
+ * - [LIVE_CENTER] : catégories à gauche, liste des chaînes au centre, aperçu et programme à droite ;
+ * - [STREAMING] : grande bannière et rangées de jaquettes (reprises, nouveautés, tendances) ;
+ * - [PREMIUM] : visuel plein écran de la sélection, grandes affiches et typographie soignée.
  */
-enum class HomeLayout { CLASSIC, STREAMING, BOX }
+enum class HomeLayout {
+    LIVE_CENTER,
+    STREAMING,
+    PREMIUM,
+    ;
 
-/** Élément sélectionné dans les rangées de films et de séries, montré en grand en haut. */
+    companion object {
+        val DEFAULT = LIVE_CENTER
+
+        /** Interface enregistrée, y compris celles des versions précédentes (« CLASSIC », « BOX »). */
+        fun fromStored(name: String?): HomeLayout = when (name) {
+            null -> DEFAULT
+            "CLASSIC", "BOX" -> LIVE_CENTER
+            else -> entries.firstOrNull { it.name == name } ?: DEFAULT
+        }
+    }
+}
+
+/** Contenu commun des interfaces à rangées (Streaming, Cinéma Premium). */
 @Immutable
-internal data class Billboard(val title: String, val detail: String?, val imageUrl: String?)
+internal data class ShelfContent(
+    val section: HomeSection,
+    val groups: List<GroupRow>,
+    val rows: HomeRows,
+    val favoriteChannels: List<ChannelListRow>,
+    val recentChannels: List<ChannelListRow>,
+    val favoriteMovies: List<MovieRow>,
+    val favoriteSeries: List<SeriesRow>,
+    val continueItems: List<ProgressEntity>,
+    val discover: Discover,
+    val favoriteKeys: Set<String>,
+    val now: Long,
+)
 
 /**
- * Interface « Streaming » : grande affiche de l'élément sélectionné (aperçu vidéo pour une chaîne),
- * puis la recherche et une rangée par catégorie, chacune avec « Tout voir ». Une recherche remplace
- * les rangées par celle de ses résultats ([channels], [movies] ou [series], déjà filtrés).
+ * Interface « Streaming » : grande bannière de la sélection (aperçu vidéo pour une chaîne, visuel
+ * TMDB pour un film ou une série), puis la recherche et les rangées : reprises, tendances,
+ * nouveautés, recommandations, favoris et une rangée par catégorie, chacune avec « Tout voir ».
+ * Une recherche remplace les rangées par celle de ses résultats.
  */
 @Composable
 internal fun StreamingHome(
-    section: HomeSection,
+    content: ShelfContent,
     window: WindowInfo,
-    groups: List<GroupRow>,
-    rows: HomeRows,
     query: String,
     channels: LazyPagingItems<ChannelListRow>,
     movies: LazyPagingItems<MovieRow>,
     series: LazyPagingItems<SeriesRow>,
-    favoriteChannels: List<ChannelListRow>,
-    recentChannels: List<ChannelListRow>,
-    favoriteMovies: List<MovieRow>,
-    favoriteSeries: List<SeriesRow>,
-    continueItems: List<ProgressEntity>,
-    favoriteKeys: Set<String>,
-    now: Long,
     preview: ChannelPreview?,
     previewPlayer: Player?,
-    lastOpened: MutableState<String?>,
+    spotlight: Spotlight?,
+    lastOpened: MutableState<OpenedItem?>,
     actions: HomeActions,
     modifier: Modifier = Modifier,
 ) {
-    val billboard = remember(section) { mutableStateOf<Billboard?>(null) }
+    val section = content.section
     val padding = if (window.isWide) 28.dp else window.horizontalPadding
-    val listState = rememberLazyListState()
-    // Rangées parcourues (recherche sortie de l'écran) : l'affiche se réduit pour en montrer davantage,
-    // et reprend sa taille en haut de la liste. Chaînes : l'aperçu reste, en plus petit.
-    val scrolled by remember { derivedStateOf { listState.firstVisibleItemIndex > 0 } }
+    val listState = rememberSaveable(section, saver = LazyListState.Saver) { LazyListState() }
+    // Rangées parcourues : la bannière se réduit pour en montrer davantage, et reprend sa taille en haut.
+    val scrolled by remember { derivedStateOf { listState.firstVisibleItemIndex > 1 } }
     val billboardHeight by animateDpAsState(
         when {
-            !scrolled -> BILLBOARD_HEIGHT
+            !scrolled -> STREAMING_BILLBOARD_HEIGHT
             section == HomeSection.TV -> COMPACT_BILLBOARD_HEIGHT
-            else -> 0.dp
+            else -> SLIM_BILLBOARD_HEIGHT
         },
+        animationSpec = tween(260),
         label = "billboard",
     )
     Column(modifier.fillMaxSize()) {
-        if (window.isWide && billboardHeight > 0.dp) {
+        if (window.isWide) {
             Box(Modifier.fillMaxWidth().height(billboardHeight).clipToBounds()) {
                 if (section == HomeSection.TV) {
-                    ChannelBillboard(preview, previewPlayer, now, padding, compact = scrolled)
+                    ChannelBillboard(preview, previewPlayer, content.now, padding, compact = scrolled)
                 } else {
-                    PosterBillboard(section, billboard.value, padding)
+                    // Avant toute sélection : la première tendance de la semaine.
+                    SpotlightBillboard(section, spotlight ?: content.discover.trending.firstOrNull()?.let { Spotlight(it) }, padding, compact = scrolled)
                 }
             }
         }
         val sizes = ShelfSizes.of(window)
-        val nowBucket = now / ROW_REFRESH_MILLIS
-        // Toutes les rangées sont lues d'avance, dans l'ordre de l'écran : la télécommande ne peut descendre que
-        // sur une rangée déjà remplie (une rangée en chargement n'a rien à sélectionner, « bas » resterait bloqué).
-        LaunchedEffect(section, groups, nowBucket) {
-            for (group in groups) {
-                loadSafely { rows.fresh<Any>(section, group.title.orEmpty(), rowVersion(section, group, nowBucket)) }
-            }
-        }
+        PreloadRows(content)
+        val shelves = shelfList(content)
+        RestoreRow(listState, lastOpened, listOf("search") + shelves.map { it.key })
         LazyColumn(
             Modifier.weight(1f),
             state = listState,
             contentPadding = PaddingValues(top = 4.dp, bottom = 40.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             // Recherche en tête des rangées : elle défile avec elles (et garde le clavier pendant la saisie).
             item(key = "search") {
@@ -163,100 +182,228 @@ internal fun StreamingHome(
             }
             if (query.isNotEmpty()) {
                 item(key = "results") {
-                    val count = when (section) {
-                        HomeSection.TV -> channels.itemCount
-                        HomeSection.MOVIES -> movies.itemCount
-                        else -> series.itemCount
-                    }
-                    val ratio = if (section == HomeSection.TV) CHANNEL_RATIO else POSTER_RATIO
-                    Shelf(stringResource(R.string.home_rows_results), itemCount(section, count), padding, null, if (section == HomeSection.TV) sizes.channel else sizes.poster, ratio) {
-                        when (section) {
-                            HomeSection.TV -> items(channels.itemCount, key = channels.itemKey { it.id }) { index ->
-                                channels[index]?.let { ShelfChannel(it, sizes.channel, favoriteKeys, now, lastOpened, actions) }
-                            }
-                            HomeSection.MOVIES -> items(movies.itemCount, key = movies.itemKey { it.id }) { index ->
-                                movies[index]?.let { MoviePoster(it, sizes.poster, favoriteKeys, billboard, lastOpened, actions) }
-                            }
-                            else -> items(series.itemCount, key = series.itemKey { it.itemKey }) { index ->
-                                series[index]?.let { SeriesPoster(it, sizes.poster, favoriteKeys, billboard, lastOpened, actions) }
-                            }
-                        }
-                    }
+                    SearchResults(section, channels, movies, series, sizes, padding, content, lastOpened, actions)
                 }
                 return@LazyColumn
             }
-            when (section) {
-                HomeSection.TV -> {
-                    channelShelf(R.string.home_favorites, favoriteChannels, Category.Favorites, sizes, padding, favoriteKeys, now, lastOpened, actions)
-                    channelShelf(R.string.home_recent, recentChannels, Category.Recent, sizes, padding, favoriteKeys, now, lastOpened, actions)
-                }
-                HomeSection.MOVIES, HomeSection.SERIES -> {
-                    if (continueItems.isNotEmpty()) {
-                        item(key = "continue") {
-                            Shelf(stringResource(R.string.home_continue), null, padding, { actions.onCategory(Category.ContinueWatching) }, sizes.poster, POSTER_RATIO) {
-                                items(continueItems, key = { it.itemKey }) { item -> ContinueCard(item, sizes.poster, billboard, lastOpened, actions) }
-                            }
-                        }
-                    }
-                    if (section == HomeSection.MOVIES && favoriteMovies.isNotEmpty()) {
-                        item(key = "favorites") {
-                            Shelf(stringResource(R.string.home_favorites), null, padding, { actions.onCategory(Category.Favorites) }, sizes.poster, POSTER_RATIO) {
-                                items(favoriteMovies, key = { it.itemKey }) { movie -> MoviePoster(movie, sizes.poster, favoriteKeys, billboard, lastOpened, actions) }
-                            }
-                        }
-                    }
-                    if (section == HomeSection.SERIES && favoriteSeries.isNotEmpty()) {
-                        item(key = "favorites") {
-                            Shelf(stringResource(R.string.home_favorites), null, padding, { actions.onCategory(Category.Favorites) }, sizes.poster, POSTER_RATIO) {
-                                items(favoriteSeries, key = { it.itemKey }) { show -> SeriesPoster(show, sizes.poster, favoriteKeys, billboard, lastOpened, actions) }
-                            }
-                        }
-                    }
-                }
-                HomeSection.GUIDE, HomeSection.FOOTBALL -> Unit
+            shelfItems(shelves, content, sizes, padding, lastOpened, actions, ShelfStyle.STREAMING)
+        }
+    }
+}
+
+/** Résultats de la recherche, sur une rangée. */
+@Composable
+internal fun SearchResults(
+    section: HomeSection,
+    channels: LazyPagingItems<ChannelListRow>,
+    movies: LazyPagingItems<MovieRow>,
+    series: LazyPagingItems<SeriesRow>,
+    sizes: ShelfSizes,
+    padding: Dp,
+    content: ShelfContent,
+    lastOpened: MutableState<OpenedItem?>,
+    actions: HomeActions,
+    style: ShelfStyle = ShelfStyle.STREAMING,
+) {
+    val count = when (section) {
+        HomeSection.TV -> channels.itemCount
+        HomeSection.MOVIES -> movies.itemCount
+        else -> series.itemCount
+    }
+    val tv = section == HomeSection.TV
+    Shelf(
+        title = stringResource(R.string.home_rows_results),
+        count = itemCount(section, count),
+        padding = padding,
+        onSeeAll = null,
+        itemWidth = if (tv) sizes.channel else sizes.poster,
+        imageRatio = if (tv) CHANNEL_RATIO else POSTER_RATIO,
+        rowKey = "results",
+        itemCount = count,
+        lastOpened = lastOpened,
+        style = style,
+    ) {
+        when (section) {
+            HomeSection.TV -> items(channels.itemCount, key = channels.itemKey { it.id }) { index ->
+                channels[index]?.let { ShelfChannel(it, index, "results", sizes.channel, content, lastOpened, actions, style) }
             }
-            items(groups, key = { "group:" + (it.title ?: NO_GROUP_KEY) }) { group ->
-                val title = group.title.orEmpty()
-                val name = group.title ?: stringResource(R.string.channels_no_group)
-                val seeAll = { actions.onCategory(Category.Group(title)) }
-                val count = itemCount(section, group.count)
-                val version = rowVersion(section, group, nowBucket)
-                when (section) {
-                    HomeSection.TV -> {
-                        // Rangée déjà lue : affichée tout de suite, puis relue si elle a changé.
-                        val channels by produceState(rows.cached<ChannelListRow>(section, title), title, version) {
-                            value = loadSafely { rows.fresh<ChannelListRow>(section, title, version) } ?: value.orEmpty()
-                        }
-                        Shelf(name, count, padding, seeAll, sizes.channel, CHANNEL_RATIO, loading = channels == null) {
-                            items(channels.orEmpty(), key = { it.id }) { channel -> ShelfChannel(channel, sizes.channel, favoriteKeys, now, lastOpened, actions) }
-                        }
-                    }
-                    HomeSection.MOVIES -> {
-                        val movies by produceState(rows.cached<MovieRow>(section, title), title, version) {
-                            value = loadSafely { rows.fresh<MovieRow>(section, title, version) } ?: value.orEmpty()
-                        }
-                        Shelf(name, count, padding, seeAll, sizes.poster, POSTER_RATIO, loading = movies == null) {
-                            items(movies.orEmpty(), key = { it.id }) { movie -> MoviePoster(movie, sizes.poster, favoriteKeys, billboard, lastOpened, actions) }
-                        }
-                    }
-                    else -> {
-                        val series by produceState(rows.cached<SeriesRow>(section, title), title, version) {
-                            value = loadSafely { rows.fresh<SeriesRow>(section, title, version) } ?: value.orEmpty()
-                        }
-                        Shelf(name, count, padding, seeAll, sizes.poster, POSTER_RATIO, loading = series == null) {
-                            items(series.orEmpty(), key = { it.id }) { show -> SeriesPoster(show, sizes.poster, favoriteKeys, billboard, lastOpened, actions) }
-                        }
-                    }
-                }
+            HomeSection.MOVIES -> items(movies.itemCount, key = movies.itemKey { it.id }) { index ->
+                movies[index]?.let { ShelfPoster(it.toPoster(), index, "results", sizes.poster, content.favoriteKeys, lastOpened, actions, style) }
+            }
+            else -> items(series.itemCount, key = series.itemKey { it.itemKey }) { index ->
+                series[index]?.let { ShelfPoster(it.toPoster(), index, "results", sizes.poster, content.favoriteKeys, lastOpened, actions, style) }
             }
         }
     }
 }
 
+/** Une rangée de l'accueil : clé (gardée au retour), titre et contenu. */
+internal sealed interface ShelfSpec {
+    val key: String
+
+    data class Channels(override val key: String, val title: Int, val channels: List<ChannelListRow>, val category: Category) : ShelfSpec
+    data class Posters(override val key: String, val title: Int, val items: List<PosterItem>, val category: Category?, val from: String? = null) : ShelfSpec
+    data class Continue(override val key: String, val items: List<ProgressEntity>) : ShelfSpec
+    data class Group(override val key: String, val group: GroupRow) : ShelfSpec
+}
+
+/** Rangées dans l'ordre de l'écran ; celles qui sont vides n'apparaissent pas. */
+internal fun shelfList(content: ShelfContent): List<ShelfSpec> = buildList {
+    when (content.section) {
+        HomeSection.TV -> {
+            if (content.favoriteChannels.isNotEmpty()) add(ShelfSpec.Channels("favorites", R.string.home_favorites, content.favoriteChannels, Category.Favorites))
+            if (content.recentChannels.isNotEmpty()) add(ShelfSpec.Channels("recent", R.string.home_recent, content.recentChannels, Category.Recent))
+        }
+        HomeSection.MOVIES, HomeSection.SERIES -> {
+            if (content.continueItems.isNotEmpty()) add(ShelfSpec.Continue("continue", content.continueItems))
+            val discover = content.discover
+            if (discover.trending.isNotEmpty()) add(ShelfSpec.Posters("trending", R.string.home_rows_trending, discover.trending, null))
+            if (discover.newest.isNotEmpty()) add(ShelfSpec.Posters("newest", R.string.home_rows_newest, discover.newest, null))
+            if (discover.recommended.isNotEmpty()) add(ShelfSpec.Posters("recommended", R.string.home_rows_recommended, discover.recommended, null, discover.recommendedFrom))
+            val favorites = if (content.section == HomeSection.MOVIES) content.favoriteMovies.map { it.toPoster() } else content.favoriteSeries.map { it.toPoster() }
+            if (favorites.isNotEmpty()) add(ShelfSpec.Posters("favorites", R.string.home_favorites, favorites, Category.Favorites))
+        }
+        HomeSection.GUIDE, HomeSection.FOOTBALL -> Unit
+    }
+    content.groups.forEach { add(ShelfSpec.Group("group:" + (it.title ?: NO_GROUP_KEY), it)) }
+}
+
+/** Présentation des rangées : Streaming (vignettes serrées) ou Cinéma Premium (grandes affiches). */
+internal enum class ShelfStyle { STREAMING, PREMIUM }
+
+internal fun LazyListScope.shelfItems(
+    shelves: List<ShelfSpec>,
+    content: ShelfContent,
+    sizes: ShelfSizes,
+    padding: Dp,
+    lastOpened: MutableState<OpenedItem?>,
+    actions: HomeActions,
+    style: ShelfStyle,
+) {
+    items(shelves, key = { it.key }) { spec ->
+        when (spec) {
+            is ShelfSpec.Channels -> Shelf(
+                title = stringResource(spec.title),
+                count = null,
+                padding = padding,
+                onSeeAll = { actions.onCategory(spec.category) },
+                itemWidth = sizes.channel,
+                imageRatio = CHANNEL_RATIO,
+                rowKey = spec.key,
+                itemCount = spec.channels.size,
+                lastOpened = lastOpened,
+                style = style,
+            ) {
+                itemsIndexed(spec.channels, key = { _, it -> it.itemKey }) { index, channel ->
+                    ShelfChannel(channel, index, spec.key, sizes.channel, content, lastOpened, actions, style)
+                }
+            }
+            is ShelfSpec.Posters -> Shelf(
+                title = spec.from?.let { stringResource(R.string.home_rows_because, it) } ?: stringResource(spec.title),
+                count = null,
+                padding = padding,
+                onSeeAll = spec.category?.let { category -> { actions.onCategory(category) } },
+                itemWidth = sizes.poster,
+                imageRatio = POSTER_RATIO,
+                rowKey = spec.key,
+                itemCount = spec.items.size,
+                lastOpened = lastOpened,
+                style = style,
+            ) {
+                itemsIndexed(spec.items, key = { _, it -> it.itemKey }) { index, item ->
+                    ShelfPoster(item, index, spec.key, sizes.poster, content.favoriteKeys, lastOpened, actions, style)
+                }
+            }
+            is ShelfSpec.Continue -> Shelf(
+                title = stringResource(R.string.home_continue),
+                count = null,
+                padding = padding,
+                onSeeAll = { actions.onCategory(Category.ContinueWatching) },
+                itemWidth = sizes.poster,
+                imageRatio = POSTER_RATIO,
+                rowKey = spec.key,
+                itemCount = spec.items.size,
+                lastOpened = lastOpened,
+                style = style,
+            ) {
+                itemsIndexed(spec.items, key = { _, it -> it.itemKey }) { index, item ->
+                    ContinueCard(item, index, spec.key, sizes.poster, lastOpened, actions, style)
+                }
+            }
+            is ShelfSpec.Group -> GroupShelf(spec, content, sizes, padding, lastOpened, actions, style)
+        }
+    }
+}
+
+@Composable
+private fun GroupShelf(
+    spec: ShelfSpec.Group,
+    content: ShelfContent,
+    sizes: ShelfSizes,
+    padding: Dp,
+    lastOpened: MutableState<OpenedItem?>,
+    actions: HomeActions,
+    style: ShelfStyle,
+) {
+    val section = content.section
+    val group = spec.group
+    val title = group.title.orEmpty()
+    val name = group.title ?: stringResource(R.string.channels_no_group)
+    val seeAll = { actions.onCategory(Category.Group(title)) }
+    val count = itemCount(section, group.count)
+    val version = rowVersion(section, group, content.now / ROW_REFRESH_MILLIS)
+    if (section == HomeSection.TV) {
+        // Rangée déjà lue : affichée tout de suite, puis relue si elle a changé.
+        val channels by produceState(content.rows.cached<ChannelListRow>(section, title), title, version) {
+            value = loadSafely { content.rows.fresh<ChannelListRow>(section, title, version) } ?: value.orEmpty()
+        }
+        val list = channels.orEmpty()
+        Shelf(name, count, padding, seeAll, sizes.channel, CHANNEL_RATIO, spec.key, list.size, lastOpened, loading = channels == null, style = style) {
+            itemsIndexed(list, key = { _, it -> it.id }) { index, channel -> ShelfChannel(channel, index, spec.key, sizes.channel, content, lastOpened, actions, style) }
+        }
+    } else {
+        val posters by produceState(content.rows.cachedPosters(section, title), title, version) {
+            value = loadSafely { content.rows.freshPosters(section, title, version) } ?: value.orEmpty()
+        }
+        val list = posters.orEmpty()
+        Shelf(name, count, padding, seeAll, sizes.poster, POSTER_RATIO, spec.key, list.size, lastOpened, loading = posters == null, style = style) {
+            itemsIndexed(list, key = { _, it -> it.itemKey }) { index, item -> ShelfPoster(item, index, spec.key, sizes.poster, content.favoriteKeys, lastOpened, actions, style) }
+        }
+    }
+}
+
+/** Films ou séries d'une rangée de catégorie, en affiches. */
+private fun HomeRows.cachedPosters(section: HomeSection, group: String): List<PosterItem>? = when (section) {
+    HomeSection.MOVIES -> cached<MovieRow>(section, group)?.map { it.toPoster() }
+    else -> cached<SeriesRow>(section, group)?.map { it.toPoster() }
+}
+
+private suspend fun HomeRows.freshPosters(section: HomeSection, group: String, version: String): List<PosterItem> = when (section) {
+    HomeSection.MOVIES -> fresh<MovieRow>(section, group, version).map { it.toPoster() }
+    else -> fresh<SeriesRow>(section, group, version).map { it.toPoster() }
+}
+
+/**
+ * Toutes les rangées sont lues d'avance, dans l'ordre de l'écran : la télécommande ne peut descendre
+ * que sur une rangée déjà remplie (une rangée en chargement n'a rien à sélectionner, « bas » resterait bloqué).
+ */
+@Composable
+internal fun PreloadRows(content: ShelfContent) {
+    val nowBucket = content.now / ROW_REFRESH_MILLIS
+    LaunchedEffect(content.section, content.groups, nowBucket) {
+        for (group in content.groups) {
+            loadSafely { content.rows.fresh<Any>(content.section, group.title.orEmpty(), rowVersion(content.section, group, nowBucket)) }
+        }
+    }
+}
+
 /** Largeur des vignettes des rangées : sur la TV, six chaînes et huit affiches par rangée. */
-private data class ShelfSizes(val channel: Dp, val poster: Dp) {
+internal data class ShelfSizes(val channel: Dp, val poster: Dp) {
     companion object {
         fun of(window: WindowInfo) = if (window.isWide) ShelfSizes(channel = 148.dp, poster = 104.dp) else ShelfSizes(channel = 156.dp, poster = 104.dp)
+
+        /** Cinéma Premium : affiches plus grandes, moins nombreuses. */
+        fun premium(window: WindowInfo) = if (window.isWide) ShelfSizes(channel = 200.dp, poster = 116.dp) else ShelfSizes(channel = 180.dp, poster = 116.dp)
     }
 }
 
@@ -273,31 +420,12 @@ private suspend fun <T> loadSafely(block: suspend () -> T): T? = try {
     null
 }
 
-private fun LazyListScope.channelShelf(
-    title: Int,
-    channels: List<ChannelListRow>,
-    category: Category,
-    sizes: ShelfSizes,
-    padding: Dp,
-    favoriteKeys: Set<String>,
-    now: Long,
-    lastOpened: MutableState<String?>,
-    actions: HomeActions,
-) {
-    if (channels.isEmpty()) return
-    item(key = "shelf:$title") {
-        Shelf(stringResource(title), null, padding, { actions.onCategory(category) }, sizes.channel, CHANNEL_RATIO) {
-            items(channels, key = { it.itemKey }) { channel -> ShelfChannel(channel, sizes.channel, favoriteKeys, now, lastOpened, actions) }
-        }
-    }
-}
-
 /**
- * Rangée : titre, nombre d'éléments et défilement horizontal, terminé par « Tout voir ».
- * Pendant le chargement, des emplacements vides gardent la hauteur de la rangée.
+ * Rangée : titre, nombre d'éléments et défilement horizontal, terminé par « Tout voir ». Sa place
+ * est gardée au retour (lecteur, fiche). Pendant le chargement, des emplacements vides gardent sa hauteur.
  */
 @Composable
-private fun Shelf(
+internal fun Shelf(
     title: String,
     count: String?,
     padding: Dp,
@@ -305,20 +433,36 @@ private fun Shelf(
     onSeeAll: (() -> Unit)?,
     itemWidth: Dp,
     imageRatio: Float,
+    rowKey: String,
+    itemCount: Int,
+    lastOpened: MutableState<OpenedItem?>,
     loading: Boolean = false,
+    style: ShelfStyle = ShelfStyle.STREAMING,
     content: LazyListScope.() -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    val rowState = rememberSaveable(rowKey, saver = LazyListState.Saver) { LazyListState() }
+    RestoreScroll(rowState, lastOpened, itemCount, row = rowKey)
+    val premium = style == ShelfStyle.PREMIUM
+    Column(verticalArrangement = Arrangement.spacedBy(if (premium) 0.dp else 2.dp)) {
         Row(Modifier.padding(horizontal = padding), verticalAlignment = Alignment.Bottom) {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+            Text(
+                title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = if (premium) FontWeight.Medium else FontWeight.SemiBold,
+                color = if (premium) MaterialTheme.colorScheme.onBackground.copy(alpha = 0.9f) else MaterialTheme.colorScheme.onBackground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
             count?.let {
                 Text("  ·  $it", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
             }
         }
         LazyRow(
+            state = rowState,
             // Marge verticale : les vignettes grossissent sous le focus.
-            contentPadding = PaddingValues(horizontal = padding, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(horizontal = padding, vertical = if (premium) 12.dp else 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(if (premium) 18.dp else 12.dp),
         ) {
             if (loading) {
                 items(PLACEHOLDERS) {
@@ -353,7 +497,7 @@ private fun SeeAllCard(onClick: () -> Unit, width: Dp, imageRatio: Float) {
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(28.dp))
             Spacer(Modifier.height(8.dp))
             Text(stringResource(R.string.home_rows_see_all), style = MaterialTheme.typography.labelLarge, maxLines = 1)
         }
@@ -361,94 +505,94 @@ private fun SeeAllCard(onClick: () -> Unit, width: Dp, imageRatio: Float) {
 }
 
 @Composable
-private fun ShelfChannel(
+internal fun ShelfChannel(
     channel: ChannelListRow,
+    index: Int,
+    row: String,
     width: Dp,
-    favoriteKeys: Set<String>,
-    now: Long,
-    lastOpened: MutableState<String?>,
+    content: ShelfContent,
+    lastOpened: MutableState<OpenedItem?>,
     actions: HomeActions,
+    style: ShelfStyle = ShelfStyle.STREAMING,
 ) {
-    ChannelCard(
-        channel = channel,
-        now = now,
-        isFavorite = channel.itemKey in favoriteKeys,
-        onClick = {
-            lastOpened.value = channel.itemKey
-            actions.onPlayChannel(channel.id)
-        },
-        onLongClick = { actions.onToggleFavorite(ContentKind.LIVE, channel.itemKey, channel.title, channel.logoUrl) },
-        modifier = Modifier
-            .width(width)
-            .restoreFocus(channel.itemKey, lastOpened)
-            .onFocusChanged { if (it.isFocused) actions.onChannelFocus(channel) },
-        size = CardSize.of(width),
-    )
+    val modifier = Modifier
+        .width(width)
+        .restoreFocus(channel.itemKey, lastOpened)
+        .onFocusChanged { if (it.isFocused) actions.onChannelFocus(channel) }
+    val onClick = {
+        lastOpened.value = OpenedItem(channel.itemKey, index, row)
+        actions.onPlayChannel(channel.id)
+    }
+    val onLongClick = { actions.onToggleFavorite(ContentKind.LIVE, channel.itemKey, channel.title, channel.logoUrl) }
+    if (style == ShelfStyle.PREMIUM) {
+        PremiumChannelTile(channel, content.now, channel.itemKey in content.favoriteKeys, onClick, onLongClick, modifier)
+    } else {
+        ChannelCard(
+            channel = channel,
+            now = content.now,
+            isFavorite = channel.itemKey in content.favoriteKeys,
+            onClick = onClick,
+            onLongClick = onLongClick,
+            modifier = modifier,
+            size = CardSize.of(width),
+        )
+    }
 }
 
+/** Sous-titre d'une affiche : année d'un film, nombre d'épisodes d'une série. */
 @Composable
-private fun MoviePoster(
-    movie: MovieRow,
-    width: Dp,
-    favoriteKeys: Set<String>,
-    billboard: MutableState<Billboard?>,
-    lastOpened: MutableState<String?>,
-    actions: HomeActions,
-) {
-    val detail = movie.year?.toString()
-    PosterCard(
-        title = movie.title,
-        subtitle = detail,
-        imageUrl = movie.logoUrl,
-        isFavorite = movie.itemKey in favoriteKeys,
-        onClick = {
-            lastOpened.value = movie.itemKey
-            actions.onOpenMovie(movie.id)
-        },
-        onLongClick = { actions.onToggleFavorite(ContentKind.MOVIE, movie.itemKey, movie.title, movie.logoUrl) },
-        modifier = Modifier
-            .width(width)
-            .restoreFocus(movie.itemKey, lastOpened)
-            .onFocusChanged { if (it.isFocused) billboard.value = Billboard(movie.title, detail, movie.logoUrl) },
-        compact = width < COMPACT_POSTER_WIDTH,
-    )
-}
+internal fun posterDetail(item: PosterItem): String? =
+    if (item.kind == ContentKind.SERIES && item.episodeCount > 0) {
+        LocalContext.current.resources.getQuantityString(R.plurals.episodes_count, item.episodeCount, item.episodeCount)
+    } else {
+        item.year?.toString()
+    }
 
 @Composable
-private fun SeriesPoster(
-    show: SeriesRow,
+internal fun ShelfPoster(
+    item: PosterItem,
+    index: Int,
+    row: String,
     width: Dp,
     favoriteKeys: Set<String>,
-    billboard: MutableState<Billboard?>,
-    lastOpened: MutableState<String?>,
+    lastOpened: MutableState<OpenedItem?>,
     actions: HomeActions,
+    style: ShelfStyle = ShelfStyle.STREAMING,
 ) {
-    val detail = LocalContext.current.resources.getQuantityString(R.plurals.episodes_count, show.episodeCount, show.episodeCount)
-    PosterCard(
-        title = show.title,
-        subtitle = detail,
-        imageUrl = show.logoUrl,
-        isFavorite = show.itemKey in favoriteKeys,
-        onClick = {
-            lastOpened.value = show.itemKey
-            actions.onOpenSeries(show.id)
-        },
-        onLongClick = { actions.onToggleFavorite(ContentKind.SERIES, show.itemKey, show.title, show.logoUrl) },
-        modifier = Modifier
-            .width(width)
-            .restoreFocus(show.itemKey, lastOpened)
-            .onFocusChanged { if (it.isFocused) billboard.value = Billboard(show.title, detail, show.logoUrl) },
-        compact = width < COMPACT_POSTER_WIDTH,
-    )
+    val onClick = {
+        lastOpened.value = OpenedItem(item.itemKey, index, row)
+        if (item.kind == ContentKind.SERIES) actions.onOpenSeries(item.id) else actions.onOpenMovie(item.id)
+    }
+    val onLongClick = { actions.onToggleFavorite(item.kind, item.itemKey, item.title, item.imageUrl) }
+    val modifier = Modifier
+        .width(width)
+        .restoreFocus(item.itemKey, lastOpened)
+        .onFocusChanged { if (it.isFocused) actions.onPosterFocus(item) }
+    if (style == ShelfStyle.PREMIUM) {
+        PremiumPoster(item.title, item.imageUrl, item.itemKey in favoriteKeys, onClick, onLongClick, modifier)
+    } else {
+        PosterCard(
+            title = item.title,
+            subtitle = posterDetail(item),
+            imageUrl = item.imageUrl,
+            isFavorite = item.itemKey in favoriteKeys,
+            onClick = onClick,
+            onLongClick = onLongClick,
+            modifier = modifier,
+            compact = width < COMPACT_POSTER_WIDTH,
+        )
+    }
 }
 
 @Composable
 private fun ContinueCard(
     item: ProgressEntity,
+    index: Int,
+    row: String,
     width: Dp,
-    billboard: MutableState<Billboard?>,
-    lastOpened: MutableState<String?>,
+    lastOpened: MutableState<OpenedItem?>,
     actions: HomeActions,
+    style: ShelfStyle,
 ) {
     val remaining = (item.durationMs - item.positionMs).coerceAtLeast(0)
     val detail = when {
@@ -458,29 +602,38 @@ private fun ContinueCard(
         item.durationMs > 0 -> stringResource(R.string.home_continue_remaining, formatDuration(remaining))
         else -> null
     }
-    PosterCard(
-        title = item.title,
-        subtitle = detail,
-        imageUrl = item.logoUrl,
-        isFavorite = false,
-        onClick = {
-            lastOpened.value = item.itemKey
-            actions.onResume(item.channelId)
-        },
-        onLongClick = { actions.onClearProgress(item.itemKey) },
-        modifier = Modifier
-            .width(width)
-            .restoreFocus(item.itemKey, lastOpened)
-            .onFocusChanged { if (it.isFocused) billboard.value = Billboard(item.title, detail, item.logoUrl) },
-        progress = if (item.durationMs > 0) item.positionMs.toFloat() / item.durationMs else null,
-        compact = width < COMPACT_POSTER_WIDTH,
-    )
+    val kind = if (item.episodeLabel != null) ContentKind.SERIES else ContentKind.MOVIE
+    val poster = PosterItem(item.channelId, kind, item.itemKey, item.title, null, item.logoUrl)
+    val onClick = {
+        lastOpened.value = OpenedItem(item.itemKey, index, row)
+        actions.onResume(item.channelId)
+    }
+    val modifier = Modifier
+        .width(width)
+        .restoreFocus(item.itemKey, lastOpened)
+        .onFocusChanged { if (it.isFocused) actions.onPosterFocus(poster) }
+    val progress = if (item.durationMs > 0) item.positionMs.toFloat() / item.durationMs else null
+    if (style == ShelfStyle.PREMIUM) {
+        PremiumPoster(item.title, item.logoUrl, false, onClick, { actions.onClearProgress(item.itemKey) }, modifier, progress = progress, detail = detail)
+    } else {
+        PosterCard(
+            title = item.title,
+            subtitle = detail,
+            imageUrl = item.logoUrl,
+            isFavorite = false,
+            onClick = onClick,
+            onLongClick = { actions.onClearProgress(item.itemKey) },
+            modifier = modifier,
+            progress = progress,
+            compact = width < COMPACT_POSTER_WIDTH,
+        )
+    }
 }
 
 /** Grande affiche d'une chaîne : direct à droite, fondu dans le fond, programme en cours à gauche. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ChannelBillboard(preview: ChannelPreview?, player: Player?, now: Long, padding: Dp, compact: Boolean = false) {
+internal fun ChannelBillboard(preview: ChannelPreview?, player: Player?, now: Long, padding: Dp, compact: Boolean = false) {
     val background = MaterialTheme.colorScheme.background
     Box(Modifier.fillMaxSize()) {
         Box(
@@ -501,106 +654,121 @@ private fun ChannelBillboard(preview: ChannelPreview?, player: Player?, now: Lon
                 return@Column
             }
             val channel = preview.channel
-            if (compact) {
-                // Affiche réduite : chaîne, programme en cours et progression.
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatusPill(stringResource(R.string.player_live), NexTvColors.Live)
-                    channel.channelNumber?.let { Badge(it) }
-                    Text(channel.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.weight(1f, fill = false).basicMarquee())
-                }
-                preview.current?.let { current ->
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        ScrollingText(current.title, MaterialTheme.typography.titleMedium, Modifier.weight(1f, fill = false))
-                        Text("${shortTime(current.startMillis)} – ${shortTime(current.stopMillis)}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    LiveProgress(current.startMillis, current.stopMillis, now, Modifier.width(320.dp))
-                }
-                return@Column
-            }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 StatusPill(stringResource(R.string.player_live), NexTvColors.Live)
                 channel.channelNumber?.let { Badge(it) }
-                qualityLabel(channel.quality)?.let { Badge(it, color = NexTvColors.Primary) }
+                Text(
+                    channel.title,
+                    style = if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f, fill = false).basicMarquee(),
+                )
+                if (!compact) qualityLabel(channel.quality)?.let { Badge(it, color = NexTvColors.Primary) }
             }
-            Text(
-                channel.title,
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                modifier = Modifier.basicMarquee(),
-            )
             val current = preview.current
             if (current == null) {
                 Text(stringResource(R.string.channels_no_epg), style = MaterialTheme.typography.bodyLarge, color = NexTvColors.TextMuted)
-            } else {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ScrollingText(current.title, MaterialTheme.typography.titleLarge, Modifier.weight(1f, fill = false))
-                    Text("${shortTime(current.startMillis)} – ${shortTime(current.stopMillis)}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                LiveProgress(current.startMillis, current.stopMillis, now, Modifier.width(320.dp))
-                current.description?.let {
-                    Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
+                return@Column
             }
-            preview.next?.let { next ->
-                Text(
-                    stringResource(R.string.preview_next, shortTime(next.startMillis), next.title),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+            ScrollingText(current.title, if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.headlineSmall, Modifier.fillMaxWidth())
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("${shortTime(current.startMillis)} – ${shortTime(current.stopMillis)}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                LiveProgress(current.startMillis, current.stopMillis, now, Modifier.width(260.dp))
+            }
+            if (!compact) {
+                current.description?.let {
+                    Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+                preview.next?.let { next ->
+                    Text(
+                        stringResource(R.string.preview_next, shortTime(next.startMillis), next.title),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
     }
 }
 
-/** Grande affiche d'un film ou d'une série : visuel à droite, titre et détail à gauche. */
+/**
+ * Bannière d'un film ou d'une série : visuel TMDB à droite fondu dans le fond, titre, année,
+ * genres, note et résumé à gauche. [compact] : titre et détails seulement.
+ */
 @Composable
-private fun PosterBillboard(section: HomeSection, item: Billboard?, padding: Dp) {
+internal fun SpotlightBillboard(section: HomeSection, spotlight: Spotlight?, padding: Dp, compact: Boolean = false) {
     val background = MaterialTheme.colorScheme.background
-    Box(Modifier.fillMaxWidth().height(BILLBOARD_HEIGHT)) {
-        if (item?.imageUrl != null) {
-            Box(Modifier.align(Alignment.CenterEnd).fillMaxHeight().fillMaxWidth(0.62f)) {
-                AsyncImage(
-                    model = item.imageUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    alignment = Alignment.TopCenter,
-                    modifier = Modifier.fillMaxSize(),
-                )
+    Box(Modifier.fillMaxSize()) {
+        val image = spotlight?.backdropUrl ?: spotlight?.item?.imageUrl
+        Crossfade(image, animationSpec = tween(450), label = "backdrop", modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight().fillMaxWidth(0.66f)) { url ->
+            Box(Modifier.fillMaxSize()) {
+                if (url != null) {
+                    AsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Crop, alignment = Alignment.TopCenter, modifier = Modifier.fillMaxSize())
+                } else {
+                    Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color.Transparent, MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)))))
+                }
                 BillboardFade(background)
             }
-        } else {
-            // Sans visuel : halo aux couleurs de l'application.
-            Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color.Transparent, MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)))))
         }
         Column(
             Modifier.align(Alignment.CenterStart).fillMaxWidth(0.5f).padding(start = padding, end = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
+            if (!compact) {
+                Text(
+                    sectionLabel(section).uppercase(),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
             Text(
-                sectionLabel(section).uppercase(),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
+                spotlight?.item?.title ?: allLabel(section),
+                style = if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.displaySmall,
                 fontWeight = FontWeight.Bold,
-            )
-            Text(
-                item?.title ?: allLabel(section),
-                style = MaterialTheme.typography.displaySmall,
-                fontWeight = FontWeight.Bold,
-                maxLines = 2,
+                maxLines = if (compact) 1 else 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            item?.detail?.let { Text(it, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            Text(stringResource(R.string.billboard_hint_poster), style = MaterialTheme.typography.bodyMedium, color = NexTvColors.TextMuted)
+            spotlight?.let { MetaLine(it) }
+            if (!compact) {
+                val overview = spotlight?.overview
+                if (overview != null) {
+                    Text(overview, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                } else {
+                    Text(stringResource(R.string.billboard_hint_poster), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+}
+
+/** « 2024 · Action, Aventure · 2 h 05 · ★ 7,8 ». */
+@Composable
+internal fun MetaLine(spotlight: Spotlight, color: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
+    val details = spotlight.details
+    val parts = listOfNotNull(
+        (details?.year ?: spotlight.item.year)?.toString(),
+        details?.genres?.take(2)?.joinToString(", ")?.takeIf { it.isNotEmpty() },
+        details?.runtimeMinutes?.let { formatDuration(it * 60_000L) },
+        details?.seasonCount?.let { LocalContext.current.resources.getQuantityString(R.plurals.seasons_count, it, it) },
+    )
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (parts.isNotEmpty()) Text(parts.joinToString("  ·  "), style = MaterialTheme.typography.labelLarge, color = color, maxLines = 1)
+        spotlight.rating?.let { rating ->
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                Icon(Icons.Filled.Star, contentDescription = null, tint = NexTvColors.Warning, modifier = Modifier.size(16.dp))
+                Text(String.format(Locale.FRENCH, "%.1f", rating), style = MaterialTheme.typography.labelLarge, color = color)
+            }
         }
     }
 }
 
 /** Fondu du visuel vers le fond, à gauche et en bas. */
 @Composable
-private fun BillboardFade(background: Color) {
+internal fun BillboardFade(background: Color) {
     Box(
         Modifier.fillMaxSize().background(
             Brush.horizontalGradient(0f to background, 0.35f to background.copy(alpha = 0.55f), 1f to Color.Transparent),
@@ -609,110 +777,14 @@ private fun BillboardFade(background: Color) {
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.6f to Color.Transparent, 1f to background)))
 }
 
-/**
- * Interface « Box TV » (section TV, écran large) : catégories, liste des chaînes avec leur programme,
- * et grand volet du direct avec le programme en cours et les suivants.
- */
-@Composable
-internal fun BoxTvSection(
-    window: WindowInfo,
-    groups: List<GroupRow>,
-    recentCount: Int,
-    allCount: Int,
-    category: Category,
-    query: String,
-    favoritesCount: Int,
-    title: String,
-    count: String,
-    preview: ChannelPreview?,
-    previewPlayer: Player?,
-    now: Long,
-    actions: HomeActions,
-    modifier: Modifier = Modifier,
-    action: (@Composable () -> Unit)? = null,
-    list: @Composable () -> Unit,
-) {
-    Row(modifier.fillMaxSize()) {
-        CategoryRail(HomeSection.TV, window, groups, recentCount, allCount, category, query, favoritesCount, null, actions, Modifier.width(220.dp), dense = true)
-        Column(Modifier.weight(1f).fillMaxHeight()) {
-            Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(count, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                action?.invoke()
-            }
-            Box(Modifier.weight(1f)) { list() }
-        }
-        BoxLivePane(preview, previewPlayer, now, Modifier.weight(0.7f).fillMaxHeight())
-    }
-}
+internal fun shortTime(millis: Long): String = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(millis))
 
-/** Volet du direct : vidéo, chaîne, programme en cours (description complète) puis les suivants. */
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun BoxLivePane(preview: ChannelPreview?, player: Player?, now: Long, modifier: Modifier) {
-    Column(
-        modifier
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .padding(horizontal = 20.dp, vertical = 14.dp)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Box(
-            Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(MaterialTheme.shapes.large).background(Color.Black),
-            contentAlignment = Alignment.Center,
-        ) {
-            preview?.channel?.let { ChannelLogo(it.logoUrl, it.title, Modifier.fillMaxSize(0.4f), monogramSize = 30.dp) }
-            if (player != null) PreviewVideo(player, Modifier.fillMaxSize())
-        }
-        if (preview == null) {
-            Text(stringResource(R.string.box_hint), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            return@Column
-        }
-        val channel = preview.channel
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            channel.channelNumber?.let { Text(it, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold) }
-            Text(channel.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.weight(1f, fill = false).basicMarquee())
-            qualityLabel(channel.quality)?.let { Badge(it, color = NexTvColors.Primary) }
-        }
-        Text(stringResource(R.string.box_now).uppercase(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-        val current = preview.current
-        if (current == null) {
-            Text(stringResource(R.string.channels_no_epg), style = MaterialTheme.typography.bodyLarge, color = NexTvColors.TextMuted)
-        } else {
-            Text(current.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("${shortTime(current.startMillis)} – ${shortTime(current.stopMillis)}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                LiveProgress(current.startMillis, current.stopMillis, now, Modifier.weight(1f))
-            }
-            current.description?.let {
-                Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 5, overflow = TextOverflow.Ellipsis)
-            }
-        }
-        val following = listOfNotNull(preview.next) + preview.later
-        if (following.isNotEmpty()) {
-            Text(stringResource(R.string.box_later).uppercase(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-            following.take(4).forEach { programme -> UpcomingLine(programme) }
-        }
-    }
-}
-
-@Composable
-private fun UpcomingLine(programme: GuideProgramme) {
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(shortTime(programme.startMillis), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(52.dp))
-        Text(programme.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
-}
-
-private fun shortTime(millis: Long): String = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(millis))
-
-private val BILLBOARD_HEIGHT = 176.dp
+private val STREAMING_BILLBOARD_HEIGHT = 200.dp
 private val COMPACT_BILLBOARD_HEIGHT = 104.dp
+private val SLIM_BILLBOARD_HEIGHT = 72.dp
 private val SEE_ALL_MIN_WIDTH = 104.dp
-private const val CHANNEL_RATIO = 16f / 9f
-private const val POSTER_RATIO = 2f / 3f
+internal const val CHANNEL_RATIO = 16f / 9f
+internal const val POSTER_RATIO = 2f / 3f
 private const val PLACEHOLDERS = 6
 
 /** Rangées de chaînes relues toutes les 5 minutes (programmes en cours). */

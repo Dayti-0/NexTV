@@ -164,7 +164,23 @@ data class PlayerUiState(
     val adMuted: Boolean = false,
     /** Le flux n'a pas de son, ou dans un format que l'appareil ne lit pas. */
     val audioProblem: AudioProblem? = null,
+    /** Film ou épisode : titre, épisode, affiche et épisode suivant (commandes du lecteur). */
+    val vod: VodInfo? = null,
+    /** Épisode terminé : le suivant est proposé (lancé seul après un court décompte). */
+    val upNext: NextEpisode? = null,
 )
+
+/** Film ou épisode en cours : titre (de la série), épisode, année, affiche et épisode suivant. */
+data class VodInfo(
+    val title: String,
+    val subtitle: String?,
+    val year: Int?,
+    val posterUrl: String?,
+    val next: NextEpisode?,
+)
+
+/** Épisode suivant d'une série : « S01E04 », son titre et son affiche. */
+data class NextEpisode(val id: Long, val label: String?, val title: String, val imageUrl: String?)
 
 /** Raison de l'absence de son, affichée sur l'image. */
 enum class AudioProblem {
@@ -299,7 +315,7 @@ class PlayerViewModel(
             delay(MENU_PROGRAMME_DELAY_MILLIS)
             val now = System.currentTimeMillis()
             val upcoming = container.programmeDao.upcoming(row.id, now, limit = 2)
-                .map { GuideProgramme(it.title, it.startMillis, it.stopMillis, it.subtitle, it.description, it.category, it.year) }
+                .map { GuideProgramme(it.title, it.startMillis, it.stopMillis, it.subtitle, it.description, it.category, it.year, it.imageUrl) }
             val current = upcoming.firstOrNull()?.takeIf { it.startMillis <= now }
             MenuProgramme(row, current, upcoming.firstOrNull { it != current })
         }
@@ -747,7 +763,7 @@ class PlayerViewModel(
             mutableProgrammeSheet.value = ProgrammeSheetState(
                 channel = GuideChannel(row.id, row.title.ifBlank { row.name }, row.channelNumber, row.logoUrl, emptyList()),
                 programme = programme?.let {
-                    GuideProgramme(it.title, it.startMillis, it.stopMillis, it.subtitle, it.description, it.category, it.year)
+                    GuideProgramme(it.title, it.startMillis, it.stopMillis, it.subtitle, it.description, it.category, it.year, it.imageUrl)
                 },
             )
         }
@@ -849,6 +865,7 @@ class PlayerViewModel(
             )
         }
         refreshProgrammes()
+        if (!isLive) mutableState.update { it.copy(vod = vodInfo(requested), upNext = null) }
         if (isLive) startPositionMs = 0
         if (!isLive && handleResume(requested)) return
         val firstId = switcher?.current?.channelId ?: startId
@@ -1510,6 +1527,8 @@ class PlayerViewModel(
         if (!state.value.isLive) {
             val player = mutablePlayer.value ?: return
             viewModelScope.launch { saveProgress(positionMs = player.duration, durationMs = player.duration) }
+            // Épisode terminé : le suivant est proposé.
+            state.value.vod?.next?.let { next -> mutableState.update { it.copy(upNext = next) } }
         }
     }
 
@@ -1606,6 +1625,54 @@ class PlayerViewModel(
             return
         }
         container.progress.save(entity)
+    }
+
+    /** Titre et épisode d'un film ou d'un épisode, avec l'épisode suivant de la série. */
+    private suspend fun vodInfo(item: ChannelEntity): VodInfo {
+        if (item.kind != ContentKind.SERIES.name) {
+            return VodInfo(item.title.ifBlank { item.name }, null, item.year, item.logoUrl, next = null)
+        }
+        val episodes = container.channelDao.episodes(item.sourceId, item.itemKey)
+        val next = episodes.getOrNull(episodes.indexOfFirst { it.id == item.id } + 1)?.let { row ->
+            val label = when {
+                row.season != null && row.episode != null -> "S%02dE%02d".format(row.season, row.episode)
+                row.episode != null -> "E%02d".format(row.episode)
+                else -> null
+            }
+            NextEpisode(row.id, label, row.name, row.logoUrl)
+        }
+        val series = item.seriesName ?: item.title.ifBlank { item.name }
+        val label = episodeLabel(item)
+        val episodeTitle = item.name.takeIf { it.isNotBlank() && !it.equals(series, ignoreCase = true) }
+        return VodInfo(series, listOfNotNull(label, episodeTitle).joinToString("  ·  ").ifEmpty { null }, item.year, item.logoUrl, next)
+    }
+
+    /** Film ou épisode : avance ou recul de [deltaMs] dans la vidéo. */
+    fun seekBy(deltaMs: Long) {
+        val player = mutablePlayer.value ?: return
+        if (state.value.isLive) return
+        val duration = player.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
+        player.seekTo((player.currentPosition + deltaMs).coerceIn(0, duration))
+    }
+
+    /** Film ou épisode : position choisie sur la barre de progression. */
+    fun seekTo(positionMs: Long) {
+        val player = mutablePlayer.value ?: return
+        if (state.value.isLive) return
+        player.seekTo(positionMs.coerceAtLeast(0))
+    }
+
+    /** Épisode suivant de la série, depuis son début. */
+    fun playNextEpisode() {
+        val next = state.value.vod?.next ?: state.value.upNext ?: return
+        mutableState.update { it.copy(upNext = null) }
+        viewModelScope.launch { saveProgress() }
+        resumeMode = RESUME_NO
+        load(next.id)
+    }
+
+    fun dismissUpNext() {
+        mutableState.update { it.copy(upNext = null) }
     }
 
     private fun episodeLabel(item: ChannelEntity): String? {

@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -58,6 +59,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
@@ -131,6 +133,8 @@ class HomeActions(
     val onHideCategory: (String) -> Unit = {},
     /** Chaîne sélectionnée dans la grille : aperçu et programme dans le panneau du haut. */
     val onChannelFocus: (ChannelListRow) -> Unit = {},
+    /** Film ou série sélectionné : bannière, volet ou fond plein écran de l'interface. */
+    val onPosterFocus: (PosterItem) -> Unit = {},
 )
 
 @Composable
@@ -166,6 +170,8 @@ fun HomeScreen(
     val previewEnabled by viewModel.previewEnabled.collectAsStateWithLifecycle()
     val preview by viewModel.preview.collectAsStateWithLifecycle()
     val previewPlayer by viewModel.previewPlayer.collectAsStateWithLifecycle()
+    val spotlight by viewModel.spotlight.collectAsStateWithLifecycle()
+    val discover by (if (section == HomeSection.SERIES) viewModel.seriesDiscover else viewModel.movieDiscover).collectAsStateWithLifecycle()
     val channels = viewModel.channels.collectAsLazyPagingItems()
     val movies = viewModel.movies.collectAsLazyPagingItems()
     val series = viewModel.series.collectAsLazyPagingItems()
@@ -186,8 +192,8 @@ fun HomeScreen(
     // maladresse). Déclaré en premier : les autres usages de « Retour » à l'accueil passent avant.
     var confirmExit by remember { mutableStateOf(false) }
     BackHandler { confirmExit = true }
-    // Interface « Streaming » : « Retour » ramène d'une catégorie ou d'une recherche aux rangées.
-    BackHandler(enabled = layout == HomeLayout.STREAMING && section.kind() != null && (category != Category.All || query.isNotEmpty())) {
+    // Interfaces à rangées : « Retour » ramène d'une catégorie ou d'une recherche aux rangées.
+    BackHandler(enabled = layout != HomeLayout.LIVE_CENTER && section.kind() != null && (category != Category.All || query.isNotEmpty())) {
         viewModel.showRows()
     }
     // Déclaré après : pendant la réorganisation des favoris, « Retour » la termine d'abord.
@@ -236,6 +242,7 @@ fun HomeScreen(
             onClearProgress = viewModel::clearProgress,
             onHideCategory = { pendingHide = it },
             onChannelFocus = viewModel::onChannelFocused,
+            onPosterFocus = viewModel::onPosterFocused,
         ),
         guide = { modifier ->
             sourceId?.let {
@@ -256,6 +263,8 @@ fun HomeScreen(
         previewPlayer = previewPlayer,
         layout = layout,
         rows = viewModel.rows,
+        discover = discover,
+        spotlight = spotlight,
     )
 
     if (confirmExit) {
@@ -299,7 +308,7 @@ fun HomeScreen(
     }
 }
 
-/** Accueil : sections TV, Films, Séries et Guide TV. Sans dépendance au ViewModel (captures d'écran). */
+/** Accueil : sections TV, Films, Séries, Guide TV et Foot. Sans dépendance au ViewModel (captures d'écran). */
 @Composable
 fun HomeContent(
     section: HomeSection,
@@ -328,142 +337,261 @@ fun HomeContent(
     channelCount: Int? = null,
     /** Chaînes regardées récemment (catégorie « Récentes »). */
     recentChannels: List<ChannelListRow> = emptyList(),
-    /** Panneau du haut de la section TV (TV et tablette) : chaîne sélectionnée et son aperçu. */
+    /** Aperçu vidéo de la chaîne sélectionnée (réglages). */
     showPreview: Boolean = false,
     preview: ChannelPreview? = null,
     previewPlayer: Player? = null,
-    /** Interface choisie dans les réglages. */
-    layout: HomeLayout = HomeLayout.CLASSIC,
-    /** Contenu des rangées (interface « Streaming »). */
+    /** Interface choisie dans les réglages (Apparence). */
+    layout: HomeLayout = HomeLayout.DEFAULT,
+    /** Contenu des rangées (interfaces Streaming et Cinéma Premium). */
     rows: HomeRows = HomeRows(),
+    /** Tendances, nouveautés et recommandations de la section affichée. */
+    discover: Discover = Discover(),
+    /** Film ou série sélectionné, avec sa fiche TMDB. */
+    spotlight: Spotlight? = null,
 ) {
     val window = rememberWindowInfo()
-    // Dernière vignette ouverte : elle reprend le focus au retour sur l'accueil (télécommande).
-    val lastOpened = rememberSaveable { mutableStateOf<String?>(null) }
+    // Dernier élément ouvert : sa liste revient à sa place et il reprend le focus au retour sur l'accueil.
+    rememberHomeVisit()
+    val lastOpened = rememberLastOpened()
     // Vignette sélectionnée : son nom complet s'affiche en haut à droite (les vignettes le tronquent).
     val focused = remember(section, category) { mutableStateOf<FocusedItem?>(null) }
+    // Onglets sélectionnés : les sections qui s'ouvrent leur laissent le focus.
+    val tabsFocused = remember { mutableStateOf(false) }
+    val player = previewPlayer.takeIf { showPreview }
+    val catalog = section.kind() != null
+    val resumeItems = when (section) {
+        HomeSection.MOVIES -> continueMovies
+        HomeSection.SERIES -> continueSeries
+        else -> null
+    }
+    val shelfContent = ShelfContent(
+        section = section,
+        groups = groups,
+        rows = rows,
+        favoriteChannels = favoriteChannels,
+        recentChannels = recentChannels,
+        favoriteMovies = favoriteMovies,
+        favoriteSeries = favoriteSeries,
+        continueItems = resumeItems.orEmpty(),
+        discover = discover,
+        favoriteKeys = favoriteKeys,
+        now = now,
+    )
+    val topBar: @Composable (Boolean) -> Unit = { minimal ->
+        HomeTopBar(section, sourceName, window, actions, onTabsFocused = { tabsFocused.value = it }, minimal = minimal)
+    }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
-        // Onglets sélectionnés : les sections qui s'ouvrent leur laissent le focus.
-        val tabsFocused = remember { mutableStateOf(false) }
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            HomeTopBar(section, sourceName, window, actions, onTabsFocused = { tabsFocused.value = it })
-            CompositionLocalProvider(LocalTabsFocused provides { tabsFocused.value }) {
-                if (section == HomeSection.GUIDE) {
-                    guide(Modifier.weight(1f))
-                } else if (section == HomeSection.FOOTBALL) {
-                    football(Modifier.weight(1f))
-                } else {
-                    val favoritesCount = when (section) {
-                        HomeSection.TV -> favoriteChannels.size
-                        HomeSection.MOVIES -> favoriteMovies.size
-                        else -> favoriteSeries.size
-                    }
-                    val resumeItems = when (section) {
-                        HomeSection.MOVIES -> continueMovies
-                        HomeSection.SERIES -> continueSeries
-                        else -> null
-                    }
-                    // Une chaîne peut figurer dans plusieurs catégories (une par qualité) : compte à part.
-                    val allCount = channelCount?.takeIf { section == HomeSection.TV } ?: groups.sumOf { it.count }
-                    val body: @Composable (GridLayout) -> Unit = { grid ->
-                        if (resumeItems != null && category == Category.ContinueWatching) {
-                            ContinueBody(resumeItems, grid, window, lastOpened, actions, focused)
-                        } else when (section) {
-                            HomeSection.TV -> TvBody(channels, favoriteChannels, recentChannels, category, favoriteKeys, reorder, now, grid, window, lastOpened, actions, focused)
-                            HomeSection.MOVIES -> MoviesBody(movies, favoriteMovies, category, favoriteKeys, reorder, grid, window, lastOpened, actions, focused)
-                            else -> SeriesBody(series, favoriteSeries, category, favoriteKeys, reorder, grid, window, lastOpened, actions, focused)
-                        }
-                    }
-                    // Mosaïque ou liste : réglage de l'interface classique ; les autres ont leur présentation.
-                    val columns = if (layout == HomeLayout.CLASSIC) gridColumns else gridColumns.copy(channelList = false)
-                    when {
-                        layout == HomeLayout.STREAMING && category == Category.All -> StreamingHome(
-                            section = section,
-                            window = window,
-                            groups = groups,
-                            rows = rows,
-                            query = query,
-                            channels = channels,
-                            movies = movies,
-                            series = series,
-                            favoriteChannels = favoriteChannels,
-                            recentChannels = recentChannels,
-                            favoriteMovies = favoriteMovies,
-                            favoriteSeries = favoriteSeries,
-                            continueItems = resumeItems.orEmpty(),
-                            favoriteKeys = favoriteKeys,
-                            now = now,
-                            preview = preview,
-                            previewPlayer = previewPlayer.takeIf { showPreview },
-                            lastOpened = lastOpened,
-                            actions = actions,
-                            modifier = Modifier.weight(1f),
-                        )
-                        layout == HomeLayout.BOX && section == HomeSection.TV && window.isWide -> BoxTvSection(
-                            window = window,
-                            groups = groups,
-                            recentCount = recentChannels.size,
-                            allCount = allCount,
-                            category = category,
-                            query = query,
-                            favoritesCount = favoritesCount,
-                            title = categoryTitle(section, category),
-                            count = itemCount(
-                                section,
-                                when (category) {
-                                    Category.Favorites -> favoritesCount
-                                    Category.Recent -> recentChannels.size
-                                    is Category.Group -> groups.firstOrNull { it.title.orEmpty() == category.title }?.count ?: 0
-                                    else -> allCount
-                                },
-                            ),
-                            preview = preview,
-                            previewPlayer = previewPlayer.takeIf { showPreview },
-                            now = now,
-                            actions = actions,
-                            modifier = Modifier.weight(1f),
-                            action = if (category == Category.Favorites && favoritesCount > 1) {
-                                {
-                                    PillButton(
-                                        stringResource(if (reorder.active) R.string.favorites_reorder_done else R.string.favorites_reorder),
-                                        actions.onToggleReorder,
-                                        icon = if (reorder.active) Icons.Filled.Check else Icons.Filled.Edit,
-                                    )
-                                }
-                            } else {
-                                null
-                            },
-                        ) { CatalogGrid(section, window, columns, list = true, body = body) }
-                        else -> CatalogSection(
-                            section = section,
-                            window = window,
-                            groups = groups,
-                            recentCount = recentChannels.size.takeIf { section == HomeSection.TV },
-                            hero = if (section == HomeSection.TV && window.isWide && showPreview) {
-                                { title, count, action -> ChannelHero(title, count, action, preview, previewPlayer, now, window) }
-                            } else {
-                                null
-                            },
-                            allCount = allCount,
-                            category = category,
-                            query = query,
-                            favoritesCount = favoritesCount,
-                            resumeCount = resumeItems?.size,
-                            reorder = reorder,
-                            actions = actions,
-                            modifier = Modifier.weight(1f),
-                            gridColumns = columns,
-                            focusedItem = focused.value,
-                            body = body,
-                        )
-                    }
+        CompositionLocalProvider(LocalTabsFocused provides { tabsFocused.value }) {
+            // Cinéma Premium : la sélection occupe tout l'écran, onglets compris.
+            if (catalog && layout == HomeLayout.PREMIUM && category == Category.All) {
+                PremiumHome(
+                    content = shelfContent,
+                    window = window,
+                    query = query,
+                    channels = channels,
+                    movies = movies,
+                    series = series,
+                    preview = preview,
+                    previewPlayer = player,
+                    spotlight = spotlight,
+                    lastOpened = lastOpened,
+                    actions = actions,
+                    topBar = { topBar(true) },
+                    modifier = Modifier.padding(padding),
+                )
+                return@CompositionLocalProvider
+            }
+            Column(Modifier.fillMaxSize().padding(padding)) {
+                topBar(false)
+                when {
+                    section == HomeSection.GUIDE -> guide(Modifier.weight(1f))
+                    section == HomeSection.FOOTBALL -> football(Modifier.weight(1f))
+                    layout == HomeLayout.STREAMING && category == Category.All -> StreamingHome(
+                        content = shelfContent,
+                        window = window,
+                        query = query,
+                        channels = channels,
+                        movies = movies,
+                        series = series,
+                        preview = preview,
+                        previewPlayer = player,
+                        spotlight = spotlight,
+                        lastOpened = lastOpened,
+                        actions = actions,
+                        modifier = Modifier.weight(1f),
+                    )
+                    else -> CatalogBody(
+                        section = section,
+                        window = window,
+                        layout = layout,
+                        groups = groups,
+                        category = category,
+                        query = query,
+                        channels = channels,
+                        favoriteChannels = favoriteChannels,
+                        movies = movies,
+                        favoriteMovies = favoriteMovies,
+                        series = series,
+                        favoriteSeries = favoriteSeries,
+                        favoriteKeys = favoriteKeys,
+                        reorder = reorder,
+                        now = now,
+                        actions = actions,
+                        resumeItems = resumeItems,
+                        gridColumns = gridColumns,
+                        channelCount = channelCount,
+                        recentChannels = recentChannels,
+                        showPreview = showPreview,
+                        preview = preview,
+                        previewPlayer = player,
+                        spotlight = spotlight,
+                        lastOpened = lastOpened,
+                        focused = focused,
+                        modifier = Modifier.weight(1f),
+                    )
                 }
             }
         }
     }
+}
+
+/**
+ * Catégorie de chaînes, films ou séries : en Live Center (écran large), colonnes des catégories, de
+ * la liste et du volet de la sélection ; sinon (catégorie ouverte depuis les rangées, téléphone),
+ * catégories et grille, avec l'aperçu du direct en haut pour les chaînes.
+ */
+@Composable
+private fun CatalogBody(
+    section: HomeSection,
+    window: WindowInfo,
+    layout: HomeLayout,
+    groups: List<GroupRow>,
+    category: Category,
+    query: String,
+    channels: LazyPagingItems<ChannelListRow>,
+    favoriteChannels: List<ChannelListRow>,
+    movies: LazyPagingItems<MovieRow>,
+    favoriteMovies: List<MovieRow>,
+    series: LazyPagingItems<SeriesRow>,
+    favoriteSeries: List<SeriesRow>,
+    favoriteKeys: Set<String>,
+    reorder: ReorderState,
+    now: Long,
+    actions: HomeActions,
+    resumeItems: List<ProgressEntity>?,
+    gridColumns: GridColumns,
+    channelCount: Int?,
+    recentChannels: List<ChannelListRow>,
+    showPreview: Boolean,
+    preview: ChannelPreview?,
+    previewPlayer: Player?,
+    spotlight: Spotlight?,
+    lastOpened: MutableState<OpenedItem?>,
+    focused: MutableState<FocusedItem?>,
+    modifier: Modifier,
+) {
+    val favoritesCount = when (section) {
+        HomeSection.TV -> favoriteChannels.size
+        HomeSection.MOVIES -> favoriteMovies.size
+        else -> favoriteSeries.size
+    }
+    // Une chaîne peut figurer dans plusieurs catégories (une par qualité) : compte à part.
+    val allCount = channelCount?.takeIf { section == HomeSection.TV } ?: groups.sumOf { it.count }
+    val body: @Composable (GridLayout) -> Unit = { grid ->
+        if (resumeItems != null && category == Category.ContinueWatching) {
+            ContinueBody(resumeItems, grid, window, lastOpened, actions, focused)
+        } else when (section) {
+            HomeSection.TV -> TvBody(channels, favoriteChannels, recentChannels, category, favoriteKeys, reorder, now, grid, window, lastOpened, actions, focused)
+            HomeSection.MOVIES -> MoviesBody(movies, favoriteMovies, category, favoriteKeys, reorder, grid, window, lastOpened, actions, focused)
+            else -> SeriesBody(series, favoriteSeries, category, favoriteKeys, reorder, grid, window, lastOpened, actions, focused)
+        }
+    }
+    val reorderButton: (@Composable () -> Unit)? = if (category == Category.Favorites && favoritesCount > 1) {
+        {
+            PillButton(
+                stringResource(if (reorder.active) R.string.favorites_reorder_done else R.string.favorites_reorder),
+                actions.onToggleReorder,
+                icon = if (reorder.active) Icons.Filled.Check else Icons.Filled.Edit,
+            )
+        }
+    } else {
+        null
+    }
+    if (layout == HomeLayout.LIVE_CENTER && window.isWide) {
+        val count = when (category) {
+            Category.Favorites -> favoritesCount
+            Category.Recent -> recentChannels.size
+            Category.ContinueWatching -> resumeItems?.size ?: 0
+            is Category.Group -> groups.firstOrNull { it.title.orEmpty() == category.title }?.count ?: 0
+            else -> allCount
+        }
+        LiveCenterSection(
+            section = section,
+            window = window,
+            groups = groups,
+            recentCount = recentChannels.size.takeIf { section == HomeSection.TV },
+            allCount = allCount,
+            category = category,
+            query = query,
+            favoritesCount = favoritesCount,
+            resumeCount = resumeItems?.size,
+            title = categoryTitle(section, category),
+            count = itemCount(section, count),
+            actions = actions,
+            modifier = modifier,
+            focusedItem = focused.value,
+            action = reorderButton,
+            hint = if (reorder.active) {
+                { ReorderHint(reorder, window) }
+            } else {
+                null
+            },
+            pane = { paneModifier ->
+                if (section == HomeSection.TV) LivePane(preview, previewPlayer, now, paneModifier) else SpotlightPane(section, spotlight, paneModifier)
+            },
+        ) {
+            // Chaînes : une par ligne avec leur programme ; films et séries : affiches.
+            val columns = if (section == HomeSection.TV) gridColumns.copy(channelList = true) else gridColumns.copy(posters = (gridColumns.posters - 2).coerceAtLeast(3))
+            CatalogGrid(section, window, columns, list = section == HomeSection.TV, body = body)
+        }
+        return
+    }
+    CatalogSection(
+        section = section,
+        window = window,
+        groups = groups,
+        recentCount = recentChannels.size.takeIf { section == HomeSection.TV },
+        hero = if (section == HomeSection.TV && window.isWide && showPreview) {
+            { title, count, action -> ChannelHero(title, count, action, preview, previewPlayer, now, window) }
+        } else {
+            null
+        },
+        allCount = allCount,
+        category = category,
+        query = query,
+        favoritesCount = favoritesCount,
+        resumeCount = resumeItems?.size,
+        reorder = reorder,
+        actions = actions,
+        modifier = modifier,
+        gridColumns = gridColumns,
+        focusedItem = focused.value,
+        body = body,
+    )
+}
+
+@Composable
+private fun ReorderHint(reorder: ReorderState, window: WindowInfo) {
+    Text(
+        stringResource(if (reorder.movingKey == null) R.string.favorites_reorder_hint_pick else R.string.favorites_reorder_hint_move),
+        style = MaterialTheme.typography.bodyMedium,
+        color = NexTvColors.Warning,
+        modifier = Modifier.padding(start = if (window.isWide) 24.dp else window.horizontalPadding, bottom = 8.dp),
+    )
 }
 
 @Composable
@@ -473,6 +601,8 @@ private fun HomeTopBar(
     window: WindowInfo,
     actions: HomeActions,
     onTabsFocused: (Boolean) -> Unit = {},
+    /** Cinéma Premium : onglets discrets, sans icône, dans une capsule translucide sur l'image. */
+    minimal: Boolean = false,
 ) {
     val initialFocus = remember { FocusRequester() }
     // Focus initial sur les onglets au premier affichage seulement (pas au retour d'un autre écran).
@@ -487,12 +617,19 @@ private fun HomeTopBar(
         Modifier.fillMaxWidth().padding(start = window.horizontalPadding, end = window.horizontalPadding, top = window.topPadding, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Écran étroit : logo seul et onglets réduits à leur icône, pour que les quatre sections restent visibles.
+        // Logo NixTV ; écran étroit : onglets réduits à leur icône, pour que les sections restent visibles.
         BrandMark(compact = true, showName = window.isWide)
         Spacer(Modifier.width(if (window.isWide) 32.dp else 12.dp))
         Row(
             Modifier
                 .weight(1f)
+                .then(
+                    if (minimal) {
+                        Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.55f)).padding(4.dp)
+                    } else {
+                        Modifier
+                    },
+                )
                 .onFocusChanged { onTabsFocused(it.hasFocus) }
                 // En remontant vers les onglets : celui de la section affichée (pas le plus proche, qui en changerait).
                 .focusProperties { onEnter = { runCatching { initialFocus.requestFocus() } } }
@@ -502,7 +639,7 @@ private fun HomeTopBar(
         ) {
             HomeSection.entries.forEach { target ->
                 SectionTab(
-                    icon = sectionIcon(target),
+                    icon = sectionIcon(target).takeUnless { minimal && window.isWide },
                     label = sectionLabel(target),
                     showLabel = window.isWide || target == section,
                     selected = target == section,
@@ -513,7 +650,7 @@ private fun HomeTopBar(
                 )
             }
         }
-        if (window.isWide && sourceName.isNotEmpty()) {
+        if (window.isWide && sourceName.isNotEmpty() && !minimal) {
             // Largeur limitée : un nom très long ne doit jamais masquer les onglets.
             Text(
                 sourceName,
@@ -530,7 +667,7 @@ private fun HomeTopBar(
 
 @Composable
 private fun SectionTab(
-    icon: ImageVector,
+    icon: ImageVector?,
     label: String,
     showLabel: Boolean,
     selected: Boolean,
@@ -555,7 +692,7 @@ private fun SectionTab(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Icon(icon, contentDescription = if (showLabel) null else label, modifier = Modifier.size(20.dp))
+            if (icon != null) Icon(icon, contentDescription = if (showLabel) null else label, modifier = Modifier.size(20.dp))
             if (showLabel) Text(label, style = MaterialTheme.typography.titleSmall, maxLines = 1)
         }
     }
@@ -859,7 +996,7 @@ internal fun TvBody(
     now: Long,
     grid: GridLayout,
     window: WindowInfo,
-    lastOpened: MutableState<String?>,
+    lastOpened: MutableState<OpenedItem?>,
     actions: HomeActions,
     focused: MutableState<FocusedItem?>,
 ) {
@@ -878,13 +1015,13 @@ internal fun TvBody(
         EmptyState(NexTvIcons.Tv, stringResource(R.string.channels_empty), stringResource(R.string.home_empty_hint))
         return
     }
-    val card: @Composable (ChannelListRow, Boolean) -> Unit = { channel, inFavorites ->
+    val card: @Composable (ChannelListRow, Int, Boolean) -> Unit = { channel, index, inFavorites ->
         val moving = inFavorites && reorder.movingKey == channel.itemKey
         val onClick = if (inFavorites && reorder.active) {
             { actions.onPick(channel.itemKey) }
         } else {
             {
-                lastOpened.value = channel.itemKey
+                lastOpened.value = OpenedItem(channel.itemKey, index)
                 actions.onPlayChannel(channel.id)
             }
         }
@@ -902,20 +1039,29 @@ internal fun TvBody(
             ChannelCard(channel, now, channel.itemKey in favoriteKeys, onClick, onLongClick, modifier, moving, CardSize.of(grid.cellWidth))
         }
     }
+    // Place gardée par catégorie, y compris au retour du lecteur.
+    val state = rememberSaveable(category, saver = LazyGridState.Saver) { LazyGridState() }
+    val count = when {
+        favoritesMode -> favorites.size
+        recentMode -> recent.size
+        else -> channels.itemCount
+    }
+    RestoreScroll(state, lastOpened, count)
     LazyVerticalGrid(
         columns = GridCells.Fixed(grid.columns),
+        state = state,
         contentPadding = padding,
         horizontalArrangement = Arrangement.spacedBy(grid.spacing),
         verticalArrangement = Arrangement.spacedBy(if (grid.columns == 1) 2.dp else grid.spacing),
         modifier = Modifier.fillMaxSize().onFocusChanged { if (!it.hasFocus) focused.value = null },
     ) {
         if (favoritesMode) {
-            items(favorites.size, key = { favorites[it].itemKey }) { index -> card(favorites[index], true) }
+            items(favorites.size, key = { favorites[it].itemKey }) { index -> card(favorites[index], index, true) }
         } else if (recentMode) {
-            items(recent.size, key = { recent[it].itemKey }) { index -> card(recent[index], false) }
+            items(recent.size, key = { recent[it].itemKey }) { index -> card(recent[index], index, false) }
         } else {
             items(count = channels.itemCount, key = channels.itemKey { it.id }) { index ->
-                channels[index]?.let { card(it, false) }
+                channels[index]?.let { card(it, index, false) }
             }
         }
     }
@@ -930,7 +1076,7 @@ private fun MoviesBody(
     reorder: ReorderState,
     grid: GridLayout,
     window: WindowInfo,
-    lastOpened: MutableState<String?>,
+    lastOpened: MutableState<OpenedItem?>,
     actions: HomeActions,
     focused: MutableState<FocusedItem?>,
 ) {
@@ -943,7 +1089,7 @@ private fun MoviesBody(
         EmptyState(NexTvIcons.Movie, stringResource(R.string.home_no_movies), stringResource(R.string.home_no_movies_hint))
         return
     }
-    val poster: @Composable (MovieRow, Boolean) -> Unit = { movie, inFavorites ->
+    val poster: @Composable (MovieRow, Int, Boolean) -> Unit = { movie, index, inFavorites ->
         val moving = inFavorites && reorder.movingKey == movie.itemKey
         PosterCard(
             title = movie.title,
@@ -954,7 +1100,7 @@ private fun MoviesBody(
                 { actions.onPick(movie.itemKey) }
             } else {
                 {
-                    lastOpened.value = movie.itemKey
+                    lastOpened.value = OpenedItem(movie.itemKey, index)
                     actions.onOpenMovie(movie.id)
                 }
             },
@@ -964,23 +1110,27 @@ private fun MoviesBody(
             modifier = Modifier
                 .restoreFocus(movie.itemKey, lastOpened)
                 .showWhenFocused(focused, FocusedItem(movie.title, movie.year?.toString()))
+                .onFocusChanged { if (it.isFocused) actions.onPosterFocus(movie.toPoster()) }
                 .reorderKeys(moving, grid.columns) { actions.onMove(ContentKind.MOVIE, movie.itemKey, it) },
             moving = moving,
             compact = grid.cellWidth < COMPACT_POSTER_WIDTH,
         )
     }
+    val state = rememberSaveable(category, saver = LazyGridState.Saver) { LazyGridState() }
+    RestoreScroll(state, lastOpened, if (favoritesMode) favorites.size else movies.itemCount)
     LazyVerticalGrid(
         columns = GridCells.Fixed(grid.columns),
+        state = state,
         contentPadding = gridPadding(window),
         horizontalArrangement = Arrangement.spacedBy(grid.spacing),
         verticalArrangement = Arrangement.spacedBy(grid.spacing),
         modifier = Modifier.fillMaxSize().onFocusChanged { if (!it.hasFocus) focused.value = null },
     ) {
         if (favoritesMode) {
-            items(favorites.size, key = { favorites[it].itemKey }) { index -> poster(favorites[index], true) }
+            items(favorites.size, key = { favorites[it].itemKey }) { index -> poster(favorites[index], index, true) }
         } else {
             items(count = movies.itemCount, key = movies.itemKey { it.id }) { index ->
-                movies[index]?.let { poster(it, false) }
+                movies[index]?.let { poster(it, index, false) }
             }
         }
     }
@@ -995,7 +1145,7 @@ private fun SeriesBody(
     reorder: ReorderState,
     grid: GridLayout,
     window: WindowInfo,
-    lastOpened: MutableState<String?>,
+    lastOpened: MutableState<OpenedItem?>,
     actions: HomeActions,
     focused: MutableState<FocusedItem?>,
 ) {
@@ -1009,7 +1159,7 @@ private fun SeriesBody(
         EmptyState(NexTvIcons.Series, stringResource(R.string.home_no_series), stringResource(R.string.home_no_series_hint))
         return
     }
-    val poster: @Composable (SeriesRow, Boolean) -> Unit = { show, inFavorites ->
+    val poster: @Composable (SeriesRow, Int, Boolean) -> Unit = { show, index, inFavorites ->
         val moving = inFavorites && reorder.movingKey == show.itemKey
         PosterCard(
             title = show.title,
@@ -1020,7 +1170,7 @@ private fun SeriesBody(
                 { actions.onPick(show.itemKey) }
             } else {
                 {
-                    lastOpened.value = show.itemKey
+                    lastOpened.value = OpenedItem(show.itemKey, index)
                     actions.onOpenSeries(show.id)
                 }
             },
@@ -1030,23 +1180,27 @@ private fun SeriesBody(
             modifier = Modifier
                 .restoreFocus(show.itemKey, lastOpened)
                 .showWhenFocused(focused, FocusedItem(show.title, resources.getQuantityString(R.plurals.episodes_count, show.episodeCount, show.episodeCount)))
+                .onFocusChanged { if (it.isFocused) actions.onPosterFocus(show.toPoster()) }
                 .reorderKeys(moving, grid.columns) { actions.onMove(ContentKind.SERIES, show.itemKey, it) },
             moving = moving,
             compact = grid.cellWidth < COMPACT_POSTER_WIDTH,
         )
     }
+    val state = rememberSaveable(category, saver = LazyGridState.Saver) { LazyGridState() }
+    RestoreScroll(state, lastOpened, if (favoritesMode) favorites.size else series.itemCount)
     LazyVerticalGrid(
         columns = GridCells.Fixed(grid.columns),
+        state = state,
         contentPadding = gridPadding(window),
         horizontalArrangement = Arrangement.spacedBy(grid.spacing),
         verticalArrangement = Arrangement.spacedBy(grid.spacing),
         modifier = Modifier.fillMaxSize().onFocusChanged { if (!it.hasFocus) focused.value = null },
     ) {
         if (favoritesMode) {
-            items(favorites.size, key = { favorites[it].itemKey }) { index -> poster(favorites[index], true) }
+            items(favorites.size, key = { favorites[it].itemKey }) { index -> poster(favorites[index], index, true) }
         } else {
             items(count = series.itemCount, key = series.itemKey { it.itemKey }) { index ->
-                series[index]?.let { poster(it, false) }
+                series[index]?.let { poster(it, index, false) }
             }
         }
     }
@@ -1058,7 +1212,7 @@ private fun ContinueBody(
     items: List<ProgressEntity>,
     grid: GridLayout,
     window: WindowInfo,
-    lastOpened: MutableState<String?>,
+    lastOpened: MutableState<OpenedItem?>,
     actions: HomeActions,
     focused: MutableState<FocusedItem?>,
 ) {
@@ -1066,8 +1220,11 @@ private fun ContinueBody(
         EmptyState(Icons.Filled.PlayArrow, stringResource(R.string.home_continue_empty_title), stringResource(R.string.home_continue_empty))
         return
     }
+    val state = rememberSaveable(saver = LazyGridState.Saver) { LazyGridState() }
+    RestoreScroll(state, lastOpened, items.size)
     LazyVerticalGrid(
         columns = GridCells.Fixed(grid.columns),
+        state = state,
         contentPadding = gridPadding(window),
         horizontalArrangement = Arrangement.spacedBy(grid.spacing),
         verticalArrangement = Arrangement.spacedBy(grid.spacing),
@@ -1090,7 +1247,7 @@ private fun ContinueBody(
                 imageUrl = item.logoUrl,
                 isFavorite = false,
                 onClick = {
-                    lastOpened.value = item.itemKey
+                    lastOpened.value = OpenedItem(item.itemKey, index)
                     actions.onResume(item.channelId)
                 },
                 onLongClick = { actions.onClearProgress(item.itemKey) },
@@ -1125,21 +1282,6 @@ internal fun FocusedItemLabel(item: FocusedItem, modifier: Modifier = Modifier) 
             Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
-}
-
-/**
- * Rend le focus à la vignette [key] si c'est la dernière ouverte, puis oublie cette dernière :
- * faire défiler la grille ensuite ne déplace plus le focus.
- */
-@Composable
-internal fun Modifier.restoreFocus(key: String, lastOpened: MutableState<String?>): Modifier {
-    if (lastOpened.value != key) return this
-    val requester = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
-        runCatching { requester.requestFocus() }
-        lastOpened.value = null
-    }
-    return focusRequester(requester)
 }
 
 internal fun gridPadding(window: WindowInfo) = PaddingValues(

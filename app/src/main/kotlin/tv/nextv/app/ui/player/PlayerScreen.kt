@@ -1,6 +1,5 @@
 package tv.nextv.app.ui.player
 
-import android.view.View
 import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -168,10 +167,18 @@ fun PlayerScreen(onBack: () -> Unit) {
         current?.addListener(listener)
         onDispose { current?.removeListener(listener) }
     }
-    // Film : les commandes Media3 ont déjà leur bouton lecture au centre quand elles sont affichées.
-    var controllerVisible by remember { mutableStateOf(false) }
-    // Film ou épisode (commandes Media3).
+    // Film ou épisode : commandes NixTV (titre, progression, boutons), affichées au départ puis masquées.
     val film = !bannerMode && !state.isLive
+    var filmControls by remember { mutableStateOf(true) }
+    var filmTouch by remember { mutableIntStateOf(0) }
+    // Saut de quelques secondes avec ← → (commandes masquées), affiché au centre.
+    var filmJump by remember { mutableIntStateOf(0) }
+    LaunchedEffect(filmJump) {
+        if (filmJump != 0) {
+            delay(FILM_JUMP_DISPLAY_MILLIS)
+            filmJump = 0
+        }
+    }
     // Replay, « Depuis le début » ou direct en pause / différé : OK maintenu (ou les options) ramène au direct.
     val canGoLive = state.replay != null || (state.isLive && (state.seekable || state.paused || state.liveDelayMs > 0))
     val press = remember { HeldKey() }
@@ -179,6 +186,18 @@ fun PlayerScreen(onBack: () -> Unit) {
     LifecycleStartEffect(viewModel) {
         viewModel.onStart()
         onStopOrDispose { viewModel.onStop() }
+    }
+
+    // Commandes du film : masquées 5 s après le dernier appui, pendant la lecture.
+    LaunchedEffect(film, filmControls, filmTouch, playWhenReady, optionsVisible) {
+        if (film && filmControls && playWhenReady && !optionsVisible) {
+            delay(BANNER_DURATION_MILLIS)
+            filmControls = false
+        }
+    }
+    // Commandes masquées : le lecteur reprend les touches de la télécommande.
+    LaunchedEffect(film, filmControls) {
+        if (film && !filmControls) runCatching { rootFocus.requestFocus() }
     }
 
     // Bandeau : 5 s après un changement de chaîne ou un appui sur OK.
@@ -195,6 +214,8 @@ fun PlayerScreen(onBack: () -> Unit) {
     // Premier « Retour » : menu des chaînes (sans interrompre la lecture) ; second : fermeture du menu.
     BackHandler(enabled = menu.open) { viewModel.closeMenu() }
     BackHandler(enabled = !menu.open && state.isLive) { viewModel.openMenu() }
+    // Film : « Retour » masque d'abord les commandes.
+    BackHandler(enabled = film && filmControls && !optionsVisible && !menu.open && state.upNext == null) { filmControls = false }
     // Déclaré en dernier : prioritaire, « Retour » ferme d'abord le panneau d'infos.
     BackHandler(enabled = infoVisible && !menu.open) { infoVisible = false }
     // Options de lecture (touche Menu) : fermées en premier.
@@ -209,9 +230,23 @@ fun PlayerScreen(onBack: () -> Unit) {
             .fillMaxSize()
             .background(Color.Black)
             .onPreviewKeyEvent { event ->
-                if (menu.open || optionsVisible || state.resumePrompt != null) {
+                if (menu.open || optionsVisible || state.resumePrompt != null || state.upNext != null) {
                     press.key = null
                     return@onPreviewKeyEvent false
+                }
+                // Film, commandes affichées : les touches vont aux boutons et à la barre, et les gardent à l'écran.
+                if (film && filmControls) {
+                    if (event.type == KeyEventType.KeyDown) filmTouch++
+                    return@onPreviewKeyEvent when (event.key) {
+                        Key.MediaPlayPause, Key.MediaPlay, Key.MediaPause -> (event.type == KeyEventType.KeyDown).also { if (it) viewModel.togglePause() }
+                        else -> false
+                    }
+                }
+                // Film, commandes masquées : OK, haut ou bas les affichent.
+                if (film && event.type == KeyEventType.KeyDown && event.key in FILM_SHOW_KEYS) {
+                    filmControls = true
+                    filmTouch++
+                    return@onPreviewKeyEvent true
                 }
                 val repeat = event.nativeKeyEvent.repeatCount
                 // OK, ← → : l'appui court agit au relâchement, l'appui long tant que la touche est maintenue.
@@ -230,6 +265,12 @@ fun PlayerScreen(onBack: () -> Unit) {
                             state.seekable -> {
                                 viewModel.jump(if (event.key == Key.DirectionRight) +1 else -1)
                                 bannerTrigger++
+                            }
+                            // Film : 10 s en arrière ou en avant, affichés au centre.
+                            film -> {
+                                val step = if (event.key == Key.DirectionRight) FILM_STEP_SECONDS else -FILM_STEP_SECONDS
+                                viewModel.seekBy(step * 1_000L)
+                                filmJump += step
                             }
                         }
                         else -> if (!long) {
@@ -262,11 +303,9 @@ fun PlayerScreen(onBack: () -> Unit) {
                         }
                         else -> true
                     }
-                    Key.MediaPlayPause, Key.MediaPlay, Key.MediaPause -> bannerMode.also {
-                        if (it) {
-                            viewModel.togglePause()
-                            bannerTrigger++
-                        }
+                    Key.MediaPlayPause, Key.MediaPlay, Key.MediaPause -> true.also {
+                        viewModel.togglePause()
+                        if (bannerMode) bannerTrigger++
                     }
                     // Replay, « Depuis le début », film : ← → reculent / avancent (passer la pub) ; maintenus, retour
                     // ou avance rapide x2. Film : un appui affiche les commandes, comme avant.
@@ -282,24 +321,24 @@ fun PlayerScreen(onBack: () -> Unit) {
                                     viewModel.fastSeek(direction)
                                 }
                             }
-                            film -> when {
-                                repeat == 0 -> false.also {
-                                    // Commandes affichées : ← → s'y déplacent (Media3), sans avance rapide.
-                                    if (controllerVisible) press.key = null else press.start(event.key, consumed = false)
+                            // Film, commandes masquées : appui court, 10 s ; maintenu, avance ou retour rapide.
+                            film -> true.also {
+                                if (repeat == 0) {
+                                    press.start(event.key, consumed = true)
+                                } else if (press.key == event.key && repeat >= FAST_SEEK_REPEATS) {
+                                    press.long = true
+                                    viewModel.fastSeek(direction)
                                 }
-                                press.key == event.key -> true.also {
-                                    if (repeat >= FAST_SEEK_REPEATS) {
-                                        press.long = true
-                                        viewModel.fastSeek(direction)
-                                    }
-                                }
-                                else -> false
                             }
                             // Différé (pause du direct) : → retour au direct.
                             else -> (direction > 0 && state.isLive && delayed).also { if (it) viewModel.backToLive() }
                         }
                     }
                     Key.MediaFastForward -> when {
+                        film -> true.also {
+                            viewModel.seekBy(FILM_MEDIA_STEP_MILLIS)
+                            filmJump += (FILM_MEDIA_STEP_MILLIS / 1_000).toInt()
+                        }
                         state.seekable && !state.isLive -> true.also {
                             viewModel.jump(+5)
                             bannerTrigger++
@@ -309,6 +348,10 @@ fun PlayerScreen(onBack: () -> Unit) {
                     Key.Info -> true.also { infoVisible = !infoVisible }
                     Key.Menu -> true.also { optionsVisible = true }
                     Key.MediaRewind -> when {
+                        film -> true.also {
+                            viewModel.seekBy(-FILM_MEDIA_STEP_MILLIS)
+                            filmJump -= (FILM_MEDIA_STEP_MILLIS / 1_000).toInt()
+                        }
                         state.seekable && !state.isLive -> true.also {
                             viewModel.jump(-5)
                             bannerTrigger++
@@ -323,14 +366,27 @@ fun PlayerScreen(onBack: () -> Unit) {
             }
             .focusRequester(rootFocus)
             .focusable()
-            .pointerInput(state.isLive) { detectTapGestures(onTap = { bannerTrigger++ }) },
+            // Toucher l'image : bandeau du direct, ou commandes du film affichées / masquées.
+            .pointerInput(state.isLive, film) {
+                detectTapGestures(onTap = {
+                    if (film) {
+                        filmControls = !filmControls
+                        filmTouch++
+                    } else {
+                        bannerTrigger++
+                    }
+                })
+            },
     ) {
         AndroidView(
             factory = { viewContext ->
                 PlayerView(viewContext).apply {
                     layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                     keepScreenOn = true
-                    setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { visibility -> controllerVisible = visibility == View.VISIBLE })
+                    // Commandes dessinées par NixTV (direct, replay, films) : jamais celles de Media3.
+                    useController = false
+                    isFocusable = false
+                    descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
                 }
             },
             update = { view ->
@@ -342,20 +398,33 @@ fun PlayerScreen(onBack: () -> Unit) {
                     AspectMode.FILL -> AspectRatioFrameLayout.RESIZE_MODE_FILL
                     AspectMode.ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                 }
-                // Direct et replay : pas de barre de lecture, OK affiche le bandeau. Film / épisode : commandes Media3.
-                view.useController = !bannerMode
-                // Film / épisode : focus sur le lecteur (commandes Media3), sans le reprendre à ses commandes.
-                if (!bannerMode && state.resumePrompt == null && !view.hasFocus()) view.requestFocus()
             },
             onRelease = { view -> view.player = null },
             modifier = Modifier.fillMaxSize(),
         )
 
+        // Film ou épisode : commandes NixTV.
+        if (film) {
+            FilmControls(
+                player = player,
+                state = state,
+                visible = filmControls && !menu.open && !optionsVisible && state.resumePrompt == null && state.upNext == null && state.error == null,
+                onInteraction = { filmTouch++ },
+                onSeekBy = viewModel::seekBy,
+                onSeekTo = viewModel::seekTo,
+                onPlayPause = viewModel::togglePause,
+                onNextEpisode = state.vod?.next?.let { { viewModel.playNextEpisode() } },
+                onOptions = { optionsVisible = true },
+                onBack = onBack,
+            )
+        }
+
         PlayerOverlay(
             state = state,
             now = now,
+            // Film : le bandeau du direct n'apparaît pas (ses commandes le remplacent), sauf en cas d'erreur.
             visible = (bannerVisible || state.error != null || state.paused || (state.fastSeek != 0 && bannerMode)) &&
-                !menu.open && state.resumePrompt == null,
+                !menu.open && state.resumePrompt == null && (bannerMode || state.error != null),
             showTouchControls = !window.isTv,
             onBack = onBack,
             onZap = viewModel::zap,
@@ -366,15 +435,20 @@ fun PlayerScreen(onBack: () -> Unit) {
         )
 
         // Saut en cours (« +30 s »), avance / retour rapide ou pause : en grand au centre de l'écran (film avec ses
-        // commandes affichées : en haut, pour ne pas cacher les boutons).
-        val filmControls = controllerVisible && !bannerMode
+        // commandes affichées : leur bouton de lecture suffit).
+        val filmControlsShown = film && filmControls
         CenterIndicator(
-            jumpSeconds = state.pendingJumpSeconds,
+            jumpSeconds = state.pendingJumpSeconds + filmJump,
             fastSeek = state.fastSeek,
-            paused = (state.paused || !playWhenReady) && state.error == null && state.resumePrompt == null && !filmControls,
+            paused = (state.paused || !playWhenReady) && state.error == null && state.resumePrompt == null && !filmControlsShown && state.upNext == null,
             visible = !menu.open,
-            modifier = if (filmControls) Modifier.align(Alignment.TopCenter).padding(top = 48.dp) else Modifier.align(Alignment.Center),
+            modifier = Modifier.align(Alignment.Center),
         )
+
+        // Fin d'un épisode : le suivant, lancé après un décompte.
+        state.upNext?.let { next ->
+            UpNextCard(next, onPlay = viewModel::playNextEpisode, onDismiss = viewModel::dismissUpNext, modifier = Modifier.align(Alignment.BottomEnd).padding(36.dp))
+        }
 
         PlaybackInfoPanel(
             state = state,
@@ -1156,6 +1230,14 @@ private fun MenuChannelRow(
 }
 
 private const val BANNER_DURATION_MILLIS = 5_000L
+
+/** Film : pas d'un appui sur ← → (commandes masquées), et des touches avance / retour rapide de la télécommande. */
+private const val FILM_STEP_SECONDS = 10
+private const val FILM_MEDIA_STEP_MILLIS = 30_000L
+private const val FILM_JUMP_DISPLAY_MILLIS = 1_200L
+
+/** Touches qui affichent les commandes d'un film. */
+private val FILM_SHOW_KEYS = setOf(Key.DirectionCenter, Key.Enter, Key.NumPadEnter, Key.DirectionUp, Key.DirectionDown)
 
 /** Message « Aucun son » affiché seul, avant de ne plus apparaître qu'avec le bandeau. */
 private const val AUDIO_NOTICE_MILLIS = 8_000L

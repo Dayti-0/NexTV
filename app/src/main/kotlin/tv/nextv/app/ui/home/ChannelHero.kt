@@ -177,16 +177,19 @@ private fun ProgrammeLine(programme: GuideProgramme, now: Long) {
     }
 }
 
-/** Vidéo de l'aperçu : jamais sélectionnable à la télécommande (le focus reste dans la grille). */
+/**
+ * Vidéo de l'aperçu : jamais sélectionnable à la télécommande (le focus reste dans la grille).
+ * [zoom] : l'image remplit la zone (fond plein écran), quitte à rogner les bords.
+ */
 @AndroidXOptIn(UnstableApi::class)
 @Composable
-internal fun PreviewVideo(player: Player, modifier: Modifier = Modifier) {
+internal fun PreviewVideo(player: Player, modifier: Modifier = Modifier, zoom: Boolean = false) {
     AndroidView(
         factory = { context ->
             PlayerView(context).apply {
                 layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                 useController = false
-                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                resizeMode = if (zoom) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
                 setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
                 isFocusable = false
                 descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS

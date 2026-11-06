@@ -57,7 +57,7 @@ object BackupCodec {
         } catch (e: JSONException) {
             throw BackupFormatException("JSON illisible")
         }
-        if (json.optString("format") != FORMAT) throw BackupFormatException("Pas une sauvegarde NexTV")
+        if (json.optString("format") != FORMAT) throw BackupFormatException("Pas une sauvegarde NixTV")
         if (json.optInt("version") > VERSION) throw BackupFormatException("Sauvegarde d'une version plus récente")
         return Backup(
             exportedAtMillis = json.optLong("exportedAt"),

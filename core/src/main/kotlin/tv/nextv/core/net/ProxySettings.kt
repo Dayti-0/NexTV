@@ -101,7 +101,7 @@ data class NetworkSettings(
     val readTimeoutMillis: Long = 30_000,
     val streamReadTimeoutMillis: Long = 20_000,
     val maxRedirects: Int = 10,
-    val defaultUserAgent: String = "NexTV/1.0",
+    val defaultUserAgent: String = "NixTV/1.0",
     /** Résolution des noms de toutes les requêtes (playlists, guide, flux, images…). */
     val dns: DnsProvider = DnsProvider.SYSTEM,
 )

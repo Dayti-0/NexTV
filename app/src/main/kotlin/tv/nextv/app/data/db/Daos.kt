@@ -364,6 +364,46 @@ interface ChannelDao {
     )
     suspend fun movieRow(sourceId: Long, group: String?, limit: Int): List<MovieRow>
 
+    /** Films les plus récents (année de sortie), hors catégories masquées : rangée « Nouveautés ». */
+    @Query(
+        """
+        SELECT id, title, year, logoUrl, groupTitle, itemKey, streamSupport FROM channels
+        WHERE sourceId = :sourceId AND kind = 'MOVIE' AND year >= :minYear
+          AND IFNULL(groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'MOVIE')
+        ORDER BY year DESC, position LIMIT :limit
+        """,
+    )
+    suspend fun newestMovies(sourceId: Long, minYear: Int, limit: Int): List<MovieRow>
+
+    /** Séries les plus récentes : rangée « Nouveautés ». */
+    @Query(
+        """
+        SELECT id, seriesName AS title, year, logoUrl, groupTitle, itemKey, variantCount AS episodeCount FROM channels
+        WHERE sourceId = :sourceId AND kind = 'SERIES' AND isPrimary = 1 AND seriesName IS NOT NULL AND year >= :minYear
+          AND IFNULL(groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'SERIES')
+        ORDER BY year DESC, position LIMIT :limit
+        """,
+    )
+    suspend fun newestSeries(sourceId: Long, minYear: Int, limit: Int): List<SeriesRow>
+
+    /** Films désignés par leur clé (tendances retrouvées dans la playlist). */
+    @Query(
+        """
+        SELECT id, title, year, logoUrl, groupTitle, itemKey, streamSupport FROM channels
+        WHERE sourceId = :sourceId AND kind = 'MOVIE' AND itemKey IN (:itemKeys)
+        """,
+    )
+    suspend fun moviesByKey(sourceId: Long, itemKeys: List<String>): List<MovieRow>
+
+    /** Séries désignées par leur clé. */
+    @Query(
+        """
+        SELECT id, seriesName AS title, year, logoUrl, groupTitle, itemKey, variantCount AS episodeCount FROM channels
+        WHERE sourceId = :sourceId AND kind = 'SERIES' AND isPrimary = 1 AND seriesName IS NOT NULL AND itemKey IN (:itemKeys)
+        """,
+    )
+    suspend fun seriesByKey(sourceId: Long, itemKeys: List<String>): List<SeriesRow>
+
     /** Premières séries d'une catégorie ([group] `null` : sans groupe). */
     @Query(
         """

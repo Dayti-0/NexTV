@@ -73,4 +73,6 @@ data class Programme(
     val category: String? = null,
     /** Année de production, si le guide l'indique. */
     val year: Int? = null,
+    /** Image du programme, si le guide en donne une. */
+    val imageUrl: String? = null,
 )

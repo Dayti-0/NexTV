@@ -167,7 +167,7 @@ fun DetailContent(
             LazyColumn(Modifier.fillMaxSize()) {
                 item {
                     Row(Modifier.padding(start = window.horizontalPadding - 12.dp, top = window.topPadding)) {
-                        IconAction(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back), onBack, tint = Color.White)
+                        IconAction(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back), onBack, tint = MaterialTheme.colorScheme.onBackground)
                     }
                 }
                 item {
@@ -187,14 +187,14 @@ fun DetailContent(
                             Text(
                                 title,
                                 style = if (window.isWide) MaterialTheme.typography.displaySmall else MaterialTheme.typography.headlineSmall,
-                                color = Color.White,
+                                color = MaterialTheme.colorScheme.onBackground,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                             )
                             MetaLine(details, item, kind)
                             details?.stars?.let { Rating(it, details) }
                             details?.tagline?.let {
-                                Text(it, style = MaterialTheme.typography.titleMedium, fontStyle = FontStyle.Italic, color = Color.White.copy(alpha = 0.8f))
+                                Text(it, style = MaterialTheme.typography.titleMedium, fontStyle = FontStyle.Italic, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f))
                             }
                             when (val metadata = state.metadata) {
                                 MetadataState.Loading -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -202,7 +202,7 @@ fun DetailContent(
                                     Text(stringResource(R.string.detail_loading), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 is MetadataState.Available -> metadata.details.overview?.let {
-                                    Text(it, style = MaterialTheme.typography.bodyLarge, color = Color.White.copy(alpha = 0.9f), maxLines = 8, overflow = TextOverflow.Ellipsis)
+                                    Text(it, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.9f), maxLines = 8, overflow = TextOverflow.Ellipsis)
                                 }
                                 MetadataState.NotFound -> MetadataNotice(stringResource(R.string.detail_tmdb_not_found))
                                 is MetadataState.Unavailable -> MetadataNotice(

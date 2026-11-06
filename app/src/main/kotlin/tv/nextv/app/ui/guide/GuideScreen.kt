@@ -10,6 +10,7 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -43,6 +44,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import tv.nextv.app.ui.home.HomeVisit
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -264,7 +267,26 @@ private fun GuideGrid(
     // Ouverture sur la demi-heure écoulée ; la veille reste accessible vers la gauche.
     var initialScrollDone by remember { mutableStateOf(false) }
     val density = LocalDensity.current
-    if (!initialScrollDone && !state.loading) {
+    // Programme ouvert (lecture, fiche) : ligne, heure, défilement horizontal et affichage de l'accueil,
+    // pour revenir exactement au même endroit.
+    var opened by rememberSaveable { mutableStateOf<List<Long>?>(null) }
+    val visit = HomeVisit.current
+    val listState = rememberLazyListState()
+    var pendingFocus by remember { mutableStateOf<Pair<Int, Long>?>(null) }
+    val back = opened?.takeIf { it.size == 4 && it[3].toInt() != visit }
+    if (back != null && !state.loading && state.channels.isNotEmpty()) {
+        LaunchedEffect(back) {
+            val row = back[0].toInt().coerceIn(0, state.channels.lastIndex)
+            scroll.scrollTo(back[2].toInt())
+            listState.scrollToItem(row)
+            initialScrollDone = true
+            initialFocusDone = true
+            pendingFocus = row to back[1]
+            opened = null
+        }
+    }
+    val rememberOpened: (Int, Long) -> Unit = { row, at -> opened = listOf(row.toLong(), at, scroll.value.toLong(), visit.toLong()) }
+    if (!initialScrollDone && !state.loading && back == null) {
         LaunchedEffect(Unit) {
             scroll.scrollTo(with(density) { (minutes(state.openAt - state.windowStart) * minuteWidth).roundToPx() })
             initialScrollDone = true
@@ -273,7 +295,7 @@ private fun GuideGrid(
     val firstLive = state.channels.firstOrNull()?.let { channel -> channel.programmes.firstOrNull { it.isLive(state.now) } }
     // Guide ouvert en parcourant les onglets du haut : le focus y reste.
     val tabsFocused = LocalTabsFocused.current
-    if (requestInitialFocus && initialScrollDone && !initialFocusDone && firstLive != null) {
+    if (requestInitialFocus && initialScrollDone && !initialFocusDone && firstLive != null && back == null) {
         LaunchedEffect(firstLive) {
             if (!tabsFocused()) runCatching { initialFocus.requestFocus() }
             initialFocusDone = true
@@ -281,12 +303,10 @@ private fun GuideGrid(
     }
 
     // Heure visée : haut / bas restent sur cette heure, gauche / droite la déplacent.
-    val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     var anchor by remember { mutableLongStateOf(state.now) }
     var focusedRow by remember { mutableIntStateOf(-1) }
     var verticalMove by remember { mutableStateOf(false) }
-    var pendingFocus by remember { mutableStateOf<Pair<Int, Long>?>(null) }
     val minutePx = with(density) { minuteWidth.toPx() }
     val rowStepPx = with(density) { (rowHeight + 6.dp).toPx() }
     val onProgrammeFocus: (Int, GuideProgramme) -> Unit = { index, programme ->
@@ -347,12 +367,18 @@ private fun GuideGrid(
                     onChannelFocus = { focusedRow = -1 },
                     selected = channel.itemKey in selection,
                     onToggleSelection = { onToggleSelection(channel) },
-                    onPlay = { onPlay(channel.id) },
+                    onPlay = {
+                        rememberOpened(index, state.now)
+                        onPlay(channel.id)
+                    },
                     onFocus = { programme ->
                         onProgrammeFocus(index, programme)
                         onFocus(channel to programme)
                     },
-                    onOpen = { programme -> onOpen(channel to programme) },
+                    onOpen = { programme ->
+                        rememberOpened(index, maxOf(programme.startMillis, minOf(anchor, programme.stopMillis - 1)))
+                        onOpen(channel to programme)
+                    },
                 )
             }
         }
@@ -378,8 +404,14 @@ private fun GuideGroupChip(name: String, selected: Boolean, star: Boolean = fals
 
 @Composable
 private fun ProgrammeDetails(highlighted: Pair<GuideChannel, GuideProgramme>?, now: Long, modifier: Modifier = Modifier) {
-    Column(modifier.fillMaxWidth().heightIn(min = 84.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        if (highlighted != null) ProgrammeDetailsText(highlighted.first, highlighted.second, now)
+    Row(modifier.fillMaxWidth().heightIn(min = 84.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+        // Image du programme (guide, sinon TMDB pour un film ou une série).
+        if (highlighted != null && rememberProgrammeImage(highlighted.second) != null) {
+            ProgrammeArt(highlighted.second, Modifier.width(150.dp).aspectRatio(16f / 9f))
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            if (highlighted != null) ProgrammeDetailsText(highlighted.first, highlighted.second, now)
+        }
     }
 }
 
@@ -652,6 +684,9 @@ fun ProgrammeSheetContent(
             if (programme == null) {
                 Text(stringResource(R.string.channels_no_epg), style = MaterialTheme.typography.headlineSmall)
             } else {
+                if (rememberProgrammeImage(programme) != null) {
+                    ProgrammeArt(programme, Modifier.fillMaxWidth().aspectRatio(16f / 7f))
+                }
                 Text(programme.title, style = MaterialTheme.typography.headlineSmall)
                 programme.subtitle?.let { Text(it, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 // Genre et année de production, quand le guide les indique.

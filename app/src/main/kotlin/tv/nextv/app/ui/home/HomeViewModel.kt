@@ -46,6 +46,14 @@ import tv.nextv.app.data.db.SeriesRow
 import tv.nextv.app.player.ChannelPreviewPlayer
 import tv.nextv.app.ui.guide.GuideProgramme
 import tv.nextv.core.model.ContentKind
+import tv.nextv.app.data.catalog.MetadataState
+import tv.nextv.core.meta.MediaType
+import tv.nextv.core.meta.MediaDetails
+import tv.nextv.app.ui.detail.metadataCacheKey
+import tv.nextv.app.data.db.ItemKeys
+import kotlinx.coroutines.flow.transformLatest
+import kotlinx.coroutines.flow.first
+import androidx.compose.runtime.Immutable
 
 enum class HomeSection { TV, MOVIES, SERIES, GUIDE, FOOTBALL }
 
@@ -106,6 +114,47 @@ class HomeRows(
 
     /** Autre playlist : rien n'est gardé. */
     fun clear() = cache.clear()
+}
+
+/**
+ * Film ou série affiché en affiche (rangées, grilles, Cinéma Premium), avec les informations de la
+ * tendance TMDB quand il en vient ([backdropUrl], [overview], [rating]).
+ */
+@Immutable
+data class PosterItem(
+    val id: Long,
+    val kind: ContentKind,
+    val itemKey: String,
+    val title: String,
+    val year: Int?,
+    val imageUrl: String?,
+    /** Épisodes d'une série. */
+    val episodeCount: Int = 0,
+    val backdropUrl: String? = null,
+    val overview: String? = null,
+    val rating: Double? = null,
+)
+
+fun MovieRow.toPoster() = PosterItem(id, ContentKind.MOVIE, itemKey, title, year, logoUrl)
+
+fun SeriesRow.toPoster() = PosterItem(id, ContentKind.SERIES, itemKey, title, year, logoUrl, episodeCount)
+
+/** Rangées de découverte des films ou des séries : tendances de la semaine, nouveautés, recommandations. */
+@Immutable
+data class Discover(
+    val trending: List<PosterItem> = emptyList(),
+    val newest: List<PosterItem> = emptyList(),
+    val recommended: List<PosterItem> = emptyList(),
+    /** Titre regardé qui inspire les recommandations. */
+    val recommendedFrom: String? = null,
+)
+
+/** Affiche sélectionnée, puis sa fiche TMDB (visuel plein écran, résumé, genres, note) une fois lue. */
+@Immutable
+data class Spotlight(val item: PosterItem, val details: MediaDetails? = null) {
+    val backdropUrl: String? get() = details?.backdropUrl ?: item.backdropUrl
+    val overview: String? get() = details?.overview ?: item.overview
+    val rating: Double? get() = details?.rating ?: item.rating
 }
 
 /** Réorganisation des favoris : [movingKey] est l'élément « soulevé », déplacé avec les flèches. */
@@ -221,7 +270,7 @@ class HomeViewModel(
         .mapLatest { row ->
             row ?: return@mapLatest null
             val upcoming = container.programmeDao.upcoming(row.id, System.currentTimeMillis(), limit = PREVIEW_PROGRAMMES).map {
-                GuideProgramme(it.title, it.startMillis, it.stopMillis, it.subtitle, it.description, it.category, it.year)
+                GuideProgramme(it.title, it.startMillis, it.stopMillis, it.subtitle, it.description, it.category, it.year, it.imageUrl)
             }
             val current = upcoming.firstOrNull()?.takeIf { it.startMillis <= System.currentTimeMillis() }
             val following = upcoming.filter { it != current }
@@ -255,7 +304,7 @@ class HomeViewModel(
 
     /** Interface de l'accueil (réglages). */
     val layout: StateFlow<HomeLayout> = container.settings.homeLayout
-        .stateIn(viewModelScope, SharingStarted.Eagerly, HomeLayout.CLASSIC)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, HomeLayout.DEFAULT)
 
     /** Premiers éléments de chaque catégorie, lus d'avance et gardés pendant que l'accueil existe. */
     val rows = HomeRows(
@@ -266,6 +315,78 @@ class HomeViewModel(
 
     init {
         viewModelScope.launch { sourceId.collect { rows.clear() } }
+    }
+
+    /**
+     * Rangées de découverte, lues quand une interface qui les montre est choisie (Streaming, Cinéma
+     * Premium) : les tendances demandent TMDB.
+     */
+    private fun discover(kind: ContentKind, progress: Flow<List<ProgressEntity>>): StateFlow<Discover> =
+        combine(sourceId.filterNotNull(), layout, progress.map { it.firstOrNull() }.distinctUntilChangedBy { it?.itemKey }, ::Triple)
+            .mapLatest { (id, layout, lastWatched) ->
+                if (layout == HomeLayout.LIVE_CENTER) return@mapLatest Discover()
+                val isMovie = kind == ContentKind.MOVIE
+                val minYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR) - 1
+                val newest = runCatching {
+                    if (isMovie) dao.newestMovies(id, minYear, ROW_SIZE).map { it.toPoster() } else dao.newestSeries(id, minYear, ROW_SIZE).map { it.toPoster() }
+                }.getOrDefault(emptyList())
+                // Recommandations : même catégorie que le dernier titre regardé, sans ceux déjà commencés.
+                val watched = runCatching { container.progress.observeAll(id, kind.name).first().mapTo(HashSet()) { it.itemKey } }.getOrDefault(emptySet())
+                val group = lastWatched?.let { dao.get(it.channelId)?.groupTitle }
+                val recommended = if (lastWatched == null) {
+                    emptyList()
+                } else {
+                    runCatching {
+                        val rows = if (isMovie) dao.movieRow(id, group, ROW_SIZE * 2).map { it.toPoster() } else dao.seriesRow(id, group, ROW_SIZE * 2).map { it.toPoster() }
+                        rows.filter { it.itemKey !in watched }.take(ROW_SIZE)
+                    }.getOrDefault(emptyList())
+                }
+                Discover(trending = trending(id, kind), newest = newest, recommended = recommended, recommendedFrom = lastWatched?.title?.takeIf { recommended.isNotEmpty() })
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), Discover())
+
+    /** Tendances TMDB de la semaine retrouvées dans la playlist (titre et année, ou titre original). */
+    private suspend fun trending(sourceId: Long, kind: ContentKind): List<PosterItem> {
+        if (!container.hasTmdbKey()) return emptyList()
+        val isMovie = kind == ContentKind.MOVIE
+        val titles = runCatching { container.metadata.trending(if (isMovie) MediaType.MOVIE else MediaType.SERIES) }.getOrDefault(emptyList())
+        if (titles.isEmpty()) return emptyList()
+        fun keyOf(title: String, year: Int?) =
+            if (isMovie) "movie:${ItemKeys.normalize(title)}:${year ?: ""}" else "series:${ItemKeys.normalize(title)}"
+        val keys = titles.associateBy { keyOf(it.title, it.year) } +
+            titles.filter { it.originalTitle != null }.associateBy { keyOf(it.originalTitle!!, it.year) }
+        val found = runCatching {
+            if (isMovie) dao.moviesByKey(sourceId, keys.keys.toList()).map { it.toPoster() } else dao.seriesByKey(sourceId, keys.keys.toList()).map { it.toPoster() }
+        }.getOrDefault(emptyList()).distinctBy { it.itemKey }
+        return found.mapNotNull { item ->
+            val trend = keys[item.itemKey] ?: return@mapNotNull null
+            item.copy(backdropUrl = trend.backdropUrl, overview = trend.overview, rating = trend.rating, imageUrl = item.imageUrl ?: trend.posterUrl)
+        }.sortedBy { item -> titles.indexOf(keys[item.itemKey]) }
+    }
+
+    val movieDiscover: StateFlow<Discover> by lazy { discover(ContentKind.MOVIE, continueMovies) }
+    val seriesDiscover: StateFlow<Discover> by lazy { discover(ContentKind.SERIES, continueSeries) }
+
+    private val spotlightTarget = MutableStateFlow<PosterItem?>(null)
+
+    /** Affiche sélectionnée et sa fiche TMDB, lue après un court arrêt dessus (pas à chaque déplacement). */
+    val spotlight: StateFlow<Spotlight?> = spotlightTarget
+        .transformLatest { item ->
+            if (item == null) {
+                emit(null)
+                return@transformLatest
+            }
+            emit(Spotlight(item))
+            if (!container.hasTmdbKey()) return@transformLatest
+            delay(SPOTLIGHT_DELAY_MILLIS)
+            val type = if (item.kind == ContentKind.SERIES) MediaType.SERIES else MediaType.MOVIE
+            val state = runCatching { container.metadata.details(metadataCacheKey(item.itemKey), type, item.title, item.year) }.getOrNull()
+            (state as? MetadataState.Available)?.let { emit(Spotlight(item, it.details)) }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    fun onPosterFocused(item: PosterItem) {
+        if (spotlightTarget.value?.itemKey != item.itemKey) spotlightTarget.value = item
     }
 
     /** Retour aux rangées (interface « Streaming ») : catégorie « Toutes » et recherche vidée. */
@@ -350,6 +471,7 @@ class HomeViewModel(
     }
 
     fun selectSection(target: HomeSection) {
+        if (section.value != target) spotlightTarget.value = null
         section.value = target
         reorder.value = ReorderState()
     }
@@ -413,5 +535,6 @@ class HomeViewModel(
         const val PREVIEW_DELAY_MILLIS = 900L
         const val PREVIEW_PROGRAMMES = 6
         const val ROW_SIZE = 24
+        const val SPOTLIGHT_DELAY_MILLIS = 350L
     }
 }

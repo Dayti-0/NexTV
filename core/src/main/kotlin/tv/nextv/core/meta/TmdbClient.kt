@@ -44,6 +44,17 @@ data class MediaDetails(
     val stars: Double? get() = rating?.takeIf { voteCount > 0 }?.let { it / 2 }
 }
 
+/** Film ou série de la semaine sur TMDB (« Tendances »), à retrouver dans la playlist. */
+data class TrendingTitle(
+    val title: String,
+    val originalTitle: String?,
+    val year: Int?,
+    val overview: String?,
+    val rating: Double?,
+    val posterUrl: String?,
+    val backdropUrl: String?,
+)
+
 enum class TmdbError { MISSING_KEY, INVALID_KEY, RATE_LIMITED, NETWORK, SERVER }
 
 sealed interface TmdbResult {
@@ -82,6 +93,43 @@ class TmdbClient(
             return lookupWith(fallback, type, title, year)
         }
         return result
+    }
+
+    /**
+     * Films ou séries les plus regardés de la semaine (deux pages, une quarantaine de titres) ;
+     * liste vide sans clé ou en cas d'échec.
+     */
+    suspend fun trending(type: MediaType, pages: Int = 2): List<TrendingTitle> {
+        val key = apiKey()?.trim()?.takeIf { it.isNotEmpty() } ?: fallbackApiKey()?.trim()?.takeIf { it.isNotEmpty() } ?: return emptyList()
+        val path = if (type == MediaType.MOVIE) "trending/movie/week" else "trending/tv/week"
+        val titles = mutableListOf<TrendingTitle>()
+        for (page in 1..pages) {
+            val url = baseUrl.newBuilder().addPathSegments(path)
+                .addQueryParameter("language", language)
+                .addQueryParameter("page", page.toString())
+                .build()
+            val json = try {
+                get(key, url)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.warn(TAG, "Tendances TMDB indisponibles", e)
+                break
+            }
+            json.optJSONArray("results").objects().mapNotNullTo(titles) { item ->
+                val title = item.optStringOrNull(if (type == MediaType.MOVIE) "title" else "name") ?: return@mapNotNullTo null
+                TrendingTitle(
+                    title = title,
+                    originalTitle = item.optStringOrNull(if (type == MediaType.MOVIE) "original_title" else "original_name"),
+                    year = item.optStringOrNull(if (type == MediaType.MOVIE) "release_date" else "first_air_date")?.take(4)?.toIntOrNull(),
+                    overview = item.optStringOrNull("overview"),
+                    rating = item.optDouble("vote_average").takeIf { !it.isNaN() && it > 0 },
+                    posterUrl = item.optStringOrNull("poster_path")?.let { "${imageBaseUrl}w500$it" },
+                    backdropUrl = item.optStringOrNull("backdrop_path")?.let { "${imageBaseUrl}w1280$it" },
+                )
+            }
+        }
+        return titles
     }
 
     private suspend fun lookupWith(key: String, type: MediaType, title: String, year: Int?): TmdbResult {

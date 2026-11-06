@@ -80,6 +80,8 @@ android {
         unitTests {
             // Robolectric rend les écrans avec les vraies ressources (captures d'écran Roborazzi).
             isIncludeAndroidResources = true
+            // Captures en 1920 × 1080 : la mémoire par défaut (512 Mo) ne suffit plus.
+            all { it.maxHeapSize = "2g" }
         }
     }
 

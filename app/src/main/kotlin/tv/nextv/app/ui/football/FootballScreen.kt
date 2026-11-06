@@ -37,6 +37,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import kotlinx.coroutines.delay
+import tv.nextv.app.ui.home.HomeVisit
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -279,6 +282,23 @@ private fun MatchList(
     modifier: Modifier = Modifier,
 ) {
     val days = remember(matches) { matches.groupBy { dayStart(it.kickoffMillis) } }
+    // Match ouvert (lecture) : il reprend le focus au retour sur l'accueil.
+    var opened by rememberSaveable { mutableStateOf<List<String>?>(null) }
+    val visit = HomeVisit.current
+    val backKey = opened?.takeIf { it.size == 2 && it[1] != visit.toString() }?.get(0)
+    val backFocus = remember { FocusRequester() }
+    if (backKey != null && matches.any { it.key == backKey }) {
+        LaunchedEffect(backKey) {
+            repeat(8) {
+                if (runCatching { backFocus.requestFocus() }.isSuccess) {
+                    opened = null
+                    return@LaunchedEffect
+                }
+                delay(120)
+            }
+            opened = null
+        }
+    }
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = if (compact) horizontalPadding else 28.dp, end = horizontalPadding, top = 8.dp, bottom = 32.dp),
@@ -310,8 +330,16 @@ private fun MatchList(
                     now = now,
                     compact = compact,
                     followed = match.involves(favoriteTeams),
-                    onClick = { if (channel != null) onPlay(channel.id) else onDetails(match) },
+                    onClick = {
+                        if (channel != null) {
+                            opened = listOf(match.key, visit.toString())
+                            onPlay(channel.id)
+                        } else {
+                            onDetails(match)
+                        }
+                    },
                     onLongClick = { onDetails(match) },
+                    modifier = if (match.key == backKey) Modifier.focusRequester(backFocus) else Modifier,
                 )
             }
         }
@@ -326,11 +354,12 @@ private fun MatchRow(
     followed: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     FocusSurface(
         onClick = onClick,
         onLongClick = onLongClick,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surfaceContainer,
         focusScale = 1.01f,
@@ -919,7 +948,10 @@ private fun noticeText(notice: FootballNotice): String = stringResource(
     },
 )
 
-private fun competitionColor(competition: Competition): Color = when (competition) {
+/** Couleur de la compétition, foncée sur une palette claire pour rester lisible. */
+private fun competitionColor(competition: Competition): Color = NexTvColors.readable(baseCompetitionColor(competition))
+
+private fun baseCompetitionColor(competition: Competition): Color = when (competition) {
     Competition.LIGUE_1 -> Color(0xFF5C9DFF)
     Competition.PREMIER_LEAGUE -> Color(0xFFC792EA)
     Competition.LA_LIGA -> Color(0xFFFF8A65)

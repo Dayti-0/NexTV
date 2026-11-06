@@ -41,6 +41,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import tv.nextv.app.ui.components.NixTvLogo
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
@@ -102,7 +104,7 @@ fun StartupContent(
     Box(
         Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(Color(0xFF0B1220), NexTvColors.Background, Color(0xFF07090D)))),
+            .background(screenBackground()),
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -111,8 +113,7 @@ fun StartupContent(
             modifier = Modifier.widthIn(max = 640.dp).verticalScroll(rememberScrollState()).padding(32.dp),
         ) {
             AnimatedLogo(animate = animate && state.error == null)
-            Spacer(Modifier.height(20.dp))
-            Text("NexTV", fontSize = 40.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+            Spacer(Modifier.height(12.dp))
             state.playlistName?.let {
                 Text(it, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -127,66 +128,94 @@ fun StartupContent(
     }
 }
 
+/** Fond des écrans d'accueil : dégradé discret de la palette (claire ou sombre). */
+@Composable
+internal fun screenBackground(): Brush {
+    val background = MaterialTheme.colorScheme.background
+    val tint = MaterialTheme.colorScheme.primary.copy(alpha = if (NexTvColors.isLight) 0.06f else 0.08f)
+    return Brush.verticalGradient(listOf(tint.compositeOver(background), background, background))
+}
+
+/**
+ * Logo NixTV avec un halo aux couleurs du « TV » (magenta, bleu) qui respire doucement pendant le
+ * chargement, et une barre lumineuse qui le parcourt.
+ */
 @Composable
 internal fun AnimatedLogo(animate: Boolean) {
     // Animation infinie créée seulement si elle est jouée (captures d'écran : image fixe, sans attente infinie).
-    var ringAngle = 30f
-    var glowScale = 1f
+    var glow = 1f
+    var sweep = 0.5f
     if (animate) {
         val transition = rememberInfiniteTransition(label = "logo")
-        ringAngle = transition.animateFloat(
-            initialValue = 0f,
-            targetValue = 360f,
-            animationSpec = infiniteRepeatable(tween(2_400, easing = LinearEasing)),
-            label = "ring",
-        ).value
-        glowScale = transition.animateFloat(
+        glow = transition.animateFloat(
             initialValue = 0.85f,
-            targetValue = 1.15f,
-            animationSpec = infiniteRepeatable(tween(1_600, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+            targetValue = 1.12f,
+            animationSpec = infiniteRepeatable(tween(1_800, easing = FastOutSlowInEasing), RepeatMode.Reverse),
             label = "glow",
         ).value
+        sweep = transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(1_600, easing = LinearEasing)),
+            label = "sweep",
+        ).value
     }
-    Box(Modifier.size(168.dp), contentAlignment = Alignment.Center) {
-        // Halo lumineux.
+    Box(Modifier.width(420.dp).height(150.dp), contentAlignment = Alignment.Center) {
+        // Halo derrière le logo.
         Box(
             Modifier
-                .size(150.dp)
+                .fillMaxSize()
                 .drawBehind {
+                    // Rayon contenu dans la colonne défilante (sinon le halo serait coupé net).
+                    val radius = size.height * 0.62f * glow
                     drawCircle(
                         brush = Brush.radialGradient(
-                            listOf(NexTvColors.Primary.copy(alpha = 0.45f), NexTvColors.Accent.copy(alpha = 0.18f), Color.Transparent),
-                            center = center,
-                            radius = size.minDimension / 2 * glowScale,
+                            listOf(LOGO_MAGENTA.copy(alpha = 0.28f), Color.Transparent),
+                            center = Offset(size.width * 0.62f, size.height / 2),
+                            radius = radius,
                         ),
-                        radius = size.minDimension / 2 * glowScale,
+                        radius = radius,
+                        center = Offset(size.width * 0.62f, size.height / 2),
+                    )
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            listOf(LOGO_BLUE.copy(alpha = 0.26f), Color.Transparent),
+                            center = Offset(size.width * 0.82f, size.height / 2),
+                            radius = radius,
+                        ),
+                        radius = radius,
+                        center = Offset(size.width * 0.82f, size.height / 2),
                     )
                 },
         )
-        // Anneau tournant.
-        Canvas(Modifier.size(150.dp).rotate(ringAngle)) {
-            val stroke = 5.dp.toPx()
-            drawArc(
-                brush = Brush.sweepGradient(listOf(Color.Transparent, NexTvColors.Primary, NexTvColors.Accent, Color.Transparent)),
-                startAngle = 0f,
-                sweepAngle = 300f,
-                useCenter = false,
-                topLeft = Offset(stroke / 2, stroke / 2),
-                size = androidx.compose.ui.geometry.Size(size.width - stroke, size.height - stroke),
-                style = Stroke(width = stroke, cap = StrokeCap.Round),
-            )
-        }
-        Box(
-            Modifier
-                .size(96.dp)
-                .clip(MaterialTheme.shapes.large)
-                .background(Brush.linearGradient(listOf(NexTvColors.Primary, NexTvColors.Accent))),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(NexTvIcons.Tv, contentDescription = null, tint = Color.White, modifier = Modifier.size(52.dp))
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            NixTvLogo(height = 64.dp)
+            Spacer(Modifier.height(18.dp))
+            // Trait lumineux qui parcourt la largeur du logo.
+            Box(Modifier.width(220.dp).height(3.dp).clip(CircleShape).background(MaterialTheme.colorScheme.outlineVariant)) {
+                Box(
+                    Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth()
+                        .drawBehind {
+                            val center = size.width * sweep
+                            drawRect(
+                                brush = Brush.horizontalGradient(
+                                    listOf(Color.Transparent, LOGO_MAGENTA, LOGO_BLUE, Color.Transparent),
+                                    startX = center - size.width * 0.35f,
+                                    endX = center + size.width * 0.35f,
+                                ),
+                            )
+                        },
+                )
+            }
         }
     }
 }
+
+/** Couleurs du « TV » du logo. */
+private val LOGO_MAGENTA = Color(0xFFB000F0)
+private val LOGO_BLUE = Color(0xFF00A8F0)
 
 @Composable
 private fun LoadingProgress(state: StartupUiState) {
