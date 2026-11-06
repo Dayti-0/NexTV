@@ -632,7 +632,7 @@ private fun HomeTopBar(
                 .weight(1f)
                 .then(
                     if (minimal) {
-                        Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.55f)).padding(4.dp)
+                        Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.surface.copy(alpha = PREMIUM_BAR_ALPHA)).padding(4.dp)
                     } else {
                         Modifier
                     },
@@ -669,9 +669,20 @@ private fun HomeTopBar(
                 modifier = Modifier.padding(horizontal = 12.dp).widthIn(max = 220.dp),
             )
         }
-        IconAction(Icons.Filled.Settings, stringResource(R.string.settings_title), actions.onSettings)
+        if (minimal) {
+            // Sur l'image ou le direct (souvent clairs) : même fond translucide que les onglets, pour rester visible.
+            Spacer(Modifier.width(10.dp))
+            Box(Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.surface.copy(alpha = PREMIUM_BAR_ALPHA))) {
+                IconAction(Icons.Filled.Settings, stringResource(R.string.settings_title), actions.onSettings)
+            }
+        } else {
+            IconAction(Icons.Filled.Settings, stringResource(R.string.settings_title), actions.onSettings)
+        }
     }
 }
+
+/** Fond des onglets et du bouton des réglages de Cinéma Premium, lisible sur une image claire. */
+private const val PREMIUM_BAR_ALPHA = 0.72f
 
 @Composable
 private fun SectionTab(

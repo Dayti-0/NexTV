@@ -34,6 +34,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
@@ -41,7 +42,10 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -61,6 +65,7 @@ import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.itemKey
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import tv.nextv.app.R
 import tv.nextv.app.data.db.ChannelListRow
 import tv.nextv.app.data.db.GroupRow
@@ -170,23 +175,25 @@ internal fun StreamingHome(
         PreloadRows(content)
         val shelves = shelfList(content)
         RestoreRow(listState, lastOpened, listOf("search") + shelves.map { it.key })
-        LazyColumn(
-            Modifier.weight(1f),
-            state = listState,
-            contentPadding = PaddingValues(top = 4.dp, bottom = 40.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            // Recherche en tête des rangées : elle défile avec elles (et garde le clavier pendant la saisie).
-            item(key = "search") {
-                SearchField(query, searchHint(section), actions.onQuery, Modifier.padding(horizontal = padding).widthIn(max = 460.dp))
-            }
-            if (query.isNotEmpty()) {
-                item(key = "results") {
-                    SearchResults(section, channels, movies, series, sizes, padding, content, lastOpened, actions)
+        CompositionLocalProvider(LocalRowSnap provides rememberRowSnap(listState)) {
+            LazyColumn(
+                Modifier.weight(1f),
+                state = listState,
+                contentPadding = PaddingValues(top = 4.dp, bottom = 40.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                // Recherche en tête des rangées : elle défile avec elles (et garde le clavier pendant la saisie).
+                item(key = "search") {
+                    SearchField(query, searchHint(section), actions.onQuery, Modifier.padding(horizontal = padding).widthIn(max = 460.dp))
                 }
-                return@LazyColumn
+                if (query.isNotEmpty()) {
+                    item(key = "results") {
+                        SearchResults(section, channels, movies, series, sizes, padding, content, lastOpened, actions)
+                    }
+                    return@LazyColumn
+                }
+                shelfItems(shelves, content, sizes, padding, lastOpened, actions, ShelfStyle.STREAMING)
             }
-            shelfItems(shelves, content, sizes, padding, lastOpened, actions, ShelfStyle.STREAMING)
         }
     }
 }
@@ -270,6 +277,29 @@ internal fun shelfList(content: ShelfContent): List<ShelfSpec> = buildList {
 
 /** Présentation des rangées : Streaming (vignettes serrées) ou Cinéma Premium (grandes affiches). */
 internal enum class ShelfStyle { STREAMING, PREMIUM }
+
+/** Cale la rangée de clé donnée en haut de la liste des rangées (fournie par l'interface qui les affiche). */
+internal val LocalRowSnap = staticCompositionLocalOf<((String) -> Unit)?> { null }
+
+/**
+ * Rangée qui reçoit le focus : amenée en haut de [listState] (la liste ne défile sinon que du
+ * minimum, et le bas de la rangée précédente resterait visible, coupé, sous la bannière).
+ */
+@Composable
+internal fun rememberRowSnap(listState: LazyListState): (String) -> Unit {
+    val scope = rememberCoroutineScope()
+    return remember(listState, scope) {
+        { key: String ->
+            scope.launch {
+                // Après le défilement minimal qui suit le focus (il démarre à l'image suivante) : il est remplacé.
+                withFrameNanos { }
+                withFrameNanos { }
+                val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == key } ?: return@launch
+                if (item.offset != 0) listState.animateScrollToItem(item.index)
+            }
+        }
+    }
+}
 
 internal fun LazyListScope.shelfItems(
     shelves: List<ShelfSpec>,
@@ -443,7 +473,12 @@ internal fun Shelf(
     val rowState = rememberSaveable(rowKey, saver = LazyListState.Saver) { LazyListState() }
     RestoreScroll(rowState, lastOpened, itemCount, row = rowKey)
     val premium = style == ShelfStyle.PREMIUM
-    Column(verticalArrangement = Arrangement.spacedBy(if (premium) 0.dp else 2.dp)) {
+    val snap = LocalRowSnap.current
+    Column(
+        // Rangée choisie : calée en haut de la liste, sans morceau de la précédente au-dessus.
+        Modifier.onFocusChanged { if (it.hasFocus) snap?.invoke(rowKey) },
+        verticalArrangement = Arrangement.spacedBy(if (premium) 0.dp else 2.dp),
+    ) {
         Row(Modifier.padding(horizontal = padding), verticalAlignment = Alignment.Bottom) {
             Text(
                 title,

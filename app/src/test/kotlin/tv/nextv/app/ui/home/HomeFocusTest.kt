@@ -11,6 +11,8 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.isDisplayed
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
@@ -116,6 +118,29 @@ class HomeFocusTest {
         val last = focused.lastOrNull()?.groupTitle
         println("Cinéma Premium, focus après 10 × bas : $last")
         assertTrue("Focus : $last", last != null && last.removePrefix("Groupe ").toInt() >= 5)
+    }
+
+    /** La rangée choisie est calée en haut : rien de la précédente ne reste visible, coupé, au-dessus. */
+    @Test
+    fun premiumFocusedRowIsSnappedToTheTop() = assertFocusedRowSnapped(HomeLayout.PREMIUM)
+
+    @Test
+    fun streamingFocusedRowIsSnappedToTheTop() = assertFocusedRowSnapped(HomeLayout.STREAMING)
+
+    private fun assertFocusedRowSnapped(layout: HomeLayout) {
+        val focused = mutableListOf<ChannelListRow>()
+        compose.setContent { Home(layout, HomeActions(onChannelFocus = { focused += it })) }
+        compose.waitForIdle()
+        repeat(6) {
+            compose.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
+            compose.waitForIdle()
+        }
+        val group = focused.last().groupTitle!!.removePrefix("Groupe ").toInt()
+        val previous = "Groupe ${group - 1} · 0"
+        val visible = runCatching { compose.onNodeWithText(previous).isDisplayed() }.getOrDefault(false)
+        println("$layout : rangée Groupe $group, « $previous » visible : $visible")
+        assertTrue("Groupe $group", group >= 2)
+        assertTrue("$layout : « $previous » encore visible au-dessus de la rangée choisie", !visible)
     }
 
     /** Retour du lecteur : la liste revient à sa place et la chaîne ouverte reprend le focus. */

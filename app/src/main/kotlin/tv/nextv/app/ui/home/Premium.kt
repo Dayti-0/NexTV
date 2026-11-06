@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -112,20 +113,22 @@ internal fun PremiumHome(
             val shelves = shelfList(content)
             val listState = rememberSaveable(section, saver = LazyListState.Saver) { LazyListState() }
             RestoreRow(listState, lastOpened, shelves.map { it.key })
-            LazyColumn(
-                Modifier.weight(1f),
-                state = listState,
-                contentPadding = PaddingValues(top = 10.dp, bottom = 48.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                // Recherche en cours : ses résultats d'abord, sinon les rangées ; le champ, discret, vient après.
-                if (query.isNotEmpty()) {
-                    item(key = "results") { SearchResults(section, channels, movies, series, sizes, padding, content, lastOpened, actions, ShelfStyle.PREMIUM) }
-                } else {
-                    shelfItems(shelves, content, sizes, padding, lastOpened, actions, ShelfStyle.PREMIUM)
-                }
-                item(key = "search") {
-                    SearchField(query, searchHint(section), actions.onQuery, Modifier.padding(horizontal = padding, vertical = 12.dp).width(360.dp))
+            CompositionLocalProvider(LocalRowSnap provides rememberRowSnap(listState)) {
+                LazyColumn(
+                    Modifier.weight(1f),
+                    state = listState,
+                    contentPadding = PaddingValues(top = 10.dp, bottom = 48.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    // Recherche en cours : ses résultats d'abord, sinon les rangées ; le champ, discret, vient après.
+                    if (query.isNotEmpty()) {
+                        item(key = "results") { SearchResults(section, channels, movies, series, sizes, padding, content, lastOpened, actions, ShelfStyle.PREMIUM) }
+                    } else {
+                        shelfItems(shelves, content, sizes, padding, lastOpened, actions, ShelfStyle.PREMIUM)
+                    }
+                    item(key = "search") {
+                        SearchField(query, searchHint(section), actions.onQuery, Modifier.padding(horizontal = padding, vertical = 12.dp).width(360.dp))
+                    }
                 }
             }
         }
@@ -195,7 +198,14 @@ private fun PremiumLiveInfo(preview: ChannelPreview?, now: Long) {
                 LiveProgress(current.startMillis, current.stopMillis, now, Modifier.width(240.dp))
             }
             current.description?.let {
-                Text(it, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.78f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                // Une ligne quand le programme suivant est annoncé : tout tient dans la hauteur du volet.
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.78f),
+                    maxLines = if (preview.next != null) 1 else 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
         preview.next?.let { next ->
