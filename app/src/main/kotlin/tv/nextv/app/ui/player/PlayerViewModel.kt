@@ -10,22 +10,10 @@ import androidx.annotation.OptIn
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.paging.Pager
-import androidx.paging.PagingConfig
 import androidx.paging.PagingData
-import androidx.paging.cachedIn
-import androidx.paging.map
-import androidx.media3.common.C
-import androidx.media3.common.Format
 import androidx.media3.common.PlaybackException
-import androidx.media3.common.Player
-import androidx.media3.common.TrackSelectionOverride
-import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.analytics.AnalyticsListener
-import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -34,14 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -50,19 +31,13 @@ import tv.nextv.app.R
 import tv.nextv.app.data.db.ChannelEntity
 import tv.nextv.app.data.db.ChannelListRow
 import tv.nextv.app.data.db.GroupRow
-import tv.nextv.app.data.progress.ProgressEntity
-import tv.nextv.app.data.progress.ProgressRepository
 import tv.nextv.app.data.settings.AspectMode
-import tv.nextv.app.player.AdVolumeControl
 import tv.nextv.app.player.PlaybackRequest
 import tv.nextv.app.player.toStream
 import tv.nextv.app.player.TimeshiftBuffer
 import tv.nextv.app.player.TimeshiftRecorder
-import tv.nextv.app.player.VideoDecoders
 import tv.nextv.app.player.describePlaybackError
 import tv.nextv.app.ui.common.describe
-import tv.nextv.app.ui.guide.GuideChannel
-import tv.nextv.app.ui.guide.GuideProgramme
 import tv.nextv.app.ui.home.Category
 import tv.nextv.core.football.Broadcast
 import tv.nextv.core.football.BroadcastFinder
@@ -79,10 +54,6 @@ import tv.nextv.core.net.RequestPurpose
 import tv.nextv.core.source.Catchup
 import tv.nextv.core.source.Mirrors
 import tv.nextv.core.source.XtreamAccount
-import tv.nextv.core.stream.QualityOption
-import tv.nextv.core.stream.QualitySwitcher
-import tv.nextv.core.stream.QualityTarget
-import java.util.Locale
 
 @OptIn(UnstableApi::class)
 @kotlin.OptIn(ExperimentalCoroutinesApi::class)
@@ -139,10 +110,6 @@ class PlayerViewModel(
     private val mutableState = MutableStateFlow(PlayerUiState())
     val state: StateFlow<PlayerUiState> = mutableState.asStateFlow()
 
-    private val mutablePlayer = MutableStateFlow<ExoPlayer?>(null)
-    val player: StateFlow<ExoPlayer?> = mutablePlayer.asStateFlow()
-
-
     private val sourceId = MutableStateFlow<Long?>(null)
 
     // Menu des chaînes (« Retour ») : catégories, liste, programme de la chaîne sélectionnée.
@@ -160,25 +127,10 @@ class PlayerViewModel(
     private var resumeOnStart = true
     private var multicastLock: WifiManager.MulticastLock? = null
     private var loadJob: Job? = null
-    private var preferredDecoders: Map<String, String> = emptyMap()
-
-    /** Langues choisies en dernier (audio ; sous-titres, `null` : désactivés), proposées en premier. */
-    private var audioLanguage: String? = null
-    private var subtitleLanguage: String? = null
-
-    /** Son Dolby / DTS envoyé tel quel à l'ampli (sinon décodé par l'appareil). */
-    private var audioPassthrough = false
-
-    /** Option « baisser le son des pubs », lue par le traitement du son de chaque lecteur. */
-    private val adVolume = AdVolumeControl()
 
     /** Format de l'image (réglage commun à toutes les lectures). */
     val aspectMode: StateFlow<AspectMode> = container.settings.aspectMode
         .stateIn(viewModelScope, SharingStarted.Eagerly, AspectMode.FIT)
-
-    // Images perdues déjà prises en compte, pour le lecteur courant.
-    private var countedPlayer: ExoPlayer? = null
-    private var countedDroppedFrames = 0
 
     // Différé du direct.
     private var timeshift: TimeshiftBuffer? = null
@@ -187,6 +139,24 @@ class PlayerViewModel(
 
     /** Dernier serveur qui a répondu (playlist, racine) : les chaînes suivantes commencent par lui. */
     private var workingServer: Pair<Long, String>? = null
+
+    // Lecteur ExoPlayer : lecture, pistes, infos techniques.
+    private val engine = PlayerEngine(
+        container = container,
+        scope = viewModelScope,
+        state = mutableState,
+        resources = resources,
+        events = object : PlayerEngine.Events {
+            override fun onBuffering() = quality.onBufferingStarted()
+            override fun onReady() {
+                quality.onReady()
+                rememberServer()
+            }
+            override fun onEnded() = this@PlayerViewModel.onEnded()
+            override fun onError(error: PlaybackException) = handleError(error)
+        },
+    )
+    val player: StateFlow<ExoPlayer?> = engine.player
 
     // Qualité automatique (versions SD, HD, FHD, 4K d'une même chaîne).
     private val quality = AutoQualityController(
@@ -207,139 +177,13 @@ class PlayerViewModel(
         state = mutableState,
         session = session,
         initialMode = handle.get<String>(ARG_RESUME) ?: RESUME_ASK,
-        player = { mutablePlayer.value },
+        player = { engine.current },
         host = object : ResumeController.Host {
             override suspend fun playVariant(variant: ChannelEntity) = this@PlayerViewModel.playVariant(variant, notice = null)
             override fun load(id: Long) = this@PlayerViewModel.load(id)
         },
     )
-    private val bandwidthMeter: DefaultBandwidthMeter = container.playerFactory.newBandwidthMeter()
-
-    private val listener = object : Player.Listener {
-        override fun onPlaybackStateChanged(playbackState: Int) {
-            when (playbackState) {
-                Player.STATE_BUFFERING -> quality.onBufferingStarted()
-                Player.STATE_READY -> {
-                    quality.onReady()
-                    rememberServer()
-                }
-                Player.STATE_ENDED -> onEnded()
-            }
-            mutableState.update { it.copy(buffering = playbackState == Player.STATE_BUFFERING) }
-        }
-
-        override fun onPlayerError(error: PlaybackException) = handleError(error)
-
-        override fun onTracksChanged(tracks: Tracks) {
-            mutableState.update { it.copy(tracks = describeTracks(tracks), audioProblem = audioProblemOf(tracks)) }
-        }
-    }
-
-    private val analytics = object : AnalyticsListener {
-        override fun onBandwidthEstimate(
-            eventTime: AnalyticsListener.EventTime,
-            totalLoadTimeMs: Int,
-            totalBytesLoaded: Long,
-            bitrateEstimate: Long,
-        ) {
-            mutableState.update { it.copy(bandwidthMbps = bitrateEstimate / 1_000_000.0) }
-        }
-
-        override fun onVideoInputFormatChanged(
-            eventTime: AnalyticsListener.EventTime,
-            format: Format,
-            decoderReuseEvaluation: DecoderReuseEvaluation?,
-        ) {
-            updateInfo {
-                it.copy(
-                    videoMimeType = format.sampleMimeType,
-                    width = format.width.takeIf { w -> w > 0 },
-                    height = format.height.takeIf { h -> h > 0 },
-                    frameRate = format.frameRate.takeIf { f -> f > 0f },
-                )
-            }
-        }
-
-        override fun onVideoDecoderInitialized(
-            eventTime: AnalyticsListener.EventTime,
-            decoderName: String,
-            initializedTimestampMs: Long,
-            initializationDurationMs: Long,
-        ) {
-            updateInfo { it.copy(videoDecoder = decoderName) }
-        }
-
-        override fun onAudioInputFormatChanged(
-            eventTime: AnalyticsListener.EventTime,
-            format: Format,
-            decoderReuseEvaluation: DecoderReuseEvaluation?,
-        ) {
-            updateInfo { it.copy(audioMimeType = format.sampleMimeType, audioChannels = format.channelCount.takeIf { c -> c > 0 }) }
-        }
-
-        override fun onAudioDecoderInitialized(
-            eventTime: AnalyticsListener.EventTime,
-            decoderName: String,
-            initializedTimestampMs: Long,
-            initializationDurationMs: Long,
-        ) {
-            updateInfo { it.copy(audioDecoder = decoderName) }
-        }
-
-    }
-
-    /**
-     * Images perdues depuis le dernier passage, lues sur les compteurs du décodeur (le lecteur ne les
-     * signale lui-même que par lots de 50, trop tard pour réagir vite).
-     */
-    private fun newDroppedFrames(): Int {
-        val player = mutablePlayer.value
-        if (player !== countedPlayer) {
-            countedPlayer = player
-            countedDroppedFrames = 0
-        }
-        val counters = player?.videoDecoderCounters ?: return 0
-        counters.ensureUpdated()
-        val total = counters.droppedBufferCount
-        val delta = total - countedDroppedFrames
-        countedDroppedFrames = total
-        if (delta > 0) updateInfo { it.copy(droppedFrames = total) }
-        return delta.coerceAtLeast(0)
-    }
-
-    /** Met à jour les infos de lecture ; le type de décodeur (matériel ou logiciel) est déduit dès que possible. */
-    private fun updateInfo(transform: (PlaybackInfo) -> PlaybackInfo) {
-        mutableState.update { state ->
-            val info = transform(state.info)
-            val decoder = info.videoDecoder
-            val resolved = if (decoder != null && info.hardwareDecoder == null) {
-                info.copy(hardwareDecoder = VideoDecoders.isHardware(info.videoMimeType, decoder))
-            } else {
-                info
-            }
-            state.copy(info = resolved)
-        }
-    }
-
     init {
-        viewModelScope.launch {
-            container.settings.preferredDecoders.collect { preferredDecoders = it }
-        }
-        viewModelScope.launch {
-            container.settings.audioLanguage.collect { audioLanguage = it }
-        }
-        viewModelScope.launch {
-            container.settings.audioPassthrough.collect { audioPassthrough = it }
-        }
-        viewModelScope.launch {
-            container.settings.subtitleLanguage.collect { subtitleLanguage = it }
-        }
-        viewModelScope.launch {
-            container.settings.lowerAdVolume.collect {
-                adVolume.enabled = it
-                mutableState.update { state -> state.copy(lowerAdVolume = it) }
-            }
-        }
         load(channelId)
         viewModelScope.launch {
             while (true) {
@@ -351,13 +195,13 @@ class PlayerViewModel(
         viewModelScope.launch {
             while (true) {
                 delay(QUALITY_CHECK_MILLIS)
-                if (replayUrlFrom != null && mutablePlayer.value != null && pendingJumpSeconds == 0) {
+                if (replayUrlFrom != null && engine.current != null && pendingJumpSeconds == 0) {
                     val at = watchedAt()
                     if (abs(at - (state.value.watchedAt ?: 0)) >= 1_000) mutableState.update { it.copy(watchedAt = at) }
                 }
-                val adMuted = adVolume.enabled && adVolume.attenuating
+                val adMuted = engine.adVolume.enabled && engine.adVolume.attenuating
                 if (state.value.adMuted != adMuted) mutableState.update { it.copy(adMuted = adMuted) }
-                val dropped = newDroppedFrames()
+                val dropped = engine.newDroppedFrames()
                 // Pause ou différé : changer de version ramènerait au direct.
                 if (timeshift != null || state.value.paused || state.value.liveDelayMs > 0) continue
                 quality.check(dropped)
@@ -372,94 +216,10 @@ class PlayerViewModel(
         }
     }
 
-    /** Langue audio et sous-titres choisis en dernier, essayés en premier. */
-    private fun ExoPlayer.applyTrackPreferences() {
-        trackSelectionParameters = trackSelectionParameters.buildUpon()
-            .setPreferredAudioLanguage(audioLanguage)
-            .setPreferredTextLanguage(subtitleLanguage)
-            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, subtitleLanguage == null)
-            .build()
-    }
-
-    /**
-     * Image sans son : aucune piste audio dans le flux, ou aucune que l'appareil sache lire. Les
-     * pistes ne sont connues qu'une fois l'image arrivée (vidéo présente).
-     */
-    private fun audioProblemOf(tracks: Tracks): AudioProblem? {
-        if (tracks.isEmpty || !tracks.containsType(C.TRACK_TYPE_VIDEO)) return null
-        val audio = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
-        return when {
-            audio.isEmpty() -> AudioProblem.NO_TRACK
-            audio.none { group -> (0 until group.length).any(group::isTrackSupported) } -> {
-                val formats = audio.flatMap { group -> (0 until group.length).map { group.getTrackFormat(it).sampleMimeType } }
-                container.logger.warn(TAG, "Son illisible par l'appareil : ${formats.distinct()}")
-                AudioProblem.UNSUPPORTED
-            }
-            else -> null
-        }
-    }
-
-    private fun describeTracks(tracks: Tracks): PlayerTracks {
-        val audio = mutableListOf<TrackChoice>()
-        val subtitles = mutableListOf<TrackChoice>()
-        tracks.groups.forEachIndexed { groupIndex, group ->
-            val target = when (group.type) {
-                C.TRACK_TYPE_AUDIO -> audio
-                C.TRACK_TYPE_TEXT -> subtitles
-                else -> return@forEachIndexed
-            }
-            for (trackIndex in 0 until group.length) {
-                if (!group.isTrackSupported(trackIndex)) continue
-                val format = group.getTrackFormat(trackIndex)
-                val language = format.language?.takeIf { it.isNotBlank() && it != C.LANGUAGE_UNDETERMINED }
-                target += TrackChoice(groupIndex, trackIndex, trackLabel(format, language, target.size + 1), language, group.isTrackSelected(trackIndex))
-            }
-        }
-        return PlayerTracks(audio, subtitles)
-    }
-
-    /** « Français · 5.1 », « Anglais », « Piste 2 ». */
-    private fun trackLabel(format: Format, language: String?, position: Int): String {
-        val languageName = language?.let { code ->
-            Locale.forLanguageTag(code).getDisplayLanguage(Locale.FRENCH).takeIf { it.isNotBlank() && it != code } ?: code
-        }?.replaceFirstChar { it.titlecase(Locale.FRENCH) }
-        val name = format.label?.takeIf { it.isNotBlank() && !it.equals(languageName, ignoreCase = true) }
-        val channels = when (format.channelCount) {
-            1 -> "mono"
-            2 -> "stéréo"
-            6 -> "5.1"
-            8 -> "7.1"
-            else -> null
-        }
-        val title = listOfNotNull(languageName, name).joinToString(" · ").ifEmpty { resources.getString(R.string.player_track, position) }
-        return listOfNotNull(title, channels).joinToString(" · ")
-    }
-
-    fun selectAudio(choice: TrackChoice) {
-        val player = mutablePlayer.value ?: return
-        val group = player.currentTracks.groups.getOrNull(choice.groupIndex) ?: return
-        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
-            .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, choice.trackIndex))
-            .build()
-        audioLanguage = choice.language ?: audioLanguage
-        choice.language?.let { viewModelScope.launch { container.settings.setAudioLanguage(it) } }
-    }
+    fun selectAudio(choice: TrackChoice) = engine.selectAudio(choice)
 
     /** [choice] `null` : sous-titres désactivés. */
-    fun selectSubtitles(choice: TrackChoice?) {
-        val player = mutablePlayer.value ?: return
-        val builder = player.trackSelectionParameters.buildUpon()
-        if (choice == null) {
-            builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-        } else {
-            val group = player.currentTracks.groups.getOrNull(choice.groupIndex) ?: return
-            builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, choice.trackIndex))
-        }
-        player.trackSelectionParameters = builder.build()
-        subtitleLanguage = choice?.language
-        viewModelScope.launch { container.settings.setSubtitleLanguage(choice?.language) }
-    }
+    fun selectSubtitles(choice: TrackChoice?) = engine.selectSubtitles(choice)
 
     fun setLowerAdVolume(enabled: Boolean) {
         viewModelScope.launch { container.settings.setLowerAdVolume(enabled) }
@@ -531,7 +291,7 @@ class PlayerViewModel(
         val dao = container.channelDao
         val requested = dao.get(id)
         if (requested == null) {
-            releasePlayer()
+            engine.release()
             mutableState.update { it.copy(buffering = false, error = resources.getString(R.string.player_channel_missing)) }
             return
         }
@@ -670,7 +430,7 @@ class PlayerViewModel(
         }
         val url = hlsUrl ?: urlFrom?.invoke(start)
         if (source == null || url == null) {
-            releasePlayer()
+            engine.release()
             mutableState.update { it.copy(buffering = false, error = resources.getString(R.string.player_replay_unavailable)) }
             return
         }
@@ -719,7 +479,7 @@ class PlayerViewModel(
             )
         }
         if (stream.support == StreamSupport.UNSUPPORTED) {
-            releasePlayer()
+            engine.release()
             mutableState.update { it.copy(buffering = false, error = resources.getString(R.string.stream_unsupported)) }
             return
         }
@@ -802,25 +562,14 @@ class PlayerViewModel(
 
     private fun start(forceHls: Boolean) {
         val playbackRequest = session.request ?: return
-        releasePlayer()
-        mutableState.update { it.copy(info = PlaybackInfo(), audioProblem = null) }
         session.playingAsHls = forceHls || playbackRequest.stream.format == StreamFormat.HLS
-        val player = container.playerFactory.create(playbackRequest, bandwidthMeter, preferredDecoders, adVolume, passthrough = audioPassthrough).apply {
-            applyTrackPreferences()
-            addListener(listener)
-            addAnalyticsListener(analytics)
-            val item = container.playerFactory.mediaItem(playbackRequest.stream, forceHls)
-            // Position de départ seulement pour une reprise : un direct démarre au plus près du direct.
-            if (session.startPositionMs > 0) setMediaItem(item, session.startPositionMs) else setMediaItem(item)
-            playWhenReady = true
-            prepare()
-        }
-        mutablePlayer.value = player
+        // Position de départ seulement pour une reprise : un direct démarre au plus près du direct.
+        engine.play(playbackRequest, forceHls, session.startPositionMs)
         mutableState.update { it.copy(error = null, buffering = true) }
     }
 
     private fun handleError(error: PlaybackException) {
-        val player = mutablePlayer.value ?: return
+        val player = engine.current ?: return
         val playbackRequest = session.request ?: return
         if (playingTimeshift) {
             // Enregistrement du différé interrompu : retour au direct.
@@ -889,7 +638,7 @@ class PlayerViewModel(
     }
 
     fun onStart() {
-        val player = mutablePlayer.value ?: return
+        val player = engine.current ?: return
         if (resumeOnStart) {
             // Flux en direct : on reprend au direct plutôt qu'à la position mise en pause.
             if (player.isCurrentMediaItemLive) player.seekToDefaultPosition()
@@ -898,7 +647,7 @@ class PlayerViewModel(
     }
 
     fun onStop() {
-        val player = mutablePlayer.value ?: return
+        val player = engine.current ?: return
         resumeOnStart = player.playWhenReady
         player.pause()
         viewModelScope.launch { resume.save() }
@@ -908,7 +657,7 @@ class PlayerViewModel(
 
     /** Pause / lecture. En direct, la pause crée un différé ; le retard sur le direct est affiché. */
     fun togglePause() {
-        val player = mutablePlayer.value ?: return
+        val player = engine.current ?: return
         if (!state.value.isLive) {
             if (player.isPlaying) player.pause() else player.play()
             return
@@ -950,17 +699,8 @@ class PlayerViewModel(
     /** Lecture depuis l'enregistrement du différé. */
     private fun startTimeshiftPlayback(buffer: TimeshiftBuffer) {
         val playbackRequest = session.request ?: return
-        releasePlayer()
         playingTimeshift = true
-        val player = container.playerFactory.create(playbackRequest, bandwidthMeter, preferredDecoders, adVolume, passthrough = audioPassthrough).apply {
-            applyTrackPreferences()
-            addListener(listener)
-            addAnalyticsListener(analytics)
-            setMediaSource(container.playerFactory.timeshiftSource(buffer))
-            playWhenReady = true
-            prepare()
-        }
-        mutablePlayer.value = player
+        engine.playTimeshift(playbackRequest, buffer)
     }
 
     /** Retour au direct : fin du différé, de « Depuis le début » ou du replay. */
@@ -974,7 +714,7 @@ class PlayerViewModel(
         val hadRecording = timeshift != null
         stopTimeshift()
         if (!wasDelayed && !hadRecording) return
-        val player = mutablePlayer.value
+        val player = engine.current
         if (!hadRecording && player != null) {
             // HLS : le lecteur rejoint le direct dans la fenêtre du serveur.
             player.seekToDefaultPosition()
@@ -1000,7 +740,7 @@ class PlayerViewModel(
     }
 
     /** Heure de ce qui est à l'écran dans l'enregistrement en cours. */
-    private fun watchedAt(): Long = segmentStart + (mutablePlayer.value?.currentPosition ?: 0)
+    private fun watchedAt(): Long = segmentStart + (engine.current?.currentPosition ?: 0)
 
     /**
      * Replay ou « Depuis le début » : recule ou avance de [steps] pas (passer la pub avant le
@@ -1026,7 +766,7 @@ class PlayerViewModel(
         pendingJumpSeconds = 0
         mutableState.update { it.copy(pendingJumpSeconds = 0) }
         if (seconds == 0) return
-        val player = mutablePlayer.value
+        val player = engine.current
         // HLS : déplacement dans l'enregistrement, à la seconde près.
         if (replayHls && player != null && player.isCurrentMediaItemSeekable) {
             val duration = player.duration.takeIf { it > 0 } ?: (programme.second - segmentStart)
@@ -1072,7 +812,7 @@ class PlayerViewModel(
         fastHeartbeat = SystemClock.uptimeMillis()
         if (direction == 0 || direction == fastDirection) return
         stopFastSeek()
-        val player = mutablePlayer.value ?: return
+        val player = engine.current ?: return
         if (state.value.isLive && replayUrlFrom == null) return
         // Appuis courts encore en attente : appliqués d'abord.
         if (pendingJumpSeconds != 0) {
@@ -1080,7 +820,7 @@ class PlayerViewModel(
             applyJump()
         }
         if (direction < 0) {
-            val current = mutablePlayer.value ?: player
+            val current = engine.current ?: player
             rewindInPlace = seeksInPlace(current)
             if (!rewindInPlace && replayUrlFrom == null) return
             if (rewindInPlace) {
@@ -1091,7 +831,7 @@ class PlayerViewModel(
         } else if (state.value.paused) {
             togglePause()
         } else {
-            mutablePlayer.value?.play()
+            engine.current?.play()
         }
         fastDirection = direction
         mutableState.update { it.copy(fastSeek = direction) }
@@ -1115,7 +855,7 @@ class PlayerViewModel(
         val inPlace = rewindInPlace
         val resume = resumeAfterRewind
         resetFastSeek()
-        val player = mutablePlayer.value
+        val player = engine.current
         when {
             direction > 0 -> {
                 player?.setPlaybackSpeed(1f)
@@ -1141,7 +881,7 @@ class PlayerViewModel(
     }
 
     private fun fastForwardTick() {
-        val player = mutablePlayer.value ?: return
+        val player = engine.current ?: return
         if (player !== fastPlayer) {
             // Premier passage, ou nouveau lecteur après un saut : vitesse x2 (et son coupé s'il le fallait).
             fastPlayer = player
@@ -1170,7 +910,7 @@ class PlayerViewModel(
 
     private fun rewindTick() {
         if (rewindInPlace) {
-            val player = mutablePlayer.value ?: return
+            val player = engine.current ?: return
             rewindTarget = (rewindTarget - FAST_TICK_MILLIS * FAST_SPEED.toLong()).coerceAtLeast(0)
             player.seekTo(rewindTarget)
             if (replayUrlFrom != null) mutableState.update { it.copy(watchedAt = segmentStart + rewindTarget) }
@@ -1187,10 +927,6 @@ class PlayerViewModel(
     /** On peut se déplacer dans le flux lu (film, épisode, replay HLS) sans le rouvrir. */
     private fun seeksInPlace(player: ExoPlayer): Boolean =
         player.isCurrentMediaItemSeekable && (replayUrlFrom == null || replayHls)
-
-    private fun ExoPlayer.setAudioDisabled(disabled: Boolean) {
-        trackSelectionParameters = trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, disabled).build()
-    }
 
     private fun stopTimeshift() {
         recorder?.stop()
@@ -1218,7 +954,7 @@ class PlayerViewModel(
 
     /** Film ou épisode : avance ou recul de [deltaMs] dans la vidéo. */
     fun seekBy(deltaMs: Long) {
-        val player = mutablePlayer.value ?: return
+        val player = engine.current ?: return
         if (state.value.isLive) return
         val duration = player.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
         player.seekTo((player.currentPosition + deltaMs).coerceIn(0, duration))
@@ -1226,7 +962,7 @@ class PlayerViewModel(
 
     /** Film ou épisode : position choisie sur la barre de progression. */
     fun seekTo(positionMs: Long) {
-        val player = mutablePlayer.value ?: return
+        val player = engine.current ?: return
         if (state.value.isLive) return
         player.seekTo(positionMs.coerceAtLeast(0))
     }
@@ -1235,15 +971,6 @@ class PlayerViewModel(
     fun playNextEpisode() = resume.playNextEpisode()
 
     fun dismissUpNext() = resume.dismissUpNext()
-
-    private fun releasePlayer() {
-        mutablePlayer.value?.let {
-            it.removeListener(listener)
-            it.removeAnalyticsListener(analytics)
-            it.release()
-        }
-        mutablePlayer.value = null
-    }
 
     private fun acquireMulticastLock() {
         if (multicastLock?.isHeld == true) return
@@ -1262,7 +989,7 @@ class PlayerViewModel(
     override fun onCleared() {
         resume.saveBeforeClose()
         stopTimeshift()
-        releasePlayer()
+        engine.release()
         releaseMulticastLock()
     }
 
