@@ -553,6 +553,7 @@ private fun CatalogBody(
             } else {
                 null
             },
+            paneShortcut = !reorder.active,
             pane = { paneModifier ->
                 if (section == HomeSection.TV) LivePane(preview, previewPlayer, now, paneModifier) else SpotlightPane(spotlight, paneModifier)
             },

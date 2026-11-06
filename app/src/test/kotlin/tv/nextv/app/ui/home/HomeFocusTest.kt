@@ -39,6 +39,7 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import tv.nextv.app.data.db.ChannelListRow
 import tv.nextv.app.data.db.GroupRow
+import tv.nextv.app.data.settings.GridColumns
 import tv.nextv.app.screenshots.SampleData
 import tv.nextv.app.ui.theme.NexTvTheme
 import tv.nextv.app.ui.theme.ThemeStyle
@@ -354,6 +355,46 @@ class HomeFocusTest {
         assertTrue("« Voir plus » encore là", compose.onAllNodesWithText("Voir plus").fetchSemanticsNodes().isEmpty())
     }
 
+    /**
+     * Mosaïque du Live Center : droite (appui court) passe à la chaîne suivante ; appui long sur
+     * droite, depuis n'importe quelle colonne, entre dans le volet de la chaîne choisie, sans en changer.
+     */
+    @Test
+    fun longRightOpensThePaneFromAnyMosaicChannel() {
+        val focused = mutableListOf<ChannelListRow>()
+        compose.setContent {
+            Home(HomeLayout.LIVE_CENTER, HomeActions(onChannelFocus = { focused += it }), preview = SampleData.channelPreview, grid = GridColumns(liveCenterMosaic = true))
+        }
+        compose.waitForIdle()
+        // Onglets → recherche → catégories, puis la mosaïque (première colonne).
+        press(Key.DirectionDown)
+        press(Key.DirectionDown)
+        press(Key.DirectionRight)
+        val first = focused.last()
+        val card = compose.onNode(isFocused()).getBoundsInRoot()
+        // Appui court : la chaîne suivante, sur la même ligne.
+        press(Key.DirectionRight)
+        val second = focused.last()
+        assertTrue("Appui court : chaîne suivante (${first.title} → ${second.title})", second.id != first.id)
+        assertTrue("Même ligne", compose.onNode(isFocused()).getBoundsInRoot().top == card.top)
+        // Appui long : le volet, la chaîne choisie ne change pas.
+        compose.onRoot().performKeyInput {
+            keyDown(Key.DirectionRight)
+            advanceEventTime(1_000)
+            keyUp(Key.DirectionRight)
+        }
+        compose.mainClock.advanceTimeBy(500)
+        compose.waitForIdle()
+        val pane = compose.onNode(isFocused()).getBoundsInRoot()
+        println("Appui long : focus ${pane}, chaîne ${focused.last().title} (avant : ${second.title})")
+        assertEquals(second.id, focused.last().id)
+        assertTrue("Focus dans le volet : $pane", pane.left > card.right + 100.dp)
+        repeat(4) { press(Key.DirectionDown) }
+        assertTrue("« Plus tard » visible", compose.onNodeWithText("Journal de la nuit").isDisplayed())
+        press(Key.DirectionLeft)
+        assertEquals(second.id, focused.last().id)
+    }
+
     /** Retour du lecteur : la liste revient à sa place et la chaîne ouverte reprend le focus. */
     @Test
     fun openedChannelGetsFocusBackAfterReturning() {
@@ -405,7 +446,13 @@ class HomeFocusTest {
     }
 
     @Composable
-    private fun Home(layout: HomeLayout, actions: HomeActions, section: HomeSection = HomeSection.TV, preview: ChannelPreview? = null) {
+    private fun Home(
+        layout: HomeLayout,
+        actions: HomeActions,
+        section: HomeSection = HomeSection.TV,
+        preview: ChannelPreview? = null,
+        grid: GridColumns = GridColumns(),
+    ) {
         NexTvTheme(ThemeStyle.NIGHT) {
 
             val channels = remember { flowOf(PagingData.from(SampleData.channels)) }.collectAsLazyPagingItems()
@@ -434,6 +481,7 @@ class HomeFocusTest {
                 rows = rows,
                 preview = preview,
                 spotlight = spotlight,
+                gridColumns = grid,
             )
         }
     }

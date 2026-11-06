@@ -34,17 +34,24 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusManager
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -85,10 +92,15 @@ internal fun LiveCenterSection(
     modifier: Modifier = Modifier,
     action: (@Composable () -> Unit)? = null,
     hint: (@Composable () -> Unit)? = null,
+    /** Appui long sur droite vers le volet (pas pendant la réorganisation des favoris, qui se sert des flèches). */
+    paneShortcut: Boolean = true,
     pane: @Composable (Modifier) -> Unit,
     body: @Composable () -> Unit,
 ) {
     val tv = section == HomeSection.TV
+    val paneFocus = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    val paneKey = remember { PaneKey() }
     Row(modifier.fillMaxSize()) {
         CategoryRail(section, window, groups, recentCount, allCount, category, query, favoritesCount, resumeCount, actions, Modifier.width(230.dp), dense = true)
         Column(Modifier.weight(1f).fillMaxHeight()) {
@@ -101,9 +113,14 @@ internal fun LiveCenterSection(
             }
             hint?.invoke()
             // Retour depuis le volet (gauche) : sur l'élément choisi, pas sur le plus proche.
-            Box(Modifier.weight(1f).focusRestorer()) { body() }
+            Box(
+                Modifier
+                    .weight(1f)
+                    .focusRestorer()
+                    .then(if (paneShortcut) Modifier.onPreviewKeyEvent { paneKey.handle(it, focusManager, paneFocus) } else Modifier),
+            ) { body() }
         }
-        pane(Modifier.weight(if (tv) 0.82f else 0.62f).fillMaxHeight())
+        pane(Modifier.weight(if (tv) 0.82f else 0.62f).fillMaxHeight().focusRequester(paneFocus))
     }
 }
 
@@ -177,6 +194,40 @@ private fun ScrollingPane(resetKey: Any?, modifier: Modifier, content: @Composab
         verticalArrangement = Arrangement.spacedBy(10.dp),
         content = content,
     )
+}
+
+/**
+ * Droite dans la liste ou la mosaïque : appui court, élément suivant (comme d'habitude) ; appui long,
+ * volet de droite de l'élément choisi, sans en changer (en mosaïque, seule la dernière colonne y menait).
+ */
+private class PaneKey {
+    /** Droite enfoncée dans la liste, pas encore relâchée. */
+    private var pressed = false
+    private var opened = false
+
+    fun handle(event: KeyEvent, focusManager: FocusManager, pane: FocusRequester): Boolean {
+        if (event.key != Key.DirectionRight) return false
+        return when (event.type) {
+            KeyEventType.KeyDown -> {
+                if (event.nativeKeyEvent.repeatCount == 0) {
+                    pressed = true
+                    opened = false
+                } else if (pressed && !opened) {
+                    // Touche tenue : le volet de l'élément choisi.
+                    opened = true
+                    runCatching { pane.requestFocus() }
+                }
+                true
+            }
+            KeyEventType.KeyUp -> {
+                if (!pressed) return false
+                pressed = false
+                if (!opened) focusManager.moveFocus(FocusDirection.Right)
+                true
+            }
+            else -> false
+        }
+    }
 }
 
 /** Haut / bas dans le volet : défilement d'un pas ; en haut, « haut » laisse le focus monter (onglets). */
