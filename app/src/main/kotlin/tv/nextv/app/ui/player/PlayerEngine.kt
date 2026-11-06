@@ -9,9 +9,11 @@ import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DecoderCounters
 import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
+import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
@@ -28,8 +30,10 @@ import tv.nextv.app.player.TimeshiftBuffer
 import tv.nextv.app.player.VideoDecoders
 
 /**
- * Lecteur ExoPlayer de l'écran du lecteur : création et libération, événements de lecture, pistes
- * audio et sous-titres, infos techniques (format, décodeurs, débit, images perdues).
+ * Lecteur ExoPlayer de l'écran du lecteur : un seul pour tous les flux (chaînes, qualités, repli HLS,
+ * serveurs de secours, différé), recréé seulement quand le réglage du son direct ou du décodeur
+ * préféré change. Événements de lecture, pistes audio et sous-titres, infos techniques (format,
+ * décodeurs, débit, images perdues).
  */
 @OptIn(UnstableApi::class)
 internal class PlayerEngine(
@@ -47,11 +51,21 @@ internal class PlayerEngine(
         fun onError(error: PlaybackException)
     }
 
+    /** Le lecteur, gardé d'un flux à l'autre ; réglages avec lesquels il a été créé (son direct, décodeurs). */
+    private var exoPlayer: ExoPlayer? = null
+    private var exoPlayerConfig: Pair<Boolean, Map<String, String>>? = null
+
     private val mutablePlayer = MutableStateFlow<ExoPlayer?>(null)
+
+    /** Lecteur qui lit un flux, `null` sans lecture (flux illisible, chaîne introuvable…). */
     val player: StateFlow<ExoPlayer?> = mutablePlayer.asStateFlow()
 
     /** Lecteur en cours, `null` sans lecture. */
     val current: ExoPlayer? get() = mutablePlayer.value
+
+    /** Numéro du flux en cours : change à chaque flux ouvert (la vitesse x2 est à redemander). */
+    var generation = 0
+        private set
 
     /** Option « baisser le son des pubs », lue par le traitement du son de chaque lecteur. */
     val adVolume = AdVolumeControl()
@@ -66,8 +80,8 @@ internal class PlayerEngine(
     /** Son Dolby / DTS envoyé tel quel à l'ampli (sinon décodé par l'appareil). */
     private var audioPassthrough = false
 
-    // Images perdues déjà prises en compte, pour le lecteur courant.
-    private var countedPlayer: ExoPlayer? = null
+    // Images perdues déjà prises en compte, pour les compteurs du décodeur en cours (nouveaux à chaque flux).
+    private var countedCounters: DecoderCounters? = null
     private var countedDroppedFrames = 0
 
     init {
@@ -153,48 +167,68 @@ internal class PlayerEngine(
     }
 
     /**
-     * Lit le flux de [request] dans un nouveau lecteur.
+     * Lit le flux de [request], avec sa propre source réseau.
      *
      * @param forceHls traiter le flux comme du HLS (seconde tentative pour une URL sans extension).
      * @param startPositionMs position de départ d'une reprise (0 : un direct démarre au plus près du direct).
      */
     fun play(request: PlaybackRequest, forceHls: Boolean, startPositionMs: Long) {
-        release()
-        state.update { it.copy(info = PlaybackInfo(), audioProblem = null) }
-        val player = newPlayer(request).apply {
-            val item = container.playerFactory.mediaItem(request.stream, forceHls)
-            if (startPositionMs > 0) setMediaItem(item, startPositionMs) else setMediaItem(item)
-            playWhenReady = true
-            prepare()
-        }
+        open(container.playerFactory.mediaSource(request, forceHls), startPositionMs)
+    }
+
+    /** Lit l'enregistrement du différé [buffer]. */
+    fun playTimeshift(buffer: TimeshiftBuffer) {
+        open(container.playerFactory.timeshiftSource(buffer), startPositionMs = 0)
+    }
+
+    private fun open(source: MediaSource, startPositionMs: Long) {
+        // Ancien flux arrêté avant d'ouvrir le nouveau : beaucoup d'abonnements n'acceptent qu'une connexion.
+        exoPlayer?.stop()
+        val player = reusablePlayer()
+        // État propre au flux précédent : erreur, infos, son coupé (avance rapide), pistes choisies, vitesse.
+        generation++
+        adVolume.newStream()
+        state.update { it.copy(error = null, info = PlaybackInfo(), audioProblem = null) }
+        player.setPlaybackSpeed(1f)
+        player.resetTrackSelection()
+        // Position de départ seulement pour ce flux (reprise) ; sinon position par défaut.
+        if (startPositionMs > 0) player.setMediaSource(source, startPositionMs) else player.setMediaSource(source)
+        player.playWhenReady = true
+        player.prepare()
         mutablePlayer.value = player
     }
 
-    /** Lit l'enregistrement du différé [buffer] dans un nouveau lecteur. */
-    fun playTimeshift(request: PlaybackRequest, buffer: TimeshiftBuffer) {
+    /** Le lecteur actuel, ou un nouveau si le réglage du son direct ou du décodeur préféré a changé. */
+    private fun reusablePlayer(): ExoPlayer {
+        val config = audioPassthrough to preferredDecoders
+        exoPlayer?.takeIf { exoPlayerConfig == config }?.let { return it }
         release()
-        val player = newPlayer(request).apply {
-            setMediaSource(container.playerFactory.timeshiftSource(buffer))
-            playWhenReady = true
-            prepare()
-        }
-        mutablePlayer.value = player
-    }
-
-    private fun newPlayer(request: PlaybackRequest): ExoPlayer =
-        container.playerFactory.create(request, bandwidthMeter, preferredDecoders, adVolume, passthrough = audioPassthrough).apply {
-            applyTrackPreferences()
+        return container.playerFactory.create(bandwidthMeter, preferredDecoders, adVolume, passthrough = audioPassthrough).apply {
             addListener(listener)
             addAnalyticsListener(analytics)
+            exoPlayer = this
+            exoPlayerConfig = config
         }
+    }
 
-    /** Arrête la lecture et libère le lecteur. */
+    /** Arrête la lecture et ferme la connexion ; le lecteur est gardé pour le flux suivant. */
+    fun stop() {
+        exoPlayer?.let {
+            it.stop()
+            it.clearMediaItems()
+        }
+        mutablePlayer.value = null
+    }
+
+    /** Libère le lecteur (écran du lecteur fermé). */
     fun release() {
-        mutablePlayer.value?.let {
+        exoPlayer?.let {
             it.removeListener(listener)
             it.removeAnalyticsListener(analytics)
             it.release()
         }
+        exoPlayer = null
+        exoPlayerConfig = null
         mutablePlayer.value = null
     }
 
@@ -203,12 +237,11 @@ internal class PlayerEngine(
      * signale lui-même que par lots de 50, trop tard pour réagir vite).
      */
     fun newDroppedFrames(): Int {
-        val player = mutablePlayer.value
-        if (player !== countedPlayer) {
-            countedPlayer = player
+        val counters = mutablePlayer.value?.videoDecoderCounters ?: return 0
+        if (counters !== countedCounters) {
+            countedCounters = counters
             countedDroppedFrames = 0
         }
-        val counters = player?.videoDecoderCounters ?: return 0
         counters.ensureUpdated()
         val total = counters.droppedBufferCount
         val delta = total - countedDroppedFrames
@@ -231,9 +264,14 @@ internal class PlayerEngine(
         }
     }
 
-    /** Langue audio et sous-titres choisis en dernier, essayés en premier. */
-    private fun ExoPlayer.applyTrackPreferences() {
+    /**
+     * Pistes du nouveau flux : choix faits dans le précédent oubliés, son rétabli ; langue audio et
+     * sous-titres choisis en dernier, essayés en premier.
+     */
+    private fun ExoPlayer.resetTrackSelection() {
         trackSelectionParameters = trackSelectionParameters.buildUpon()
+            .clearOverrides()
+            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
             .setPreferredAudioLanguage(audioLanguage)
             .setPreferredTextLanguage(subtitleLanguage)
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, subtitleLanguage == null)

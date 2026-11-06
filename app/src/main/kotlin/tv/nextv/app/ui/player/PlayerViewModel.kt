@@ -254,7 +254,7 @@ class PlayerViewModel(
         val dao = container.channelDao
         val requested = dao.get(id)
         if (requested == null) {
-            engine.release()
+            engine.stop()
             mutableState.update { it.copy(buffering = false, error = resources.getString(R.string.player_channel_missing)) }
             return
         }
@@ -318,7 +318,7 @@ class PlayerViewModel(
             )
         }
         if (stream.support == StreamSupport.UNSUPPORTED) {
-            engine.release()
+            engine.stop()
             mutableState.update { it.copy(buffering = false, error = resources.getString(R.string.stream_unsupported)) }
             return
         }
@@ -404,7 +404,7 @@ class PlayerViewModel(
         session.playingAsHls = forceHls || playbackRequest.stream.format == StreamFormat.HLS
         // Position de départ seulement pour une reprise : un direct démarre au plus près du direct.
         engine.play(playbackRequest, forceHls, session.startPositionMs)
-        mutableState.update { it.copy(error = null, buffering = true) }
+        mutableState.update { it.copy(buffering = true) }
     }
 
     private fun handleError(error: PlaybackException) {

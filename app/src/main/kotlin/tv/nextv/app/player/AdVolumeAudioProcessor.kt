@@ -18,6 +18,17 @@ class AdVolumeControl {
     @Volatile
     var attenuating: Boolean = false
         internal set
+
+    /** Flux en cours de lecture : à chaque nouveau flux, la mesure du volume repart de zéro. */
+    @Volatile
+    var stream: Int = 0
+        private set
+
+    /** Nouveau flux (autre chaîne, autre version…) : le volume du précédent ne sert plus de référence. */
+    fun newStream() {
+        stream++
+        attenuating = false
+    }
 }
 
 /**
@@ -29,6 +40,7 @@ class AdVolumeAudioProcessor(private val control: AdVolumeControl) : BaseAudioPr
 
     private var guard = AdVolumeGuard()
     private var gain = 1.0
+    private var stream = control.stream
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat =
         if (inputAudioFormat.encoding == C.ENCODING_PCM_16BIT) inputAudioFormat else AudioProcessor.AudioFormat.NOT_SET
@@ -36,6 +48,12 @@ class AdVolumeAudioProcessor(private val control: AdVolumeControl) : BaseAudioPr
     override fun queueInput(inputBuffer: ByteBuffer) {
         val size = inputBuffer.remaining()
         if (size == 0) return
+        if (stream != control.stream) {
+            // Nouveau flux dans le même lecteur : mesure remise à zéro.
+            stream = control.stream
+            guard = AdVolumeGuard()
+            gain = 1.0
+        }
         val output = replaceOutputBuffer(size)
         if (!control.enabled) {
             gain = 1.0

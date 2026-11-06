@@ -95,8 +95,8 @@ internal class DelayedPlaybackController(
     private var fastJob: Job? = null
     /** Dernier signe de la touche maintenue : sans nouvelles (relâchement perdu), l'avance rapide s'arrête. */
     private var fastHeartbeat = 0L
-    /** Lecteur auquel la vitesse x2 a été demandée (un saut dans un enregistrement continu en crée un autre). */
-    private var fastPlayer: ExoPlayer? = null
+    /** Flux auquel la vitesse x2 a été demandée (un saut dans un enregistrement continu en ouvre un autre, à vitesse normale). */
+    private var fastGeneration = -1
     /** Son coupé pendant l'avance rapide : sortie audio qui ne suit pas la vitesse (son transmis tel quel à l'ampli). */
     private var fastAudioOff = false
     /** Retour rapide par déplacements dans le flux : position visée, et lecture à reprendre ensuite. */
@@ -221,7 +221,7 @@ internal class DelayedPlaybackController(
         }
         val url = hlsUrl ?: urlFrom?.invoke(start)
         if (source == null || url == null) {
-            engine.release()
+            engine.stop()
             state.update { it.copy(buffering = false, error = resources.getString(R.string.player_replay_unavailable)) }
             return
         }
@@ -332,9 +332,8 @@ internal class DelayedPlaybackController(
 
     /** Lecture depuis l'enregistrement du différé. */
     private fun startTimeshiftPlayback(buffer: TimeshiftBuffer) {
-        val playbackRequest = session.request ?: return
         playingTimeshift = true
-        engine.playTimeshift(playbackRequest, buffer)
+        engine.playTimeshift(buffer)
     }
 
     /** Retour au direct : fin du différé, de « Depuis le début » ou du replay. */
@@ -508,7 +507,7 @@ internal class DelayedPlaybackController(
         fastJob?.cancel()
         fastJob = null
         fastDirection = 0
-        fastPlayer = null
+        fastGeneration = -1
         fastAudioOff = false
         rewindInPlace = false
         if (state.value.fastSeek != 0) state.update { it.copy(fastSeek = 0) }
@@ -516,9 +515,9 @@ internal class DelayedPlaybackController(
 
     private fun fastForwardTick() {
         val player = engine.current ?: return
-        if (player !== fastPlayer) {
-            // Premier passage, ou nouveau lecteur après un saut : vitesse x2 (et son coupé s'il le fallait).
-            fastPlayer = player
+        if (engine.generation != fastGeneration) {
+            // Premier passage, ou nouveau flux après un saut : vitesse x2 (et son coupé s'il le fallait).
+            fastGeneration = engine.generation
             if (fastAudioOff) player.setAudioDisabled(true)
             player.setPlaybackSpeed(FAST_SPEED)
         } else if (player.playbackParameters.speed != FAST_SPEED && !fastAudioOff) {

@@ -392,7 +392,7 @@ fun PlayerScreen(onBack: () -> Unit) {
                 }
             },
             update = { view ->
-                // Pause, différé, saut dans un replay : la dernière image reste affichée pendant le changement de lecteur.
+                // Pause, différé, saut dans un replay : la dernière image reste affichée pendant le changement de flux.
                 view.setKeepContentOnPlayerReset(state.paused || state.liveDelayMs > 0 || state.seekable)
                 view.player = player
                 view.resizeMode = when (aspect) {
