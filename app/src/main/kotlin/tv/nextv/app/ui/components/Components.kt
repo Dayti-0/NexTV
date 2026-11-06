@@ -98,6 +98,8 @@ import tv.nextv.app.R
 import tv.nextv.app.ui.theme.NexTvColors
 import tv.nextv.app.ui.theme.NexTvIcons
 import tv.nextv.core.catalog.ContentClassifier
+import androidx.compose.runtime.produceState
+import kotlinx.coroutines.delay
 
 // --- Disposition adaptative -------------------------------------------------------------------
 
@@ -697,3 +699,23 @@ private class BottomMarginBringIntoViewSpec(private val parent: BringIntoViewSpe
         return if (trailing > usable) trailing - usable else 0f
     }
 }
+
+/** Heure actuelle (« 20:47 »), mise à jour à chaque changement de minute. */
+@Composable
+fun CurrentTime(modifier: Modifier = Modifier) {
+    val now by produceState(System.currentTimeMillis()) {
+        while (true) {
+            value = System.currentTimeMillis()
+            delay(MINUTE_MILLIS - value % MINUTE_MILLIS)
+        }
+    }
+    Text(
+        java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date(now)),
+        style = MaterialTheme.typography.titleLarge,
+        color = MaterialTheme.colorScheme.onBackground,
+        maxLines = 1,
+        modifier = modifier,
+    )
+}
+
+private const val MINUTE_MILLIS = 60_000L

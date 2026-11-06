@@ -1,5 +1,6 @@
 package tv.nextv.app.ui.football
 
+import tv.nextv.app.ui.components.CurrentTime
 import tv.nextv.app.ui.components.FadingBottom
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -154,14 +156,18 @@ fun FootballContent(
 
     val list: @Composable (Modifier) -> Unit = { listModifier ->
         Column(listModifier.fillMaxSize()) {
-            if (withTable) {
-                Row(
-                    Modifier.padding(start = if (window.isWide) 28.dp else window.horizontalPadding, end = window.horizontalPadding, top = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
+            // Matchs ou classement (championnats) à gauche, heure actuelle à droite.
+            Row(
+                Modifier.fillMaxWidth().padding(start = if (window.isWide) 28.dp else window.horizontalPadding, end = window.horizontalPadding, top = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (withTable) {
                     CompetitionChip(stringResource(R.string.football_matches), !showStandings) { onShowStandings(false) }
                     CompetitionChip(stringResource(R.string.football_standings), showStandings) { onShowStandings(true) }
                 }
+                Spacer(Modifier.weight(1f))
+                CurrentTime()
             }
             val body = Modifier.weight(1f)
             when {
@@ -311,7 +317,7 @@ private fun MatchList(
         LazyColumn(
             state = listState,
             modifier = modifier.fillMaxSize().then(fade),
-            contentPadding = PaddingValues(start = if (compact) horizontalPadding else 28.dp, end = horizontalPadding, top = 8.dp, bottom = 32.dp),
+            contentPadding = PaddingValues(start = if (compact) horizontalPadding else 28.dp, end = horizontalPadding, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             if (notice != null) {
