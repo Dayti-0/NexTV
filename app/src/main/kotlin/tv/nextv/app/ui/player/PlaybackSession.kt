@@ -2,6 +2,9 @@ package tv.nextv.app.ui.player
 
 import tv.nextv.app.data.db.ChannelEntity
 import tv.nextv.app.player.PlaybackRequest
+import tv.nextv.core.model.PlaylistSource
+import tv.nextv.core.model.SourceLocation
+import tv.nextv.core.source.Mirrors
 
 /**
  * Ce qui est en cours de lecture dans l'écran du lecteur, partagé par ses parties (moteur, qualité,
@@ -34,4 +37,11 @@ internal class PlaybackSession {
 
     /** Position de départ d'une reprise de film ou d'épisode ; 0 : début (ou direct). */
     var startPositionMs = 0L
+}
+
+/** Serveur principal de la playlist puis ses serveurs de secours ; vide sans serveur de secours. */
+internal fun serverRootsOf(source: PlaylistSource): List<String> {
+    if (source.mirrors.isEmpty()) return emptyList()
+    val main = (source.location as? SourceLocation.Remote)?.url?.let(Mirrors::normalize)
+    return (listOfNotNull(main) + source.mirrors).distinct()
 }
