@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -378,8 +379,9 @@ fun HomeContent(
         favoriteKeys = favoriteKeys,
         now = now,
     )
-    val topBar: @Composable (Boolean) -> Unit = { minimal ->
-        HomeTopBar(section, sourceName, window, actions, onTabsFocused = { tabsFocused.value = it }, minimal = minimal)
+    // Barre des onglets de l'interface choisie, la même dans toutes les sections (Guide TV et Foot compris).
+    val topBar: @Composable () -> Unit = {
+        HomeTopBar(section, sourceName, window, actions, onTabsFocused = { tabsFocused.value = it }, style = layout)
     }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -400,13 +402,13 @@ fun HomeContent(
                     spotlight = spotlight,
                     lastOpened = lastOpened,
                     actions = actions,
-                    topBar = { topBar(true) },
+                    topBar = topBar,
                     modifier = Modifier.padding(padding),
                 )
                 return@CompositionLocalProvider
             }
             Column(Modifier.fillMaxSize().padding(padding)) {
-                topBar(false)
+                topBar()
                 when {
                     section == HomeSection.GUIDE -> guide(Modifier.weight(1f))
                     section == HomeSection.FOOTBALL -> football(Modifier.weight(1f))
@@ -601,9 +603,14 @@ private fun HomeTopBar(
     window: WindowInfo,
     actions: HomeActions,
     onTabsFocused: (Boolean) -> Unit = {},
-    /** Cinéma Premium : onglets discrets, sans icône, dans une capsule translucide sur l'image. */
-    minimal: Boolean = false,
+    /**
+     * Interface choisie : Live Center, onglets avec icône ; Streaming, onglets en texte soulignés
+     * (sélection) ; Cinéma Premium, onglets discrets sans icône dans une capsule translucide.
+     */
+    style: HomeLayout = HomeLayout.LIVE_CENTER,
 ) {
+    val minimal = style == HomeLayout.PREMIUM
+    val underlined = style == HomeLayout.STREAMING
     val initialFocus = remember { FocusRequester() }
     // Focus initial sur les onglets au premier affichage seulement (pas au retour d'un autre écran).
     var initialFocusDone by rememberSaveable { mutableStateOf(false) }
@@ -639,10 +646,11 @@ private fun HomeTopBar(
         ) {
             HomeSection.entries.forEach { target ->
                 SectionTab(
-                    icon = sectionIcon(target).takeUnless { minimal && window.isWide },
+                    icon = sectionIcon(target).takeUnless { (minimal || underlined) && window.isWide },
                     label = sectionLabel(target),
                     showLabel = window.isWide || target == section,
                     selected = target == section,
+                    underlined = underlined,
                     onClick = { actions.onSection(target) },
                     // Télécommande : la section s'affiche dès que l'onglet est sélectionné, sans OK ni attente.
                     onFocused = { actions.onSection(target) },
@@ -674,6 +682,8 @@ private fun SectionTab(
     onClick: () -> Unit,
     onFocused: () -> Unit = {},
     modifier: Modifier = Modifier,
+    /** Streaming : sélection en texte appuyé souligné de la couleur d'accent, sans pastille. */
+    underlined: Boolean = false,
 ) {
     // La section s'affiche dès que l'onglet reçoit le focus (sans attente : la télécommande répond aussitôt).
     val currentSelected by rememberUpdatedState(selected)
@@ -682,18 +692,39 @@ private fun SectionTab(
         onClick = onClick,
         modifier = modifier.onFocusChanged { if (it.hasFocus && !currentSelected) currentOnFocused() },
         shape = CircleShape,
-        color = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
-        focusedColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
-        contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+        color = if (selected && !underlined) MaterialTheme.colorScheme.primary else Color.Transparent,
+        focusedColor = if (selected && !underlined) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+        contentColor = when {
+            selected && !underlined -> MaterialTheme.colorScheme.onPrimary
+            underlined && !selected -> MaterialTheme.colorScheme.onSurfaceVariant
+            else -> MaterialTheme.colorScheme.onSurface
+        },
         focusScale = 1.06f,
     ) {
-        Row(
-            Modifier.padding(horizontal = if (showLabel) 18.dp else 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        Column(
+            Modifier.padding(horizontal = if (showLabel) 18.dp else 12.dp, vertical = if (underlined) 8.dp else 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            if (icon != null) Icon(icon, contentDescription = if (showLabel) null else label, modifier = Modifier.size(20.dp))
-            if (showLabel) Text(label, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (icon != null) Icon(icon, contentDescription = if (showLabel) null else label, modifier = Modifier.size(20.dp))
+                if (showLabel) {
+                    Text(
+                        label,
+                        style = if (underlined && selected) MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold) else MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                    )
+                }
+            }
+            if (underlined) {
+                // Trait d'accent sous l'onglet affiché (place gardée sous les autres : rien ne bouge).
+                Box(
+                    Modifier
+                        .padding(top = 4.dp)
+                        .size(width = 22.dp, height = 3.dp)
+                        .clip(CircleShape)
+                        .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent),
+                )
+            }
         }
     }
 }

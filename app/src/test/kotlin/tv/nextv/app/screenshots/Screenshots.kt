@@ -266,6 +266,21 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
+    fun guideStreaming() = capture("09f_guide_streaming") {
+        Home(HomeSection.GUIDE, Category.All, layout = HomeLayout.STREAMING)
+    }
+
+    @Test
+    fun footballPremium() = capture("09g_foot_premium") {
+        Home(HomeSection.FOOTBALL, Category.All, layout = HomeLayout.PREMIUM)
+    }
+
+    @Test
+    fun moviesStreamingTabs() = capture("09h_films_streaming") {
+        Home(HomeSection.MOVIES, Category.All, layout = HomeLayout.STREAMING)
+    }
+
+    @Test
     fun guideTonight() = capture("09e_guide_ce_soir") {
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             GuideContent(

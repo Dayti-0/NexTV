@@ -69,6 +69,8 @@ class QualityParserTest {
         assertEquals(StreamQuality.UHD, uhd.quality)
         assertEquals("FR| TF1", uhd.baseName)
         assertEquals("FR| TF1", QualityParser.parse("FR| TF1 (Resolution: UHD)").baseName)
+        assertEquals(tf1.variantKey, QualityParser.parse("FR| TF1 HDR (Résolution Exclusive)").variantKey)
+        assertEquals("FR| TF1", QualityParser.parse("FR| TF1 HDR (Résolution Exclusive)").baseName)
         assertEquals(tf1.variantKey, QualityParser.parse("FR| TF1 [Qualité réelle 4K]").variantKey)
         // Sans mention de qualité, le mot fait partie du nom.
         assertNotEquals(QualityParser.parse("Résolution TV").variantKey, QualityParser.parse("TV").variantKey)
