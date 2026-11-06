@@ -157,6 +157,13 @@ class SettingsRepository(
         dataStore.edit { it[EPG_IMPORT_VERSION] = version }
     }
 
+    /** Version des règles de regroupement des chaînes de la dernière playlist lue ([tv.nextv.core.catalog.QualityParser.VERSION]). */
+    val catalogImportVersion: Flow<Int> = dataStore.data.map { it[CATALOG_IMPORT_VERSION] ?: 0 }.distinctUntilChanged()
+
+    suspend fun setCatalogImportVersion(version: Int) {
+        dataStore.edit { it[CATALOG_IMPORT_VERSION] = version }
+    }
+
     /** Son de l'aperçu vidéo de l'accueil (faible par défaut). */
     val previewVolume: Flow<PreviewVolume> = dataStore.data
         .map { prefs -> prefs[PREVIEW_VOLUME]?.let { name -> PreviewVolume.entries.firstOrNull { it.name == name } } ?: PreviewVolume.LOW }
@@ -419,6 +426,7 @@ class SettingsRepository(
         val PLAYLIST_REFRESH = stringPreferencesKey("playlist_refresh")
         val GUIDE_CATEGORY = stringPreferencesKey("guide_category")
         val EPG_IMPORT_VERSION = intPreferencesKey("epg_import_version")
+        val CATALOG_IMPORT_VERSION = intPreferencesKey("catalog_import_version")
         val CHANNEL_LIST = booleanPreferencesKey("channel_list")
         val HIDE_UHD = booleanPreferencesKey("hide_uhd")
         val FRANCE3_REGION = stringPreferencesKey("france3_region")
@@ -428,7 +436,7 @@ class SettingsRepository(
         val OBSOLETE = setOf("reminders", "parental_pin")
 
         /** Secrets chiffrés pour cet appareil, playlist active (numéro local), réglages retirés. */
-        val NOT_PORTABLE = setOf(PROXY_CREDENTIALS, TMDB_KEY, FOOTBALL_KEY, ACTIVE_PLAYLIST, EPG_IMPORT_VERSION).map { it.name }.toSet() + OBSOLETE
+        val NOT_PORTABLE = setOf(PROXY_CREDENTIALS, TMDB_KEY, FOOTBALL_KEY, ACTIVE_PLAYLIST, EPG_IMPORT_VERSION, CATALOG_IMPORT_VERSION).map { it.name }.toSet() + OBSOLETE
         val NOT_PORTABLE_PREFIXES = listOf(DECODER_PREFIX, RECENT_PREFIX, QUALITY_PREFIX)
         const val DECODER_PREFIX = "decoder_"
         const val RECENT_PREFIX = "recent_channels_"

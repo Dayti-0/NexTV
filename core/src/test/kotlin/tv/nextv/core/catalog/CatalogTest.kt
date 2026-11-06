@@ -62,6 +62,20 @@ class QualityParserTest {
     }
 
     @Test
+    fun `resolution wording around the quality is grouped with the channel`() {
+        val tf1 = QualityParser.parse("FR| TF1 FHD")
+        val uhd = QualityParser.parse("FR| TF1 (Résolution 4K)")
+        assertEquals(tf1.variantKey, uhd.variantKey)
+        assertEquals(StreamQuality.UHD, uhd.quality)
+        assertEquals("FR| TF1", uhd.baseName)
+        assertEquals("FR| TF1", QualityParser.parse("FR| TF1 (Resolution: UHD)").baseName)
+        assertEquals(tf1.variantKey, QualityParser.parse("FR| TF1 [Qualité réelle 4K]").variantKey)
+        // Sans mention de qualité, le mot fait partie du nom.
+        assertNotEquals(QualityParser.parse("Résolution TV").variantKey, QualityParser.parse("TV").variantKey)
+        assertEquals("Résolution TV", QualityParser.parse("Résolution TV").baseName)
+    }
+
+    @Test
     fun `codec tags are ignored for grouping`() {
         assertEquals(QualityParser.parse("Canal+ HEVC FHD").variantKey, QualityParser.parse("Canal+ SD").variantKey)
         assertEquals(StreamQuality.FHD, QualityParser.parse("Canal+ HEVC FHD").quality)

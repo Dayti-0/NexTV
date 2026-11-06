@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import tv.nextv.app.AppContainer
 import tv.nextv.app.ui.common.describe
+import tv.nextv.core.catalog.QualityParser
 import tv.nextv.core.io.LoadProgress
 import tv.nextv.core.io.LoadStep
 import tv.nextv.core.io.ProgressListener
@@ -97,7 +98,10 @@ class StartupViewModel(
         val lastSuccess = source.status.lastSuccessAtMillis
         val hasData = lastSuccess != null && source.status.channelCount > 0
         // Fréquence choisie dans les réglages (« à chaque démarrage », 12 h… 7 jours).
-        val stale = container.settings.playlistRefresh.first().dueAtStart(lastSuccess, System.currentTimeMillis())
+        // Mise à jour qui change le regroupement des chaînes (« TF1 (Résolution 4K) » avec TF1) : playlist relue tout de suite.
+        val regroup = container.settings.catalogImportVersion.first() < QualityParser.VERSION
+        if (regroup) container.settings.setCatalogImportVersion(QualityParser.VERSION)
+        val stale = regroup || container.settings.playlistRefresh.first().dueAtStart(lastSuccess, System.currentTimeMillis())
         // Mise à jour qui change les règles d'import du guide (chaînes des matchs…) : réimport tout de suite.
         val reimportGuide = container.settings.epgImportVersion.first() < EpgImporter.VERSION
         if (reimportGuide) container.settings.setEpgImportVersion(EpgImporter.VERSION)

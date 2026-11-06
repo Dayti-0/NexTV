@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import tv.nextv.app.AppContainer
 import tv.nextv.app.data.db.EpgChannelRow
 import tv.nextv.app.data.db.FootballProgrammeRow
@@ -79,6 +80,8 @@ data class FootballMatch(
     /** Noms complets des équipes, pour les équipes suivies. */
     val homeTeam: String = home,
     val awayTeam: String = away,
+    /** Trouvé dans le guide seul : [kickoffMillis] est le début de sa diffusion. */
+    val fromGuide: Boolean = false,
 ) {
     /** « PSG – Marseille ». */
     val label: String get() = "$home – $away"
@@ -244,10 +247,37 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
     }
 
     /**
+     * Affiches du guide seul qui reprennent un match déjà joué (match de la veille au soir rediffusé
+     * le midi) : écartées d'après la source des scores, qui connaît le vrai coup d'envoi. Seules celles
+     * des prochaines heures sont vérifiées (les suivantes le seront le moment venu).
+     */
+    private val withoutReplays: Flow<Assembled> = assembled.transformLatest { result ->
+        val now = System.currentTimeMillis()
+        val suspects = result.matches.filter { it.fromGuide && it.endMillis > now && it.kickoffMillis < now + REPLAY_CHECK_AHEAD_MILLIS }
+        if (suspects.isEmpty()) {
+            emit(result)
+            return@transformLatest
+        }
+        // Réponse rapide : liste directement sans les rediffusions ; sinon, affichée telle quelle puis corrigée.
+        withTimeoutOrNull(REPLAY_CHECK_WAIT_MILLIS) { replaysAmong(suspects) }?.let { replays ->
+            emit(result.without(replays))
+            return@transformLatest
+        }
+        emit(result)
+        emit(result.without(replaysAmong(suspects)))
+    }
+
+    private suspend fun replaysAmong(matches: List<FootballMatch>): Set<String> =
+        matches.filter { container.liveScores.playedBefore(it.competition, it.home, it.away, it.kickoffMillis) }.mapTo(HashSet()) { it.key }
+
+    private fun Assembled.without(keys: Set<String>): Assembled =
+        if (keys.isEmpty()) this else Assembled(matches.filterNot { it.key in keys }, notice)
+
+    /**
      * Matchs en cours sans score (coupes d'Europe, sélections, ou tous sans clé football-data.org) :
      * score et minute de jeu d'après la source des scores en direct, chaque minute.
      */
-    private val withLiveScores: Flow<Assembled> = assembled.transformLatest { result ->
+    private val withLiveScores: Flow<Assembled> = withoutReplays.transformLatest { result ->
         while (true) {
             val now = System.currentTimeMillis()
             val pending = result.matches.filter { it.score == null && it.kickoffMillis <= now + KICKOFF_SOON_MILLIS && it.endMillis > now }
@@ -305,11 +335,13 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
         }
         // Chaînes de sport du guide absentes de la playlist : le match est affiché avec leur nom.
         val guideOnly = container.guideOnlyChannelDao.list(sourceId).associate { it.epgChannelId to it.name }
-        val rows = container.programmeDao.footballCandidates(sourceId, now, now + WINDOW_MILLIS).mapNotNull { programme ->
+        // Deux jours passés en plus : les diffusions déjà faites révèlent les rediffusions à venir.
+        val aired = container.programmeDao.footballCandidates(sourceId, now - HISTORY_MILLIS, now + WINDOW_MILLIS).mapNotNull { programme ->
             channels[programme.epgChannelId]?.let { BroadcastRow(it, null, programme) }
                 ?: guideOnly[programme.epgChannelId]?.let { BroadcastRow(null, it, programme) }
         }
-        return GuideData(rows, guideMatches(rows))
+        val rows = aired.filter { it.stopMillis > now }
+        return GuideData(rows, guideMatches(rows, aired))
     }
 
     private fun assemble(guide: GuideData, api: FootballDataResult): Assembled {
@@ -340,6 +372,15 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
         const val TICK_MILLIS = 30_000L
         const val KICKOFF_SOON_MILLIS = 5 * 60_000L
 
+        /** Rediffusions cherchées auprès de la source des scores : diffusions des prochaines 24 h. */
+        const val REPLAY_CHECK_AHEAD_MILLIS = 24 * 60 * 60_000L
+
+        /** Attente maximale de cette vérification avant d'afficher la liste. */
+        const val REPLAY_CHECK_WAIT_MILLIS = 3_000L
+
+        /** Le guide garde les programmes des deux derniers jours. */
+        const val HISTORY_MILLIS = 2 * 24 * 60 * 60_000L
+
         /** Le guide couvre en général une semaine. */
         const val WINDOW_MILLIS = 8 * 24 * 60 * 60_000L
     }
@@ -349,7 +390,7 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
  * Programme du guide avec la chaîne de la playlist qui le diffuse, ou seulement le nom de la chaîne
  * du guide ([guideName]) quand elle n'est pas dans la playlist.
  */
-private class BroadcastRow(channel: EpgChannelRow?, guideName: String?, programme: FootballProgrammeRow) {
+internal class BroadcastRow(channel: EpgChannelRow?, guideName: String?, programme: FootballProgrammeRow) {
     val channelId: Long? = channel?.id
     val channelName: String = channel?.let { it.title.ifBlank { it.name } } ?: guideName.orEmpty()
     val logoUrl = channel?.logoUrl
@@ -405,17 +446,22 @@ private fun apiMatches(matches: List<ScheduledMatch>, rows: List<BroadcastRow>, 
 }
 
 /**
- * Matchs trouvés dans le guide seul. Une affiche diffusée sur
+ * Matchs trouvés dans le guide seul ([rows] : diffusions en cours et à venir). Une affiche diffusée sur
  * plusieurs chaînes, en deux mi-temps ou rediffusée ne fait qu'une ligne, à sa première diffusion ;
- * les diffusions de nuit et du matin (rediffusions) sont écartées. Les chaînes qui diffusent le même
+ * les diffusions de nuit et du matin, et celles d'une affiche déjà passée à l'antenne ([aired] :
+ * diffusions des deux derniers jours en plus), sont des rediffusions écartées. Les chaînes qui diffusent le même
  * match sous un autre titre (sans la compétition, noms d'équipes complets) s'y ajoutent.
  */
-private fun guideMatches(rows: List<BroadcastRow>): List<FootballMatch> {
-    val found = rows.mapNotNull { row ->
-        FootballMatches.fixtureOf(row.title, row.subtitle, row.category, row.description)
-            ?.takeIf { isMatchHour(row.startMillis) }
-            ?.let { row to it }
+internal fun guideMatches(rows: List<BroadcastRow>, aired: List<BroadcastRow>): List<FootballMatch> {
+    val current = rows.toHashSet()
+    // Toutes les diffusions reconnues, passées comprises, pour repérer les rediffusions.
+    val all = aired.mapNotNull { row ->
+        FootballMatches.fixtureOf(row.title, row.subtitle, row.category, row.description)?.let { Aired(row, it) }
     }
+    val byWord = HashMap<String, MutableList<Aired>>()
+    all.forEach { airing -> (airing.home + airing.away).forEach { byWord.getOrPut(it) { ArrayList() } += airing } }
+    val found = all.filter { it.row in current && isMatchHour(it.row.startMillis) && !isReplay(it, byWord) }
+        .map { it.row to it.fixture }
     val groups = found.groupBy { (_, fixture) -> fixture.competition to simplify(fixture.label) }.values
         .map { group -> group.sortedWith(compareBy({ (row, _) -> row.channelId == null }, { (row, _) -> row.startMillis })) }
         .sortedBy { group -> group.first().first.startMillis }
@@ -451,9 +497,38 @@ private fun guideMatches(rows: List<BroadcastRow>): List<FootballMatch> {
             guideChannel = preferred.channelName.takeIf { preferred.channelId == null },
             otherChannels = (live.size - 1).coerceAtLeast(0),
             channels = live.mapNotNull(::channelOf),
+            fromGuide = true,
         )
     }
 }
+
+/** Diffusion d'un match reconnue dans le guide, avec les mots qui désignent ses équipes. */
+private class Aired(val row: BroadcastRow, val fixture: Fixture) {
+    val home = FootballMatches.teamWords(fixture.home)
+    val away = FootballMatches.teamWords(fixture.away)
+
+    fun sameTeams(other: Aired): Boolean =
+        home.isNotEmpty() && away.isNotEmpty() &&
+            ((home.any { it in other.home } && away.any { it in other.away }) || (home.any { it in other.away } && away.any { it in other.home }))
+}
+
+/**
+ * Rediffusion : la même affiche est passée (ou passera) à l'antenne au moins [REPLAY_GAP_MILLIS]
+ * plus tôt dans les deux jours précédents, sous ce titre ou un autre (« Crystal Palace / Hoffenheim »
+ * le jeudi soir, « Ligue Europa : Crystal Palace - Hoffenheim » le vendredi midi).
+ */
+private fun isReplay(airing: Aired, byWord: Map<String, List<Aired>>): Boolean {
+    val start = airing.row.startMillis
+    // Seules les diffusions qui partagent un mot d'équipe sont comparées.
+    return airing.home.any { word ->
+        byWord[word].orEmpty().any { other ->
+            other.row.startMillis <= start - REPLAY_GAP_MILLIS && other.row.startMillis >= start - REPLAY_LOOKBACK_MILLIS && airing.sameTeams(other)
+        }
+    }
+}
+
+private const val REPLAY_GAP_MILLIS = 3 * 60 * 60_000L
+private const val REPLAY_LOOKBACK_MILLIS = 2 * 24 * 60 * 60_000L
 
 /**
  * Une ligne par chaîne : celles de la playlist d'abord (celles du guide seul ne se regardent pas),

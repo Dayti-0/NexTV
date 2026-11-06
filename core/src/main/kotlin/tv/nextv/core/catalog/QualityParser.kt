@@ -12,6 +12,12 @@ import java.text.Normalizer
  */
 object QualityParser {
 
+    /**
+     * Version des règles de regroupement : quand elle augmente, la playlist est relue au démarrage
+     * suivant pour regrouper les chaînes selon les nouvelles règles.
+     */
+    const val VERSION = 2
+
     data class Result(
         /** Nom sans les mentions de qualité ni de codec. */
         val baseName: String,
@@ -38,6 +44,12 @@ object QualityParser {
         "EXCLUS", "EXCLU", "EXCLUSIF", "EXCLUSIVE", "EXCLUSIVITE",
     )
 
+    /**
+     * Mots qui ne font qu'accompagner une mention de qualité (« TF1 (Résolution 4K) », « M6 Qualité
+     * réelle FHD ») : retirés seulement quand le nom annonce une qualité.
+     */
+    private val DESCRIPTIVE_TOKENS = setOf("RESOLUTION", "QUALITE", "QUALITY", "REEL", "REELLE", "NATIVE", "NATIF")
+
     /** Lettres en exposant fréquentes dans les playlists (« ᶠᴴᴰ », « ˢᴰ »…). */
     private val SUPERSCRIPTS: Map<Char, Char> = buildMap {
         "ᴬᴮᴰᴱᴳᴴᴵᴶᴷᴸᴹᴺᴼᴾᴿᵀᵁⱽᵂ".zip("ABDEGHIJKLMNOPRTUVW").forEach { (s, c) -> put(s, c) }
@@ -52,6 +64,7 @@ object QualityParser {
         val normalized = normalizeSuperscripts(name)
         var best: StreamQuality? = null
         val kept = mutableListOf<String>()
+        var descriptive = 0
         val tokens = TOKEN.findAll(normalized).map { it.value }.toList()
         var i = 0
         while (i < tokens.size) {
@@ -67,12 +80,18 @@ object QualityParser {
             when {
                 quality != null -> best = maxQuality(best, quality)
                 upper in CODEC_TOKENS -> Unit
-                else -> kept += token
+                else -> {
+                    kept += token
+                    if (foldAccents(upper) in DESCRIPTIVE_TOKENS) descriptive++
+                }
             }
             i++
         }
+        // « Résolution », « Qualité »… n'accompagnent qu'une mention de qualité : retirés avec elle.
+        val dropDescriptive = best != null && descriptive > 0
+        if (dropDescriptive) kept.removeAll { foldAccents(it.uppercase()) in DESCRIPTIVE_TOKENS }
         // Sans mention de qualité ni de codec (cas le plus fréquent des films), la recherche des mentions est sautée.
-        val baseName = stripTokens(normalized, hasTokens = kept.size != tokens.size).ifBlank { name.trim() }
+        val baseName = stripTokens(normalized, hasTokens = kept.size != tokens.size, dropDescriptive).ifBlank { name.trim() }
         val key = kept.joinToString(" ") { foldAccents(it.lowercase()) }
         return Result(baseName = baseName, quality = best, variantKey = key)
     }
@@ -86,13 +105,20 @@ object QualityParser {
             (QUALITY_TOKENS.keys + CODEC_TOKENS).sortedByDescending { it.length }.joinToString("|") { Regex.escape(it) } +
             ")(?![\\p{L}\\p{Nd}])",
     )
-    private val EMPTY_BRACKETS = Regex("[\\[(]\\s*[\\])]")
+    /** Mots qui accompagnent une mention de qualité, accentués ou non ([DESCRIPTIVE_TOKENS]). */
+    private val DESCRIPTIVE = Regex(
+        "(?iu)(?<![\\p{L}\\p{Nd}])(?:r[eé]solution|qualit[eé]|quality|r[eé]el(?:le)?|nati(?:ve|f))(?![\\p{L}\\p{Nd}])",
+    )
+
+    /** Parenthèses ou crochets vidés par le retrait des mentions (« ( ) », « [ : ] »). */
+    private val EMPTY_BRACKETS = Regex("[\\[(][\\s:.,;|/_-]*[\\])]")
     private val SPACES = Regex("\\s{2,}")
     private val MARKS = Regex("\\p{Mn}+")
 
     /** Retire les mentions de qualité et de codec du nom, en conservant le reste tel quel. */
-    private fun stripTokens(name: String, hasTokens: Boolean): String {
-        return (if (hasTokens) name.replace(STRIP, " ") else name)
+    private fun stripTokens(name: String, hasTokens: Boolean, dropDescriptive: Boolean): String {
+        val stripped = if (hasTokens) name.replace(STRIP, " ") else name
+        return (if (dropDescriptive) stripped.replace(DESCRIPTIVE, " ") else stripped)
             .replace(EMPTY_BRACKETS, " ")
             .replace(SPACES, " ")
             .trim()

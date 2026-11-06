@@ -3,6 +3,7 @@ package tv.nextv.core.football
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -123,5 +124,38 @@ class LiveScoresTest {
         assertNull(LiveScoreClient.match(scores, "Lyon", "Real Sociedad", evening, evening + 3 * 60 * 60_000L))
         // Un seul mot commun et répandu : aucun score plutôt qu'un faux.
         assertNull(LiveScoreClient.match(scores, "Hapoel Tel-Aviv", "Real Betis", evening, evening + 3 * 60 * 60_000L))
+    }
+
+    @Test
+    fun `next-day broadcast of a played match is a replay`() {
+        val scores = LiveScoreClient.parse(
+            JSONObject(
+                """{"events":[
+                ${event("2026-11-05T17:45Z", "post", "STATUS_FULL_TIME", "FT", "90'+4'", "Crystal Palace", "2", "TSG Hoffenheim", "1", "CRY", "HOF")},
+                ${event("2026-11-05T20:00Z", "post", "STATUS_POSTPONED", "Postponed", "0'", "Celtic", "0", "Besiktas", "0")}
+                ]}""",
+            ),
+            Competition.EUROPA_LEAGUE,
+        )
+        val day = 24 * 60 * 60_000L
+        fun replay(home: String, away: String, start: Long) =
+            LiveScoreClient.earlier(scores, home, away, start - 2 * day, start - LiveScoreClient.REPLAY_GAP_MILLIS)
+        val nextNoon = 1_793_963_880_000L // 2026-11-06T11:18Z, 12:18 à Paris
+        val kickoff = 1_793_900_700_000L // 2026-11-05T17:45Z
+        assertNotNull(replay("Crystal Palace", "Hoffenheim", nextNoon))
+        assertNotNull(replay("Hoffenheim", "Crystal Palace", nextNoon))
+        // Le direct, avant-match compris, ou repris à la seconde mi-temps.
+        assertNull(replay("Crystal Palace", "Hoffenheim", kickoff - 45 * 60_000L))
+        assertNull(replay("Crystal Palace", "Hoffenheim", kickoff + 60 * 60_000L))
+        // Match reporté : sa date ne dit rien de la diffusion.
+        assertNull(replay("Celtic", "Besiktas", nextNoon))
+        assertNull(replay("Crystal Palace", "Lyon", nextNoon))
+    }
+
+    @Test
+    fun `score boards cover every day of the window`() {
+        val from = 1_793_963_880_000L - 2 * 24 * 60 * 60_000L
+        assertEquals(listOf("20261104", "20261105", "20261106"), LiveScoreClient.days(from, 1_793_963_880_000L - LiveScoreClient.REPLAY_GAP_MILLIS))
+        assertEquals(emptyList<String>(), LiveScoreClient.days(2, 1))
     }
 }

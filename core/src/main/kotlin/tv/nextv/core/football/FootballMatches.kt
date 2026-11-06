@@ -56,6 +56,9 @@ internal object FootballText {
             """best of|le meilleur|tirage|plateau|emission|talk|quotidien|actu|multiplex|rediffusion)\b""",
     )
 
+    /** Diffusion qui n'est pas en direct, annoncée dans le titre ou le sous-titre. */
+    val REPLAY = Regex("""\b(rediffusion|rediff|redif|en differe|differe|replay)\b|\((r|rediff?)\)""")
+
     val FOOTBALL = Regex("""\b(foot|football|soccer)\b""")
 
     /** Genres possibles d'une retransmission (« Sport, Football », « Inconnu »…). */
@@ -137,6 +140,7 @@ object FootballMatches {
         if (FootballText.NOT_A_MATCH.containsMatchIn(FootballText.fold(title)) || FootballText.NOT_A_MATCH.containsMatchIn(genre)) return null
         if (FootballText.OTHER_SPORTS.containsMatchIn(heading) || FootballText.OTHER_SPORTS.containsMatchIn(genre)) return null
         if (FootballText.WOMEN.containsMatchIn(heading) || FootballText.WOMEN.containsMatchIn(genre)) return null
+        if (FootballText.REPLAY.containsMatchIn(heading)) return null
         if (!FootballText.FOOTBALL.containsMatchIn(heading) && !FootballText.FOOTBALL.containsMatchIn(genre)) return null
         return listOfNotNull(subtitle, title).firstNotNullOfOrNull(::teams)
     }
@@ -149,6 +153,7 @@ object FootballMatches {
         if (FootballText.NOT_A_MATCH.containsMatchIn(FootballText.fold(title)) || FootballText.NOT_A_MATCH.containsMatchIn(genre)) return null
         if (FootballText.OTHER_SPORTS.containsMatchIn(heading) || FootballText.OTHER_SPORTS.containsMatchIn(genre)) return null
         if (FootballText.WOMEN.containsMatchIn(heading) || FootballText.WOMEN.containsMatchIn(genre)) return null
+        if (FootballText.REPLAY.containsMatchIn(heading)) return null
         // Documentaire, série… : le genre indiqué n'est pas sportif.
         if (genre.isNotBlank() && !FootballText.SPORT_GENRE.containsMatchIn(genre)) return null
         val football = FootballText.FOOTBALL.containsMatchIn(heading) || FootballText.FOOTBALL.containsMatchIn(genre)
@@ -164,6 +169,32 @@ object FootballMatches {
         if (FootballText.WOMEN.containsMatchIn(details)) return null
         return competition
     }
+
+    /**
+     * Même affiche ([home] – [away] et [otherHome] – [otherAway], dans un sens ou dans l'autre) :
+     * chaque équipe a un mot distinctif de son nom en commun avec son vis-à-vis (« Crystal Palace » /
+     * « Palace », « Hoffenheim » / « TSG Hoffenheim »).
+     */
+    fun sameTeams(home: String, away: String, otherHome: String, otherAway: String): Boolean {
+        val h = teamWords(home)
+        val a = teamWords(away)
+        val oh = teamWords(otherHome)
+        val oa = teamWords(otherAway)
+        if (h.isEmpty() || a.isEmpty() || oh.isEmpty() || oa.isEmpty()) return false
+        return (h.any { it in oh } && a.any { it in oa }) || (h.any { it in oa } && a.any { it in oh })
+    }
+
+    /** Mots distinctifs d'un nom d'équipe (sans « FC », « Real », « United »…). */
+    fun teamWords(name: String): Set<String> =
+        FootballText.fold(name).split(NON_WORD).filterTo(HashSet()) { it.length >= 3 && it !in TEAM_FILLER }
+
+    private val NON_WORD = Regex("[^a-z0-9]+")
+
+    private val TEAM_FILLER = setOf(
+        "club", "calcio", "football", "futbol", "the", "del", "ssc", "afc", "cfc", "real", "city", "united", "sporting",
+        "athletic", "atletico", "racing", "olympique", "inter", "dinamo", "dynamo", "saint", "union", "red", "star",
+        "young", "boys", "rapid", "royal", "stade", "tsg", "vfb", "vfl", "1899", "1900", "1909",
+    )
 
     /** Les deux équipes d'un texte comme « Ligue 1 - 11e journée : Paris-SG / Marseille ». */
     internal fun teams(text: String): Pair<String, String>? {

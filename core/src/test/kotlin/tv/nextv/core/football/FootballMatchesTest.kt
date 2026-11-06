@@ -1,7 +1,9 @@
 package tv.nextv.core.football
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FootballMatchesTest {
@@ -103,5 +105,26 @@ class FootballMatchesTest {
         assertNull(of("Football : Ligue 1", "11e journée"))
         assertNull(of("Football", "Coupe de France : Rennes - Nantes"))
         assertNull(of("Ligue 10 de démonstration", "A / B"))
+    }
+
+    @Test
+    fun `announced replays are not matches`() {
+        assertNull(of("Football : Ligue Europa", "Crystal Palace / Hoffenheim (Rediffusion)"))
+        assertNull(of("Ligue Europa : Rennes - Olympiakos", "En différé"))
+        assertNull(of("Ligue 1 : Lens - Lille (R)"))
+        // La description peut annoncer une rediffusion à venir : le direct reste un match.
+        assertEquals(
+            Fixture(Competition.EUROPA_LEAGUE, "Crystal Palace", "Hoffenheim"),
+            of("Football : Ligue Europa", "Crystal Palace / Hoffenheim", description = "En direct. Rediffusion demain à 12h."),
+        )
+    }
+
+    @Test
+    fun `same fixture whatever the names and the order`() {
+        assertTrue(FootballMatches.sameTeams("Crystal Palace", "Hoffenheim", "TSG Hoffenheim", "Crystal Palace"))
+        assertTrue(FootballMatches.sameTeams("Paris-SG", "Marseille", "Paris SG", "Olympique de Marseille"))
+        assertFalse(FootballMatches.sameTeams("Crystal Palace", "Hoffenheim", "Crystal Palace", "Lyon"))
+        // Mots trop répandus : jamais suffisants.
+        assertFalse(FootballMatches.sameTeams("Real", "Inter", "Real", "Inter"))
     }
 }
