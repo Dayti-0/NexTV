@@ -358,9 +358,6 @@
     <string name="settings_playlist_updated">Playlist actualisée : %1$d entrées</string>
     <string name="settings_playback">Lecture</string>
     <string name="settings_display">Affichage de l’accueil</string>
-    <string name="settings_channel_columns">Chaînes par ligne</string>
-    <string name="settings_poster_columns">Films et séries par ligne</string>
-    <string name="settings_columns_value">%1$d (de %2$d à %3$d)</string>
     <string name="settings_lower_ads">Baisser le son des pubs</string>
     <string name="settings_lower_ads_help">Quand le son devient nettement plus fort que le programme pendant quelques secondes (publicités), il est baissé presque au minimum, puis remis au niveau normal à la reprise. Le son Dolby envoyé tel quel à l’ampli n’est pas concerné.</string>
     <string name="settings_start_last_channel">Démarrer sur la dernière chaîne</string>
@@ -414,6 +411,7 @@
     <string name="appearance_channels">Chaînes</string>
     <string name="appearance_channels_list">Liste</string>
     <string name="appearance_channels_mosaic">Mosaïque</string>
+    <string name="appearance_per_row">Vignettes par ligne</string>
     <string name="appearance_palette">Palette de couleurs</string>
     <string name="appearance_default">Par défaut</string>
     <string name="appearance_previous">Revenir à %1$s</string>
@@ -434,7 +432,6 @@
     <string name="series_groups_help">Désactivez une catégorie pour la masquer : ses séries n’apparaissent plus dans les listes ni la recherche. Les favoris restent visibles. À l’accueil, un appui long sur une catégorie la masque aussi.</string>
     <string name="movie_groups_empty">Aucune catégorie de films dans la playlist active.</string>
     <string name="series_groups_empty">Aucune catégorie de séries dans la playlist active.</string>
-    <string name="settings_columns_help">Gauche / droite pour changer le nombre, sur TV et tablette. Plus il y en a, plus les vignettes sont petites et plus on en voit à la fois.</string>
     <string name="settings_quality_target">Qualité visée</string>
     <string name="quality_target_best">Meilleure qualité</string>
     <string name="quality_target_hd">HD maximum</string>

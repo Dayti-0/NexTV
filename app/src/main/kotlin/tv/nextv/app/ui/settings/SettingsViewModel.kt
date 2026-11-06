@@ -369,9 +369,6 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch { settings.setChannelPreview(enabled) }
     }
 
-    fun setGridColumns(columns: GridColumns) {
-        viewModelScope.launch { settings.setGridColumns(columns) }
-    }
 
     fun saveFootballKey(key: String) {
         viewModelScope.launch { settings.setFootballApiKey(key) }

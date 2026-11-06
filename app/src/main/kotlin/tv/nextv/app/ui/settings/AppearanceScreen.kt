@@ -63,6 +63,7 @@ import tv.nextv.app.R
 import tv.nextv.app.ui.common.appViewModel
 import tv.nextv.app.ui.components.FocusSurface
 import tv.nextv.app.ui.components.IconAction
+import tv.nextv.app.data.settings.GridColumns
 import tv.nextv.app.ui.components.PillButton
 import tv.nextv.app.ui.components.PillStyle
 import tv.nextv.app.ui.components.ScreenHeader
@@ -82,6 +83,7 @@ class AppearanceViewModel(private val container: AppContainer) : ViewModel() {
     val previousTheme: StateFlow<ThemeStyle?> = settings.previousThemeStyle.stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val layout: StateFlow<HomeLayout> = settings.homeLayout.stateIn(viewModelScope, SharingStarted.Eagerly, HomeLayout.DEFAULT)
     val channelMosaic: StateFlow<Boolean> = settings.gridColumns.map { it.liveCenterMosaic }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    val perRow: StateFlow<Int> = settings.gridColumns.map { it.perRow }.stateIn(viewModelScope, SharingStarted.Eagerly, GridColumns.DEFAULT_PER_ROW)
 
     fun setTheme(style: ThemeStyle) {
         viewModelScope.launch { settings.setThemeStyle(style) }
@@ -94,6 +96,11 @@ class AppearanceViewModel(private val container: AppContainer) : ViewModel() {
     /** Live Center : chaînes en mosaïque ou en liste. */
     fun setChannelMosaic(mosaic: Boolean) {
         viewModelScope.launch { settings.setGridColumns(settings.gridColumns.first().copy(liveCenterMosaic = mosaic)) }
+    }
+
+    /** Live Center : vignettes (chaînes, films, séries) par ligne. */
+    fun setPerRow(perRow: Int) {
+        viewModelScope.launch { settings.setGridColumns(settings.gridColumns.first().copy(perRow = perRow.coerceIn(GridColumns.PER_ROW))) }
     }
 }
 
@@ -108,6 +115,7 @@ fun AppearanceScreen(onBack: () -> Unit) {
     val previous by viewModel.previousTheme.collectAsStateWithLifecycle()
     val layout by viewModel.layout.collectAsStateWithLifecycle()
     val channelMosaic by viewModel.channelMosaic.collectAsStateWithLifecycle()
+    val perRow by viewModel.perRow.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val resources = LocalContext.current.resources
@@ -136,6 +144,8 @@ fun AppearanceScreen(onBack: () -> Unit) {
         onLayout = viewModel::setLayout,
         channelMosaic = channelMosaic,
         onChannelMosaic = viewModel::setChannelMosaic,
+        perRow = perRow,
+        onPerRow = viewModel::setPerRow,
         snackbar = snackbar,
     )
 }
@@ -151,6 +161,8 @@ fun AppearanceContent(
     onLayout: (HomeLayout) -> Unit,
     channelMosaic: Boolean = false,
     onChannelMosaic: (Boolean) -> Unit = {},
+    perRow: Int = GridColumns.DEFAULT_PER_ROW,
+    onPerRow: (Int) -> Unit = {},
     snackbar: SnackbarHostState = remember { SnackbarHostState() },
 ) {
     val window = rememberWindowInfo()
@@ -193,6 +205,20 @@ fun AppearanceContent(
                             PillButton(
                                 stringResource(label),
                                 { onChannelMosaic(mosaic) },
+                                icon = if (selected) Icons.Filled.Check else null,
+                                style = if (selected) PillStyle.Primary else PillStyle.Secondary,
+                                modifier = Modifier.resetPreviewOnFocus(),
+                            )
+                        }
+                    }
+                    // Vignettes par ligne (mosaïque des chaînes, films et séries) : exactement ce nombre à l'écran.
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(stringResource(R.string.appearance_per_row), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(end = 6.dp))
+                        GridColumns.PER_ROW.forEach { count ->
+                            val selected = count == perRow
+                            PillButton(
+                                count.toString(),
+                                { onPerRow(count) },
                                 icon = if (selected) Icons.Filled.Check else null,
                                 style = if (selected) PillStyle.Primary else PillStyle.Secondary,
                                 modifier = Modifier.resetPreviewOnFocus(),

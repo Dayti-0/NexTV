@@ -79,7 +79,7 @@ enum class CardSize {
     /** Logo réduit, mêmes informations. */
     MEDIUM,
 
-    /** Logo et nom seulement, avec la progression. */
+    /** Logo, nom et programme en cours, avec la progression. */
     SMALL,
     ;
 
@@ -188,14 +188,13 @@ fun ChannelCard(
                         )
                     }
                 }
-                if (!small) {
-                    ScrollingText(
-                        channel.nowTitle ?: stringResource(R.string.channels_no_epg),
-                        MaterialTheme.typography.bodySmall,
-                        color = if (channel.nowTitle != null) MaterialTheme.colorScheme.onSurfaceVariant else NexTvColors.TextMuted,
-                        scrolling = focused,
-                    )
-                }
+                // Programme en cours, quelle que soit la taille de la vignette.
+                ScrollingText(
+                    channel.nowTitle ?: stringResource(R.string.channels_no_epg),
+                    if (small) MaterialTheme.typography.labelSmall else MaterialTheme.typography.bodySmall,
+                    color = if (channel.nowTitle != null) MaterialTheme.colorScheme.onSurfaceVariant else NexTvColors.TextMuted,
+                    scrolling = focused,
+                )
                 val start = channel.nowStart
                 val stop = channel.nowStop
                 if (start != null && stop != null) {

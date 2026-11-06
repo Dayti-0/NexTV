@@ -559,8 +559,8 @@ private fun CatalogBody(
         ) {
             // Chaînes : une par ligne avec leur programme, ou en mosaïque (réglages) ; films et séries : affiches.
             val channelList = section == HomeSection.TV && !gridColumns.liveCenterMosaic
-            val columns = if (section == HomeSection.TV) gridColumns.copy(channelList = channelList) else gridColumns.copy(posters = (gridColumns.posters - 2).coerceAtLeast(3))
-            CatalogGrid(section, window, columns, list = channelList, body = body)
+            // Volet à droite : pas de marge de bord d'écran de ce côté, la place va aux vignettes.
+            CatalogGrid(section, window, gridColumns.perRow, list = channelList, endPadding = LIVE_CENTER_GRID_END, body = body)
         }
         return
     }
@@ -951,31 +951,40 @@ private fun SectionBody(
                 modifier = Modifier.padding(start = if (window.isWide) 28.dp else window.horizontalPadding, bottom = 8.dp),
             )
         }
-        CatalogGrid(section, window, gridColumns, list = section == HomeSection.TV && gridColumns.channelList, body = body)
+        CatalogGrid(section, window, gridColumns.perRow, list = section == HomeSection.TV && gridColumns.channelList, body = body)
     }
 }
 
-/** Grille de l'accueil : colonnes selon la largeur et les réglages ; [list] : une chaîne par ligne. */
+/**
+ * Grille de l'accueil : colonnes selon la largeur et le réglage (chaînes, films et séries : le même
+ * nombre par ligne) ; [list] : une chaîne par ligne.
+ */
 @Composable
-internal fun CatalogGrid(section: HomeSection, window: WindowInfo, gridColumns: GridColumns, list: Boolean, body: @Composable (grid: GridLayout) -> Unit) {
+internal fun CatalogGrid(
+    section: HomeSection,
+    window: WindowInfo,
+    perRow: Int,
+    list: Boolean,
+    endPadding: Dp = window.horizontalPadding,
+    body: @Composable (grid: GridLayout) -> Unit,
+) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val start = if (window.isWide) 28.dp else window.horizontalPadding
-        val usable = maxWidth - start - window.horizontalPadding
+        val usable = maxWidth - start - endPadding
         val columns = if (list) {
             // Disposition « liste » (réglages) : une chaîne par ligne avec son programme.
             1
         } else if (window.isWide) {
-            // TV, tablette : nombre choisi dans les réglages, dans la limite de la largeur.
-            val wanted = if (section == HomeSection.TV) gridColumns.channels else gridColumns.posters
-            val fitting = ((usable + gridSpacing(wanted)) / (MIN_CELL + gridSpacing(wanted))).toInt()
-            wanted.coerceAtMost(fitting).coerceAtLeast(1)
+            // TV, tablette : exactement le nombre choisi (sauf écran trop étroit pour lui).
+            val fitting = ((usable + gridSpacing(perRow)) / (MIN_CELL + gridSpacing(perRow))).toInt()
+            perRow.coerceAtMost(fitting).coerceAtLeast(1)
         } else {
             // Téléphone : liste des chaînes, affiches d'au moins 108 dp.
             val minCell = if (section == HomeSection.TV) usable else 108.dp
             maxOf(1, ((usable + GRID_SPACING) / (minCell + GRID_SPACING)).toInt())
         }
         val spacing = gridSpacing(columns)
-        body(GridLayout(columns, (usable - spacing * (columns - 1)) / columns, spacing))
+        body(GridLayout(columns, (usable - spacing * (columns - 1)) / columns, spacing, gridPadding(window, endPadding)))
     }
 }
 
@@ -1047,7 +1056,7 @@ internal fun TvBody(
     actions: HomeActions,
     focused: MutableState<FocusedItem?>,
 ) {
-    val padding = gridPadding(window)
+    val padding = grid.padding
     val favoritesMode = category == Category.Favorites
     val recentMode = category == Category.Recent
     if (favoritesMode && favorites.isEmpty()) {
@@ -1171,7 +1180,7 @@ private fun MoviesBody(
         LazyVerticalGrid(
             columns = GridCells.Fixed(grid.columns),
             state = state,
-            contentPadding = gridPadding(window),
+            contentPadding = grid.padding,
             horizontalArrangement = Arrangement.spacedBy(grid.spacing),
             verticalArrangement = Arrangement.spacedBy(grid.spacing),
             modifier = Modifier.fillMaxSize().then(fade).onFocusChanged { if (!it.hasFocus) focused.value = null },
@@ -1243,7 +1252,7 @@ private fun SeriesBody(
         LazyVerticalGrid(
             columns = GridCells.Fixed(grid.columns),
             state = state,
-            contentPadding = gridPadding(window),
+            contentPadding = grid.padding,
             horizontalArrangement = Arrangement.spacedBy(grid.spacing),
             verticalArrangement = Arrangement.spacedBy(grid.spacing),
             modifier = Modifier.fillMaxSize().then(fade).onFocusChanged { if (!it.hasFocus) focused.value = null },
@@ -1279,7 +1288,7 @@ private fun ContinueBody(
         LazyVerticalGrid(
             columns = GridCells.Fixed(grid.columns),
             state = state,
-            contentPadding = gridPadding(window),
+            contentPadding = grid.padding,
             horizontalArrangement = Arrangement.spacedBy(grid.spacing),
             verticalArrangement = Arrangement.spacedBy(grid.spacing),
             modifier = Modifier.fillMaxSize().then(fade).onFocusChanged { if (!it.hasFocus) focused.value = null },
@@ -1339,9 +1348,9 @@ internal fun FocusedItemLabel(item: FocusedItem, modifier: Modifier = Modifier) 
     }
 }
 
-internal fun gridPadding(window: WindowInfo) = PaddingValues(
+internal fun gridPadding(window: WindowInfo, end: Dp = window.horizontalPadding) = PaddingValues(
     start = if (window.isWide) 28.dp else window.horizontalPadding,
-    end = window.horizontalPadding,
+    end = end,
     top = 4.dp,
     bottom = 32.dp,
 )
@@ -1424,6 +1433,9 @@ internal fun SearchField(query: String, hint: String, onQueryChange: (String) ->
 
 private val GRID_SPACING = 16.dp
 
+/** Live Center : marge entre la grille et le volet de droite. */
+private val LIVE_CENTER_GRID_END = 16.dp
+
 /** Vignette la plus étroite acceptée, quel que soit le réglage. */
 private val MIN_CELL = 56.dp
 
@@ -1435,7 +1447,7 @@ internal typealias HeroSlot = @Composable (title: String, count: String, action:
 
 /** Grille de l'accueil : colonnes, largeur d'une vignette et espacement. */
 @Immutable
-internal data class GridLayout(val columns: Int, val cellWidth: Dp, val spacing: Dp)
+internal data class GridLayout(val columns: Int, val cellWidth: Dp, val spacing: Dp, val padding: PaddingValues = PaddingValues())
 
 /** Espacement resserré quand les vignettes sont nombreuses. */
 internal fun gridSpacing(columns: Int): Dp = when {

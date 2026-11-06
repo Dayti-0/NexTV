@@ -105,12 +105,11 @@ class SettingsRepository(
         }
     }
 
-    /** Éléments par ligne des grilles de l'accueil (TV, tablette). */
+    /** Vignettes par ligne des grilles de l'accueil (TV, tablette). */
     val gridColumns: Flow<GridColumns> = dataStore.data
         .map { prefs ->
             GridColumns(
-                channels = (prefs[CHANNEL_COLUMNS] ?: GridColumns.DEFAULT_CHANNELS).coerceIn(GridColumns.CHANNELS),
-                posters = (prefs[POSTER_COLUMNS] ?: GridColumns.DEFAULT_POSTERS).coerceIn(GridColumns.POSTERS),
+                perRow = (prefs[TILES_PER_ROW] ?: GridColumns.DEFAULT_PER_ROW).coerceIn(GridColumns.PER_ROW),
                 channelList = prefs[CHANNEL_LIST] ?: false,
                 liveCenterMosaic = prefs[LIVE_CENTER_MOSAIC] ?: false,
             )
@@ -119,8 +118,7 @@ class SettingsRepository(
 
     suspend fun setGridColumns(columns: GridColumns) {
         dataStore.edit { prefs ->
-            prefs[CHANNEL_COLUMNS] = columns.channels.coerceIn(GridColumns.CHANNELS)
-            prefs[POSTER_COLUMNS] = columns.posters.coerceIn(GridColumns.POSTERS)
+            prefs[TILES_PER_ROW] = columns.perRow.coerceIn(GridColumns.PER_ROW)
             prefs[CHANNEL_LIST] = columns.channelList
             prefs[LIVE_CENTER_MOSAIC] = columns.liveCenterMosaic
         }
@@ -411,9 +409,8 @@ class SettingsRepository(
         val QUALITY_TARGET = stringPreferencesKey("quality_target")
         val TMDB_KEY = stringPreferencesKey("tmdb_key")
         val FOOTBALL_KEY = stringPreferencesKey("football_key")
-        val CHANNEL_COLUMNS = intPreferencesKey("channel_columns")
+        val TILES_PER_ROW = intPreferencesKey("tiles_per_row")
         val DNS_PROVIDER = stringPreferencesKey("dns_provider")
-        val POSTER_COLUMNS = intPreferencesKey("poster_columns")
         val CHANNEL_PREVIEW = booleanPreferencesKey("channel_preview")
         val ASPECT_MODE = stringPreferencesKey("aspect_mode")
         val AUDIO_LANGUAGE = stringPreferencesKey("audio_language")
@@ -454,17 +451,15 @@ enum class AspectMode { FIT, FILL, ZOOM }
 
 /** Éléments par ligne des grilles de l'accueil sur TV et tablette (le téléphone garde sa disposition). */
 data class GridColumns(
-    val channels: Int = DEFAULT_CHANNELS,
-    val posters: Int = DEFAULT_POSTERS,
+    /** Chaînes, films et séries par ligne : exactement ce nombre à l'écran (TV, tablette). */
+    val perRow: Int = DEFAULT_PER_ROW,
     /** Chaînes en liste (logo, nom, programme en cours) plutôt qu'en mosaïque. */
     val channelList: Boolean = false,
     /** Live Center : chaînes en mosaïque de vignettes plutôt qu'en liste. */
     val liveCenterMosaic: Boolean = false,
 ) {
     companion object {
-        val CHANNELS = 3..9
-        val POSTERS = 4..10
-        const val DEFAULT_CHANNELS = 5
-        const val DEFAULT_POSTERS = 6
+        val PER_ROW = 2..5
+        const val DEFAULT_PER_ROW = 4
     }
 }

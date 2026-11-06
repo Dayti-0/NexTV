@@ -76,7 +76,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import tv.nextv.app.R
-import tv.nextv.app.data.settings.GridColumns
 import tv.nextv.app.data.settings.PlaylistRefresh
 import tv.nextv.app.data.settings.PreviewVolume
 import tv.nextv.app.data.update.UpdateFailure
@@ -232,7 +231,6 @@ fun SettingsScreen(
             }
         },
         onCycleDecoder = viewModel::cycleDecoder,
-        onGridColumns = viewModel::setGridColumns,
         onChannelPreview = viewModel::setChannelPreview,
         onStartOnLastChannel = viewModel::setStartOnLastChannel,
         onLowerAdVolume = viewModel::setLowerAdVolume,
@@ -276,7 +274,6 @@ fun SettingsContent(
     onClearFootballKey: () -> Unit = {},
     onGroups: (ContentKind) -> Unit = {},
     onCycleDecoder: (String) -> Unit = {},
-    onGridColumns: (GridColumns) -> Unit = {},
     onChannelPreview: (Boolean) -> Unit = {},
     onStartOnLastChannel: (Boolean) -> Unit = {},
     onLowerAdVolume: (Boolean) -> Unit = {},
@@ -449,26 +446,12 @@ fun SettingsContent(
 
                         // Affichage de l'accueil.
                         SectionCard(stringResource(R.string.settings_display), icon = NexTvIcons.Grid) {
-                            val grid = state.gridColumns
                             // Interface de l'accueil et palette de couleurs : écran Apparence.
                             ValueRow(
                                 title = stringResource(R.string.appearance_open),
                                 value = "${homeLayoutLabel(state.homeLayout)}  ·  ${themeLabel(state.theme)}",
                                 onClick = onAppearance,
                             )
-                            NumberRow(
-                                title = stringResource(R.string.settings_channel_columns),
-                                value = grid.channels,
-                                range = GridColumns.CHANNELS,
-                                onChange = { onGridColumns(grid.copy(channels = it)) },
-                            )
-                            NumberRow(
-                                title = stringResource(R.string.settings_poster_columns),
-                                value = grid.posters,
-                                range = GridColumns.POSTERS,
-                                onChange = { onGridColumns(grid.copy(posters = it)) },
-                            )
-                            InfoText(stringResource(R.string.settings_columns_help))
                             ToggleRow(
                                 title = stringResource(R.string.settings_channel_preview),
                                 description = stringResource(R.string.settings_channel_preview_help),
@@ -817,24 +800,6 @@ private fun dnsLabel(dns: DnsProvider): String = when (dns) {
 }
 
 /** Nombre réglable : gauche/droite pour diminuer/augmenter, OK passe à la valeur suivante (en boucle). */
-@Composable
-private fun NumberRow(title: String, value: Int, range: IntRange, onChange: (Int) -> Unit) {
-    ValueRow(
-        title = title,
-        value = stringResource(R.string.settings_columns_value, value, range.first, range.last),
-        onClick = { onChange(if (value >= range.last) range.first else value + 1) },
-        modifier = Modifier.onPreviewKeyEvent { event ->
-            val step = when (event.key) {
-                Key.DirectionLeft -> -1
-                Key.DirectionRight -> 1
-                else -> return@onPreviewKeyEvent false
-            }
-            if (event.type == KeyEventType.KeyDown) onChange((value + step).coerceIn(range))
-            true
-        },
-    )
-}
-
 /** Choix de la région de France 3 : « Toutes les régions » puis chaque édition de la playlist. */
 @Composable
 private fun RegionDialog(

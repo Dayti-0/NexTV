@@ -134,8 +134,8 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
-    fun homeTvDense() = capture("05b_accueil_tv_9_par_ligne") {
-        Home(HomeSection.TV, Category.Group(SampleData.groups[0].title.orEmpty()), grid = GridColumns(channels = 9), layout = HomeLayout.STREAMING)
+    fun homeTvDense() = capture("05b_accueil_tv_5_par_ligne") {
+        Home(HomeSection.TV, Category.Group(SampleData.groups[0].title.orEmpty()), grid = GridColumns(perRow = 5), layout = HomeLayout.STREAMING)
     }
 
     @Test
@@ -154,8 +154,8 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
-    fun homeMoviesDense() = capture("07b_accueil_films_10_par_ligne") {
-        Home(HomeSection.MOVIES, Category.Group(SampleData.movieGroups[0].title.orEmpty()), grid = GridColumns(posters = 10), layout = HomeLayout.STREAMING)
+    fun homeMoviesDense() = capture("07b_accueil_films_5_par_ligne") {
+        Home(HomeSection.MOVIES, Category.Group(SampleData.movieGroups[0].title.orEmpty()), grid = GridColumns(perRow = 5), layout = HomeLayout.STREAMING)
     }
 
     @Test
