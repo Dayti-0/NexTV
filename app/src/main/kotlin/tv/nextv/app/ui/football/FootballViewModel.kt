@@ -376,10 +376,11 @@ internal fun scheduledMatches(matches: List<ScheduledMatch>, rows: List<Broadcas
 /**
  * Une ligne par chaîne : celles de la playlist d'abord (celles du guide seul ne se regardent pas),
  * puis le diffuseur officiel de la compétition (Ligue 1 : Ligue 1+), les françaises, et la première
- * à commencer.
+ * à commencer. Une chaîne française qui n'est pas du diffuseur est écartée quand il est là (guide
+ * d'un autre pays, voir [BroadcastLanguage.likelyBroadcasters]).
  */
 private fun ranked(shows: Collection<BroadcastRow>, competition: Competition): List<BroadcastRow> =
-    shows.sortedWith(
+    BroadcastLanguage.likelyBroadcasters(competition, shows.toList()) { it.channelName }.sortedWith(
         compareBy(
             { it.channelId == null },
             { !BroadcastLanguage.isOfficial(competition, it.channelName) },

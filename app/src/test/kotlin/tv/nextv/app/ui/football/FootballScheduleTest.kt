@@ -81,7 +81,26 @@ class FootballScheduleTest {
             ),
             now,
         ).single()
-        assertEquals(listOf("LIGUE 1+| MATCH 3 (MULTI AUDIO SANS PUB)", "FR| DAZN PPV 1"), shown.channels.map { it.name })
+        // L'ancien diffuseur, encore annoncé par le guide, est écarté.
+        assertEquals(listOf("LIGUE 1+| MATCH 3 (MULTI AUDIO SANS PUB)"), shown.channels.map { it.name })
+    }
+
+    /** Ce que montrait la Fire TV : le guide de « Canal+ Sport 1 » annonçait le match, la chaîne diffusait du rugby. */
+    @Test
+    fun `bundesliga match is offered on bein sports, not on a canal plus channel the guide gets wrong`() {
+        val canal = EpgChannelRow("canalplussport1", 10, "FR| CANAL+ SPORT 1", "FR| CANAL+ SPORT 1", null)
+        val bein = EpgChannelRow("beinsports3.fr", 11, "FR| BEIN SPORTS 3", "FR| BEIN SPORTS 3", null)
+        val kickoff = fridayNoon + 9 * hour
+        val hamburg = match(12, Competition.BUNDESLIGA, "Hamburger SV", "Borussia Mönchengladbach", kickoff, MatchStatus.LIVE)
+        val shown = scheduledMatches(
+            listOf(hamburg),
+            listOf(
+                row(canal, "Hambourg / Mönchengladbach", kickoff - 5 * 60_000L, 140),
+                row(bein, "Football : Bundesliga | Hambourg / Borussia Mönchengladbach", kickoff, 120),
+            ),
+            now,
+        ).single()
+        assertEquals(listOf("FR| BEIN SPORTS 3"), shown.channels.map { it.name })
     }
 
     @Test

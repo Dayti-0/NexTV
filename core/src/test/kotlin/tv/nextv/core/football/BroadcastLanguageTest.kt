@@ -35,6 +35,31 @@ class BroadcastLanguageTest {
     }
 
     @Test
+    fun `each competition has its french broadcaster`() {
+        assertTrue(BroadcastLanguage.isOfficial(Competition.BUNDESLIGA, "FR| BEIN SPORTS 3"))
+        assertTrue(BroadcastLanguage.isOfficial(Competition.LA_LIGA, "FR: beIN SPORTS MAX 4"))
+        assertTrue(BroadcastLanguage.isOfficial(Competition.PREMIER_LEAGUE, "FR| CANAL+ FOOT"))
+        assertTrue(BroadcastLanguage.isOfficial(Competition.CHAMPIONS_LEAGUE, "FR| CANAL+ LIVE 4"))
+        assertFalse(BroadcastLanguage.isOfficial(Competition.BUNDESLIGA, "FR| CANAL+ SPORT 1"))
+        assertFalse(BroadcastLanguage.isOfficial(Competition.CHAMPIONS_LEAGUE, "FR| BEIN SPORTS 1"))
+    }
+
+    /** Guide d'un autre pays sur une chaîne française : « Canal+ Sport 1 » annoncé avec la Bundesliga, qui est sur beIN Sports. */
+    @Test
+    fun `french channels outside the broadcaster are dropped when the broadcaster is there`() {
+        fun likely(competition: Competition, vararg names: String) = BroadcastLanguage.likelyBroadcasters(competition, names.toList()) { it }
+        assertEquals(
+            listOf("FR| BEIN SPORTS 3", "DE| SKY BUNDESLIGA 1"),
+            likely(Competition.BUNDESLIGA, "FR| CANAL+ SPORT 1", "FR| BEIN SPORTS 3", "DE| SKY BUNDESLIGA 1"),
+        )
+        // Sans le diffuseur, ou seulement celui d'un autre pays : rien n'est écarté.
+        assertEquals(listOf("FR| CANAL+ SPORT 1", "DE| SKY 1"), likely(Competition.BUNDESLIGA, "FR| CANAL+ SPORT 1", "DE| SKY 1"))
+        assertEquals(listOf("FR| CANAL+ SPORT 1", "AR| BEIN SPORTS 1"), likely(Competition.BUNDESLIGA, "FR| CANAL+ SPORT 1", "AR| BEIN SPORTS 1"))
+        // Coupes d'Europe : Canal+.
+        assertEquals(listOf("FR| CANAL+ FOOT"), likely(Competition.CHAMPIONS_LEAGUE, "FR| CANAL+ FOOT", "FR| RMC SPORT 1"))
+    }
+
+    @Test
     fun `scheduled match is found on every channel but not on its replay`() {
         val kickoff = 1_793_908_800_000L
         val match = ScheduledMatch(

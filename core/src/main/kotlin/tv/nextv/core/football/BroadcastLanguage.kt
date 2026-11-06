@@ -31,15 +31,41 @@ object BroadcastLanguage {
         }
     }
 
-    /** Chaîne du diffuseur principal de la compétition, choisie en premier (Ligue 1 : Ligue 1+ ; sélections : TF1, M6…). */
+    /**
+     * Chaîne d'un diffuseur de la compétition en France, choisie en premier (Ligue 1 : Ligue 1+ ;
+     * Bundesliga, Liga, Serie A : beIN Sports ; Premier League et coupes d'Europe : Canal+ ;
+     * sélections : TF1, M6…).
+     */
     fun isOfficial(competition: Competition, channelName: String): Boolean {
         val official = OFFICIAL[competition] ?: return false
         return official.containsMatchIn(FootballText.fold(channelName))
     }
 
-    /** « LIGUE 1+| MATCH 3 », « FR| LIGUE 1+ LA CHAINE », « Ligue1+ 2 ». */
+    /**
+     * Chaînes qui diffusent vraisemblablement le match : quand une chaîne française de son diffuseur
+     * figure parmi elles, les autres chaînes françaises sont écartées. Leur guide vient alors d'un
+     * autre pays (« FR| CANAL+ SPORT 1 » annoncé avec un match de Bundesliga, qui passe sur beIN
+     * Sports, alors que la chaîne diffuse autre chose). Les chaînes étrangères restent.
+     */
+    fun <T> likelyBroadcasters(competition: Competition, shows: List<T>, channelName: (T) -> String): List<T> {
+        val official = shows.any { rank(channelName(it)) == 0 && isOfficial(competition, channelName(it)) }
+        if (!official) return shows
+        return shows.filter { rank(channelName(it)) != 0 || isOfficial(competition, channelName(it)) }
+    }
+
+    private val BEIN = """\bbein\b"""
+    private val CANAL_PLUS = """\bcanal\s*(\+|plus\b)"""
+
+    /** « LIGUE 1+| MATCH 3 », « FR| BEIN SPORTS 3 », « FR| CANAL+ FOOT ». */
     private val OFFICIAL = mapOf(
-        Competition.LIGUE_1 to Regex("""\bligue\s*1\s*\+|\bl1\s*\+"""),
+        Competition.LIGUE_1 to Regex("""\bligue\s*1\s*\+|\bl1\s*\+|$BEIN"""),
+        Competition.PREMIER_LEAGUE to Regex(CANAL_PLUS),
+        Competition.LA_LIGA to Regex(BEIN),
+        Competition.SERIE_A to Regex(BEIN),
+        Competition.BUNDESLIGA to Regex(BEIN),
+        Competition.CHAMPIONS_LEAGUE to Regex(CANAL_PLUS),
+        Competition.EUROPA_LEAGUE to Regex(CANAL_PLUS),
+        Competition.CONFERENCE_LEAGUE to Regex(CANAL_PLUS),
         // Sélections : les chaînes nationales gratuites (l'équipe de France joue le plus souvent sur TF1 ou M6).
         Competition.NATIONAL_TEAMS to Regex("""\b(tf1|m6|france\s*[234]|tmc|w9|tfx|l\s*'?\s*equipe)\b"""),
     )
