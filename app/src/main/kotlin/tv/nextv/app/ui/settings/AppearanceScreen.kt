@@ -10,7 +10,8 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.layout.Row
@@ -250,24 +251,31 @@ fun AppearanceContent(
                         )
                     }
                 }
-                PaletteCategory.entries.forEach { category ->
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(
-                            categoryLabel(category).uppercase(),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.2.sp,
-                        )
-                        // Une ligne par catégorie, qui défile de gauche à droite jusqu'aux bords de l'écran.
-                        LazyRow(
-                            Modifier.bleed(window.horizontalPadding),
-                            contentPadding = PaddingValues(horizontal = window.horizontalPadding, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                // Toutes les palettes sur une seule ligne, qui défile de gauche à droite jusqu'aux bords de
+                // l'écran ; le nom de chaque catégorie au-dessus de sa première palette. Ouverte sur la palette choisie.
+                val palettes = remember { PaletteCategory.entries.flatMap { category -> ThemeStyle.entries.filter { it.category == category } } }
+                val paletteRow = rememberLazyListState(initialFirstVisibleItemIndex = (palettes.indexOf(theme) - 1).coerceAtLeast(0))
+                LazyRow(
+                    Modifier.bleed(window.horizontalPadding),
+                    state = paletteRow,
+                    contentPadding = PaddingValues(horizontal = window.horizontalPadding, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    itemsIndexed(palettes, key = { _, style -> style.name }) { index, style ->
+                        val first = index == 0 || palettes[index - 1].category != style.category
+                        Column(
+                            Modifier.padding(start = if (first && index > 0) CATEGORY_GAP else 0.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
-                            items(ThemeStyle.entries.filter { it.category == category }, key = { it.name }) { style ->
-                                PaletteCard(style, current = style == theme, onClick = { onTheme(style) })
-                            }
+                            Text(
+                                if (first) categoryLabel(style.category).uppercase() else "",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.2.sp,
+                                maxLines = 1,
+                            )
+                            PaletteCard(style, current = style == theme, onClick = { onTheme(style) })
                         }
                     }
                 }
@@ -285,6 +293,9 @@ private fun Modifier.bleed(edge: Dp): Modifier = layout { measurable, constraint
     val placeable = measurable.measure(constraints.copy(minWidth = constraints.maxWidth + 2 * side, maxWidth = constraints.maxWidth + 2 * side))
     layout(constraints.maxWidth, placeable.height) { placeable.place(-side, 0) }
 }
+
+/** Écart supplémentaire entre deux catégories de palettes sur la ligne. */
+private val CATEGORY_GAP = 18.dp
 
 /** Sur ce bouton, l'aperçu revient à la palette enregistrée. */
 private fun Modifier.resetPreviewOnFocus(): Modifier = onFocusChanged { if (it.isFocused) ThemePreview.style = null }
