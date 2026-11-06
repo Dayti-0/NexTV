@@ -59,6 +59,9 @@ class HomeFocusTest {
         shadowOf(RuntimeEnvironment.getApplication().packageManager).setSystemFeature(PackageManager.FEATURE_LEANBACK, true)
     }
 
+    /** Affiche choisie : mise en avant comme dans l'application (bannière, fond). */
+    private var spotlight by mutableStateOf<Spotlight?>(null)
+
     private val groups = (1..30).map { GroupRow("Groupe $it", 4) }
 
     /** Chaînes d'une catégorie, lues avec le délai d'une base de données. */
@@ -293,6 +296,34 @@ class HomeFocusTest {
         assertTrue("Focus revenu dans la liste", compose.onNode(isFocused()).getBoundsInRoot().right <= pane.left)
     }
 
+    /**
+     * Cinéma Premium, films : à droite dans une rangée (l'affiche choisie change la mise en avant),
+     * la rangée reste calée en haut, sans que la précédente revienne au-dessus.
+     */
+    @Test
+    fun premiumMovieRowStaysAtTheTopWhenMovingRight() {
+        val focused = mutableListOf<String>()
+        compose.setContent { Home(HomeLayout.PREMIUM, HomeActions(onPosterFocus = { focused += it.title; spotlight = Spotlight(it) }), HomeSection.MOVIES) }
+        compose.waitForIdle()
+        repeat(3) { press(Key.DirectionDown) }
+        val group = focused.last().substringBefore(" · ")
+        val previous = "Groupe ${group.removePrefix("Groupe ").toInt() - 1} · 0"
+        val tops = mutableListOf<Float>()
+        compose.mainClock.autoAdvance = false
+        repeat(5) {
+            compose.onRoot().performKeyInput { pressKey(Key.DirectionRight) }
+            repeat(40) {
+                compose.mainClock.advanceTimeByFrame()
+                tops += compose.onNodeWithText(group).getBoundsInRoot().top.value
+            }
+        }
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        println("Premium films, $group : haut = ${tops.distinct()} (${focused.last()})")
+        assertTrue("$group bouge en allant à droite : ${tops.distinct()}", tops.max() - tops.min() < 0.5f)
+        assertTrue("$previous revenu au-dessus", !compose.onNodeWithText(previous).isDisplayed())
+    }
+
     /** Retour du lecteur : la liste revient à sa place et la chaîne ouverte reprend le focus. */
     @Test
     fun openedChannelGetsFocusBackAfterReturning() {
@@ -346,6 +377,7 @@ class HomeFocusTest {
     @Composable
     private fun Home(layout: HomeLayout, actions: HomeActions, section: HomeSection = HomeSection.TV, preview: ChannelPreview? = null) {
         NexTvTheme(ThemeStyle.NIGHT) {
+
             val channels = remember { flowOf(PagingData.from(SampleData.channels)) }.collectAsLazyPagingItems()
             val movies = remember { flowOf(PagingData.from(SampleData.movies)) }.collectAsLazyPagingItems()
             val series = remember { flowOf(PagingData.from(SampleData.series)) }.collectAsLazyPagingItems()
@@ -371,6 +403,7 @@ class HomeFocusTest {
                 layout = layout,
                 rows = rows,
                 preview = preview,
+                spotlight = spotlight,
             )
         }
     }
