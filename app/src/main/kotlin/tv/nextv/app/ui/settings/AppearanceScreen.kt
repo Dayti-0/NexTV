@@ -8,6 +8,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -254,8 +259,13 @@ fun AppearanceContent(
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 1.2.sp,
                         )
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                            ThemeStyle.entries.filter { it.category == category }.forEach { style ->
+                        // Une ligne par catégorie, qui défile de gauche à droite jusqu'aux bords de l'écran.
+                        LazyRow(
+                            Modifier.bleed(window.horizontalPadding),
+                            contentPadding = PaddingValues(horizontal = window.horizontalPadding, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        ) {
+                            items(ThemeStyle.entries.filter { it.category == category }, key = { it.name }) { style ->
                                 PaletteCard(style, current = style == theme, onClick = { onTheme(style) })
                             }
                         }
@@ -266,6 +276,14 @@ fun AppearanceContent(
         }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp))
     }
+}
+
+/** Déborde de [edge] de chaque côté : une rangée qui défile va jusqu'aux bords de l'écran, malgré la marge de la page. */
+private fun Modifier.bleed(edge: Dp): Modifier = layout { measurable, constraints ->
+    if (!constraints.hasBoundedWidth) return@layout measurable.measure(constraints).let { layout(it.width, it.height) { it.place(0, 0) } }
+    val side = edge.roundToPx()
+    val placeable = measurable.measure(constraints.copy(minWidth = constraints.maxWidth + 2 * side, maxWidth = constraints.maxWidth + 2 * side))
+    layout(constraints.maxWidth, placeable.height) { placeable.place(-side, 0) }
 }
 
 /** Sur ce bouton, l'aperçu revient à la palette enregistrée. */
