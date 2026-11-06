@@ -79,4 +79,49 @@ class LiveScoresTest {
         val other = ScheduledMatch(4, Competition.LIGUE_1, kickoff, MatchStatus.LIVE, team("Paris Saint-Germain FC", "PSG", "PSG"), team("Olympique de Marseille", "Marseille", "MAR"), 1, 0)
         assertEquals(other, LiveScoreClient.overlay(listOf(other), scores).single())
     }
+
+    private val europa = JSONObject(
+        """{"events":[
+        ${event("2026-11-05T20:00Z", "in", "STATUS_SECOND_HALF", "67'", "67'", "Bayer Leverkusen", "0", "Marseille", "1", "LEV", "MAR")},
+        ${event("2026-11-05T20:00Z", "in", "STATUS_SECOND_HALF", "67'", "67'", "Hapoel Be'er", "0", "OFI Crete", "2")},
+        ${event("2026-11-05T20:00Z", "in", "STATUS_SECOND_HALF", "67'", "67'", "Torreense", "3", "Ararat-Armenia", "2")},
+        ${event("2026-11-05T17:45Z", "post", "STATUS_FULL_TIME", "FT", "90'+5'", "AC Milan", "0", "Ferencvaros", "2")}
+        ]}""",
+    )
+
+    private val evening = 1_793_908_800_000L - 45 * 60_000L // émission de 20:15 (heure de Paris), coup d'envoi 21:00
+
+    @Test
+    fun `guide match gets the live score although the broadcast starts before kickoff`() {
+        val scores = LiveScoreClient.parse(europa, Competition.EUROPA_LEAGUE)
+        val live = LiveScoreClient.match(scores, "Bayer Leverkusen", "Marseille", evening, evening + 3 * 60 * 60_000L)!!
+        assertEquals(0, live.homeScore)
+        assertEquals(1, live.awayScore)
+        assertEquals("67'", live.clock)
+    }
+
+    @Test
+    fun `guide names that differ from the score source are still recognised`() {
+        val scores = LiveScoreClient.parse(europa, Competition.EUROPA_LEAGUE)
+        val start = evening + 40 * 60_000L
+        assertEquals(2, LiveScoreClient.match(scores, "Hapoel Beer-Sheva", "OFI Crète", start, start + 2 * 60 * 60_000L)!!.awayScore)
+        assertEquals(3, LiveScoreClient.match(scores, "União Torreense", "FC Ararat-Armenia", start, start + 2 * 60 * 60_000L)!!.homeScore)
+    }
+
+    @Test
+    fun `reversed guide match keeps the guide order`() {
+        val scores = LiveScoreClient.parse(europa, Competition.EUROPA_LEAGUE)
+        val live = LiveScoreClient.match(scores, "Marseille", "Leverkusen", evening, evening + 3 * 60 * 60_000L)!!
+        assertEquals(1, live.homeScore)
+        assertEquals(0, live.awayScore)
+    }
+
+    @Test
+    fun `guide match outside the broadcast or with other teams is not given a score`() {
+        val scores = LiveScoreClient.parse(europa, Competition.EUROPA_LEAGUE)
+        assertNull(LiveScoreClient.match(scores, "Bayer Leverkusen", "Marseille", evening + 3 * 60 * 60_000L, evening + 5 * 60 * 60_000L))
+        assertNull(LiveScoreClient.match(scores, "Lyon", "Real Sociedad", evening, evening + 3 * 60 * 60_000L))
+        // Un seul mot commun et répandu : aucun score plutôt qu'un faux.
+        assertNull(LiveScoreClient.match(scores, "Hapoel Tel-Aviv", "Real Betis", evening, evening + 3 * 60 * 60_000L))
+    }
 }

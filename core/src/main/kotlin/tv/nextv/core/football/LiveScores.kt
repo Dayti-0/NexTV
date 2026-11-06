@@ -39,7 +39,10 @@ data class LiveScore(
     val finished: Boolean,
     val clock: String?,
     val halfTime: Boolean,
-)
+) {
+    /** Le même match vu de l'autre équipe (affiche du guide inversée). */
+    fun swapped(): LiveScore = copy(home = away, away = home, homeScore = awayScore, awayScore = homeScore)
+}
 
 /**
  * Scores et minute de jeu en direct, d'après le tableau des scores public d'ESPN (sans clé) :
@@ -56,7 +59,7 @@ class LiveScoreClient(
     private val callTimeoutMillis: Long = 8_000,
 ) {
     private val mutex = Mutex()
-    private val cached = HashMap<Competition, Pair<Long, List<LiveScore>>>()
+    private val cached = HashMap<String, Pair<Long, List<LiveScore>>>()
 
     /**
      * [matches] avec le score, la minute et l'état en direct des matchs en cours (ou sur le point de
@@ -70,11 +73,25 @@ class LiveScoreClient(
         return if (scores.isEmpty()) matches else overlay(matches, scores)
     }
 
-    private suspend fun scores(competition: Competition): List<LiveScore> = mutex.withLock {
+    /**
+     * Score en direct d'une affiche trouvée dans le guide seul (« Bayer Leverkusen » – « Marseille »),
+     * diffusée de [startMillis] à [endMillis] : les coupes d'Europe et les matchs sans clé
+     * football-data.org n'ont pas d'autre score. `null` : match inconnu de la source des scores.
+     */
+    suspend fun find(competition: Competition?, home: String, away: String, startMillis: Long, endMillis: Long): LiveScore? {
+        // Compétition inconnue (titre sans elle) : championnats et coupes d'Europe.
+        val competitions = competition?.let(::related) ?: (Competition.entries - Competition.NATIONAL_TEAMS)
+        val scores = competitions.flatMap { scores(it) }
+        return match(scores, home, away, startMillis, endMillis)
+    }
+
+    private suspend fun scores(competition: Competition): List<LiveScore> =
+        LEAGUES[competition].orEmpty().flatMap { scores(competition, it) }
+
+    private suspend fun scores(competition: Competition, league: String): List<LiveScore> = mutex.withLock {
         val now = clock()
-        cached[competition]?.takeIf { now - it.first < cacheMillis }?.let { return@withLock it.second }
-        val league = LEAGUES[competition] ?: return@withLock emptyList()
-        val url = baseUrl.newBuilder().addPathSegment(league).addPathSegment("scoreboard").build()
+        cached[league]?.takeIf { now - it.first < cacheMillis }?.let { return@withLock it.second }
+        val url = baseUrl.newBuilder().addPathSegments(league).addPathSegment("scoreboard").build()
         val scores = try {
             val call = clients.client(RequestPurpose.METADATA).newCall(Request.Builder().url(url).header("Accept", "application/json").build())
             call.timeout().timeout(callTimeoutMillis, TimeUnit.MILLISECONDS)
@@ -92,24 +109,62 @@ class LiveScoreClient(
             null
         }
         // Échec : la réponse précédente reste valable un moment ; sinon, aucun score en direct.
-        if (scores == null) return@withLock cached[competition]?.second.orEmpty()
-        cached[competition] = now to scores
+        if (scores == null) return@withLock cached[league]?.second.orEmpty()
+        cached[league] = now to scores
         scores
     }
 
     companion object {
         private const val TAG = "LiveScores"
 
-        /** Championnats du tableau des scores d'ESPN (les sélections nationales n'en ont pas un seul). */
+        /** Tableaux des scores d'ESPN de chaque compétition (les sélections jouent dans plusieurs). */
         private val LEAGUES = mapOf(
-            Competition.LIGUE_1 to "fra.1",
-            Competition.PREMIER_LEAGUE to "eng.1",
-            Competition.LA_LIGA to "esp.1",
-            Competition.SERIE_A to "ita.1",
-            Competition.BUNDESLIGA to "ger.1",
-            Competition.CHAMPIONS_LEAGUE to "uefa.champions",
-            Competition.EUROPA_LEAGUE to "uefa.europa",
-            Competition.CONFERENCE_LEAGUE to "uefa.europa.conf",
+            Competition.LIGUE_1 to listOf("fra.1"),
+            Competition.PREMIER_LEAGUE to listOf("eng.1"),
+            Competition.LA_LIGA to listOf("esp.1"),
+            Competition.SERIE_A to listOf("ita.1"),
+            Competition.BUNDESLIGA to listOf("ger.1"),
+            Competition.CHAMPIONS_LEAGUE to listOf("uefa.champions"),
+            Competition.EUROPA_LEAGUE to listOf("uefa.europa"),
+            Competition.CONFERENCE_LEAGUE to listOf("uefa.europa.conf"),
+            Competition.NATIONAL_TEAMS to listOf("uefa.nations", "fifa.worldq.uefa", "fifa.world", "uefa.euro", "fifa.friendly"),
+        )
+
+        private val EUROPEAN_CUPS = listOf(Competition.CHAMPIONS_LEAGUE, Competition.EUROPA_LEAGUE, Competition.CONFERENCE_LEAGUE)
+
+        /**
+         * Compétitions où chercher une affiche du guide : les trois coupes d'Europe ensemble (le guide
+         * annonce parfois l'une pour l'autre), la compétition seule sinon.
+         */
+        private fun related(competition: Competition): List<Competition> =
+            if (competition in EUROPEAN_CUPS) listOf(competition) + (EUROPEAN_CUPS - competition) else listOf(competition)
+
+        /** Avant le coup d'envoi, l'émission commence souvent par l'avant-match. */
+        private const val PRESHOW_MILLIS = 30 * 60_000L
+
+        /**
+         * Match du guide ([home] – [away], diffusé de [startMillis] à [endMillis]) parmi [scores] :
+         * coup d'envoi pendant la diffusion, et les deux équipes reconnues (ou une seule, quand aucun
+         * autre match de la fenêtre ne la concerne : une équipe ne joue qu'un match à la fois).
+         * Score dans l'ordre de l'affiche du guide.
+         */
+        fun match(scores: List<LiveScore>, home: String, away: String, startMillis: Long, endMillis: Long): LiveScore? {
+            val window = scores.filter { it.kickoffMillis >= startMillis - PRESHOW_MILLIS && it.kickoffMillis < endMillis }
+            val homeWords = words(home).toSet()
+            val awayWords = words(away).toSet()
+            fun LiveTeam.isOne(of: Set<String>) = names.flatMap(::words).any { it in of }
+            window.firstOrNull { it.home.isOne(homeWords) && it.away.isOne(awayWords) }?.let { return it }
+            window.firstOrNull { it.home.isOne(awayWords) && it.away.isOne(homeWords) }?.let { return it.swapped() }
+            // Une seule équipe reconnue : le seul match de la fenêtre qui la concerne.
+            val distinctive = (homeWords + awayWords) - GENERIC_WORDS
+            val single = window.filter { it.home.isOne(distinctive) || it.away.isOne(distinctive) }.singleOrNull() ?: return null
+            return if (single.home.isOne(homeWords) || single.away.isOne(awayWords)) single else single.swapped()
+        }
+
+        /** Mots de nom de club trop répandus pour reconnaître seuls une équipe. */
+        private val GENERIC_WORDS = setOf(
+            "real", "city", "united", "sporting", "athletic", "atletico", "racing", "olympique", "inter", "dinamo",
+            "dynamo", "hapoel", "maccabi", "saint", "fc", "union", "red", "star", "young", "boys", "rapid", "royal",
         )
 
         /** Écart toléré entre les heures de coup d'envoi des deux sources. */

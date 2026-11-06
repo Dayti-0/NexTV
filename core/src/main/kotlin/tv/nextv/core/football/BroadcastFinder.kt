@@ -34,10 +34,8 @@ object BroadcastFinder {
             if (candidates.isEmpty()) continue
             val heading = FootballText.fold(listOfNotNull(broadcast.title, broadcast.subtitle).joinToString(" "))
             val genre = FootballText.fold(broadcast.category.orEmpty())
-            if (FootballText.NOT_A_MATCH.containsMatchIn(FootballText.fold(broadcast.title))) continue
-            if (FootballText.OTHER_SPORTS.containsMatchIn(heading) || FootballText.OTHER_SPORTS.containsMatchIn(genre)) continue
-            if (FootballText.WOMEN.containsMatchIn("$heading $genre ${FootballText.fold(broadcast.description.orEmpty())}")) continue
-            val text = " " + normalize(listOfNotNull(broadcast.title, broadcast.subtitle, broadcast.description).joinToString(" ")) + " "
+            if (excluded(broadcast, heading, genre)) continue
+            val text = textOf(broadcast)
             val competition = FootballMatches.competitionOf(broadcast.title, broadcast.subtitle, broadcast.category, broadcast.description)
             val football = competition != null || FootballText.FOOTBALL.containsMatchIn(heading) || FootballText.FOOTBALL.containsMatchIn(genre)
             var best: ScheduledMatch? = null
@@ -64,6 +62,61 @@ object BroadcastFinder {
         }
         return result
     }
+
+    /** Affiche du guide (« Bayer Leverkusen » – « Marseille ») dont la diffusion commence à [startMillis]. */
+    data class GuideFixture(val home: String, val away: String, val startMillis: Long)
+
+    /** Écart entre deux diffusions du même match (avant-match plus ou moins long selon la chaîne). */
+    private const val SAME_FIXTURE_MILLIS = 75 * 60_000L
+
+    /**
+     * Autres programmes qui diffusent chaque affiche du guide : même match sous un autre titre
+     * (« Leverkusen / Marseille » sans la compétition, « Bayer 04 Leverkusen – Olympique de Marseille »),
+     * sur une autre chaîne. Les deux équipes doivent être citées et la diffusion commencer à moins
+     * de 75 min de la première.
+     */
+    fun <T> sameFixtures(fixtures: List<GuideFixture>, broadcasts: List<Broadcast<T>>): List<List<T>> {
+        val sorted = broadcasts.sortedBy { it.startMillis }
+        val starts = LongArray(sorted.size) { sorted[it].startMillis }
+        // Texte de chaque programme, préparé une seule fois et seulement pour ceux qui tombent dans une fenêtre.
+        val texts = arrayOfNulls<String>(sorted.size)
+        return fixtures.map { fixture ->
+            val home = aliases(Team(fixture.home, null, null, null))
+            val away = aliases(Team(fixture.away, null, null, null))
+            if (home.isEmpty() || away.isEmpty()) return@map emptyList()
+            val from = lowerBound(starts, fixture.startMillis - SAME_FIXTURE_MILLIS)
+            val to = lowerBound(starts, fixture.startMillis + SAME_FIXTURE_MILLIS + 1)
+            (from until to).mapNotNull { index ->
+                val broadcast = sorted[index]
+                if (broadcast.stopMillis - broadcast.startMillis < MIN_COVER_MILLIS) return@mapNotNull null
+                val text = texts[index] ?: run {
+                    val heading = FootballText.fold(listOfNotNull(broadcast.title, broadcast.subtitle).joinToString(" "))
+                    val genre = FootballText.fold(broadcast.category.orEmpty())
+                    (if (excluded(broadcast, heading, genre)) "" else textOf(broadcast)).also { texts[index] = it }
+                }
+                broadcast.item.takeIf { home.any { " $it " in text } && away.any { " $it " in text } }
+            }
+        }
+    }
+
+    private fun lowerBound(values: LongArray, key: Long): Int {
+        var low = 0
+        var high = values.size
+        while (low < high) {
+            val mid = (low + high) ushr 1
+            if (values[mid] < key) low = mid + 1 else high = mid
+        }
+        return low
+    }
+
+    /** Autre sport, football féminin, magazine… : jamais un match. */
+    private fun excluded(broadcast: Broadcast<*>, heading: String, genre: String): Boolean =
+        FootballText.NOT_A_MATCH.containsMatchIn(FootballText.fold(broadcast.title)) ||
+            FootballText.OTHER_SPORTS.containsMatchIn(heading) || FootballText.OTHER_SPORTS.containsMatchIn(genre) ||
+            FootballText.WOMEN.containsMatchIn("$heading $genre ${FootballText.fold(broadcast.description.orEmpty())}")
+
+    private fun textOf(broadcast: Broadcast<*>): String =
+        " " + normalize(listOfNotNull(broadcast.title, broadcast.subtitle, broadcast.description).joinToString(" ")) + " "
 
     /**
      * Écussons des équipes de football-data.org, retrouvés à partir d'un nom écrit dans le guide

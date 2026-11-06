@@ -66,6 +66,7 @@ import tv.nextv.app.ui.components.PillStyle
 import tv.nextv.app.ui.components.StatusPill
 import tv.nextv.app.ui.components.ignoreHeldOk
 import tv.nextv.app.ui.components.rememberWindowInfo
+import tv.nextv.app.ui.guide.GuideChannel
 import tv.nextv.app.ui.theme.NexTvColors
 import tv.nextv.app.ui.theme.NexTvIcons
 import tv.nextv.core.football.Competition
@@ -245,11 +246,9 @@ fun FootballContent(
             match = match,
             now = state.now,
             favoriteTeams = favoriteTeams,
-            onWatch = match.channel?.let { channel ->
-                {
-                    details = null
-                    onPlay(channel.id)
-                }
+            onWatch = { channelId ->
+                details = null
+                onPlay(channelId)
             },
             onToggleTeam = onToggleTeam,
             onDismiss = { details = null },
@@ -455,6 +454,34 @@ private fun RowScope.ChannelInfo(match: FootballMatch, logoWidth: Dp, inline: Bo
     }
 }
 
+/** Chaîne qui diffuse le match, dans la fiche : logo, nom, et « Regarder » sur la préférée. */
+@Composable
+private fun ChannelChoice(channel: GuideChannel, preferred: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    FocusSurface(
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        color = if (preferred) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surfaceContainer,
+        focusScale = 1.02f,
+    ) {
+        Row(
+            Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            ChannelLogo(channel.logoUrl, channel.name, Modifier.size(width = 48.dp, height = 32.dp), monogramSize = 11.dp)
+            Text(
+                channel.name,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Icon(Icons.Filled.PlayArrow, contentDescription = stringResource(R.string.guide_watch), modifier = Modifier.size(20.dp))
+        }
+    }
+}
+
 /**
  * Fiche d'un match : affiche, chaîne et description du guide, avec « Regarder » et le suivi de
  * chaque équipe (« Mes équipes »).
@@ -465,11 +492,12 @@ private fun MatchSheet(
     match: FootballMatch,
     now: Long,
     favoriteTeams: Set<String>,
-    onWatch: (() -> Unit)?,
+    onWatch: (Long) -> Unit,
     onToggleTeam: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val firstFocus = remember { FocusRequester() }
+    val channels = match.channels
     LaunchedEffect(Unit) { runCatching { firstFocus.requestFocus() } }
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -490,22 +518,46 @@ private fun MatchSheet(
                 }
                 Teams(match, large = true)
                 match.score?.let { Text(it, style = MaterialTheme.typography.headlineMedium, color = NexTvColors.Live) }
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ChannelInfo(match, logoWidth = 56.dp)
+                if (channels.size <= 1) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        ChannelInfo(match, logoWidth = 56.dp)
+                    }
                 }
                 match.programme?.description?.let {
                     Text(
                         it,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.heightIn(max = 160.dp).verticalScroll(rememberScrollState()),
+                        modifier = Modifier.heightIn(max = if (channels.size > 1) 96.dp else 160.dp).verticalScroll(rememberScrollState()),
                     )
                 }
+                if (channels.size > 1) {
+                    // Plusieurs chaînes : chacune se lance d'ici, la préférée (française) en premier.
+                    Text(
+                        stringResource(R.string.football_choose_channel),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Column(
+                        Modifier.heightIn(max = 236.dp).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        channels.forEachIndexed { index, channel ->
+                            ChannelChoice(
+                                channel = channel,
+                                preferred = index == 0,
+                                onClick = { onWatch(channel.id) },
+                                modifier = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier,
+                            )
+                        }
+                    }
+                }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    if (onWatch != null) {
+                    val single = channels.singleOrNull()
+                    if (single != null) {
                         PillButton(
                             stringResource(R.string.guide_watch),
-                            onWatch,
+                            { onWatch(single.id) },
                             icon = Icons.Filled.PlayArrow,
                             style = PillStyle.Primary,
                             modifier = Modifier.focusRequester(firstFocus),
@@ -517,7 +569,7 @@ private fun MatchSheet(
                             stringResource(if (followed) R.string.football_unfollow else R.string.football_follow, name),
                             { onToggleTeam(team) },
                             icon = Icons.Filled.Star,
-                            modifier = if (index == 0 && onWatch == null) Modifier.focusRequester(firstFocus) else Modifier,
+                            modifier = if (index == 0 && channels.isEmpty()) Modifier.focusRequester(firstFocus) else Modifier,
                         )
                     }
                     PillButton(stringResource(R.string.action_close), onDismiss, style = PillStyle.Ghost)
@@ -849,6 +901,7 @@ private fun competitionLogoUrl(competition: Competition): String? = when (compet
 /** Pastille d'un match en cours : « Mi-temps », la minute de jeu (« 81' », « 45+2' »), sinon « En direct ». */
 @Composable
 private fun liveLabel(match: FootballMatch): String = when {
+    match.finished -> stringResource(R.string.football_finished)
     match.halfTime -> stringResource(R.string.football_half_time)
     match.clock != null -> match.clock
     else -> stringResource(R.string.player_live)

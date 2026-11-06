@@ -67,6 +67,7 @@ import tv.nextv.app.ui.home.Category
 import tv.nextv.core.football.Broadcast
 import tv.nextv.core.football.BroadcastFinder
 import tv.nextv.core.football.FootballDataResult
+import tv.nextv.core.football.FootballMatches
 import tv.nextv.core.football.MatchStatus
 import tv.nextv.core.model.ContentKind
 import tv.nextv.core.model.PlaylistSource
@@ -1003,28 +1004,48 @@ class PlayerViewModel(
     }
 
     /**
-     * Match de football-data.org que diffuse le programme en cours de la chaîne, avec son score
-     * (réponse partagée avec la section Foot, redemandée toutes les 2 min pendant les matchs).
+     * Match que diffuse le programme en cours de la chaîne, avec son score : celui de football-data.org
+     * (réponse partagée avec la section Foot), sinon l'affiche du guide (coupes d'Europe, titre sans
+     * compétition) avec le score en direct.
      */
     private suspend fun matchOnAir(channelId: Long, now: Long): PlayerMatch? {
         val programme = container.programmeDao.upcoming(channelId, now, limit = 1).firstOrNull()?.takeIf { it.startMillis <= now } ?: return null
-        val result = container.footballData.matches(now, now + FOOTBALL_WINDOW_MILLIS) as? FootballDataResult.Success ?: return null
+        val result = container.footballData.matches(now, now + FOOTBALL_WINDOW_MILLIS) as? FootballDataResult.Success
         val broadcast = Broadcast(Unit, programme.title, programme.subtitle, programme.category, programme.description, programme.startMillis, programme.stopMillis)
-        val match = BroadcastFinder.assign(result.matches, listOf(broadcast)).keys.firstOrNull() ?: return null
-        val live = match.status == MatchStatus.LIVE
+        val match = result?.let { BroadcastFinder.assign(it.matches, listOf(broadcast)).keys.firstOrNull() }
+        if (match != null) {
+            val live = match.status == MatchStatus.LIVE
+            return PlayerMatch(
+                home = match.home.displayName,
+                away = match.away.displayName,
+                homeCrest = match.home.crestUrl,
+                awayCrest = match.away.crestUrl,
+                score = if (match.homeScore != null && match.awayScore != null && (live || match.status == MatchStatus.FINISHED)) {
+                    "${match.homeScore} – ${match.awayScore}"
+                } else {
+                    null
+                },
+                live = live,
+                clock = match.clock.takeIf { live },
+                halfTime = live && match.halfTime,
+            )
+        }
+        val fixture = FootballMatches.fixtureOf(programme.title, programme.subtitle, programme.category, programme.description)
+        val (home, away) = fixture?.let { it.home to it.away }
+            ?: FootballMatches.teamsOf(programme.title, programme.subtitle, programme.category)
+            ?: return null
+        val score = container.liveScores.find(fixture?.competition, home, away, programme.startMillis, programme.stopMillis)
+            ?.takeIf { it.inPlay || it.finished }
+        val crest = result?.let { BroadcastFinder.crests(it.matches.flatMap { scheduled -> listOf(scheduled.home, scheduled.away) }) }
         return PlayerMatch(
-            home = match.home.displayName,
-            away = match.away.displayName,
-            homeCrest = match.home.crestUrl,
-            awayCrest = match.away.crestUrl,
-            score = if (match.homeScore != null && match.awayScore != null && (live || match.status == MatchStatus.FINISHED)) {
-                "${match.homeScore} – ${match.awayScore}"
-            } else {
-                null
-            },
-            live = live,
-            clock = match.clock.takeIf { live },
-            halfTime = live && match.halfTime,
+            home = home,
+            away = away,
+            homeCrest = crest?.invoke(home),
+            awayCrest = crest?.invoke(away),
+            score = score?.let { if (it.homeScore != null && it.awayScore != null) "${it.homeScore} – ${it.awayScore}" else null },
+            live = score?.inPlay == true,
+            clock = score?.clock,
+            halfTime = score?.halfTime == true,
         )
     }
 

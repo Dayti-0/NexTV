@@ -44,6 +44,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -296,14 +297,37 @@ private object HeldOk {
 
 private val OK_KEYS = setOf(Key.DirectionCenter, Key.Enter, Key.NumPadEnter)
 
-/** À placer sur le contenu d'une boîte de dialogue : ignore la fin de l'appui long qui l'a ouverte. */
-fun Modifier.ignoreHeldOk(): Modifier = onPreviewKeyEvent { event ->
-    if (event.key !in OK_KEYS || !HeldOk.armed) return@onPreviewKeyEvent false
-    if (event.type == KeyEventType.KeyUp) {
-        HeldOk.armed = false
-        HeldOk.held = false
+/**
+ * À placer sur le contenu d'une boîte de dialogue ou d'un menu : la touche OK n'y agit qu'après un
+ * nouvel appui. La suite de l'appui long qui l'a ouvert (répétitions, relâchement) est ignorée, quel
+ * que soit l'ordre dans lequel le système la distribue : il faut relâcher OK, puis appuyer de nouveau.
+ */
+fun Modifier.ignoreHeldOk(): Modifier = composed {
+    // Appui commencé dans ce menu (première pression, sans répétition) : le relâchement qui suit agit.
+    val pressedHere = remember { BooleanArray(1) }
+    onPreviewKeyEvent { event ->
+        if (event.key !in OK_KEYS) return@onPreviewKeyEvent false
+        val native = event.nativeKeyEvent
+        when (event.type) {
+            KeyEventType.KeyDown -> {
+                if (native.repeatCount == 0) {
+                    pressedHere[0] = true
+                    HeldOk.armed = false
+                }
+                !pressedHere[0]
+            }
+            KeyEventType.KeyUp -> {
+                val ignore = !pressedHere[0]
+                pressedHere[0] = false
+                if (ignore) {
+                    HeldOk.armed = false
+                    HeldOk.held = false
+                }
+                ignore
+            }
+            else -> false
+        }
     }
-    true
 }
 
 /** Bouton icône rond, utilisable au toucher comme à la télécommande. */

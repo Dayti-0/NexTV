@@ -127,6 +127,20 @@ object FootballMatches {
         return Fixture(competition, teams.first, teams.second)
     }
 
+    /**
+     * Affiche d'un programme de football dont la compétition n'est pas citée (« Bayer Leverkusen /
+     * Marseille », genre « Football ») : le titre ou le genre doit parler de football.
+     */
+    fun teamsOf(title: String, subtitle: String?, category: String?): Pair<String, String>? {
+        val heading = FootballText.fold(listOfNotNull(title, subtitle).joinToString(" "))
+        val genre = FootballText.fold(category.orEmpty())
+        if (FootballText.NOT_A_MATCH.containsMatchIn(FootballText.fold(title)) || FootballText.NOT_A_MATCH.containsMatchIn(genre)) return null
+        if (FootballText.OTHER_SPORTS.containsMatchIn(heading) || FootballText.OTHER_SPORTS.containsMatchIn(genre)) return null
+        if (FootballText.WOMEN.containsMatchIn(heading) || FootballText.WOMEN.containsMatchIn(genre)) return null
+        if (!FootballText.FOOTBALL.containsMatchIn(heading) && !FootballText.FOOTBALL.containsMatchIn(genre)) return null
+        return listOfNotNull(subtitle, title).firstNotNullOfOrNull(::teams)
+    }
+
     /** Compétition d'un programme de football, sans exiger les équipes. */
     internal fun competitionOf(title: String, subtitle: String?, category: String?, description: String?): Competition? {
         // Titre, sous-titre et genre d'abord (courts) : la plupart des programmes s'arrêtent là.

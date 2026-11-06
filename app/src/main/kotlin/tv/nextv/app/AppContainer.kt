@@ -149,12 +149,15 @@ class AppContainer(context: Context) {
     private val footballKey: StateFlow<String?> = settings.footballApiKey
         .stateIn(applicationScope, SharingStarted.Eagerly, null)
 
+    /** Scores et minute de jeu en direct (tableau des scores public d'ESPN), partagés par la section Foot et le lecteur. */
+    val liveScores = LiveScoreClient(httpClients, logger = logger)
+
     /** Matchs à venir de la section Foot (football-data.org, résultats gardés 30 min). */
     val footballData = FootballDataClient(
         clients = httpClients,
         apiKey = { footballKey.value ?: BuildConfig.FOOTBALL_API_KEY.takeIf { it.isNotBlank() } },
         logger = logger,
-        liveScores = LiveScoreClient(httpClients, logger = logger),
+        liveScores = liveScores,
     )
 
     val favorites = FavoritesRepository(database)
