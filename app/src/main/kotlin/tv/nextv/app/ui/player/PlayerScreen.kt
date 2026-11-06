@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -113,6 +114,7 @@ import tv.nextv.app.ui.components.PillButton
 import tv.nextv.app.ui.components.PillStyle
 import tv.nextv.app.ui.components.StatusPill
 import tv.nextv.app.ui.components.rememberWindowInfo
+import tv.nextv.app.ui.guide.ProgrammeArt
 import tv.nextv.app.ui.guide.ProgrammeSheet
 import tv.nextv.app.ui.guide.formatDuration
 import tv.nextv.app.ui.home.Category
@@ -1102,13 +1104,19 @@ fun MenuProgrammePanel(info: MenuProgramme, now: Long, modifier: Modifier = Modi
         if (current == null) {
             Text(stringResource(R.string.channels_no_epg), style = MaterialTheme.typography.bodyLarge, color = Color.White.copy(alpha = 0.7f))
         } else {
-            Text(
-                stringResource(R.string.box_now).uppercase(),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(current.title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            // Image du programme (guide, sinon TMDB pour un film ou une série) ; sans image, le texte prend toute la place.
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                ProgrammeArt(current, Modifier.width(MENU_ART_WIDTH).aspectRatio(16f / 9f))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        stringResource(R.string.box_now).uppercase(),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(current.title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+            }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("${timeOf(current.startMillis)} – ${timeOf(current.stopMillis)}", style = MaterialTheme.typography.titleMedium, color = Color.White)
                 LiveProgress(current.startMillis, current.stopMillis, now, Modifier.weight(1f))
@@ -1140,6 +1148,9 @@ fun MenuProgrammePanel(info: MenuProgramme, now: Long, modifier: Modifier = Modi
 
 /** Lignes de description dans le volet du menu des chaînes. */
 private const val MENU_DESCRIPTION_LINES = 6
+
+/** Largeur de l'image du programme dans le volet du menu des chaînes. */
+private val MENU_ART_WIDTH = 176.dp
 
 @Composable
 private fun MenuChip(name: String, selected: Boolean, star: Boolean = false, onClick: () -> Unit) {
