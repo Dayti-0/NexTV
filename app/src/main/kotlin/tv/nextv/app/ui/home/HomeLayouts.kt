@@ -787,19 +787,19 @@ internal fun MetaLine(spotlight: Spotlight, color: Color = MaterialTheme.colorSc
         details?.runtimeMinutes?.let { formatDuration(it * 60_000L) },
         details?.seasonCount?.let { LocalContext.current.resources.getQuantityString(R.plurals.seasons_count, it, it) },
     )
-    // Ligne trop longue (volet étroit) : la note passe dessous, rien n'est écrasé ni coupé.
+    // Note en tête ; ligne trop longue (volet étroit) : la suite passe dessous, rien n'est écrasé ni coupé.
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
         itemVerticalAlignment = Alignment.CenterVertically,
     ) {
-        if (parts.isNotEmpty()) Text(parts.joinToString("  ·  "), style = MaterialTheme.typography.labelLarge, color = color)
         spotlight.rating?.let { rating ->
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                 Icon(Icons.Filled.Star, contentDescription = null, tint = NexTvColors.Warning, modifier = Modifier.size(16.dp))
-                Text(String.format(Locale.FRENCH, "%.1f", rating), style = MaterialTheme.typography.labelLarge, color = color)
+                Text(String.format(Locale.FRENCH, "%.1f", rating), style = MaterialTheme.typography.labelLarge, color = color, maxLines = 1)
             }
         }
+        if (parts.isNotEmpty()) Text(parts.joinToString("  ·  "), style = MaterialTheme.typography.labelLarge, color = color)
     }
 }
 

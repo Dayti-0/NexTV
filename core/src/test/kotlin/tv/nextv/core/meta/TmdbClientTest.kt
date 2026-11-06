@@ -122,4 +122,48 @@ class TmdbClientTest {
         assertEquals(19995L, (result as TmdbResult.Found).details.tmdbId)
         assertEquals("abc123", requests.last().url.queryParameter("api_key"))
     }
+
+    /** Résumé seulement en anglais sur TMDB : traduit (Google, sinon MyMemory), sinon gardé tel quel. */
+    @Test
+    fun `english only overviews are translated`() = runBlocking {
+        var google = true
+        var myMemory = true
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                val url = request.url
+                return when {
+                    url.encodedPath.endsWith("/search/movie") -> json(searchJson)
+                    url.encodedPath.endsWith("/movie/19995") && url.queryParameter("language") == "en-US" ->
+                        json("""{"id":19995,"title":"Avatar","overview":"A paraplegic Marine is sent to Pandora."}""")
+                    url.encodedPath.endsWith("/movie/19995") -> json("""{"id":19995,"title":"Avatar","overview":""}""")
+                    url.encodedPath.endsWith("/translate_a/single") && google -> {
+                        assertEquals("fr", url.queryParameter("tl"))
+                        json("""[[["Un marine paraplégique est envoyé sur Pandora.","A paraplegic Marine is sent to Pandora.",null,null,10]],null,"en"]""")
+                    }
+                    url.encodedPath.endsWith("/get") && myMemory ->
+                        json("""{"responseData":{"translatedText":"Un Marine paraplégique part sur Pandora."},"responseStatus":200}""")
+                    else -> MockResponse.Builder().code(429).build()
+                }
+            }
+        }
+        val translator = Translator(HttpClientProvider(), googleUrl = server.url("/translate_a/single"), myMemoryUrl = server.url("/get"))
+        val translating = TmdbClient(HttpClientProvider(), apiKey = { key }, baseUrl = server.url("/3/"), translator = translator)
+        fun overview() = runBlocking { (translating.lookup(MediaType.MOVIE, "Avatar", 2009) as TmdbResult.Found).details.overview }
+
+        assertEquals("Un marine paraplégique est envoyé sur Pandora.", overview())
+        google = false
+        assertEquals("Un Marine paraplégique part sur Pandora.", overview())
+        myMemory = false
+        assertEquals("A paraplegic Marine is sent to Pandora.", overview())
+    }
+
+    @Test
+    fun `long texts are cut between sentences for the fallback service`() {
+        val text = (1..30).joinToString(" ") { "Phrase numéro $it du résumé." }
+        val parts = Translator.chunks(text, 120)
+        assertEquals(text, parts.joinToString(" "))
+        parts.forEach { assert(it.toByteArray().size <= 120) { it } }
+        assertNull(Translator.parseGoogle("<html>Sorry…</html>"))
+        assertNull(Translator.parseMyMemory("""{"responseData":{"translatedText":"QUERY LENGTH LIMIT EXCEEDED"},"responseStatus":403}"""))
+    }
 }

@@ -116,4 +116,4 @@ class DetailViewModel(
  * Clé de la fiche TMDB d'un film ou d'une série, partagée par la fiche et l'accueil. Version de la
  * recherche : les « introuvables » enregistrés avant son amélioration sont ignorés.
  */
-internal fun metadataCacheKey(itemKey: String): String = "v2|$itemKey"
+internal fun metadataCacheKey(itemKey: String): String = "v3|$itemKey"

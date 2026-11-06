@@ -77,6 +77,8 @@ class TmdbClient(
     private val logger: Logger = Logger.None,
     /** Clé de secours (fournie avec l'application), essayée si [apiKey] est refusée. */
     private val fallbackApiKey: () -> String? = { null },
+    /** Traduction des résumés que TMDB n'a pas dans la langue demandée. */
+    private val translator: Translator? = null,
 ) {
 
     private class TmdbException(val error: TmdbError) : Exception(error.name)
@@ -195,9 +197,10 @@ class TmdbClient(
         val json = get(key, url)
         var overview = json.optStringOrNull("overview")
         if (overview == null && !language.startsWith("en")) {
-            // Pas de résumé traduit : résumé original anglais plutôt que rien.
+            // Pas de résumé traduit : résumé anglais, traduit automatiquement (l'anglais s'il n'y a pas de traduction).
             val english = baseUrl.newBuilder().addPathSegments(path).addQueryParameter("language", "en-US").build()
             overview = runCatching { get(key, english).optStringOrNull("overview") }.getOrNull()
+                ?.let { text -> translator?.translate(text, from = "en", to = language.substringBefore('-')) ?: text }
         }
         val date = json.optStringOrNull(if (type == MediaType.MOVIE) "release_date" else "first_air_date")
         return MediaDetails(

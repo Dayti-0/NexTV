@@ -154,7 +154,12 @@ data class Discover(
 data class Spotlight(val item: PosterItem, val details: MediaDetails? = null) {
     val backdropUrl: String? get() = details?.backdropUrl ?: item.backdropUrl
     val overview: String? get() = details?.overview ?: item.overview
-    val rating: Double? get() = details?.rating ?: item.rating
+    /** Note TMDB, seulement quand assez de votes la rendent parlante (pas de « 10,0 » sur 2 votes). */
+    val rating: Double? get() = if (details != null) details.rating?.takeIf { details.voteCount >= MIN_VOTES } else item.rating
+
+    private companion object {
+        const val MIN_VOTES = 10
+    }
 }
 
 /** Réorganisation des favoris : [movingKey] est l'élément « soulevé », déplacé avec les flèches. */
