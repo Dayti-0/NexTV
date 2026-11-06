@@ -147,61 +147,20 @@ class PlayerViewModel(
     private val mutablePlayer = MutableStateFlow<ExoPlayer?>(null)
     val player: StateFlow<ExoPlayer?> = mutablePlayer.asStateFlow()
 
-    private val mutableMenu = MutableStateFlow(ChannelMenuState())
-    val menu: StateFlow<ChannelMenuState> = mutableMenu.asStateFlow()
-
-    private val mutableProgrammeSheet = MutableStateFlow<ProgrammeSheetState?>(null)
-    val programmeSheet: StateFlow<ProgrammeSheetState?> = mutableProgrammeSheet.asStateFlow()
-
-    /** Chaîne sélectionnée dans le menu des chaînes. */
-    private val menuFocus = MutableStateFlow<ChannelListRow?>(null)
-
-    /** Programme de la chaîne sélectionnée dans le menu (volet de droite), lu après un court arrêt dessus. */
-    val menuProgramme: StateFlow<MenuProgramme?> = menuFocus
-        .mapLatest { row ->
-            if (row == null) return@mapLatest null
-            delay(MENU_PROGRAMME_DELAY_MILLIS)
-            val now = System.currentTimeMillis()
-            val upcoming = container.programmeDao.upcoming(row.id, now, limit = 2)
-                .map { GuideProgramme(it.title, it.startMillis, it.stopMillis, it.subtitle, it.description, it.category, it.year, it.imageUrl) }
-            val current = upcoming.firstOrNull()?.takeIf { it.startMillis <= now }
-            MenuProgramme(row, current, upcoming.firstOrNull { it != current })
-        }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
-
-    /** Chaîne sélectionnée dans le menu : son programme s'affiche à côté. */
-    fun focusMenuChannel(row: ChannelListRow) {
-        menuFocus.value = row
-    }
 
     private val sourceId = MutableStateFlow<Long?>(null)
 
-    val menuGroups: StateFlow<List<GroupRow>> = sourceId.flatMapLatest { id ->
-        if (id == null) flowOf(emptyList()) else container.channelDao.observeGroups(id, ContentKind.LIVE.name)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    // Menu des chaînes (« Retour ») : catégories, liste, programme de la chaîne sélectionnée.
+    private val channelMenu = ChannelMenuController(container, viewModelScope, sourceId)
+    val menu: StateFlow<ChannelMenuState> = channelMenu.menu
+    val programmeSheet: StateFlow<ProgrammeSheetState?> = channelMenu.programmeSheet
+    val menuProgramme: StateFlow<MenuProgramme?> = channelMenu.menuProgramme
+    val menuGroups: StateFlow<List<GroupRow>> = channelMenu.groups
+    val menuChannels: Flow<PagingData<MenuChannel>> = channelMenu.channels
+    val menuFavorites: StateFlow<List<ChannelListRow>> = channelMenu.favorites
 
-    val menuChannels: Flow<PagingData<MenuChannel>> = combine(sourceId, mutableMenu) { id, menu -> id to menu.category }
-        .distinctUntilChanged()
-        .flatMapLatest { (id, category) ->
-            if (id == null || category == Category.Favorites) {
-                emptyFlow()
-            } else {
-                Pager(PagingConfig(pageSize = 60, enablePlaceholders = false)) {
-                    container.channelDao.pageChannels(
-                        sourceId = id,
-                        filterGroup = if (category is Category.Group) 1 else 0,
-                        group = (category as? Category.Group)?.title.orEmpty(),
-                        query = "",
-                        now = System.currentTimeMillis(),
-                    )
-                }.flow.map { data -> data.map { MenuChannel(category, it) } }
-            }
-        }
-        .cachedIn(viewModelScope)
-
-    val menuFavorites: StateFlow<List<ChannelListRow>> = sourceId.flatMapLatest { id ->
-        if (id == null) flowOf(emptyList()) else container.channelDao.observeFavoriteChannels(id, System.currentTimeMillis())
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    /** Chaîne sélectionnée dans le menu : son programme s'affiche à côté. */
+    fun focusMenuChannel(row: ChannelListRow) = channelMenu.focus(row)
 
     private var request: PlaybackRequest? = null
     private var triedHlsFallback = false
@@ -575,51 +534,17 @@ class PlayerViewModel(
 
     fun openMenu() {
         val current = listed ?: return
-        viewModelScope.launch {
-            val dao = container.channelDao
-            val group = current.groupTitle.orEmpty()
-            // Catégorie masquée (chaîne ouverte depuis les favoris) : menu ouvert sur les favoris.
-            val (category, index) = if (container.hiddenGroupDao.isHidden(current.sourceId, ContentKind.LIVE.name, group)) {
-                val favorite = menuFavorites.value.indexOfFirst { it.itemKey == current.itemKey }
-                if (favorite >= 0) Category.Favorites to favorite else Category.All to dao.indexInList(current.sourceId, 0, "", current.position)
-            } else {
-                Category.Group(group) to dao.indexInList(current.sourceId, 1, group, current.position)
-            }
-            mutableMenu.value = ChannelMenuState(
-                open = true,
-                category = category,
-                currentChannelId = current.id,
-                currentItemKey = current.itemKey,
-                initialIndex = index,
-            )
-        }
+        channelMenu.open(current)
     }
 
-    fun closeMenu() {
-        mutableMenu.update { it.copy(open = false) }
-        menuFocus.value = null
-    }
+    fun closeMenu() = channelMenu.close()
 
-    fun selectMenuCategory(category: Category) {
-        mutableMenu.update { it.copy(category = category, initialIndex = 0) }
-    }
+    fun selectMenuCategory(category: Category) = channelMenu.selectCategory(category)
 
     /** Programme en cours (ou le prochain) d'une chaîne du menu, avec sa description. */
-    fun showProgramme(row: ChannelListRow) {
-        viewModelScope.launch {
-            val programme = container.programmeDao.upcoming(row.id, System.currentTimeMillis(), limit = 1).firstOrNull()
-            mutableProgrammeSheet.value = ProgrammeSheetState(
-                channel = GuideChannel(row.id, row.title.ifBlank { row.name }, row.channelNumber, row.logoUrl, emptyList()),
-                programme = programme?.let {
-                    GuideProgramme(it.title, it.startMillis, it.stopMillis, it.subtitle, it.description, it.category, it.year, it.imageUrl)
-                },
-            )
-        }
-    }
+    fun showProgramme(row: ChannelListRow) = channelMenu.showProgramme(row)
 
-    fun hideProgramme() {
-        mutableProgrammeSheet.value = null
-    }
+    fun hideProgramme() = channelMenu.hideProgramme()
 
     fun playFromMenu(id: Long) {
         closeMenu()
@@ -1608,9 +1533,6 @@ class PlayerViewModel(
 
         /** Appuis rapprochés sur ← → : additionnés pendant ce délai. */
         private const val JUMP_DEBOUNCE_MILLIS = 900L
-
-        /** Défilement rapide dans le menu des chaînes : le programme n'est lu qu'à l'arrêt sur une chaîne. */
-        private const val MENU_PROGRAMME_DELAY_MILLIS = 150L
 
         /** Avance et retour rapides : x2. */
         private const val FAST_SPEED = 2f
