@@ -162,7 +162,18 @@ data class PlayerUiState(
     val lowerAdVolume: Boolean = false,
     /** Pub détectée : son baissé. */
     val adMuted: Boolean = false,
+    /** Le flux n'a pas de son, ou dans un format que l'appareil ne lit pas. */
+    val audioProblem: AudioProblem? = null,
 )
+
+/** Raison de l'absence de son, affichée sur l'image. */
+enum class AudioProblem {
+    /** Le flux ne contient aucune piste audio. */
+    NO_TRACK,
+
+    /** Pistes audio dans un format que l'appareil ne sait pas lire (« AC3 »…). */
+    UNSUPPORTED,
+}
 
 /**
  * @property resumeLabel épisode à reprendre (« S01E08 »), `null` pour un film.
@@ -341,6 +352,12 @@ class PlayerViewModel(
     private var audioLanguage: String? = null
     private var subtitleLanguage: String? = null
 
+    /** Son Dolby / DTS envoyé tel quel à l'ampli (sinon décodé par l'appareil). */
+    private var audioPassthrough = false
+
+    /** Versions 4K écartées (réglage « Masquer la 4K »). */
+    private var hideUhd = false
+
     /** Option « baisser le son des pubs », lue par le traitement du son de chaque lecteur. */
     private val adVolume = AdVolumeControl()
 
@@ -393,7 +410,7 @@ class PlayerViewModel(
         override fun onPlayerError(error: PlaybackException) = handleError(error)
 
         override fun onTracksChanged(tracks: Tracks) {
-            mutableState.update { it.copy(tracks = describeTracks(tracks)) }
+            mutableState.update { it.copy(tracks = describeTracks(tracks), audioProblem = audioProblemOf(tracks)) }
         }
     }
 
@@ -495,6 +512,12 @@ class PlayerViewModel(
             container.settings.audioLanguage.collect { audioLanguage = it }
         }
         viewModelScope.launch {
+            container.settings.audioPassthrough.collect { audioPassthrough = it }
+        }
+        viewModelScope.launch {
+            container.settings.hideUhd.collect { hideUhd = it }
+        }
+        viewModelScope.launch {
             container.settings.subtitleLanguage.collect { subtitleLanguage = it }
         }
         viewModelScope.launch {
@@ -568,6 +591,24 @@ class PlayerViewModel(
             .setPreferredTextLanguage(subtitleLanguage)
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, subtitleLanguage == null)
             .build()
+    }
+
+    /**
+     * Image sans son : aucune piste audio dans le flux, ou aucune que l'appareil sache lire. Les
+     * pistes ne sont connues qu'une fois l'image arrivée (vidéo présente).
+     */
+    private fun audioProblemOf(tracks: Tracks): AudioProblem? {
+        if (tracks.isEmpty || !tracks.containsType(C.TRACK_TYPE_VIDEO)) return null
+        val audio = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+        return when {
+            audio.isEmpty() -> AudioProblem.NO_TRACK
+            audio.none { group -> (0 until group.length).any(group::isTrackSupported) } -> {
+                val formats = audio.flatMap { group -> (0 until group.length).map { group.getTrackFormat(it).sampleMimeType } }
+                container.logger.warn(TAG, "Son illisible par l'appareil : ${formats.distinct()}")
+                AudioProblem.UNSUPPORTED
+            }
+            else -> null
+        }
     }
 
     private fun describeTracks(tracks: Tracks): PlayerTracks {
@@ -758,8 +799,11 @@ class PlayerViewModel(
         val source = container.sourceRepository.getSource(primary.sourceId)
 
         val variants = if (isLive && primary.variantKey.isNotEmpty()) dao.variants(primary.sourceId, primary.variantKey) else emptyList()
+        // 4K écartée quand l'écran ou le décodeur ne la suivent pas (image saccadée), ou masquée dans les réglages.
+        val uhdAllowed = !hideUhd && container.playerFactory.supportsUhd
         val options = variants.filter { it.streamSupport != StreamSupport.UNSUPPORTED.name }
             .map { QualityOption(it.id, StreamQuality.entries.firstOrNull { q -> q.name == it.quality }) }
+            .let { all -> if (uhdAllowed) all else all.filter { it.quality != StreamQuality.UHD }.ifEmpty { all } }
         // Chaîne ouverte sur sa meilleure version : départ par la qualité qui a fonctionné la dernière fois.
         val remembered = if (autoQuality && requested.isPrimary && options.size > 1) {
             container.settings.workingQuality(primary.sourceId, primary.variantKey)?.let { name -> StreamQuality.entries.firstOrNull { it.name == name } }
@@ -1052,9 +1096,9 @@ class PlayerViewModel(
     private fun start(forceHls: Boolean) {
         val playbackRequest = request ?: return
         releasePlayer()
-        mutableState.update { it.copy(info = PlaybackInfo()) }
+        mutableState.update { it.copy(info = PlaybackInfo(), audioProblem = null) }
         playingAsHls = forceHls || playbackRequest.stream.format == StreamFormat.HLS
-        val player = container.playerFactory.create(playbackRequest, bandwidthMeter, preferredDecoders, adVolume).apply {
+        val player = container.playerFactory.create(playbackRequest, bandwidthMeter, preferredDecoders, adVolume, passthrough = audioPassthrough).apply {
             applyTrackPreferences()
             addListener(listener)
             addAnalyticsListener(analytics)
@@ -1205,7 +1249,7 @@ class PlayerViewModel(
         val playbackRequest = request ?: return
         releasePlayer()
         playingTimeshift = true
-        val player = container.playerFactory.create(playbackRequest, bandwidthMeter, preferredDecoders, adVolume).apply {
+        val player = container.playerFactory.create(playbackRequest, bandwidthMeter, preferredDecoders, adVolume, passthrough = audioPassthrough).apply {
             applyTrackPreferences()
             addListener(listener)
             addAnalyticsListener(analytics)

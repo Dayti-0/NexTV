@@ -47,6 +47,21 @@ class QualityParserTest {
     }
 
     @Test
+    fun `hdr and exclusive versions are grouped with the channel`() {
+        val tf1 = QualityParser.parse("FR| TF1").variantKey
+        val hdr = QualityParser.parse("FR| TF1 HDR (EXCLUS)")
+        assertEquals(tf1, hdr.variantKey)
+        assertEquals(StreamQuality.UHD, hdr.quality)
+        assertEquals("FR| TF1", hdr.baseName)
+        assertEquals(QualityParser.parse("FR| M6").variantKey, QualityParser.parse("FR| M6 HDR (EXCLUS)").variantKey)
+        assertEquals(QualityParser.parse("FR| M6").variantKey, QualityParser.parse("FR| M6 UHD").variantKey)
+        assertEquals(QualityParser.parse("DE| RTL").variantKey, QualityParser.parse("DE| RTL HD+").variantKey)
+        // Chaînes différentes : jamais mélangées.
+        assertNotEquals(tf1, QualityParser.parse("FR| TF1 Séries Films HDR").variantKey)
+        assertNotEquals(QualityParser.parse("FR| France 2").variantKey, QualityParser.parse("FR| France 3 HDR").variantKey)
+    }
+
+    @Test
     fun `codec tags are ignored for grouping`() {
         assertEquals(QualityParser.parse("Canal+ HEVC FHD").variantKey, QualityParser.parse("Canal+ SD").variantKey)
         assertEquals(StreamQuality.FHD, QualityParser.parse("Canal+ HEVC FHD").quality)
@@ -137,5 +152,29 @@ class ContentClassifierTest {
     fun `parentheses that belong to the title are kept`() {
         val series = ContentClassifier.classify("Rick and Morty (US) S01E02", "http://p.example/series/u/p/4.mkv", "SERIES | ANIMATION")
         assertEquals("Rick and Morty (US)", series.title)
+    }
+}
+
+class FranceRegionsTest {
+
+    @Test
+    fun `regional editions are recognised`() {
+        assertEquals("alpes", FranceRegions.regionOf("FR| FRANCE 3 ALPES")?.key)
+        assertEquals("Alpes", FranceRegions.regionOf("FR| FRANCE 3 ALPES")?.label)
+        assertEquals("paris ile de france", FranceRegions.regionOf("FR| France 3 Paris Île-de-France FHD")?.key)
+        assertEquals("cote d azur", FranceRegions.regionOf("France3 Côte d'Azur HD")?.key)
+        assertEquals("bretagne", FranceRegions.regionOf("FR: F3 Bretagne")?.key)
+        assertEquals("Corse ViaStella", FranceRegions.regionOf("FR| France 3 Corse ViaStella")?.label)
+    }
+
+    @Test
+    fun `national channel and other channels are not regions`() {
+        assertNull(FranceRegions.regionOf("FR| FRANCE 3"))
+        assertNull(FranceRegions.regionOf("FR| FRANCE 3 HD"))
+        assertNull(FranceRegions.regionOf("FR| FRANCE 3 HDR (EXCLUS)"))
+        assertNull(FranceRegions.regionOf("FR| France 3 +1"))
+        assertNull(FranceRegions.regionOf("FR| France 2"))
+        assertNull(FranceRegions.regionOf("FR| France 5"))
+        assertNull(FranceRegions.regionOf("FR| France 3 Backup"))
     }
 }

@@ -204,6 +204,34 @@ class SettingsRepository(
         dataStore.edit { it[LOWER_AD_VOLUME] = enabled }
     }
 
+    /** Chaînes 4K (UHD, HDR) masquées partout et jamais choisies : l'appareil ne les lit pas bien. */
+    val hideUhd: Flow<Boolean> = dataStore.data.map { it[HIDE_UHD] ?: false }.distinctUntilChanged()
+
+    suspend fun setHideUhd(enabled: Boolean) {
+        dataStore.edit { it[HIDE_UHD] = enabled }
+    }
+
+    /**
+     * Région de France 3 gardée dans les listes (« Alpes », clé de [tv.nextv.core.catalog.FranceRegions]) ;
+     * les autres éditions régionales sont masquées. `null` : toutes affichées.
+     */
+    val france3Region: Flow<String?> = dataStore.data.map { it[FRANCE3_REGION] }.distinctUntilChanged()
+
+    suspend fun setFrance3Region(region: String?) {
+        dataStore.edit { prefs -> if (region != null) prefs[FRANCE3_REGION] = region else prefs.remove(FRANCE3_REGION) }
+    }
+
+    /**
+     * Son Dolby (AC3, E-AC3) et DTS envoyé tel quel à l'ampli ou à la barre de son. Désactivé (par
+     * défaut), il est décodé par l'appareil : le son sort aussi sur un écran ou un moniteur qui ne
+     * sait pas le lire.
+     */
+    val audioPassthrough: Flow<Boolean> = dataStore.data.map { it[AUDIO_PASSTHROUGH] ?: false }.distinctUntilChanged()
+
+    suspend fun setAudioPassthrough(enabled: Boolean) {
+        dataStore.edit { it[AUDIO_PASSTHROUGH] = enabled }
+    }
+
     /** Au lancement, lecture directe de la dernière chaîne regardée (comme une télévision). */
     val startOnLastChannel: Flow<Boolean> = dataStore.data.map { it[START_ON_LAST_CHANNEL] ?: false }.distinctUntilChanged()
 
@@ -381,6 +409,9 @@ class SettingsRepository(
         val GUIDE_CATEGORY = stringPreferencesKey("guide_category")
         val EPG_IMPORT_VERSION = intPreferencesKey("epg_import_version")
         val CHANNEL_LIST = booleanPreferencesKey("channel_list")
+        val HIDE_UHD = booleanPreferencesKey("hide_uhd")
+        val FRANCE3_REGION = stringPreferencesKey("france3_region")
+        val AUDIO_PASSTHROUGH = booleanPreferencesKey("audio_passthrough")
 
         /** Réglages de la version 0.2.10 retirés depuis (rappels, code parental). */
         val OBSOLETE = setOf("reminders", "parental_pin")

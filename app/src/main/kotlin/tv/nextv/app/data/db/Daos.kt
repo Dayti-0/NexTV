@@ -19,14 +19,32 @@ import kotlinx.coroutines.flow.Flow
  * version hors catégories masquées. Fragments SQL partagés, la ligne examinée étant `c`.
  */
 
-/** Groupe de `c` non masqué. */
-private const val NOT_HIDDEN =
-    "IFNULL(c.groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'LIVE')"
+/*
+ * Filtres des réglages, rangés avec les catégories masquées (sans nouvelle table) :
+ * - [HIDDEN_ITEM] : chaîne masquée avec toutes ses versions (France 3 des autres régions), par sa clé ;
+ * - [HIDDEN_UHD] : versions 4K masquées (rang de qualité 5, voir StreamQuality.UHD).
+ */
+internal const val HIDDEN_ITEM = "LIVE_ITEM"
+internal const val HIDDEN_UHD = "LIVE_UHD"
 
-/** `b` : autre version de la même chaîne, mieux classée que `c` (qualité, puis ordre de la playlist). */
+/** 4K masquée dans les réglages. */
+private const val UHD_HIDDEN = "EXISTS (SELECT 1 FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = '$HIDDEN_UHD')"
+
+/** `c` : ni chaîne masquée par les réglages, ni version 4K masquée. */
+private const val VISIBLE_VERSION =
+    "c.itemKey NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = '$HIDDEN_ITEM') " +
+        "AND NOT (c.qualityRank = 5 AND $UHD_HIDDEN)"
+
+/** Groupe de `c` non masqué, et `c` ni masquée ni 4K masquée. */
+private const val NOT_HIDDEN =
+    "IFNULL(c.groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'LIVE') " +
+        "AND $VISIBLE_VERSION"
+
+/** `b` : autre version visible de la même chaîne, mieux classée que `c` (qualité, puis ordre de la playlist). */
 private const val BETTER_VERSION =
     "b.sourceId = c.sourceId AND b.kind = 'LIVE' AND b.variantKey = c.variantKey AND b.variantKey != '' " +
-        "AND (b.qualityRank > c.qualityRank OR (b.qualityRank = c.qualityRank AND b.position < c.position))"
+        "AND (b.qualityRank > c.qualityRank OR (b.qualityRank = c.qualityRank AND b.position < c.position)) " +
+        "AND NOT (b.qualityRank = 5 AND $UHD_HIDDEN)"
 
 /** `c` : meilleure version de la chaîne dans sa catégorie. */
 private const val BEST_IN_GROUP =
@@ -144,6 +162,9 @@ data class EpgAssignmentRow(val tvgId: String?, val name: String, val epgChannel
 data class EpgRefRow(val id: Long, val tvgId: String?, val tvgName: String?, val name: String)
 
 data class GroupRow(val title: String?, val count: Int)
+
+/** Clé et nom d'une version de chaîne. */
+data class ItemNameRow(val itemKey: String, val name: String)
 
 /** Groupe d'une playlist, masqué ou non (réglages). */
 data class GroupVisibilityRow(val title: String?, val count: Int, val hidden: Boolean)
@@ -284,7 +305,7 @@ interface ChannelDao {
         SELECT c.groupTitle AS title, COUNT(*) AS count
         FROM channels c
         WHERE c.sourceId = :sourceId AND c.kind = :kind
-          AND CASE WHEN :kind = 'LIVE' THEN $BEST_IN_GROUP ELSE c.isPrimary = 1 END
+          AND CASE WHEN :kind = 'LIVE' THEN $BEST_IN_GROUP AND $VISIBLE_VERSION ELSE c.isPrimary = 1 END
           AND IFNULL(c.groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = :kind)
         GROUP BY c.groupTitle ORDER BY MIN(c.position)
         """,
@@ -504,6 +525,16 @@ interface ChannelDao {
     )
     suspend fun indexInList(sourceId: Long, filterGroup: Int, group: String, position: Int): Int
 
+    /** Chaînes dont le nom peut désigner France 3 (éditions régionales comprises) : clé et nom de chaque version. */
+    @Query(
+        """
+        SELECT DISTINCT itemKey, name FROM channels
+        WHERE sourceId = :sourceId AND kind = 'LIVE'
+          AND (name LIKE '%france 3%' OR name LIKE '%france3%' OR name LIKE '%f3 %' OR name LIKE '%f3:%' OR name LIKE '%f3|%')
+        """,
+    )
+    suspend fun franceTroisCandidates(sourceId: Long): List<ItemNameRow>
+
     /** Meilleure version d'une chaîne désignée par sa clé (chaîne précédente, dernière chaîne regardée). */
     @Query("SELECT id FROM channels WHERE sourceId = :sourceId AND kind = 'LIVE' AND isPrimary = 1 AND itemKey = :itemKey LIMIT 1")
     suspend fun primaryIdByKey(sourceId: Long, itemKey: String): Long?
@@ -637,6 +668,16 @@ interface HiddenGroupDao {
 
     @Query("DELETE FROM hidden_groups WHERE sourceId = :sourceId AND kind = :kind")
     suspend fun showAll(sourceId: Long, kind: String)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun hideAll(groups: List<HiddenGroupEntity>)
+
+    /** Remplace les éléments masqués d'un type (filtres des réglages) en une seule écriture. */
+    @androidx.room.Transaction
+    suspend fun replace(sourceId: Long, kind: String, titles: Collection<String>) {
+        showAll(sourceId, kind)
+        if (titles.isNotEmpty()) hideAll(titles.map { HiddenGroupEntity(sourceId, kind, it) })
+    }
 
     @Query("SELECT EXISTS (SELECT 1 FROM hidden_groups WHERE sourceId = :sourceId AND kind = :kind AND title = :title)")
     suspend fun isHidden(sourceId: Long, kind: String, title: String): Boolean

@@ -11,9 +11,13 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -33,6 +37,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -44,12 +49,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.key.type
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -57,13 +64,22 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import java.io.File
+import java.io.IOException
+import java.text.DateFormat
+import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import tv.nextv.app.R
+import tv.nextv.app.data.settings.GridColumns
 import tv.nextv.app.data.settings.PlaylistRefresh
 import tv.nextv.app.data.settings.PreviewVolume
+import tv.nextv.app.data.update.UpdateFailure
+import tv.nextv.app.data.update.UpdateState
 import tv.nextv.app.player.VideoDecoders
 import tv.nextv.app.ui.common.appViewModel
 import tv.nextv.app.ui.common.describe
@@ -73,29 +89,23 @@ import tv.nextv.app.ui.components.IconAction
 import tv.nextv.app.ui.components.PillButton
 import tv.nextv.app.ui.components.PillStyle
 import tv.nextv.app.ui.components.ScreenHeader
+import tv.nextv.app.ui.components.ignoreHeldOk
 import tv.nextv.app.ui.components.rememberWindowInfo
 import tv.nextv.app.ui.editor.NexTvTextField
-import tv.nextv.app.data.settings.GridColumns
-import tv.nextv.core.update.AppRelease
-import tv.nextv.app.data.update.UpdateState
-import tv.nextv.app.data.update.UpdateFailure
 import tv.nextv.app.ui.editor.SectionCard
 import tv.nextv.app.ui.editor.ToggleRow
+import tv.nextv.app.ui.home.HomeLayout
 import tv.nextv.app.ui.theme.NexTvColors
 import tv.nextv.app.ui.theme.NexTvIcons
-import tv.nextv.app.ui.home.HomeLayout
 import tv.nextv.app.ui.theme.ThemeStyle
-import tv.nextv.core.stream.QualityTarget
+import tv.nextv.core.backup.BackupFormatException
+import tv.nextv.core.catalog.FranceRegions
 import tv.nextv.core.epg.HttpEpgFeedProvider
 import tv.nextv.core.model.ContentKind
 import tv.nextv.core.net.DnsProvider
-import tv.nextv.core.backup.BackupFormatException
 import tv.nextv.core.repository.RefreshResult
-import java.io.File
-import java.io.IOException
-import java.text.DateFormat
-import java.util.Date
-import java.util.Locale
+import tv.nextv.core.stream.QualityTarget
+import tv.nextv.core.update.AppRelease
 
 private const val BACKUP_FILE_NAME = "nextv-sauvegarde.json"
 
@@ -232,6 +242,9 @@ fun SettingsScreen(
         onClearCrash = viewModel::clearCrash,
         onToggleChannelList = viewModel::toggleChannelList,
         onCycleDns = viewModel::cycleDns,
+        onHideUhd = viewModel::setHideUhd,
+        onAudioPassthrough = viewModel::setAudioPassthrough,
+        onFrance3Region = viewModel::setFrance3Region,
         update = update,
         onCheckUpdate = viewModel::checkUpdate,
         onInstallUpdate = viewModel::installUpdate,
@@ -274,6 +287,9 @@ fun SettingsContent(
     onClearCrash: () -> Unit = {},
     onToggleChannelList: () -> Unit = {},
     onCycleDns: () -> Unit = {},
+    onHideUhd: (Boolean) -> Unit = {},
+    onAudioPassthrough: (Boolean) -> Unit = {},
+    onFrance3Region: (String?) -> Unit = {},
     update: UpdateState = UpdateState.Idle,
     onCheckUpdate: () -> Unit = {},
     onInstallUpdate: (AppRelease) -> Unit = {},
@@ -385,6 +401,46 @@ fun SettingsContent(
                             checked = state.lowerAdVolume,
                             onChange = onLowerAdVolume,
                         )
+                        ToggleRow(
+                            title = stringResource(R.string.settings_hide_uhd),
+                            description = stringResource(R.string.settings_hide_uhd_help),
+                            checked = state.hideUhd,
+                            onChange = onHideUhd,
+                        )
+                        ToggleRow(
+                            title = stringResource(R.string.settings_audio_passthrough),
+                            description = stringResource(R.string.settings_audio_passthrough_help),
+                            checked = state.audioPassthrough,
+                            onChange = onAudioPassthrough,
+                        )
+                        // Une seule édition régionale de France 3 dans les listes.
+                        var choosingRegion by remember { mutableStateOf(false) }
+                        ValueRow(
+                            title = stringResource(R.string.settings_france3_region),
+                            value = state.france3Regions.firstOrNull { it.key == state.france3Region }?.label
+                                ?: state.france3Region?.let { stringResource(R.string.settings_france3_region_missing) }
+                                ?: stringResource(R.string.settings_france3_region_all),
+                            onClick = { choosingRegion = true },
+                            enabled = state.france3Regions.isNotEmpty() || state.france3Region != null,
+                        )
+                        InfoText(
+                            if (state.france3Regions.isEmpty()) {
+                                stringResource(R.string.settings_france3_region_none)
+                            } else {
+                                stringResource(R.string.settings_france3_region_help)
+                            },
+                        )
+                        if (choosingRegion) {
+                            RegionDialog(
+                                regions = state.france3Regions,
+                                selected = state.france3Region,
+                                onSelect = {
+                                    choosingRegion = false
+                                    onFrance3Region(it)
+                                },
+                                onDismiss = { choosingRegion = false },
+                            )
+                        }
                         state.decoders.forEach { choice -> DecoderRow(choice) { onCycleDecoder(choice.mimeType) } }
                         if (state.decoders.isNotEmpty()) InfoText(stringResource(R.string.settings_decoder_help))
                     }
@@ -814,6 +870,53 @@ private fun NumberRow(title: String, value: Int, range: IntRange, onChange: (Int
             true
         },
     )
+}
+
+/** Choix de la région de France 3 : « Toutes les régions » puis chaque édition de la playlist. */
+@Composable
+private fun RegionDialog(
+    regions: List<FranceRegions.Region>,
+    selected: String?,
+    onSelect: (String?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { firstFocus.requestFocus() } }
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            modifier = Modifier.widthIn(max = 520.dp).ignoreHeldOk(),
+        ) {
+            Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(stringResource(R.string.settings_france3_region), style = MaterialTheme.typography.titleLarge)
+                val choices = listOf<Pair<String?, String>>(null to stringResource(R.string.settings_france3_region_all)) +
+                    regions.map { it.key to it.label }
+                val selectedIndex = choices.indexOfFirst { it.first == selected }.coerceAtLeast(0)
+                LazyColumn(
+                    Modifier.heightIn(max = 420.dp),
+                    state = rememberLazyListState(initialFirstVisibleItemIndex = (selectedIndex - 2).coerceAtLeast(0)),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    itemsIndexed(choices, key = { _, choice -> choice.first ?: "" }) { index, (key, label) ->
+                        FocusSurface(
+                            onClick = { onSelect(key) },
+                            modifier = Modifier.fillMaxWidth().then(if (index == selectedIndex) Modifier.focusRequester(firstFocus) else Modifier),
+                            shape = MaterialTheme.shapes.medium,
+                            color = Color.Transparent,
+                            selected = key == selected,
+                            focusScale = 1f,
+                        ) {
+                            Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(label, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                                if (key == selected) Icon(Icons.Filled.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 /** Ligne titre + valeur ; OK change la valeur. */

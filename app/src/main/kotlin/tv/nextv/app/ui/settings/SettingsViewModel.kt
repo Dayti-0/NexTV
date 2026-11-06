@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.launch
@@ -32,6 +33,7 @@ import tv.nextv.app.data.update.UpdateState
 import tv.nextv.app.ui.home.HomeLayout
 import tv.nextv.app.ui.theme.ThemeStyle
 import tv.nextv.core.stream.QualityTarget
+import tv.nextv.core.catalog.FranceRegions
 import tv.nextv.app.player.DecoderOption
 import tv.nextv.app.player.VideoDecoders
 import tv.nextv.core.model.ContentKind
@@ -87,6 +89,14 @@ data class SettingsUiState(
     val playlistRefresh: PlaylistRefresh = PlaylistRefresh.HOURS_12,
     /** Dernier plantage de l'application, à signaler. */
     val lastCrash: CrashLog.Entry? = null,
+    /** Chaînes 4K masquées. */
+    val hideUhd: Boolean = false,
+    /** Son Dolby / DTS envoyé tel quel à l'ampli (sinon décodé par l'appareil). */
+    val audioPassthrough: Boolean = false,
+    /** Région de France 3 gardée (clé), `null` : toutes. */
+    val france3Region: String? = null,
+    /** Éditions régionales de France 3 de la playlist active. */
+    val france3Regions: List<FranceRegions.Region> = emptyList(),
 )
 
 /** Abonnement Xtream de la playlist active. */
@@ -173,8 +183,31 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     private val lastCrash = MutableStateFlow(container.crashLog?.last())
 
-    /** Réglages ajoutés depuis : son de l'aperçu, fréquence de mise à jour, dernier plantage. */
-    private val extras = combine(settings.previewVolume, settings.playlistRefresh, lastCrash, ::Triple)
+    /** Éditions régionales de France 3 de la playlist active, relues après chaque mise à jour. */
+    private val france3Regions: Flow<List<FranceRegions.Region>> = combine(
+        settings.activePlaylistId,
+        repository.sources.map { sources -> sources.map { it.id to it.status?.lastSuccessAtMillis } }.distinctUntilChanged(),
+        ::Pair,
+    ).mapLatest { (id, _) -> id?.let { container.channelFilters.france3Regions(it) }.orEmpty() }
+
+    private data class Extras(
+        val previewVolume: PreviewVolume,
+        val playlistRefresh: PlaylistRefresh,
+        val crash: CrashLog.Entry?,
+        val hideUhd: Boolean,
+        val audioPassthrough: Boolean,
+        val france3Region: String?,
+        val france3Regions: List<FranceRegions.Region>,
+    )
+
+    /** Réglages ajoutés depuis : son de l'aperçu, fréquence de mise à jour, dernier plantage, filtres des chaînes. */
+    private val extras = combine(
+        combine(settings.previewVolume, settings.playlistRefresh, lastCrash, ::Triple),
+        combine(settings.hideUhd, settings.audioPassthrough, ::Pair),
+        combine(settings.france3Region, france3Regions, ::Pair),
+    ) { (volume, refresh, crash), (hideUhd, passthrough), (region, regions) ->
+        Extras(volume, refresh, crash, hideUhd, passthrough, region, regions)
+    }
 
     val state: StateFlow<SettingsUiState> = combine(
         combine(activePlaylist, extras, ::Pair),
@@ -184,7 +217,6 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         decoderChoices,
     ) { (active, extra), refreshing, downloadedAt, prefs, decoders ->
         val (playlist, count, hidden) = active
-        val (previewVolume, playlistRefresh, crash) = extra
         val proxy = prefs.proxy
         SettingsUiState(
             loaded = true,
@@ -210,9 +242,13 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             theme = prefs.theme,
             homeLayout = prefs.homeLayout,
             qualityTarget = prefs.qualityTarget,
-            previewVolume = previewVolume,
-            playlistRefresh = playlistRefresh,
-            lastCrash = crash,
+            previewVolume = extra.previewVolume,
+            playlistRefresh = extra.playlistRefresh,
+            lastCrash = extra.crash,
+            hideUhd = extra.hideUhd,
+            audioPassthrough = extra.audioPassthrough,
+            france3Region = extra.france3Region,
+            france3Regions = extra.france3Regions,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
@@ -250,6 +286,18 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
     /** Retélécharge le guide même s'il est récent. */
     fun refreshGuide() {
         state.value.playlist?.let { container.refreshController.refreshEpg(it.id, force = true) }
+    }
+
+    fun setHideUhd(enabled: Boolean) {
+        viewModelScope.launch { settings.setHideUhd(enabled) }
+    }
+
+    fun setAudioPassthrough(enabled: Boolean) {
+        viewModelScope.launch { settings.setAudioPassthrough(enabled) }
+    }
+
+    fun setFrance3Region(region: String?) {
+        viewModelScope.launch { settings.setFrance3Region(region) }
     }
 
     fun setAutoQuality(enabled: Boolean) {

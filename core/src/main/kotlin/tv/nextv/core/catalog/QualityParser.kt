@@ -21,15 +21,22 @@ object QualityParser {
     )
 
     private val QUALITY_TOKENS: Map<String, StreamQuality> = buildMap {
-        listOf("4K", "UHD", "2160P", "2160").forEach { put(it, StreamQuality.UHD) }
-        listOf("FHD", "FULLHD", "1080P", "1080I", "1080").forEach { put(it, StreamQuality.FHD) }
-        listOf("HD", "720P", "720", "HDTV").forEach { put(it, StreamQuality.HD) }
+        // HDR : diffusé en 4K par les chaînes françaises (« TF1 HDR », logo « TF1 4K »).
+        listOf("4K", "UHD", "2160P", "2160", "8K", "4K+", "UHD+", "HDR", "HDR10", "HDR10+", "HLG", "DOLBYVISION").forEach { put(it, StreamQuality.UHD) }
+        listOf("FHD", "FULLHD", "1080P", "1080I", "1080", "FHD+").forEach { put(it, StreamQuality.FHD) }
+        listOf("HD", "720P", "720", "HDTV", "HD+").forEach { put(it, StreamQuality.HD) }
         listOf("SD", "576P", "576", "480P", "480").forEach { put(it, StreamQuality.SD) }
         listOf("LOW", "LQ", "LD", "360P", "240P", "MOBILE").forEach { put(it, StreamQuality.LOW) }
     }
 
-    /** Mentions techniques retirées du nom de base sans être des qualités. */
-    private val CODEC_TOKENS = setOf("HEVC", "H265", "H264", "X265", "X264", "AVC", "50FPS", "60FPS", "FPS")
+    /**
+     * Mentions techniques ou publicitaires retirées du nom de base sans être des qualités
+     * (« M6 HDR (EXCLUS) » est la même chaîne que « M6 »).
+     */
+    private val CODEC_TOKENS = setOf(
+        "HEVC", "H265", "H264", "X265", "X264", "AVC", "50FPS", "60FPS", "FPS", "SDR",
+        "EXCLUS", "EXCLU", "EXCLUSIF", "EXCLUSIVE", "EXCLUSIVITE",
+    )
 
     /** Lettres en exposant fréquentes dans les playlists (« ᶠᴴᴰ », « ˢᴰ »…). */
     private val SUPERSCRIPTS: Map<Char, Char> = buildMap {

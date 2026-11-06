@@ -68,11 +68,11 @@ private const val ARG_KIND = "kind"
 @Composable
 fun NexTvNavHost() {
     val navController = rememberNavController()
-    // Double appui sur « Retour » : retour direct à l'accueil, depuis n'importe quel écran.
+    // Appui long sur « Retour » : retour direct à l'accueil, depuis n'importe quel écran.
     val activity = LocalActivity.current as? MainActivity
     DisposableEffect(activity, navController) {
-        activity?.onDoubleBack = { navController.popBackStack(Routes.HOME, inclusive = false) }
-        onDispose { activity?.onDoubleBack = null }
+        activity?.onLongBack = { navController.popBackStack(Routes.HOME, inclusive = false) }
+        onDispose { activity?.onLongBack = null }
     }
     // Playlist transmise par adb : éditeur prérempli, après l'écran de démarrage (qui remplace la pile).
     val container = appContainer()

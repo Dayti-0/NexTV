@@ -1,7 +1,10 @@
 package tv.nextv.app.player
 
 import android.content.Context
+import android.hardware.display.DisplayManager
+import android.view.Display
 import androidx.annotation.OptIn
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
@@ -11,7 +14,9 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.common.audio.AudioProcessor
+import androidx.media3.exoplayer.audio.AudioCapabilities
 import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -69,6 +74,7 @@ class PlayerFactory(
         preferredDecoders: Map<String, String> = emptyMap(),
         adVolume: AdVolumeControl? = null,
         preview: Boolean = false,
+        passthrough: Boolean = false,
     ): ExoPlayer {
         val httpFactory = OkHttpDataSource.Factory(httpClient(request))
             .setUserAgent(userAgent(request))
@@ -78,7 +84,7 @@ class PlayerFactory(
         // Repli automatique sur un autre décodeur si le premier ne démarre pas (box aux décodeurs capricieux).
         val renderers = object : DefaultRenderersFactory(context) {
             override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): AudioSink =
-                DefaultAudioSink.Builder(context)
+                (if (passthrough) DefaultAudioSink.Builder(context) else DefaultAudioSink.Builder().setAudioCapabilities(decodedAudio(context)))
                     .setEnableFloatOutput(enableFloatOutput)
                     .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
                     .setAudioProcessors(listOfNotNull<AudioProcessor>(adVolume?.let(::AdVolumeAudioProcessor)).toTypedArray())
@@ -91,6 +97,42 @@ class PlayerFactory(
             .setLoadControl(if (preview) previewLoadControl() else loadControl())
         if (bandwidthMeter != null) builder.setBandwidthMeter(bandwidthMeter)
         return builder.build()
+    }
+
+    /**
+     * Sortie du son décodé par l'appareil : le Dolby (AC3, E-AC3) et le DTS ne sont envoyés tels
+     * quels à l'écran que si l'appareil ne sait pas les décoder. Envoyés à un écran ou un moniteur
+     * qui annonce à tort savoir les lire (Fire TV), ils donneraient une image sans son.
+     */
+    private fun decodedAudio(context: Context): AudioCapabilities {
+        val device = AudioCapabilities.getCapabilities(context)
+        val encoded = ENCODED_AUDIO.filter { (encoding, mimeType) -> device.supportsEncoding(encoding) && !hasDecoder(mimeType) }.keys
+        return AudioCapabilities(intArrayOf(C.ENCODING_PCM_16BIT) + encoded.toIntArray(), device.maxChannelCount)
+    }
+
+    private fun hasDecoder(mimeType: String): Boolean = try {
+        MediaCodecUtil.getDecoderInfos(mimeType, false, false).isNotEmpty()
+    } catch (e: MediaCodecUtil.DecoderQueryException) {
+        false
+    }
+
+    /**
+     * L'appareil affiche et décode la 4K : sinon (écran ou moniteur Full HD, petite box), une version
+     * 4K serait réduite à l'affichage et saccadée, faute d'un décodeur assez rapide.
+     */
+    val supportsUhd: Boolean by lazy {
+        val display = (context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager)?.getDisplay(Display.DEFAULT_DISPLAY)
+        val screen = display?.supportedModes?.maxOfOrNull { maxOf(it.physicalWidth, it.physicalHeight) } ?: 0
+        val decoder = listOf(MimeTypes.VIDEO_H265, MimeTypes.VIDEO_H264).any { mimeType ->
+            try {
+                MediaCodecUtil.getDecoderInfos(mimeType, false, false).any { info ->
+                    info.hardwareAccelerated && info.capabilities?.videoCapabilities?.areSizeAndRateSupported(3840, 2160, 50.0) == true
+                }
+            } catch (e: MediaCodecUtil.DecoderQueryException) {
+                false
+            }
+        }
+        screen >= 3840 && decoder
     }
 
     /** Requête du direct pour l'enregistrement du différé : mêmes client, en-têtes et identifiants que la lecture. */
@@ -162,6 +204,17 @@ class PlayerFactory(
             .build()
     }
 }
+
+/** Formats de son compressés (Dolby, DTS) et leur type, pour savoir si l'appareil les décode. */
+private val ENCODED_AUDIO = mapOf(
+    C.ENCODING_AC3 to MimeTypes.AUDIO_AC3,
+    C.ENCODING_E_AC3 to MimeTypes.AUDIO_E_AC3,
+    C.ENCODING_E_AC3_JOC to MimeTypes.AUDIO_E_AC3_JOC,
+    C.ENCODING_AC4 to MimeTypes.AUDIO_AC4,
+    C.ENCODING_DTS to MimeTypes.AUDIO_DTS,
+    C.ENCODING_DTS_HD to MimeTypes.AUDIO_DTS_HD,
+    C.ENCODING_DOLBY_TRUEHD to MimeTypes.AUDIO_TRUEHD,
+)
 
 private const val START_BUFFER_MILLIS = 1_500
 private const val RESUME_BUFFER_MILLIS = 3_000

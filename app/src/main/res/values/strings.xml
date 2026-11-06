@@ -249,6 +249,8 @@
     <string name="player_live">En direct</string>
     <string name="football_half_time">Mi-temps</string>
     <string name="football_finished">Terminé</string>
+    <string name="player_no_audio">Aucun son disponible</string>
+    <string name="player_audio_unsupported">Aucun son disponible : format audio non pris en charge par l’appareil</string>
     <string name="football_choose_channel">Choisir la chaîne</string>
     <string name="player_next_channel">Chaîne suivante</string>
     <string name="player_previous_channel">Chaîne précédente</string>
@@ -576,4 +578,13 @@
         <item quantity="one">%d saison</item>
         <item quantity="other">%d saisons</item>
     </plurals>
+    <string name="settings_hide_uhd">Masquer les chaînes 4K</string>
+    <string name="settings_hide_uhd_help">Les versions 4K, UHD et HDR disparaissent des listes et ne sont jamais choisies : la version HD ou Full HD de la chaîne est lue à la place. Sur un écran qui n’est pas 4K, elles sont déjà évitées automatiquement.</string>
+    <string name="settings_audio_passthrough">Son Dolby envoyé à l’ampli</string>
+    <string name="settings_audio_passthrough_help">Désactivé (recommandé), le son Dolby et DTS est décodé par l’appareil : il sort sur tous les écrans. Activez-le seulement avec un ampli ou une barre de son qui décode le Dolby.</string>
+    <string name="settings_france3_region">Région France 3</string>
+    <string name="settings_france3_region_all">Toutes les régions</string>
+    <string name="settings_france3_region_missing">Région absente de la playlist</string>
+    <string name="settings_france3_region_help">Seule l’édition de votre région apparaît dans les listes ; les autres sont masquées. Modifiable à tout moment.</string>
+    <string name="settings_france3_region_none">Aucune édition régionale de France 3 dans cette playlist.</string>
 </resources>

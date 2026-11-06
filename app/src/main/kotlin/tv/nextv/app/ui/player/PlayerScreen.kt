@@ -423,6 +423,27 @@ fun PlayerScreen(onBack: () -> Unit) {
             StatusPill(stringResource(R.string.player_ad_muted), NexTvColors.Warning)
         }
 
+        // Image sans son : dit clairement pourquoi, en haut à droite, quelques secondes puis avec le bandeau.
+        val audioProblem = state.audioProblem
+        var audioNoticeShown by remember(audioProblem, state.channelVersion) { mutableStateOf(audioProblem != null) }
+        LaunchedEffect(audioProblem, state.channelVersion) {
+            if (audioProblem != null) {
+                delay(AUDIO_NOTICE_MILLIS)
+                audioNoticeShown = false
+            }
+        }
+        AnimatedVisibility(
+            visible = audioProblem != null && (audioNoticeShown || bannerVisible) && !menu.open,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.TopEnd).padding(24.dp),
+        ) {
+            StatusPill(
+                stringResource(if (audioProblem == AudioProblem.UNSUPPORTED) R.string.player_audio_unsupported else R.string.player_no_audio),
+                NexTvColors.Warning,
+            )
+        }
+
         state.resumePrompt?.let { prompt ->
             ResumePromptCard(prompt, onAnswer = viewModel::answerResume, modifier = Modifier.align(Alignment.Center))
         }
@@ -1135,6 +1156,9 @@ private fun MenuChannelRow(
 }
 
 private const val BANNER_DURATION_MILLIS = 5_000L
+
+/** Message « Aucun son » affiché seul, avant de ne plus apparaître qu'avec le bandeau. */
+private const val AUDIO_NOTICE_MILLIS = 8_000L
 
 private fun timeOf(millis: Long): String = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(millis))
 

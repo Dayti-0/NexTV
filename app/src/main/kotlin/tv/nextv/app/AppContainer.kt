@@ -3,6 +3,9 @@ package tv.nextv.app
 import android.content.Context
 import android.os.Build
 import android.util.Xml
+import java.io.File
+import java.util.TimeZone
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -13,22 +16,26 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import tv.nextv.app.data.backup.BackupManager
+import tv.nextv.app.data.catalog.ChannelFilters
 import tv.nextv.app.data.catalog.FavoritesRepository
-import tv.nextv.app.data.progress.ProgressDatabase
-import tv.nextv.app.data.progress.ProgressRepository
 import tv.nextv.app.data.catalog.MetadataRepository
 import tv.nextv.app.data.db.NexTvDatabase
 import tv.nextv.app.data.db.RoomPlaylistStore
 import tv.nextv.app.data.local.AndroidDocumentAccess
 import tv.nextv.app.data.local.ContentResolverOpener
+import tv.nextv.app.data.progress.ProgressDatabase
+import tv.nextv.app.data.progress.ProgressRepository
 import tv.nextv.app.data.security.EncryptedCredentialStore
 import tv.nextv.app.data.security.KeystoreSecretCipher
 import tv.nextv.app.data.settings.SettingsRepository
@@ -37,13 +44,13 @@ import tv.nextv.app.player.PlayerFactory
 import tv.nextv.core.epg.EpgImporter
 import tv.nextv.core.epg.EpgLoader
 import tv.nextv.core.epg.HttpEpgFeedProvider
+import tv.nextv.core.football.FootballDataClient
 import tv.nextv.core.football.LiveScoreClient
 import tv.nextv.core.io.CompositeContentOpener
 import tv.nextv.core.io.RemoteContentOpener
 import tv.nextv.core.log.Logger
 import tv.nextv.core.log.RedactingLogger
 import tv.nextv.core.log.Redactor
-import tv.nextv.core.football.FootballDataClient
 import tv.nextv.core.meta.TmdbClient
 import tv.nextv.core.model.PlaylistSource
 import tv.nextv.core.net.HttpClientProvider
@@ -54,9 +61,6 @@ import tv.nextv.core.source.M3uPlaylistLoader
 import tv.nextv.core.source.PlaylistLoaderRegistry
 import tv.nextv.core.source.XtreamApi
 import tv.nextv.core.update.UpdateChecker
-import java.io.File
-import java.util.TimeZone
-import java.util.concurrent.ConcurrentHashMap
 
 /** Assemblage manuel des dépendances de l'application. */
 class AppContainer(context: Context) {
@@ -162,6 +166,9 @@ class AppContainer(context: Context) {
 
     val favorites = FavoritesRepository(database)
 
+    /** Filtres des réglages appliqués aux listes de chaînes (4K masquée, région de France 3). */
+    val channelFilters = ChannelFilters(channelDao, hiddenGroupDao)
+
     /** Sauvegarde et restauration des playlists, favoris, catégories masquées et réglages. */
     val backup = BackupManager(playlistStore, sourceRepository, database.favoriteDao(), hiddenGroupDao, settings)
 
@@ -230,6 +237,19 @@ class AppContainer(context: Context) {
         applicationScope.launch {
             sourceRepository.registerStoredSecrets()
             sourceRepository.cleanStoredNames()
+        }
+
+        // Filtres des réglages (4K masquée, région de France 3) : à chaque changement, et après chaque
+        // mise à jour d'une playlist (nouvelles chaînes).
+        applicationScope.launch {
+            combine(
+                settings.hideUhd,
+                settings.france3Region,
+                sourceRepository.sources.map { sources -> sources.map { it.id to it.status?.lastSuccessAtMillis } }.distinctUntilChanged(),
+                ::Triple,
+            ).collectLatest { (hideUhd, region, sources) ->
+                sources.forEach { (id, _) -> channelFilters.apply(id, hideUhd, region) }
+            }
         }
 
         // Actualisations automatiques tant que l'application tourne (les TV restent souvent allumées) :
