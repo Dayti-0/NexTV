@@ -1,4 +1,4 @@
-# NexTV
+# NixTV
 
 Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3, entièrement utilisable à la télécommande.
 
@@ -15,11 +15,10 @@ Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3, enti�
   Catégories masquables, pour les chaînes comme pour les films et les séries (appui long sur une catégorie, ou
   Réglages › Affichage) : leur contenu disparaît des listes et de la recherche (et du zapping et du guide pour les
   chaînes) ; les favoris restent visibles.
-  Interface au choix (Réglages › Affichage) : « Classique » (catégories à gauche, chaînes en mosaïque de vignettes
-  ou en liste avec le programme en cours), « Streaming » (grande affiche de la sélection avec l'aperçu en direct, puis
-  une rangée par catégorie avec « Tout voir » ; « Retour » ramène aux rangées) ou « Box TV » (catégories, liste des
-  chaînes et grand volet du direct avec le programme en cours et les suivants, sur écran large) ; thème bleu nuit,
-  noir profond, cinéma (noir et rouge) ou violet.
+  Interface et couleurs (Réglages › Apparence) : « Live Center » (catégories, liste des chaînes et volet du direct
+  avec le programme en cours et les suivants), « Streaming » (grande bannière, rangées reprises, tendances,
+  nouveautés, recommandations et catégories) ou « Cinéma Premium » (visuel plein écran, grandes affiches) ;
+  19 palettes (classiques, pastel, sombres, colorées), avec aperçu en direct.
 - **Foot** : matchs des 8 prochains jours par compétition (Ligue 1, Premier League, Liga, Serie A, Bundesliga, Ligue
   des champions, Ligue Europa, Ligue Conférence, équipes nationales), par jour, avec les écussons et la chaîne de la
   playlist qui les diffuse (quand la chaîne du guide — « Ligue 1+ 5 », « DAZN 1 »… — n'est reliée à aucune chaîne
@@ -201,3 +200,10 @@ Signature des versions publiées : clé privée générée une fois par le workf
 par-dessus la précédente en gardant playlists et réglages. Autre possibilité : les secrets `NEXTV_KEYSTORE_BASE64`,
 `NEXTV_KEYSTORE_PASSWORD`, `NEXTV_KEY_ALIAS` et `NEXTV_KEY_PASSWORD`. Sans clé privée, l'APK est signé avec la clé
 de test du dépôt (`app/nextv-test.keystore`, publique, aussi utilisée en debug).
+
+## Licence
+
+NixTV est un logiciel libre distribué sous licence [GNU GPL version 3](LICENSE), sans aucune garantie.
+L'APK intègre le décodeur [FFmpeg](https://ffmpeg.org) (extension Media3 compilée par
+[Jellyfin](https://github.com/jellyfin/jellyfin-androidx-media), licence GPL v3) : il décode le son que l'appareil
+ne sait pas lire (AC3, E-AC3, DTS…).

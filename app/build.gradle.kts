@@ -126,6 +126,8 @@ dependencies {
     implementation(libs.androidx.media3.exoplayer.rtsp)
     implementation(libs.androidx.media3.datasource.okhttp)
     implementation(libs.androidx.media3.ui)
+    // Son que l'appareil ne sait pas décoder (licence GPL v3, voir LICENSE).
+    implementation(libs.media3.ffmpeg.decoder)
 
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)

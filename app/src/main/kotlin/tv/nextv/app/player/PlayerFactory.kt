@@ -11,6 +11,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.decoder.ffmpeg.FfmpegLibrary
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.common.audio.AudioProcessor
@@ -92,6 +93,8 @@ class PlayerFactory(
         }
             .setEnableDecoderFallback(true)
             .setMediaCodecSelector(VideoDecoders.selector(preferredDecoders))
+            // Son : décodeurs de l'appareil d'abord, FFmpeg pour les formats qu'il ne sait pas lire.
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
         val builder = ExoPlayer.Builder(context, renderers)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .setLoadControl(if (preview) previewLoadControl() else loadControl())
@@ -111,9 +114,9 @@ class PlayerFactory(
     )
 
     /**
-     * Sortie du son décodé par l'appareil : le Dolby (AC3, E-AC3) et le DTS ne sont envoyés tels
-     * quels à l'écran que si l'appareil ne sait pas les décoder. Envoyés à un écran ou un moniteur
-     * qui annonce à tort savoir les lire (Fire TV), ils donneraient une image sans son.
+     * Sortie du son décodé par l'appareil (ou par FFmpeg) : le Dolby (AC3, E-AC3) et le DTS ne sont
+     * envoyés tels quels à l'écran que si aucun des deux ne sait les décoder. Envoyés à un écran ou
+     * un moniteur qui annonce à tort savoir les lire (Fire TV), ils donneraient une image sans son.
      */
     private fun decodedAudio(context: Context): AudioCapabilities {
         val device = AudioCapabilities.getCapabilities(context)
@@ -121,9 +124,17 @@ class PlayerFactory(
         return AudioCapabilities(intArrayOf(C.ENCODING_PCM_16BIT) + encoded.toIntArray(), device.maxChannelCount)
     }
 
-    private fun hasDecoder(mimeType: String): Boolean = try {
+    /** L'appareil, ou à défaut FFmpeg, sait décoder ce format de son. */
+    private fun hasDecoder(mimeType: String): Boolean = ffmpegDecodes(mimeType) || try {
         MediaCodecUtil.getDecoderInfos(mimeType, false, false).isNotEmpty()
     } catch (e: MediaCodecUtil.DecoderQueryException) {
+        false
+    }
+
+    private fun ffmpegDecodes(mimeType: String): Boolean = try {
+        FfmpegLibrary.isAvailable() && FfmpegLibrary.supportsFormat(mimeType)
+    } catch (e: UnsatisfiedLinkError) {
+        // Bibliothèque native absente pour ce processeur : décodeurs de l'appareil seulement.
         false
     }
 

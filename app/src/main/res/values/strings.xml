@@ -636,4 +636,5 @@
     <string name="film_play_now">Lire maintenant</string>
     <string name="player_pause">Pause</string>
     <string name="player_play">Lecture</string>
+    <string name="settings_license">Logiciel libre sous licence GNU GPL version 3, fourni sans aucune garantie. Code source : github.com/Dayti-0/NexTV. Son décodé par FFmpeg (ffmpeg.org) quand l’appareil ne sait pas le lire.</string>
 </resources>

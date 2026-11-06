@@ -641,6 +641,8 @@ fun SettingsContent(
                     ) {
                         Icon(Icons.Filled.Info, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         InfoText(stringResource(R.string.settings_version, state.version))
+                        // Mentions légales (licence GPL v3, imposée par le décodeur FFmpeg).
+                        InfoText(stringResource(R.string.settings_license))
                     }
                 }
             }
