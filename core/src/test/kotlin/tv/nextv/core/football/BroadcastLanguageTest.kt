@@ -23,18 +23,22 @@ class BroadcastLanguageTest {
     }
 
     @Test
-    fun `match broadcast under another title is found on every channel`() {
+    fun `scheduled match is found on every channel but not on its replay`() {
         val kickoff = 1_793_908_800_000L
+        val match = ScheduledMatch(
+            id = 1,
+            competition = Competition.EUROPA_LEAGUE,
+            kickoffMillis = kickoff,
+            status = MatchStatus.SCHEDULED,
+            home = Team("Bayer Leverkusen", "Leverkusen", "B04", null),
+            away = Team("Marseille", null, "OLM", null),
+        )
         val broadcasts = listOf(
             Broadcast("rtl", "Fußball: UEFA Europa League", "Bayer 04 Leverkusen - Olympique Marseille", "Sport", null, kickoff - 45 * 60_000L, kickoff + 2 * 3_600_000L),
             Broadcast("canal", "Bayer Leverkusen / Marseille", null, "Football", null, kickoff, kickoff + 2 * 3_600_000L),
             Broadcast("other", "Celtic / Besiktas", null, "Football", null, kickoff, kickoff + 2 * 3_600_000L),
-            Broadcast("late", "Bayer Leverkusen / Marseille", null, "Football", "Rediffusion", kickoff + 5 * 3_600_000L, kickoff + 7 * 3_600_000L),
+            Broadcast("replay", "Ligue Europa : Bayer Leverkusen - Marseille", null, "Football", null, kickoff + 17 * 3_600_000L, kickoff + 19 * 3_600_000L),
         )
-        val found = BroadcastFinder.sameFixtures(
-            listOf(BroadcastFinder.GuideFixture("Bayer Leverkusen", "Marseille", kickoff - 45 * 60_000L)),
-            broadcasts,
-        ).single()
-        assertEquals(listOf("rtl", "canal"), found)
+        assertEquals(listOf("rtl", "canal"), BroadcastFinder.assign(listOf(match), broadcasts)[match])
     }
 }

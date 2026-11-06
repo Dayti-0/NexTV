@@ -22,13 +22,12 @@ Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3, enti�
 - **Foot** : matchs des 8 prochains jours par compétition (Ligue 1, Premier League, Liga, Serie A, Bundesliga, Ligue
   des champions, Ligue Europa, Ligue Conférence, équipes nationales), par jour, avec les écussons et la chaîne de la
   playlist qui les diffuse (quand la chaîne du guide — « Ligue 1+ 5 », « DAZN 1 »… — n'est reliée à aucune chaîne
-  de la playlist, son nom est quand même indiqué) ; score en direct pendant les matchs (actualisé toutes les 2 min), classement des
-  championnats, « Mes équipes » pour les équipes suivies. OK pour regarder, appui long pour la fiche du match
-  (suivre chaque équipe). La liste vient de
-  [football-data.org](https://www.football-data.org) (clé gratuite, Réglages › Matchs de foot, ou secret CI
-  `NEXTV_FOOTBALL_API_KEY`) et le guide TV donne la chaîne ; sans clé, et pour les compétitions hors de l'offre
-  gratuite, les matchs viennent du guide seul (vrais matchs uniquement, avec les deux équipes, hors autres sports et
-  football féminin).
+  de la playlist, son nom est quand même indiqué) ; score et minute de jeu en direct (actualisés chaque minute),
+  classement des championnats, « Mes équipes » pour les équipes suivies. OK pour regarder, appui long pour la fiche
+  du match (suivre chaque équipe). La liste vient du calendrier public d'ESPN (sans clé : vrais coups d'envoi, jamais
+  de rediffusion), le guide TV donne seulement la chaîne ; les matchs de sélections ne sont listés que s'ils sont
+  diffusés. Classements et fiches des clubs : [football-data.org](https://www.football-data.org) (clé gratuite,
+  Réglages › Matchs de foot, ou secret CI `NEXTV_FOOTBALL_API_KEY`), qui donne aussi la liste quand ESPN ne répond pas.
 - **Films et séries** : fiche enrichie par TMDB (synopsis, note, genres, affiche, bande-annonce), saisons et épisodes.
   Une clé d'API TMDB se saisit dans les réglages (ou s'intègre à la compilation, voir plus bas).
 - **Lecture en direct** : bandeau de 5 s au changement de chaîne ou sur OK (programme en cours avec horaires et

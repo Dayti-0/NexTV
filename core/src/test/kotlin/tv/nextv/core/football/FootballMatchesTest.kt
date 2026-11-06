@@ -1,9 +1,7 @@
 package tv.nextv.core.football
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FootballMatchesTest {
@@ -117,18 +115,5 @@ class FootballMatchesTest {
             Fixture(Competition.EUROPA_LEAGUE, "Crystal Palace", "Hoffenheim"),
             of("Football : Ligue Europa", "Crystal Palace / Hoffenheim", description = "En direct. Rediffusion demain à 12h."),
         )
-    }
-
-    @Test
-    fun `same fixture whatever the names and the order`() {
-        assertTrue(FootballMatches.sameTeams("Crystal Palace", "Hoffenheim", "TSG Hoffenheim", "Crystal Palace"))
-        assertTrue(FootballMatches.sameTeams("Paris-SG", "Marseille", "Paris SG", "Olympique de Marseille"))
-        assertFalse(FootballMatches.sameTeams("Crystal Palace", "Hoffenheim", "Crystal Palace", "Lyon"))
-        // Graphies différentes d'un même nom.
-        assertTrue(FootballMatches.sameTeams("Rennes", "Olympiakos", "Rennes", "Olympiacos"))
-        assertTrue(FootballMatches.sameTeams("Monaco", "FC Nordsjaelland", "AS Monaco", "FC Nordsjælland"))
-        assertFalse(FootballMatches.sameTeams("Rennes", "Olympiakos", "Lens", "Olympiakos"))
-        // Mots trop répandus : jamais suffisants.
-        assertFalse(FootballMatches.sameTeams("Real", "Inter", "Real", "Inter"))
     }
 }

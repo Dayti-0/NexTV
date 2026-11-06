@@ -42,22 +42,22 @@ data class LiveScore(
     val finished: Boolean,
     val clock: String?,
     val halfTime: Boolean,
-    /** Match reporté ou annulé : sa date n'est pas celle où il se jouera. */
-    val cancelled: Boolean = false,
 ) {
     /** Le même match vu de l'autre équipe (affiche du guide inversée). */
     fun swapped(): LiveScore = copy(home = away, away = home, homeScore = awayScore, awayScore = homeScore)
 }
 
 /**
- * Scores et minute de jeu en direct, d'après le tableau des scores public d'ESPN (sans clé) :
- * l'offre gratuite de football-data.org donne les scores avec plusieurs minutes de retard et sans
- * la minute de jeu. Chaque championnat est gardé [cacheMillis] ; en cas d'échec, rien n'est changé
- * (les scores de football-data.org restent affichés).
+ * Calendrier des matchs, scores et minute de jeu en direct, d'après les données publiques d'ESPN
+ * (sans clé) : toutes les compétitions de la section Foot, coupes d'Europe et sélections comprises,
+ * avec les vrais coups d'envoi. Les tableaux des scores en direct sont gardés [cacheMillis] ; en cas
+ * d'échec, la réponse précédente reste utilisée.
  */
 class LiveScoreClient(
     private val clients: HttpClientProvider,
     private val baseUrl: HttpUrl = "https://site.api.espn.com/apis/site/v2/sports/soccer/".toHttpUrl(),
+    /** Jours de match de chaque compétition. */
+    private val calendarUrl: HttpUrl = "https://sports.core.api.espn.com/v2/sports/soccer/leagues/".toHttpUrl(),
     private val logger: Logger = Logger.None,
     private val clock: () -> Long = System::currentTimeMillis,
     private val cacheMillis: Long = 45_000,
@@ -65,8 +65,9 @@ class LiveScoreClient(
 ) {
     private val mutex = Mutex()
     private val cached = HashMap<String, Pair<Long, List<LiveScore>>>()
-    private val boardMutex = Mutex()
-    private val boards = HashMap<String, Pair<Long, List<LiveScore>>>()
+    private val scheduleMutex = Mutex()
+    private val boards = HashMap<String, Pair<Long, List<ScheduledMatch>>>()
+    private val calendars = HashMap<String, Pair<Long, List<String>>>()
 
     /**
      * [matches] avec le score, la minute et l'état en direct des matchs en cours (ou sur le point de
@@ -107,55 +108,88 @@ class LiveScoreClient(
     }
 
     /**
-     * La diffusion de l'affiche [home] – [away] qui commence à [startMillis] n'est pas un direct,
-     * d'après la source des scores : c'est une rediffusion quand
-     * - le match a été joué (ou est prévu) au moins [REPLAY_GAP_MILLIS] plus tôt dans les deux jours
-     *   précédents (match de la veille au soir rediffusé le midi) ;
-     * - ou, pour les coupes d'Europe (calendrier complet chez la source), quand aucune des deux équipes
-     *   ne joue autour de l'heure de diffusion (vieille affiche rediffusée).
-     * `false` quand rien ne le montre (tableaux injoignables, équipes inconnues…).
+     * Matchs de toutes les compétitions dont le coup d'envoi tombe entre [fromMillis] et [toMillis],
+     * avec leur état, leur score et la minute de jeu. Seuls les jours de match de chaque compétition
+     * sont demandés. `null` quand la source ne répond pas du tout.
      */
-    suspend fun isReplay(competition: Competition?, home: String, away: String, startMillis: Long): Boolean {
-        val competitions = competition?.let(::related) ?: (Competition.entries - Competition.NATIONAL_TEAMS)
-        val from = startMillis - REPLAY_LOOKBACK_MILLIS
-        val until = startMillis + LATE_KICKOFF_MILLIS
-        val wanted = competitions.flatMap { c -> LEAGUES[c].orEmpty().flatMap { league -> days(from, until).map { day -> Triple(c, league, day) } } }
-        // Tableaux demandés ensemble : un appareil lent n'attend pas chacun à son tour.
-        val boards = coroutineScope { wanted.map { (c, league, day) -> async { board(c, league, day) } }.awaitAll() }
-        val scores = boards.flatMap { it.orEmpty() }
-        if (earlier(scores, home, away, from, startMillis - REPLAY_GAP_MILLIS) != null) return true
-        return competition in EUROPEAN_CUPS && boards.none { it == null } &&
-            absent(scores, home, away, startMillis - REPLAY_GAP_MILLIS, until)
+    suspend fun schedule(fromMillis: Long, toMillis: Long): List<ScheduledMatch>? {
+        val first = dayOf(fromMillis)
+        val last = dayOf(toMillis)
+        val leagues = LEAGUES.flatMap { (competition, slugs) -> slugs.map { competition to it } }
+        // Demandes en parallèle : un appareil lent n'attend pas chaque compétition à son tour.
+        val results = coroutineScope {
+            leagues.map { (competition, league) ->
+                async {
+                    val days = calendar(league)
+                    if (days == null) {
+                        // Calendrier injoignable : au moins les matchs du moment (tableau du jour).
+                        listOf(board(competition, league, day = null))
+                    } else {
+                        days.filter { it in first..last }.map { day -> async { board(competition, league, day) } }.awaitAll()
+                    }
+                }
+            }.awaitAll().flatten()
+        }
+        if (results.isNotEmpty() && results.all { it == null }) return null
+        return results.flatMap { it.orEmpty() }
+            .filter { it.kickoffMillis in fromMillis..toMillis }
+            .distinctBy { it.id }
+            .sortedBy { it.kickoffMillis }
     }
 
-    /**
-     * Tableau des scores d'une journée ([day] : « 20261105 »), gardé plus longtemps pour les jours
-     * passés ; `null` quand il n'a jamais pu être lu.
-     */
-    private suspend fun board(competition: Competition, league: String, day: String): List<LiveScore>? {
-        val key = "$league|$day"
+    /** Jours de match d'une compétition (« 20261106 »), gardés [CALENDAR_MILLIS] ; `null` s'il n'a jamais pu être lu. */
+    private suspend fun calendar(league: String): List<String>? {
         val now = clock()
-        val maxAge = if (day < dayOf(now)) PAST_BOARD_MILLIS else TODAY_BOARD_MILLIS
-        boardMutex.withLock { boards[key]?.takeIf { now - it.first < maxAge }?.let { return it.second } }
-        val url = baseUrl.newBuilder().addPathSegments(league).addPathSegment("scoreboard").addQueryParameter("dates", day).build()
-        val scores = fetch(url, competition)
-        return boardMutex.withLock {
-            if (scores != null) {
-                boards[key] = now to scores
-                // Seuls les jours encore utiles restent en mémoire.
-                boards.entries.removeAll { now - it.value.first > PAST_BOARD_MILLIS }
-            }
-            scores ?: boards[key]?.second
+        scheduleMutex.withLock { calendars[league]?.takeIf { now - it.first < CALENDAR_MILLIS }?.let { return it.second } }
+        val url = calendarUrl.newBuilder().addPathSegments(league).addPathSegments("calendar/ondays").build()
+        val days = fetchJson(url)?.let(::parseCalendar)
+        return scheduleMutex.withLock {
+            if (days != null) calendars[league] = now to days
+            days ?: calendars[league]?.second
         }
     }
 
-    /** Matchs d'un tableau des scores, `null` en cas d'échec (réseau, réponse illisible). */
-    private suspend fun fetch(url: HttpUrl, competition: Competition): List<LiveScore>? = try {
+    /**
+     * Matchs d'une compétition un jour donné ([day] : « 20261106 » ; `null` : tableau du moment).
+     * Gardés 1 min pendant les matchs, plus longtemps sinon ; `null` s'il n'a jamais pu être lu.
+     */
+    private suspend fun board(competition: Competition, league: String, day: String?): List<ScheduledMatch>? {
+        val key = "$league|${day.orEmpty()}"
+        val now = clock()
+        scheduleMutex.withLock {
+            boards[key]?.takeIf { (at, matches) -> now - at < boardMaxAge(day, matches, now) }?.let { return it.second }
+        }
+        val url = baseUrl.newBuilder().addPathSegments(league).addPathSegment("scoreboard")
+            .apply { if (day != null) addQueryParameter("dates", day) }
+            .build()
+        val matches = fetchJson(url)?.let { parseSchedule(it, competition) }
+        return scheduleMutex.withLock {
+            if (matches != null) {
+                boards[key] = now to matches
+                // Jours passés : plus utiles.
+                boards.entries.removeAll { now - it.value.first > PAST_BOARD_MILLIS }
+            }
+            matches ?: boards[key]?.second
+        }
+    }
+
+    private fun boardMaxAge(day: String?, matches: List<ScheduledMatch>, now: Long): Long = when {
+        matches.any { it.isActive(now) } -> LIVE_BOARD_MILLIS
+        day == null || day <= dayOf(now) -> TODAY_BOARD_MILLIS
+        else -> FUTURE_BOARD_MILLIS
+    }
+
+    /** Matchs d'un tableau des scores en direct, `null` en cas d'échec. */
+    private suspend fun fetch(url: HttpUrl, competition: Competition): List<LiveScore>? =
+        fetchJson(url)?.let { parse(it, competition) }
+
+    /** Réponse JSON d'ESPN, `null` en cas d'échec (réseau, réponse illisible). */
+    private suspend fun fetchJson(url: HttpUrl): JSONObject? = try {
         val call = clients.client(RequestPurpose.METADATA).newCall(Request.Builder().url(url).header("Accept", "application/json").build())
         call.timeout().timeout(callTimeoutMillis, TimeUnit.MILLISECONDS)
         // Lecture hors du fil principal (le corps se lit sur le réseau).
         withContext(Dispatchers.IO) {
-            call.await().use { response -> if (response.isSuccessful) parse(JSONObject(response.body.string()), competition) else null }
+            call.await().use { response -> if (response.isSuccessful) JSONObject(response.body.string()) else null }
         }
     } catch (e: CancellationException) {
         throw e
@@ -193,72 +227,84 @@ class LiveScoreClient(
         private fun related(competition: Competition): List<Competition> =
             if (competition in EUROPEAN_CUPS) listOf(competition) + (EUROPEAN_CUPS - competition) else listOf(competition)
 
-        /**
-         * Écart entre le coup d'envoi et le début d'une diffusion à partir duquel c'est une
-         * rediffusion : un direct commence avant le coup d'envoi, ou au plus tard à la seconde
-         * mi-temps ; marge en plus pour un guide décalé d'une heure ou deux.
-         */
-        const val REPLAY_GAP_MILLIS = 3 * 60 * 60_000L + 30 * 60_000L
+        /** Jours de match d'une compétition : redemandés deux fois par jour. */
+        private const val CALENDAR_MILLIS = 12 * 60 * 60_000L
 
-        /** Un direct commence au plus tôt 3 h avant le coup d'envoi (avant-match compris). */
-        private const val LATE_KICKOFF_MILLIS = 3 * 60 * 60_000L
-
-        /** Les rediffusions reprennent les matchs des deux derniers jours. */
-        private const val REPLAY_LOOKBACK_MILLIS = 2 * 24 * 60 * 60_000L
-
-        /** Tableau d'un jour passé (résultats définitifs) ou du jour même (horaires qui peuvent changer). */
-        private const val PAST_BOARD_MILLIS = 6 * 60 * 60_000L
+        /** Tableau d'un jour : pendant les matchs, le jour même, les jours suivants, les jours passés. */
+        private const val LIVE_BOARD_MILLIS = 50_000L
         private const val TODAY_BOARD_MILLIS = 10 * 60_000L
+        private const val FUTURE_BOARD_MILLIS = 3 * 60 * 60_000L
+        private const val PAST_BOARD_MILLIS = 12 * 60 * 60_000L
 
         /** Jours des tableaux des scores, à l'heure de New York comme la source (« 20261105 »). */
         private val BOARD_ZONE: TimeZone = TimeZone.getTimeZone("America/New_York")
-        private const val DAY_MILLIS = 24 * 60 * 60_000L
 
-        private fun dayOf(millis: Long): String =
+        internal fun dayOf(millis: Long): String =
             SimpleDateFormat("yyyyMMdd", Locale.ROOT).apply { timeZone = BOARD_ZONE }.format(millis)
 
-        /** Jours qui couvrent [from]..[to] (bornes comprises). */
-        internal fun days(from: Long, to: Long): List<String> {
-            if (to < from) return emptyList()
-            val days = LinkedHashSet<String>()
-            var t = from
-            while (t < to) {
-                days += dayOf(t)
-                t += DAY_MILLIS
-            }
-            days += dayOf(to)
-            return days.toList()
+        /** Jours de match d'une réponse « calendar/ondays » (« 2026-11-06T08:00Z » → « 20261106 »). */
+        fun parseCalendar(json: JSONObject): List<String>? {
+            val dates = json.optJSONObject("eventDate")?.optJSONArray("dates") ?: return null
+            return (0 until dates.length()).mapNotNull { index ->
+                dates.optString(index).takeIf { it.length >= 10 }?.substring(0, 10)?.replace("-", "")?.takeIf { day -> day.all(Char::isDigit) }
+            }.distinct()
         }
 
-        /**
-         * Match de [scores] entre [home] et [away] (les deux équipes reconnues, dans un sens ou dans
-         * l'autre) dont le coup d'envoi tombe entre [from] et [to].
-         */
-        fun earlier(scores: List<LiveScore>, home: String, away: String, from: Long, to: Long): LiveScore? {
-            val homeWords = FootballMatches.teamWords(home)
-            val awayWords = FootballMatches.teamWords(away)
-            return scores.firstOrNull { score ->
-                score.kickoffMillis in from..to && !score.cancelled &&
-                    FootballMatches.sameTeams(homeWords, awayWords, score.home.words(), score.away.words())
-            }
-        }
+        /** Statuts d'ESPN d'un match qui n'aura pas lieu à la date prévue. */
+        private val POSTPONED = setOf("STATUS_POSTPONED", "STATUS_DELAYED", "STATUS_SUSPENDED")
+        private val CANCELLED = setOf("STATUS_CANCELED", "STATUS_CANCELLED", "STATUS_ABANDONED", "STATUS_FORFEIT")
 
-        /**
-         * Aucune des deux équipes ([home], [away]) n'a de match dont le coup d'envoi tombe entre [from]
-         * et [to]. `false` quand une équipe n'a aucun mot reconnaissable (rien ne peut être affirmé).
-         */
-        fun absent(scores: List<LiveScore>, home: String, away: String, from: Long, to: Long): Boolean {
-            val homeWords = FootballMatches.teamWords(home)
-            val awayWords = FootballMatches.teamWords(away)
-            if (homeWords.isEmpty() || awayWords.isEmpty()) return false
-            return scores.none { score ->
-                score.kickoffMillis in from..to && listOf(score.home.words(), score.away.words()).any { team ->
-                    FootballMatches.sameTeam(homeWords, team) || FootballMatches.sameTeam(awayWords, team)
+        /** Matchs d'un tableau des scores, avec les écussons des équipes. */
+        fun parseSchedule(json: JSONObject, competition: Competition): List<ScheduledMatch> {
+            val events = json.optJSONArray("events") ?: return emptyList()
+            return (0 until events.length()).mapNotNull { index ->
+                val event = events.optJSONObject(index) ?: return@mapNotNull null
+                val id = event.optString("id").toLongOrNull() ?: return@mapNotNull null
+                val kickoff = parseDate(event.optString("date")) ?: return@mapNotNull null
+                val contest = event.optJSONArray("competitions")?.optJSONObject(0) ?: return@mapNotNull null
+                val competitors = contest.optJSONArray("competitors") ?: return@mapNotNull null
+                val sides = (0 until competitors.length()).mapNotNull { competitors.optJSONObject(it) }
+                val home = sides.firstOrNull { it.optString("homeAway") == "home" } ?: return@mapNotNull null
+                val away = sides.firstOrNull { it.optString("homeAway") == "away" } ?: return@mapNotNull null
+                val status = event.optJSONObject("status") ?: contest.optJSONObject("status") ?: return@mapNotNull null
+                val type = status.optJSONObject("type") ?: return@mapNotNull null
+                val name = type.optString("name")
+                val state = type.optString("state")
+                val halfTime = name == "STATUS_HALFTIME" || type.optString("shortDetail") == "HT"
+                val matchStatus = when {
+                    name in CANCELLED -> MatchStatus.CANCELLED
+                    name in POSTPONED -> MatchStatus.POSTPONED
+                    state == "in" -> MatchStatus.LIVE
+                    state == "post" -> MatchStatus.FINISHED
+                    else -> MatchStatus.SCHEDULED
                 }
+                val started = matchStatus == MatchStatus.LIVE || matchStatus == MatchStatus.FINISHED
+                ScheduledMatch(
+                    id = id,
+                    competition = competition,
+                    kickoffMillis = kickoff,
+                    status = matchStatus,
+                    home = espnTeam(home) ?: return@mapNotNull null,
+                    away = espnTeam(away) ?: return@mapNotNull null,
+                    homeScore = home.optString("score").toIntOrNull().takeIf { started },
+                    awayScore = away.optString("score").toIntOrNull().takeIf { started },
+                    clock = status.optString("displayClock").takeIf { state == "in" && !halfTime }?.let(::minute),
+                    halfTime = state == "in" && halfTime,
+                )
             }
         }
 
-        private fun LiveTeam.words(): Set<String> = names.flatMapTo(HashSet()) { FootballMatches.teamWords(it) }
+        private fun espnTeam(competitor: JSONObject): Team? {
+            val team = competitor.optJSONObject("team") ?: return null
+            val name = team.optString("displayName").trim().ifEmpty { team.optString("name").trim() }.ifEmpty { return null }
+            return Team(
+                name = name,
+                shortName = team.optString("shortDisplayName").trim().takeIf { it.isNotEmpty() && it != name },
+                code = team.optString("abbreviation").trim().takeIf { it.isNotEmpty() },
+                crestUrl = team.optString("logo").trim().takeIf { it.startsWith("https://") },
+                id = team.optString("id").toLongOrNull(),
+            )
+        }
 
         /** Avant le coup d'envoi, l'émission commence souvent par l'avant-match. */
         private const val PRESHOW_MILLIS = 30 * 60_000L
@@ -319,12 +365,9 @@ class LiveScoreClient(
                     finished = state == "post",
                     clock = status.optString("displayClock").takeIf { state == "in" && !halfTime }?.let(::minute),
                     halfTime = state == "in" && halfTime,
-                    cancelled = type.optString("name") in CANCELLED,
                 )
             }
         }
-
-        private val CANCELLED = setOf("STATUS_POSTPONED", "STATUS_CANCELED", "STATUS_CANCELLED", "STATUS_DELAYED")
 
         /** « 45'+2' » → « 45+2' » ; « 81' » tel quel. */
         fun minute(displayClock: String): String? {

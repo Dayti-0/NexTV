@@ -3,7 +3,6 @@ package tv.nextv.core.football
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -126,60 +125,44 @@ class LiveScoresTest {
         assertNull(LiveScoreClient.match(scores, "Hapoel Tel-Aviv", "Real Betis", evening, evening + 3 * 60 * 60_000L))
     }
 
+    private fun scheduled(id: Int, date: String, state: String, name: String, clock: String, home: String, homeScore: String, away: String, awayScore: String, homeCode: String = "") = """
+        {"id":"$id","date":"$date","status":{"displayClock":"$clock","type":{"name":"$name","state":"$state"}},
+         "competitions":[{"competitors":[
+           {"homeAway":"home","score":"$homeScore","team":{"id":"1$id","displayName":"$home","shortDisplayName":"$home","abbreviation":"$homeCode","logo":"https://a.espncdn.com/i/teamlogos/soccer/500/1$id.png"}},
+           {"homeAway":"away","score":"$awayScore","team":{"id":"2$id","displayName":"$away","logo":"https://a.espncdn.com/i/teamlogos/soccer/500/2$id.png"}}]}]}
+    """.trimIndent()
+
     @Test
-    fun `next-day broadcast of a played match is a replay`() {
-        val scores = LiveScoreClient.parse(
-            JSONObject(
-                """{"events":[
-                ${event("2026-11-05T17:45Z", "post", "STATUS_FULL_TIME", "FT", "90'+4'", "Crystal Palace", "2", "TSG Hoffenheim", "1", "CRY", "HOF")},
-                ${event("2026-11-05T20:00Z", "post", "STATUS_POSTPONED", "Postponed", "0'", "Celtic", "0", "Besiktas", "0")}
-                ]}""",
-            ),
-            Competition.EUROPA_LEAGUE,
+    fun `schedule gives every match with its state, score and crests`() {
+        val json = JSONObject(
+            """{"events":[
+            ${scheduled(1, "2026-11-05T20:00Z", "post", "STATUS_FULL_TIME", "90'+4'", "Bayer Leverkusen", "0", "Marseille", "1")},
+            ${scheduled(2, "2026-11-05T17:45Z", "in", "STATUS_SECOND_HALF", "67'", "Crystal Palace", "2", "TSG Hoffenheim", "1")},
+            ${scheduled(3, "2026-11-06T19:30Z", "pre", "STATUS_SCHEDULED", "0'", "Hamburg SV", "0", "Borussia Mönchengladbach", "0", "HSV")},
+            ${scheduled(4, "2026-11-06T20:00Z", "post", "STATUS_POSTPONED", "0'", "Celtic", "0", "Besiktas", "0")}
+            ]}""",
         )
-        val day = 24 * 60 * 60_000L
-        fun replay(home: String, away: String, start: Long) =
-            LiveScoreClient.earlier(scores, home, away, start - 2 * day, start - LiveScoreClient.REPLAY_GAP_MILLIS)
-        val nextNoon = 1_793_963_880_000L // 2026-11-06T11:18Z, 12:18 à Paris
-        val kickoff = 1_793_900_700_000L // 2026-11-05T17:45Z
-        assertNotNull(replay("Crystal Palace", "Hoffenheim", nextNoon))
-        assertNotNull(replay("Hoffenheim", "Crystal Palace", nextNoon))
-        // Le direct, avant-match compris, ou repris à la seconde mi-temps.
-        assertNull(replay("Crystal Palace", "Hoffenheim", kickoff - 45 * 60_000L))
-        assertNull(replay("Crystal Palace", "Hoffenheim", kickoff + 60 * 60_000L))
-        // Match reporté : sa date ne dit rien de la diffusion.
-        assertNull(replay("Celtic", "Besiktas", nextNoon))
-        assertNull(replay("Crystal Palace", "Lyon", nextNoon))
+        val matches = LiveScoreClient.parseSchedule(json, Competition.EUROPA_LEAGUE)
+        assertEquals(4, matches.size)
+        val (leverkusen, palace, hamburg, celtic) = matches
+        assertEquals(MatchStatus.FINISHED, leverkusen.status)
+        assertEquals(0, leverkusen.homeScore)
+        assertEquals(1, leverkusen.awayScore)
+        assertEquals("Bayer Leverkusen", leverkusen.home.name)
+        assertEquals("https://a.espncdn.com/i/teamlogos/soccer/500/21.png", leverkusen.away.crestUrl)
+        assertEquals(MatchStatus.LIVE, palace.status)
+        assertEquals("67'", palace.clock)
+        assertEquals(MatchStatus.SCHEDULED, hamburg.status)
+        assertEquals(1_793_993_400_000L, hamburg.kickoffMillis)
+        assertNull(hamburg.homeScore)
+        assertEquals("HSV", hamburg.home.code)
+        assertEquals(MatchStatus.POSTPONED, celtic.status)
     }
 
     @Test
-    fun `european cup airing with no match of either team around it is not live`() {
-        val thursday = LiveScoreClient.parse(
-            JSONObject(
-                """{"events":[
-                ${event("2026-11-05T20:00Z", "post", "STATUS_FULL_TIME", "FT", "90'+4'", "Bayer Leverkusen", "0", "Marseille", "1", "B04", "OLM")},
-                ${event("2026-11-05T17:45Z", "post", "STATUS_FULL_TIME", "FT", "90'+4'", "Lyon", "2", "Real Sociedad", "1")}
-                ]}""",
-            ),
-            Competition.EUROPA_LEAGUE,
-        )
-        val friday = 1_793_963_880_000L + 2 * 60 * 60_000L // 2026-11-06T13:18Z
-        val window = LiveScoreClient.REPLAY_GAP_MILLIS
-        // Vendredi après-midi : aucune des équipes ne joue en coupe d'Europe.
-        assertTrue(LiveScoreClient.absent(thursday, "Rennes", "Olympiakos", friday - window, friday + 3 * 60 * 60_000L))
-        // Jeudi soir, avant-match compris : le direct est gardé, même avec une seule équipe reconnue.
-        val evening = 1_793_908_800_000L - 45 * 60_000L
-        assertFalse(LiveScoreClient.absent(thursday, "Bayer Leverkusen", "Marseille", evening - window, evening + 3 * 60 * 60_000L))
-        assertFalse(LiveScoreClient.absent(thursday, "Leverkusen", "OM", evening - window, evening + 3 * 60 * 60_000L))
-        assertFalse(LiveScoreClient.absent(thursday, "Olympique Lyonnais", "Real Sociedad", evening - window, evening + 3 * 60 * 60_000L))
-        // Équipe sans nom exploitable : rien n'est affirmé.
-        assertFalse(LiveScoreClient.absent(thursday, "OM", "Rennes", friday - window, friday + 3 * 60 * 60_000L))
-    }
-
-    @Test
-    fun `score boards cover every day of the window`() {
-        val from = 1_793_963_880_000L - 2 * 24 * 60 * 60_000L
-        assertEquals(listOf("20261104", "20261105", "20261106"), LiveScoreClient.days(from, 1_793_963_880_000L - LiveScoreClient.REPLAY_GAP_MILLIS))
-        assertEquals(emptyList<String>(), LiveScoreClient.days(2, 1))
+    fun `calendar lists the match days`() {
+        val json = JSONObject("""{"type":"ondays","eventDate":{"type":"ondays","dates":["2026-11-06T08:00Z","2026-11-07T08:00Z","2026-11-07T08:00Z","bad"]}}""")
+        assertEquals(listOf("20261106", "20261107"), LiveScoreClient.parseCalendar(json))
+        assertNull(LiveScoreClient.parseCalendar(JSONObject("{}")))
     }
 }

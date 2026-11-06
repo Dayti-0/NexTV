@@ -187,9 +187,11 @@
     <string name="football_result_win">V</string>
     <string name="football_result_draw">N</string>
     <string name="football_result_loss">D</string>
-    <string name="football_notice_no_key">Matchs trouvés dans le guide TV. Pour la liste complète, ajoutez une clé football-data.org (Réglages › Matchs de foot).</string>
-    <string name="football_notice_invalid_key">Clé football-data.org refusée (Réglages › Matchs de foot) : matchs trouvés dans le guide TV.</string>
-    <string name="football_notice_unavailable">football-data.org ne répond pas : matchs trouvés dans le guide TV.</string>
+    <string name="football_notice_no_key">Classements et fiches des clubs : ajoutez une clé football-data.org (Réglages › Matchs de foot).</string>
+    <string name="football_notice_invalid_key">Clé football-data.org refusée (Réglages › Matchs de foot).</string>
+    <string name="football_notice_unavailable">football-data.org ne répond pas. Réessayez dans quelques minutes.</string>
+    <string name="football_notice_schedule_partial">ESPN ne répond pas : seuls les matchs de football-data.org sont affichés.</string>
+    <string name="football_notice_schedule_unavailable">Calendrier des matchs indisponible : ESPN ne répond pas. Réessayez dans quelques minutes.</string>
     <string name="favorite_removed">« %1$s » retiré des favoris</string>
     <string name="category_hide">Masquer</string>
     <string name="category_hide_title">Masquer « %1$s » ?</string>
@@ -480,8 +482,8 @@
     <string name="settings_tmdb_save">Enregistrer la clé</string>
     <string name="settings_tmdb_remove">Supprimer la clé</string>
     <string name="settings_football">Matchs de foot (football-data.org)</string>
-    <string name="settings_football_help">La liste des matchs de la section Foot vient de football-data.org ; le guide TV sert à trouver la chaîne qui les diffuse. Clé gratuite sur football-data.org (« Get your free API key », reçue par e-mail).</string>
-    <string name="settings_football_missing">Aucune clé : seuls les matchs trouvés dans le guide TV apparaissent.</string>
+    <string name="settings_football_help">Les matchs de la section Foot viennent du calendrier d’ESPN (sans clé) ; le guide TV sert seulement à trouver la chaîne qui les diffuse. La clé football-data.org donne les classements et les fiches des clubs, et la liste des matchs quand ESPN ne répond pas. Clé gratuite sur football-data.org (« Get your free API key », reçue par e-mail).</string>
+    <string name="settings_football_missing">Aucune clé : pas de classements ni de fiches des clubs.</string>
     <string name="settings_football_key">Clé d’API football-data.org</string>
     <string name="settings_proxy_on">Proxy activé : %1$s</string>
     <string name="settings_proxy_off">Aucun proxy : connexions directes.</string>

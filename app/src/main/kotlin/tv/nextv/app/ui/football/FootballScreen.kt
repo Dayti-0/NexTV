@@ -945,6 +945,8 @@ private fun noticeText(notice: FootballNotice): String = stringResource(
         FootballNotice.NO_KEY -> R.string.football_notice_no_key
         FootballNotice.INVALID_KEY -> R.string.football_notice_invalid_key
         FootballNotice.UNAVAILABLE -> R.string.football_notice_unavailable
+        FootballNotice.SCHEDULE_PARTIAL -> R.string.football_notice_schedule_partial
+        FootballNotice.SCHEDULE_UNAVAILABLE -> R.string.football_notice_schedule_unavailable
     },
 )
 
