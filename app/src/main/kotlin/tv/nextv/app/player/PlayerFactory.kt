@@ -99,6 +99,17 @@ class PlayerFactory(
         return builder.build()
     }
 
+    /** Formats de son compressés (Dolby, DTS) et leur type, pour savoir si l'appareil les décode. */
+    private val encodedAudio = mapOf(
+        C.ENCODING_AC3 to MimeTypes.AUDIO_AC3,
+        C.ENCODING_E_AC3 to MimeTypes.AUDIO_E_AC3,
+        C.ENCODING_E_AC3_JOC to MimeTypes.AUDIO_E_AC3_JOC,
+        C.ENCODING_AC4 to MimeTypes.AUDIO_AC4,
+        C.ENCODING_DTS to MimeTypes.AUDIO_DTS,
+        C.ENCODING_DTS_HD to MimeTypes.AUDIO_DTS_HD,
+        C.ENCODING_DOLBY_TRUEHD to MimeTypes.AUDIO_TRUEHD,
+    )
+
     /**
      * Sortie du son décodé par l'appareil : le Dolby (AC3, E-AC3) et le DTS ne sont envoyés tels
      * quels à l'écran que si l'appareil ne sait pas les décoder. Envoyés à un écran ou un moniteur
@@ -106,7 +117,7 @@ class PlayerFactory(
      */
     private fun decodedAudio(context: Context): AudioCapabilities {
         val device = AudioCapabilities.getCapabilities(context)
-        val encoded = ENCODED_AUDIO.filter { (encoding, mimeType) -> device.supportsEncoding(encoding) && !hasDecoder(mimeType) }.keys
+        val encoded = encodedAudio.filter { (encoding, mimeType) -> device.supportsEncoding(encoding) && !hasDecoder(mimeType) }.keys
         return AudioCapabilities(intArrayOf(C.ENCODING_PCM_16BIT) + encoded.toIntArray(), device.maxChannelCount)
     }
 
@@ -204,17 +215,6 @@ class PlayerFactory(
             .build()
     }
 }
-
-/** Formats de son compressés (Dolby, DTS) et leur type, pour savoir si l'appareil les décode. */
-private val ENCODED_AUDIO = mapOf(
-    C.ENCODING_AC3 to MimeTypes.AUDIO_AC3,
-    C.ENCODING_E_AC3 to MimeTypes.AUDIO_E_AC3,
-    C.ENCODING_E_AC3_JOC to MimeTypes.AUDIO_E_AC3_JOC,
-    C.ENCODING_AC4 to MimeTypes.AUDIO_AC4,
-    C.ENCODING_DTS to MimeTypes.AUDIO_DTS,
-    C.ENCODING_DTS_HD to MimeTypes.AUDIO_DTS_HD,
-    C.ENCODING_DOLBY_TRUEHD to MimeTypes.AUDIO_TRUEHD,
-)
 
 private const val START_BUFFER_MILLIS = 1_500
 private const val RESUME_BUFFER_MILLIS = 3_000
