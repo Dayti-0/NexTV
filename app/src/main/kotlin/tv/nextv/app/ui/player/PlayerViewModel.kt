@@ -199,8 +199,18 @@ class PlayerViewModel(
     private var workingServer: Pair<Long, String>? = null
 
     // Reprise de lecture des films et épisodes.
-    private var resumeMode: String = handle.get<String>(ARG_RESUME) ?: RESUME_ASK
-    private var pendingResume: Pair<ChannelEntity, ProgressEntity>? = null
+    private val resume = ResumeController(
+        container = container,
+        scope = viewModelScope,
+        state = mutableState,
+        session = session,
+        initialMode = handle.get<String>(ARG_RESUME) ?: RESUME_ASK,
+        player = { mutablePlayer.value },
+        host = object : ResumeController.Host {
+            override suspend fun playVariant(variant: ChannelEntity) = this@PlayerViewModel.playVariant(variant, notice = null)
+            override fun load(id: Long) = this@PlayerViewModel.load(id)
+        },
+    )
     private val bandwidthMeter: DefaultBandwidthMeter = container.playerFactory.newBandwidthMeter()
 
     private val listener = object : Player.Listener {
@@ -373,7 +383,7 @@ class PlayerViewModel(
         viewModelScope.launch {
             while (true) {
                 delay(PROGRESS_SAVE_MILLIS)
-                saveProgress()
+                resume.save()
             }
         }
     }
@@ -624,9 +634,9 @@ class PlayerViewModel(
             )
         }
         refreshProgrammes()
-        if (!isLive) mutableState.update { it.copy(vod = vodInfo(requested), upNext = null) }
+        if (!isLive) mutableState.update { it.copy(vod = resume.vodInfo(requested), upNext = null) }
         if (isLive) session.startPositionMs = 0
-        if (!isLive && handleResume(requested)) return
+        if (!isLive && resume.handle(requested)) return
         val firstId = switcher?.current?.channelId ?: startId
         val variant = if (firstId == requested.id) requested else dao.get(firstId) ?: requested
         playVariant(variant, notice = null)
@@ -974,7 +984,7 @@ class PlayerViewModel(
         val player = mutablePlayer.value ?: return
         resumeOnStart = player.playWhenReady
         player.pause()
-        viewModelScope.launch { saveProgress() }
+        viewModelScope.launch { resume.save() }
     }
 
     // --- Pause du direct et différé -------------------------------------------------------------
@@ -1283,128 +1293,11 @@ class PlayerViewModel(
             backToLive()
             return
         }
-        if (!state.value.isLive) {
-            val player = mutablePlayer.value ?: return
-            viewModelScope.launch { saveProgress(positionMs = player.duration, durationMs = player.duration) }
-            // Épisode terminé : le suivant est proposé.
-            state.value.vod?.next?.let { next -> mutableState.update { it.copy(upNext = next) } }
-        }
-    }
-
-    // --- Reprise de lecture -----------------------------------------------------------------------
-
-    /** @return vrai si la lecture attend le choix « reprendre / recommencer » (ou reprend un autre épisode). */
-    private suspend fun handleResume(requested: ChannelEntity): Boolean {
-        val mode = resumeMode
-        resumeMode = RESUME_ASK
-        session.startPositionMs = 0
-        if (mode == RESUME_NO) return false
-        val progress = container.progress.get(requested.sourceId, requested.itemKey) ?: return false
-        val sameItem = progress.channelId == requested.id
-        if (mode == RESUME_YES) {
-            if (sameItem) {
-                session.startPositionMs = progress.positionMs
-                return false
-            }
-            resumeOther(progress)
-            return true
-        }
-        if (sameItem && progress.positionMs <= 0) return false
-        pendingResume = requested to progress
-        mutableState.update {
-            it.copy(
-                buffering = false,
-                resumePrompt = ResumePrompt(
-                    title = progress.title,
-                    resumeLabel = progress.episodeLabel,
-                    positionMs = progress.positionMs,
-                    startLabel = if (sameItem) null else episodeLabel(requested),
-                ),
-            )
-        }
-        return true
+        if (!state.value.isLive) resume.onVodEnded()
     }
 
     /** Choix fait dans la question « reprendre / recommencer ». */
-    fun answerResume(resume: Boolean) {
-        val (requested, progress) = pendingResume ?: return
-        pendingResume = null
-        mutableState.update { it.copy(resumePrompt = null, buffering = true) }
-        viewModelScope.launch {
-            when {
-                !resume -> {
-                    session.startPositionMs = 0
-                    playVariant(requested, notice = null)
-                }
-                progress.channelId == requested.id -> {
-                    session.startPositionMs = progress.positionMs
-                    playVariant(requested, notice = null)
-                }
-                else -> resumeOther(progress)
-            }
-        }
-    }
-
-    /** Reprend un autre épisode (celui en cours dans la série). */
-    private fun resumeOther(progress: ProgressEntity) {
-        resumeMode = RESUME_YES
-        load(progress.channelId)
-    }
-
-    /** Enregistre la position du film ou de l'épisode en cours. */
-    private suspend fun saveProgress(positionMs: Long? = null, durationMs: Long? = null) {
-        val item = session.playing ?: return
-        if (item.kind == ContentKind.LIVE.name || state.value.resumePrompt != null) return
-        val player = mutablePlayer.value
-        val position = positionMs ?: player?.currentPosition ?: return
-        val duration = (durationMs ?: player?.duration ?: 0).takeIf { it > 0 } ?: 0
-        val entity = ProgressEntity(
-            sourceId = item.sourceId,
-            itemKey = item.itemKey,
-            kind = item.kind,
-            channelId = item.id,
-            title = if (item.kind == ContentKind.SERIES.name) item.seriesName ?: item.title else item.title,
-            episodeLabel = if (item.kind == ContentKind.SERIES.name) episodeLabel(item) else null,
-            logoUrl = item.logoUrl,
-            positionMs = position,
-            durationMs = duration,
-            updatedAt = System.currentTimeMillis(),
-        )
-        val finished = duration > 0 && (duration - position < ProgressRepository.END_MARGIN_MS || position >= duration * 95 / 100)
-        if (finished && item.kind == ContentKind.SERIES.name) {
-            // Épisode terminé : la série reprendra à l'épisode suivant.
-            val episodes = container.channelDao.episodes(item.sourceId, item.itemKey)
-            val next = episodes.getOrNull(episodes.indexOfFirst { it.id == item.id } + 1)
-            if (next != null) {
-                val nextEntity = container.channelDao.get(next.id)
-                container.progress.saveNext(entity.copy(channelId = next.id, episodeLabel = nextEntity?.let(::episodeLabel)))
-            } else {
-                container.progress.clear(item.sourceId, item.itemKey)
-            }
-            return
-        }
-        container.progress.save(entity)
-    }
-
-    /** Titre et épisode d'un film ou d'un épisode, avec l'épisode suivant de la série. */
-    private suspend fun vodInfo(item: ChannelEntity): VodInfo {
-        if (item.kind != ContentKind.SERIES.name) {
-            return VodInfo(item.title.ifBlank { item.name }, null, item.year, item.logoUrl, next = null)
-        }
-        val episodes = container.channelDao.episodes(item.sourceId, item.itemKey)
-        val next = episodes.getOrNull(episodes.indexOfFirst { it.id == item.id } + 1)?.let { row ->
-            val label = when {
-                row.season != null && row.episode != null -> "S%02dE%02d".format(row.season, row.episode)
-                row.episode != null -> "E%02d".format(row.episode)
-                else -> null
-            }
-            NextEpisode(row.id, label, row.name, row.logoUrl)
-        }
-        val series = item.seriesName ?: item.title.ifBlank { item.name }
-        val label = episodeLabel(item)
-        val episodeTitle = item.name.takeIf { it.isNotBlank() && !it.equals(series, ignoreCase = true) }
-        return VodInfo(series, listOfNotNull(label, episodeTitle).joinToString("  ·  ").ifEmpty { null }, item.year, item.logoUrl, next)
-    }
+    fun answerResume(resume: Boolean) = this.resume.answer(resume)
 
     /** Film ou épisode : avance ou recul de [deltaMs] dans la vidéo. */
     fun seekBy(deltaMs: Long) {
@@ -1422,27 +1315,9 @@ class PlayerViewModel(
     }
 
     /** Épisode suivant de la série, depuis son début. */
-    fun playNextEpisode() {
-        val next = state.value.vod?.next ?: state.value.upNext ?: return
-        mutableState.update { it.copy(upNext = null) }
-        viewModelScope.launch { saveProgress() }
-        resumeMode = RESUME_NO
-        load(next.id)
-    }
+    fun playNextEpisode() = resume.playNextEpisode()
 
-    fun dismissUpNext() {
-        mutableState.update { it.copy(upNext = null) }
-    }
-
-    private fun episodeLabel(item: ChannelEntity): String? {
-        val season = item.season
-        val episode = item.episode
-        return when {
-            season != null && episode != null -> "S%02dE%02d".format(season, episode)
-            episode != null -> "E%02d".format(episode)
-            else -> null
-        }
-    }
+    fun dismissUpNext() = resume.dismissUpNext()
 
     private fun releasePlayer() {
         mutablePlayer.value?.let {
@@ -1468,14 +1343,7 @@ class PlayerViewModel(
     }
 
     override fun onCleared() {
-        // Dernière position (le ViewModel disparaît : enregistrement dans la portée de l'application).
-        val player = mutablePlayer.value
-        val item = session.playing
-        if (player != null && item != null && item.kind != ContentKind.LIVE.name && state.value.resumePrompt == null) {
-            val position = player.currentPosition
-            val duration = player.duration
-            container.applicationScope.launch { saveProgress(position, duration) }
-        }
+        resume.saveBeforeClose()
         stopTimeshift()
         releasePlayer()
         releaseMulticastLock()
