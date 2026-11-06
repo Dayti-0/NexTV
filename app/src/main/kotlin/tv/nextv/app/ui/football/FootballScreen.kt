@@ -643,14 +643,6 @@ private fun StandingsTable(
                 contentPadding = PaddingValues(start = if (compact) horizontalPadding else 28.dp, end = horizontalPadding, top = 12.dp, bottom = 32.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                item(key = "hint") {
-                    Text(
-                        stringResource(R.string.football_standings_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 14.dp, bottom = 4.dp),
-                    )
-                }
                 item(key = "header") {
                     StandingLine(
                         position = "#",

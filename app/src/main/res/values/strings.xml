@@ -128,7 +128,7 @@
     <string name="home_favorites">Favoris</string>
     <string name="home_continue">Reprendre la lecture</string>
     <string name="home_continue_empty_title">Rien à reprendre</string>
-    <string name="home_continue_empty">Les films et épisodes commencés apparaissent ici. OK pour reprendre, appui long pour retirer de la liste.</string>
+    <string name="home_continue_empty">Aucun film ni épisode en cours.</string>
     <string name="home_continue_remaining">Reste %1$s</string>
     <string name="home_continue_episode">%1$s · reste %2$s</string>
     <string name="home_continue_next">Épisode suivant : %1$s</string>
@@ -152,8 +152,7 @@
     <string name="favorite_added">« %1$s » ajouté aux favoris</string>
     <string name="home_recent">Récentes</string>
     <string name="recent_empty_title">Aucune chaîne récente</string>
-    <string name="recent_empty_message">Les chaînes que vous regardez apparaissent ici, la dernière en premier.</string>
-    <string name="preview_hint">Sélectionnez une chaîne : son programme et un aperçu s’affichent ici.</string>
+    <string name="recent_empty_message">Aucune chaîne regardée récemment.</string>
     <string name="preview_next">À suivre · %1$s  %2$s</string>
     <string name="home_football">Foot</string>
     <string name="football_all">Tous les matchs</string>
@@ -178,7 +177,6 @@
     <string name="football_table_played">J</string>
     <string name="football_table_difference">Diff.</string>
     <string name="football_table_points">Pts</string>
-    <string name="football_standings_hint">OK sur un club : ses derniers et prochains matchs · appui long : le suivre (« Mes équipes »)</string>
     <string name="football_team_last">Derniers matchs</string>
     <string name="football_team_next">Prochains matchs</string>
     <string name="football_team_none">Aucun match</string>
@@ -220,7 +218,7 @@
     <string name="guide_empty_message">Ajoutez un guide XMLTV à la playlist (ou utilisez celui qu’elle annonce), puis actualisez-la.</string>
     <string name="guide_no_programme">Pas de programme</string>
     <string name="guide_no_favorites_title">Aucune chaîne favorite</string>
-    <string name="guide_no_favorites_message">Ajoutez des chaînes aux favoris (appui long sur OK) pour les retrouver ici.</string>
+    <string name="guide_no_favorites_message">Aucune chaîne en favori.</string>
     <string name="guide_no_description">Pas de description dans le guide.</string>
     <string name="guide_watch">Regarder</string>
     <string name="guide_watch_live">Regarder le direct</string>
@@ -235,7 +233,7 @@
     <string name="guide_selection_add">Ajouter à L’essentiel</string>
     <string name="guide_selection_remove">Retirer de L’essentiel</string>
     <string name="guide_selection_empty_title">L’essentiel est vide</string>
-    <string name="guide_selection_empty_message">Choisissez vos chaînes : appui long sur une chaîne du guide (colonne de gauche), ou « Ajouter à L’essentiel » dans la fiche d’un programme. Chaque chaîne n’y figure qu’une fois, sans les doublons SD, HD, FHD.</string>
+    <string name="guide_selection_empty_message">Aucune chaîne dans L’essentiel.</string>
     <string name="tonight_today">Ce soir</string>
     <string name="tonight_tomorrow">Demain soir</string>
     <string name="tonight_first_part">Vers 21 h</string>
@@ -271,16 +269,10 @@
     <string name="player_replay">Replay</string>
     <string name="player_replay_unavailable">Ce programme n’est pas disponible en replay.</string>
     <string name="player_backup_server">Serveur principal injoignable : lecture par un serveur de secours</string>
-    <string name="player_options_hint_live">Menu ≡ : options · ⏪ : dernière chaîne regardée</string>
-    <string name="player_options_hint">Menu ≡ : options</string>
     <string name="player_channel_list">Chaînes</string>
     <string name="player_paused">En pause</string>
     <string name="player_delay">Différé −%1$s</string>
-    <string name="player_timeshift_hint">OK : pause / lecture · → : retour au direct</string>
-    <string name="player_replay_hint">← → : reculer / avancer de %1$s (passer la pub) · maintenir ← → : retour / avance rapide x2 · OK : pause / lecture</string>
-    <string name="player_restart_hint">← → : reculer / avancer de %1$s · maintenir ← → : retour / avance rapide x2 · OK : pause</string>
     <string name="player_back_to_live">Revenir au direct</string>
-    <string name="player_back_to_live_hint">Maintenir OK : revenir au direct</string>
     <string name="player_fast_speed">x2</string>
     <string name="player_jump_forward">+%1$s</string>
     <string name="player_jump_back">−%1$s</string>
@@ -303,7 +295,6 @@
     <string name="player_info_mono">mono</string>
     <string name="player_info_stereo">stéréo</string>
     <string name="player_info_channels">%1$d canaux</string>
-    <string name="player_info_hint">Info, Menu ou Retour pour fermer</string>
     <string name="player_quality_decoder">L’appareil ne suit pas : passage en %1$s</string>
     <string name="player_speed">%1$s Mbit/s</string>
     <string name="player_remaining">Reste %1$s</string>
@@ -394,8 +385,6 @@
     <string name="home_rows_results">Résultats</string>
     <string name="box_now">En ce moment</string>
     <string name="box_later">Plus tard</string>
-    <string name="box_hint">Sélectionnez une chaîne : son direct et ses programmes s’affichent ici.</string>
-    <string name="billboard_hint_channel">OK : regarder · appui long : favori</string>
     <string name="settings_theme">Thème de l’interface</string>
     <string name="theme_night">Classique (bleu)</string>
     <string name="theme_black">Noir</string>
@@ -427,7 +416,6 @@
     <string name="appearance_channels_list">Liste</string>
     <string name="appearance_channels_mosaic">Mosaïque</string>
     <string name="appearance_palette">Palette de couleurs</string>
-    <string name="appearance_palette_help">Sélectionnez une palette pour la voir appliquée à tout l’écran, puis OK pour la garder (enregistrée aussitôt).</string>
     <string name="appearance_default">Par défaut</string>
     <string name="appearance_previous">Revenir à %1$s</string>
     <string name="appearance_saved">Palette « %1$s » enregistrée</string>
@@ -624,8 +612,6 @@
     <string name="home_rows_because">Parce que vous avez regardé %1$s</string>
     <string name="live_remaining">encore %1$d min</string>
     <string name="box_next">Ensuite</string>
-    <string name="spotlight_hint">Sélectionnez une affiche : son visuel, ses détails et son résumé apparaissent ici.</string>
-    <string name="premium_hint">Parcourez les affiches : chaque sélection s’affiche en grand.</string>
     <string name="film_ends_at">Fin à %1$s</string>
     <string name="film_back_10">Reculer de 10 secondes</string>
     <string name="film_forward_30">Avancer de 30 secondes</string>

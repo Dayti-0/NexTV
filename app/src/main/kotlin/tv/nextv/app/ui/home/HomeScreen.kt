@@ -552,7 +552,7 @@ private fun CatalogBody(
                 null
             },
             pane = { paneModifier ->
-                if (section == HomeSection.TV) LivePane(preview, previewPlayer, now, paneModifier) else SpotlightPane(section, spotlight, paneModifier)
+                if (section == HomeSection.TV) LivePane(preview, previewPlayer, now, paneModifier) else SpotlightPane(spotlight, paneModifier)
             },
         ) {
             // Chaînes : une par ligne avec leur programme, ou en mosaïque (réglages) ; films et séries : affiches.

@@ -145,14 +145,15 @@ private fun PremiumInfo(section: HomeSection, spotlight: Spotlight?) {
             overflow = TextOverflow.Ellipsis,
         )
         spotlight?.let { MetaLine(it, MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f)) }
-        val overview = spotlight?.overview
-        Text(
-            overview ?: stringResource(R.string.premium_hint),
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.78f),
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
+        spotlight?.overview?.let { overview ->
+            Text(
+                overview,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.78f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
@@ -162,7 +163,6 @@ private fun PremiumLiveInfo(preview: ChannelPreview?, now: Long) {
     Column(Modifier.fillMaxWidth(0.58f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically)) {
         if (preview == null) {
             Text(stringResource(R.string.home_tv), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
-            Text(stringResource(R.string.preview_hint), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.78f))
             return@Column
         }
         Text(

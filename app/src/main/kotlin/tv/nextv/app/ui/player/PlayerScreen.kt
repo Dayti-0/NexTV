@@ -657,12 +657,6 @@ fun PlayerOptionsPanel(
                 if (isLive) OptionRow(stringResource(R.string.player_last_channel), selected = false, onClick = onPreviousChannel)
                 if (isLive) OptionRow(stringResource(R.string.player_lower_ads), selected = lowerAdVolume) { onLowerAdVolume(!lowerAdVolume) }
                 OptionRow(stringResource(R.string.player_info_title), selected = infoVisible, onClick = onToggleInfo)
-                Text(
-                    stringResource(if (isLive) R.string.player_options_hint_live else R.string.player_options_hint),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.6f),
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-                )
             }
         }
     }
@@ -742,7 +736,7 @@ fun PlayerOverlay(
                         Modifier.size(width = if (window.isWide) 128.dp else 88.dp, height = if (window.isWide) 84.dp else 58.dp),
                         monogramSize = 24.dp,
                     )
-                    ChannelInfo(state, now, Modifier.weight(1f), canGoLive = onBackToLive != null)
+                    ChannelInfo(state, now, Modifier.weight(1f))
                     // Heure actuelle.
                     Text(
                         timeOf(now),
@@ -804,7 +798,7 @@ fun PlayerOverlay(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Modifier, canGoLive: Boolean = false) {
+private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Modifier) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         // Nom puis pastilles ; sur un écran étroit, les pastilles passent à la ligne.
         FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -863,20 +857,6 @@ private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Mo
         }
         state.qualityNotice?.let {
             Text(it, style = MaterialTheme.typography.bodySmall, color = NexTvColors.Warning)
-        }
-        val hint = when {
-            state.seekable && state.isLive -> stringResource(R.string.player_restart_hint, jumpLabel(state.jumpStepSeconds))
-            state.seekable -> stringResource(R.string.player_replay_hint, jumpLabel(state.jumpStepSeconds))
-            state.isLive && (state.paused || state.liveDelayMs > 0) -> stringResource(R.string.player_timeshift_hint)
-            else -> null
-        }
-        hint?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.75f)) }
-        // Replay, « Depuis le début » : comment revenir au direct, bien visible.
-        if (canGoLive && state.seekable) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                LiveDot()
-                Text(stringResource(R.string.player_back_to_live_hint), style = MaterialTheme.typography.labelLarge, color = Color.White)
-            }
         }
         state.notices.forEach {
             Text(it, style = MaterialTheme.typography.bodySmall, color = NexTvColors.Warning)
@@ -1282,11 +1262,6 @@ fun PlaybackInfoPanel(state: PlayerUiState, visible: Boolean, modifier: Modifier
                 )
                 InfoLine(stringResource(R.string.player_info_dropped), info.droppedFrames.toString(), warning = info.droppedFrames > 0)
                 InfoLine(stringResource(R.string.player_info_version), state.quality ?: unknown)
-                Text(
-                    stringResource(R.string.player_info_hint),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.6f),
-                )
             }
         }
     }

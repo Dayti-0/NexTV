@@ -202,11 +202,6 @@ fun AppearanceContent(
                 }
 
                 Heading(stringResource(R.string.appearance_palette))
-                Text(
-                    stringResource(R.string.appearance_palette_help),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     PillButton(
                         stringResource(R.string.appearance_default),

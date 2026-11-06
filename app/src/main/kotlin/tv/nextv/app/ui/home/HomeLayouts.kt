@@ -686,7 +686,6 @@ internal fun ChannelBillboard(preview: ChannelPreview?, player: Player?, now: Lo
         ) {
             if (preview == null) {
                 Text(stringResource(R.string.home_tv), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
-                Text(stringResource(R.string.preview_hint), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 return@Column
             }
             val channel = preview.channel

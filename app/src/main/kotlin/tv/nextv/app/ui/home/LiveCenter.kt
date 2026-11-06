@@ -103,10 +103,7 @@ internal fun LivePane(preview: ChannelPreview?, player: Player?, now: Long, modi
             preview?.channel?.let { ChannelLogo(it.logoUrl, it.title, Modifier.fillMaxWidth(0.4f).aspectRatio(16f / 9f), monogramSize = 30.dp) }
             if (player != null) PreviewVideo(player, Modifier.fillMaxSize())
         }
-        if (preview == null) {
-            Text(stringResource(R.string.box_hint), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            return@Column
-        }
+        if (preview == null) return@Column
         val channel = preview.channel
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             channel.channelNumber?.let { Text(it, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold) }
@@ -159,7 +156,7 @@ private fun UpcomingLine(programme: GuideProgramme, highlight: Boolean = false) 
 
 /** Volet d'un film ou d'une série : visuel, titre, année, genres, note et résumé (TMDB). */
 @Composable
-internal fun SpotlightPane(section: HomeSection, spotlight: Spotlight?, modifier: Modifier) {
+internal fun SpotlightPane(spotlight: Spotlight?, modifier: Modifier) {
     Column(
         modifier
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
@@ -177,11 +174,7 @@ internal fun SpotlightPane(section: HomeSection, spotlight: Spotlight?, modifier
                 }
             }
         }
-        if (spotlight == null) {
-            Text(sectionLabel(section), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            Text(stringResource(R.string.spotlight_hint), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            return@Column
-        }
+        if (spotlight == null) return@Column
         Text(spotlight.item.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
         MetaLine(spotlight)
         spotlight.details?.tagline?.let {

@@ -106,16 +106,7 @@ internal fun ChannelHero(
                     transitionSpec = { fadeIn() togetherWith fadeOut() },
                     label = "hero",
                 ) { shown ->
-                    if (shown == null) {
-                        Text(
-                            stringResource(R.string.preview_hint),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 8.dp),
-                        )
-                    } else {
-                        HeroDetails(shown, now)
-                    }
+                    if (shown != null) HeroDetails(shown, now)
                 }
             }
         }
