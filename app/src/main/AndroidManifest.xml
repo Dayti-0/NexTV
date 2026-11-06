@@ -23,7 +23,7 @@
         android:name=".NexTvApplication"
         android:allowBackup="false"
         android:banner="@drawable/banner"
-        android:icon="@drawable/ic_launcher"
+        android:icon="@drawable/ic_launcher_nixtv"
         android:label="@string/app_name"
         android:largeHeap="true"
         android:networkSecurityConfig="@xml/network_security_config"
