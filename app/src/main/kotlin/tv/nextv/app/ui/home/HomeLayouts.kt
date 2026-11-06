@@ -1,17 +1,18 @@
 package tv.nextv.app.ui.home
 
-import tv.nextv.app.ui.components.bottomFade
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -43,12 +44,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -57,7 +58,9 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -68,7 +71,6 @@ import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.itemKey
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.launch
 import tv.nextv.app.R
 import tv.nextv.app.data.db.ChannelListRow
 import tv.nextv.app.data.db.GroupRow
@@ -80,6 +82,7 @@ import tv.nextv.app.ui.components.ChannelLogo
 import tv.nextv.app.ui.components.FocusSurface
 import tv.nextv.app.ui.components.LiveProgress
 import tv.nextv.app.ui.components.WindowInfo
+import tv.nextv.app.ui.components.bottomFade
 import tv.nextv.app.ui.guide.formatDuration
 import tv.nextv.app.ui.theme.NexTvColors
 import tv.nextv.core.model.ContentKind
@@ -177,7 +180,7 @@ internal fun StreamingHome(
         PreloadRows(content)
         val shelves = shelfList(content)
         RestoreRow(listState, lastOpened, listOf("search") + shelves.map { it.key })
-        CompositionLocalProvider(LocalRowSnap provides rememberRowSnap(listState)) {
+        AnchoredRows {
             LazyColumn(
                 Modifier.weight(1f).bottomFade({ listState.canScrollForward }),
                 state = listState,
@@ -280,26 +283,40 @@ internal fun shelfList(content: ShelfContent): List<ShelfSpec> = buildList {
 /** Présentation des rangées : Streaming (vignettes serrées) ou Cinéma Premium (grandes affiches). */
 internal enum class ShelfStyle { STREAMING, PREMIUM }
 
-/** Cale la rangée de clé donnée en haut de la liste des rangées (fournie par l'interface qui les affiche). */
-internal val LocalRowSnap = staticCompositionLocalOf<((String) -> Unit)?> { null }
-
 /**
- * Rangée qui reçoit le focus : amenée en haut de [listState] (la liste ne défile sinon que du
- * minimum, et le bas de la rangée précédente resterait visible, coupé, sous la bannière).
+ * Rangées calées en haut de la liste (Streaming, Cinéma Premium) : la vignette choisie s'arrête
+ * toujours à la même hauteur ([RowAnchor.cardTopPx], mesurée sur l'en-tête des rangées), donc sa
+ * rangée tout en haut, sans morceau de la précédente au-dessus (sur TV, Compose place sinon la
+ * vignette à 30 % de la hauteur). Calcul fait par le défilement lui-même : rien n'attend la fin
+ * d'une animation (appareils lents), et la place tient quand la bannière change de taille.
  */
+internal class RowAnchor {
+    var cardTopPx by mutableFloatStateOf(0f)
+}
+
+internal val LocalRowAnchor = staticCompositionLocalOf<RowAnchor?> { null }
+
+/** Défilement habituel, rendu aux rangées horizontales : l'ancrage ne vaut que pour la liste des rangées. */
+internal val LocalRowDefaultSpec = staticCompositionLocalOf<BringIntoViewSpec?> { null }
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-internal fun rememberRowSnap(listState: LazyListState): (String) -> Unit {
-    val scope = rememberCoroutineScope()
-    return remember(listState, scope) {
-        { key: String ->
-            scope.launch {
-                // Après le défilement minimal qui suit le focus (il démarre à l'image suivante) : il est remplacé.
-                withFrameNanos { }
-                withFrameNanos { }
-                val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == key } ?: return@launch
-                if (item.offset != 0) listState.animateScrollToItem(item.index)
+internal fun AnchoredRows(content: @Composable () -> Unit) {
+    val default = LocalBringIntoViewSpec.current
+    val anchor = remember { RowAnchor() }
+    val spec = remember(anchor, default) {
+        object : BringIntoViewSpec {
+            override val scrollAnimationSpec get() = default.scrollAnimationSpec
+
+            override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+                val top = anchor.cardTopPx
+                // Avant la première mesure des rangées : défilement habituel.
+                return if (top <= 0f) default.calculateScrollDistance(offset, size, containerSize) else offset - top
             }
         }
+    }
+    CompositionLocalProvider(LocalBringIntoViewSpec provides spec, LocalRowAnchor provides anchor, LocalRowDefaultSpec provides default) {
+        content()
     }
 }
 
@@ -456,6 +473,7 @@ private suspend fun <T> loadSafely(block: suspend () -> T): T? = try {
  * Rangée : titre, nombre d'éléments et défilement horizontal, terminé par « Tout voir ». Sa place
  * est gardée au retour (lecteur, fiche). Pendant le chargement, des emplacements vides gardent sa hauteur.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun Shelf(
     title: String,
@@ -475,13 +493,18 @@ internal fun Shelf(
     val rowState = rememberSaveable(rowKey, saver = LazyListState.Saver) { LazyListState() }
     RestoreScroll(rowState, lastOpened, itemCount, row = rowKey)
     val premium = style == ShelfStyle.PREMIUM
-    val snap = LocalRowSnap.current
-    Column(
-        // Rangée choisie : calée en haut de la liste, sans morceau de la précédente au-dessus.
-        Modifier.onFocusChanged { if (it.hasFocus) snap?.invoke(rowKey) },
-        verticalArrangement = Arrangement.spacedBy(if (premium) 0.dp else 2.dp),
-    ) {
-        Row(Modifier.padding(horizontal = padding), verticalAlignment = Alignment.Bottom) {
+    val spacing = if (premium) 0.dp else 2.dp
+    val rowPadding = if (premium) 12.dp else 8.dp
+    // Hauteur entre le haut de la rangée et ses vignettes : là où la vignette choisie s'arrête.
+    val anchor = LocalRowAnchor.current
+    val belowTitle = with(LocalDensity.current) { (spacing + rowPadding).toPx() }
+    Column(verticalArrangement = Arrangement.spacedBy(spacing)) {
+        Row(
+            Modifier
+                .padding(horizontal = padding)
+                .then(if (anchor != null) Modifier.onSizeChanged { anchor.cardTopPx = it.height + belowTitle } else Modifier),
+            verticalAlignment = Alignment.Bottom,
+        ) {
             Text(
                 title,
                 style = MaterialTheme.typography.titleMedium,
@@ -495,25 +518,27 @@ internal fun Shelf(
                 Text("  ·  $it", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
             }
         }
-        LazyRow(
-            state = rowState,
-            // Marge verticale : les vignettes grossissent sous le focus.
-            contentPadding = PaddingValues(horizontal = padding, vertical = if (premium) 12.dp else 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(if (premium) 18.dp else 12.dp),
-        ) {
-            if (loading) {
-                items(PLACEHOLDERS) {
-                    Box(
-                        Modifier
-                            .width(itemWidth)
-                            .aspectRatio(imageRatio)
-                            .clip(MaterialTheme.shapes.medium)
-                            .background(MaterialTheme.colorScheme.surfaceContainer),
-                    )
+        CompositionLocalProvider(LocalBringIntoViewSpec provides (LocalRowDefaultSpec.current ?: LocalBringIntoViewSpec.current)) {
+            LazyRow(
+                state = rowState,
+                // Marge verticale : les vignettes grossissent sous le focus.
+                contentPadding = PaddingValues(horizontal = padding, vertical = rowPadding),
+                horizontalArrangement = Arrangement.spacedBy(if (premium) 18.dp else 12.dp),
+            ) {
+                if (loading) {
+                    items(PLACEHOLDERS) {
+                        Box(
+                            Modifier
+                                .width(itemWidth)
+                                .aspectRatio(imageRatio)
+                                .clip(MaterialTheme.shapes.medium)
+                                .background(MaterialTheme.colorScheme.surfaceContainer),
+                        )
+                    }
+                } else {
+                    content()
+                    if (onSeeAll != null) item(key = "see-all") { SeeAllCard(onSeeAll, itemWidth, imageRatio) }
                 }
-            } else {
-                content()
-                if (onSeeAll != null) item(key = "see-all") { SeeAllCard(onSeeAll, itemWidth, imageRatio) }
             }
         }
     }

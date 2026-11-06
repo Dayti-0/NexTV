@@ -1,6 +1,7 @@
 package tv.nextv.app.ui.home
 
 import android.app.Application
+import android.content.pm.PackageManager
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -26,10 +27,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import tv.nextv.app.data.db.ChannelListRow
 import tv.nextv.app.data.db.GroupRow
@@ -48,6 +52,12 @@ class HomeFocusTest {
 
     @get:Rule
     val compose = createComposeRule()
+
+    /** Comme sur une vraie TV : Compose y fait défiler les listes en « pivot » (élément choisi à 30 % de la hauteur). */
+    @Before
+    fun televisionDevice() {
+        shadowOf(RuntimeEnvironment.getApplication().packageManager).setSystemFeature(PackageManager.FEATURE_LEANBACK, true)
+    }
 
     private val groups = (1..30).map { GroupRow("Groupe $it", 4) }
 
@@ -150,20 +160,35 @@ class HomeFocusTest {
     @Test
     fun streamingFocusedRowIsSnappedToTheTop() = assertFocusedRowSnapped(HomeLayout.STREAMING)
 
-    private fun assertFocusedRowSnapped(layout: HomeLayout) {
+    /** Touches enchaînées pendant le défilement (appareil lent, touche maintenue) : même résultat. */
+    @Test
+    fun premiumRowIsSnappedWhenKeysComeQuickly() = assertFocusedRowSnapped(HomeLayout.PREMIUM, quick = true)
+
+    @Test
+    fun streamingRowIsSnappedWhenKeysComeQuickly() = assertFocusedRowSnapped(HomeLayout.STREAMING, quick = true)
+
+    private fun assertFocusedRowSnapped(layout: HomeLayout, quick: Boolean = false) {
         val focused = mutableListOf<ChannelListRow>()
         compose.setContent { Home(layout, HomeActions(onChannelFocus = { focused += it })) }
         compose.waitForIdle()
+        if (quick) compose.mainClock.autoAdvance = false
         repeat(6) {
             compose.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
-            compose.waitForIdle()
+            if (quick) compose.mainClock.advanceTimeBy(48) else compose.waitForIdle()
         }
+        if (quick) {
+            compose.mainClock.advanceTimeBy(2_000)
+            compose.mainClock.autoAdvance = true
+        }
+        compose.waitForIdle()
         val group = focused.last().groupTitle!!.removePrefix("Groupe ").toInt()
         val previous = "Groupe ${group - 1} · 0"
         val visible = runCatching { compose.onNodeWithText(previous).isDisplayed() }.getOrDefault(false)
-        println("$layout : rangée Groupe $group, « $previous » visible : $visible")
+        println("$layout${if (quick) " (rapide)" else ""} : rangée Groupe $group, « $previous » visible : $visible")
         assertTrue("Groupe $group", group >= 2)
         assertTrue("$layout : « $previous » encore visible au-dessus de la rangée choisie", !visible)
+        // Le titre de la rangée choisie reste entier, en haut.
+        assertTrue("$layout : titre « Groupe $group » caché", compose.onNodeWithText("Groupe $group").isDisplayed())
     }
 
     /** Retour du lecteur : la liste revient à sa place et la chaîne ouverte reprend le focus. */

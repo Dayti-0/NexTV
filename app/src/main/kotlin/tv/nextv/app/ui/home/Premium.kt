@@ -112,7 +112,7 @@ internal fun PremiumHome(
             val shelves = shelfList(content)
             val listState = rememberSaveable(section, saver = LazyListState.Saver) { LazyListState() }
             RestoreRow(listState, lastOpened, shelves.map { it.key })
-            CompositionLocalProvider(LocalRowSnap provides rememberRowSnap(listState)) {
+            AnchoredRows {
                 LazyColumn(
                     Modifier.weight(1f).bottomFade({ listState.canScrollForward }),
                     state = listState,
