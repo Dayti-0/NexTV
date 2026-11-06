@@ -1,6 +1,7 @@
 package tv.nextv.app.ui.player
 
 import android.content.res.Resources
+import android.os.SystemClock
 import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.Format
@@ -67,6 +68,9 @@ internal class PlayerEngine(
     var generation = 0
         private set
 
+    /** Chaîne demandée ([startZapTimer]) : heure, pour journaliser le délai jusqu'à la première image. */
+    private var zapStartedAt = 0L
+
     /** Option « baisser le son des pubs », lue par le traitement du son de chaque lecteur. */
     val adVolume = AdVolumeControl()
 
@@ -111,6 +115,13 @@ internal class PlayerEngine(
 
         override fun onTracksChanged(tracks: Tracks) {
             state.update { it.copy(tracks = describeTracks(tracks), audioProblem = audioProblemOf(tracks)) }
+        }
+
+        override fun onRenderedFirstFrame() {
+            val started = zapStartedAt
+            if (started == 0L) return
+            zapStartedAt = 0L
+            container.logger.debug(TAG, "zapping → première image : ${SystemClock.elapsedRealtime() - started} ms")
         }
     }
 
@@ -230,6 +241,16 @@ internal class PlayerEngine(
         exoPlayer = null
         exoPlayerConfig = null
         mutablePlayer.value = null
+    }
+
+    /** Chaîne demandée : le délai jusqu'à sa première image sera journalisé. */
+    fun startZapTimer() {
+        zapStartedAt = SystemClock.elapsedRealtime()
+    }
+
+    /** Pas d'image attendue (question « reprendre / recommencer ») : pas de délai à journaliser. */
+    fun cancelZapTimer() {
+        zapStartedAt = 0L
     }
 
     /**

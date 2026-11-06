@@ -244,6 +244,7 @@ class PlayerViewModel(
 
     private fun load(id: Long) {
         delayed.beforeLoad(otherChannel = id != channelId)
+        engine.startZapTimer()
         channelId = id
         handle[ARG_CHANNEL_ID] = id
         loadJob?.cancel()
@@ -297,7 +298,11 @@ class PlayerViewModel(
         refreshProgrammes()
         if (!isLive) mutableState.update { it.copy(vod = resume.vodInfo(requested), upNext = null) }
         if (isLive) session.startPositionMs = 0
-        if (!isLive && resume.handle(requested)) return
+        if (!isLive && resume.handle(requested)) {
+            // Question « reprendre / recommencer » : pas d'image attendue avant la réponse.
+            if (state.value.resumePrompt != null) engine.cancelZapTimer()
+            return
+        }
         val firstId = quality.currentChannelId ?: startId
         val variant = if (firstId == requested.id) requested else dao.get(firstId) ?: requested
         playVariant(variant, notice = null)
