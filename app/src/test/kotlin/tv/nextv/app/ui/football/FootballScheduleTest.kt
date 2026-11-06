@@ -66,4 +66,21 @@ class FootballScheduleTest {
         assertEquals("120+2'", shown.clock)
         assertTrue(shown.endMillis > now)
     }
+
+    @Test
+    fun `ligue 1 plus comes first for a ligue 1 match`() {
+        val dazn = EpgChannelRow("dazn1.fr", 4, "FR| DAZN PPV 1", "FR| DAZN PPV 1", null)
+        val ligue1 = EpgChannelRow("ligue1plus3.fr", 5, "LIGUE 1+| MATCH 3 (MULTI AUDIO SANS PUB)", "LIGUE 1+| MATCH 3 (MULTI AUDIO SANS PUB)", null)
+        val kickoff = fridayNoon + 32 * hour
+        val psg = match(7, Competition.LIGUE_1, "Paris Saint-Germain", "Troyes", kickoff)
+        val shown = scheduledMatches(
+            listOf(psg),
+            listOf(
+                row(dazn, "Ligue 1 : PSG / Troyes", kickoff - 30 * 60_000L, 150),
+                row(ligue1, "Ligue 1 McDonald's : PSG / Troyes", kickoff, 120),
+            ),
+            now,
+        ).single()
+        assertEquals(listOf("LIGUE 1+| MATCH 3 (MULTI AUDIO SANS PUB)", "FR| DAZN PPV 1"), shown.channels.map { it.name })
+    }
 }

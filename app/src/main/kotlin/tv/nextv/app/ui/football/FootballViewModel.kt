@@ -335,7 +335,7 @@ internal fun scheduledMatches(matches: List<ScheduledMatch>, rows: List<Broadcas
     val found = BroadcastFinder.assign(playable, broadcasts)
     return playable.mapNotNull { match ->
         // Chaînes de la playlist d'abord (celles du guide seul ne se regardent pas), françaises en tête.
-        val shows = ranked(found[match].orEmpty())
+        val shows = ranked(found[match].orEmpty(), match.competition)
         if (match.competition == Competition.NATIONAL_TEAMS && shows.isEmpty()) return@mapNotNull null
         val first = shows.firstOrNull()
         val live = match.status == MatchStatus.LIVE
@@ -370,11 +370,18 @@ internal fun scheduledMatches(matches: List<ScheduledMatch>, rows: List<Broadcas
 
 /**
  * Une ligne par chaîne : celles de la playlist d'abord (celles du guide seul ne se regardent pas),
- * les françaises en tête, puis la première à commencer.
+ * puis le diffuseur officiel de la compétition (Ligue 1 : Ligue 1+), les françaises, et la première
+ * à commencer.
  */
-private fun ranked(shows: Collection<BroadcastRow>): List<BroadcastRow> =
-    shows.sortedWith(compareBy({ it.channelId == null }, { BroadcastLanguage.rank(it.channelName) }, { it.startMillis }))
-        .distinctBy { it.channelKey }
+private fun ranked(shows: Collection<BroadcastRow>, competition: Competition): List<BroadcastRow> =
+    shows.sortedWith(
+        compareBy(
+            { it.channelId == null },
+            { !BroadcastLanguage.isOfficial(competition, it.channelName) },
+            { BroadcastLanguage.rank(it.channelName) },
+            { it.startMillis },
+        ),
+    ).distinctBy { it.channelKey }
 
 private fun channelOf(row: BroadcastRow): GuideChannel? =
     row.channelId?.let { GuideChannel(it, row.channelName, null, row.logoUrl, emptyList()) }

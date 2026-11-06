@@ -1,6 +1,8 @@
 package tv.nextv.core.football
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BroadcastLanguageTest {
@@ -20,6 +22,16 @@ class BroadcastLanguageTest {
         assertEquals(2, BroadcastLanguage.rank("UK: Sky Sports Main Event"))
         assertEquals(2, BroadcastLanguage.rank("DE| Eurosport 1"))
         assertEquals(1, BroadcastLanguage.rank("Sky Sport Bundesliga"))
+    }
+
+    @Test
+    fun `ligue 1 plus is the official ligue 1 channel`() {
+        assertTrue(BroadcastLanguage.isOfficial(Competition.LIGUE_1, "LIGUE 1+| MATCH 3 (MULTI AUDIO SANS PUB)"))
+        assertTrue(BroadcastLanguage.isOfficial(Competition.LIGUE_1, "FR| LIGUE 1+ LA CHAINE"))
+        assertTrue(BroadcastLanguage.isOfficial(Competition.LIGUE_1, "Ligue1+ 2"))
+        assertFalse(BroadcastLanguage.isOfficial(Competition.LIGUE_1, "FR| DAZN PPV 1"))
+        assertFalse(BroadcastLanguage.isOfficial(Competition.LIGUE_1, "FR| CANAL+ SPORT 1"))
+        assertFalse(BroadcastLanguage.isOfficial(Competition.PREMIER_LEAGUE, "LIGUE 1+| MATCH 3"))
     }
 
     @Test

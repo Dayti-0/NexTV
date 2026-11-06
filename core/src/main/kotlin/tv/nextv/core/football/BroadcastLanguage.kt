@@ -31,6 +31,17 @@ object BroadcastLanguage {
         }
     }
 
+    /** Chaîne du diffuseur officiel de la compétition, choisie en premier (Ligue 1 : Ligue 1+). */
+    fun isOfficial(competition: Competition, channelName: String): Boolean {
+        val official = OFFICIAL[competition] ?: return false
+        return official.containsMatchIn(FootballText.fold(channelName))
+    }
+
+    /** « LIGUE 1+| MATCH 3 », « FR| LIGUE 1+ LA CHAINE », « Ligue1+ 2 ». */
+    private val OFFICIAL = mapOf(
+        Competition.LIGUE_1 to Regex("""\bligue\s*1\s*\+|\bl1\s*\+"""),
+    )
+
     /** Débuts de nom à deux lettres qui ne sont pas des pays (« TV| », « HD: »). */
     private val NOT_COUNTRIES = setOf("tv", "hd", "sd", "uh", "vo", "vf", "my")
 }
