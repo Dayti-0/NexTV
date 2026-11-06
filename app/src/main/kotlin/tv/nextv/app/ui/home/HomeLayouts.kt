@@ -45,6 +45,7 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -180,9 +181,9 @@ internal fun StreamingHome(
         PreloadRows(content)
         val shelves = shelfList(content)
         RestoreRow(listState, lastOpened, listOf("search") + shelves.map { it.key })
-        AnchoredRows {
+        AnchoredRows { anchor ->
             LazyColumn(
-                Modifier.weight(1f).bottomFade({ listState.canScrollForward }),
+                Modifier.weight(1f).bottomFade({ listState.canScrollForward }, maxPx = { anchor.spaceBelowFocusedRow(listState) }),
                 state = listState,
                 contentPadding = PaddingValues(top = 4.dp, bottom = 40.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -292,6 +293,16 @@ internal enum class ShelfStyle { STREAMING, PREMIUM }
  */
 internal class RowAnchor {
     var cardTopPx by mutableFloatStateOf(0f)
+
+    /** Rangée qui a le focus (sa clé dans la liste). */
+    var focusedRow by mutableStateOf<String?>(null)
+
+    /** Place sous la rangée choisie, jusqu'au bas de la liste : le fondu du bas ne la recouvre jamais. */
+    fun spaceBelowFocusedRow(state: LazyListState): Float {
+        val info = state.layoutInfo
+        val row = info.visibleItemsInfo.firstOrNull { it.key == focusedRow } ?: return Float.MAX_VALUE
+        return (info.viewportEndOffset - (row.offset + row.size)).toFloat()
+    }
 }
 
 internal val LocalRowAnchor = staticCompositionLocalOf<RowAnchor?> { null }
@@ -301,7 +312,7 @@ internal val LocalRowDefaultSpec = staticCompositionLocalOf<BringIntoViewSpec?> 
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-internal fun AnchoredRows(content: @Composable () -> Unit) {
+internal fun AnchoredRows(content: @Composable (RowAnchor) -> Unit) {
     val default = LocalBringIntoViewSpec.current
     val anchor = remember { RowAnchor() }
     val spec = remember(anchor, default) {
@@ -316,7 +327,7 @@ internal fun AnchoredRows(content: @Composable () -> Unit) {
         }
     }
     CompositionLocalProvider(LocalBringIntoViewSpec provides spec, LocalRowAnchor provides anchor, LocalRowDefaultSpec provides default) {
-        content()
+        content(anchor)
     }
 }
 
@@ -498,7 +509,16 @@ internal fun Shelf(
     // Hauteur entre le haut de la rangée et ses vignettes : là où la vignette choisie s'arrête.
     val anchor = LocalRowAnchor.current
     val belowTitle = with(LocalDensity.current) { (spacing + rowPadding).toPx() }
-    Column(verticalArrangement = Arrangement.spacedBy(spacing)) {
+    Column(
+        if (anchor != null) {
+            Modifier.onFocusChanged {
+                if (it.hasFocus) anchor.focusedRow = rowKey else if (anchor.focusedRow == rowKey) anchor.focusedRow = null
+            }
+        } else {
+            Modifier
+        },
+        verticalArrangement = Arrangement.spacedBy(spacing),
+    ) {
         Row(
             Modifier
                 .padding(horizontal = padding)
@@ -775,7 +795,7 @@ internal fun SpotlightBillboard(section: HomeSection, spotlight: Spotlight?, pad
         }
         Column(
             Modifier.align(Alignment.CenterStart).fillMaxWidth(0.5f).padding(start = padding, end = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             if (!compact) {
                 Text(
@@ -842,7 +862,8 @@ internal fun BillboardFade(background: Color) {
 
 internal fun shortTime(millis: Long): String = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(millis))
 
-private val STREAMING_BILLBOARD_HEIGHT = 200.dp
+/** Bannière pleine : la première rangée tient en entier dessous, au-dessus de la marge de sécurité du bas des TV. */
+private val STREAMING_BILLBOARD_HEIGHT = 184.dp
 private val COMPACT_BILLBOARD_HEIGHT = 104.dp
 private val SLIM_BILLBOARD_HEIGHT = 72.dp
 private val SEE_ALL_MIN_WIDTH = 104.dp

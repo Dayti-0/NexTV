@@ -70,6 +70,13 @@ class HomeFocusTest {
                 channel.copy(id = number * 100L + index, itemKey = "g$number-$index", title = "$group · $index", groupTitle = group)
             }
         },
+        movies = { group ->
+            delay(150)
+            val number = group.removePrefix("Groupe ").toInt()
+            List(12) { SampleData.movies[it % SampleData.movies.size] }.mapIndexed { index, movie ->
+                movie.copy(id = number * 100L + index, itemKey = "m$number-$index", title = "$group · $index", groupTitle = group)
+            }
+        },
     )
 
     @Test
@@ -220,6 +227,42 @@ class HomeFocusTest {
         println("$layout : haut de « $title » = ${tops.distinct()}")
         println("$layout : gauche de la vignette choisie = ${lefts.joinToString(" ") { "%.1f".format(it) }}")
         assertTrue("$layout : la rangée bouge verticalement : ${tops.distinct()}", tops.max() - tops.min() < 0.5f)
+    }
+
+    /**
+     * Rangée choisie entière : titre et vignettes (texte compris) au-dessus de la marge de sécurité
+     * du bas des TV, rien de la rangée précédente au-dessus.
+     */
+    @Test
+    fun streamingChannelRowsAreEntirelyVisible() = assertRowsEntirelyVisible(HomeLayout.STREAMING, HomeSection.TV)
+
+    @Test
+    fun streamingMovieRowsAreEntirelyVisible() = assertRowsEntirelyVisible(HomeLayout.STREAMING, HomeSection.MOVIES)
+
+    @Test
+    fun premiumChannelRowsAreEntirelyVisible() = assertRowsEntirelyVisible(HomeLayout.PREMIUM, HomeSection.TV)
+
+    @Test
+    fun premiumMovieRowsAreEntirelyVisible() = assertRowsEntirelyVisible(HomeLayout.PREMIUM, HomeSection.MOVIES)
+
+    private fun assertRowsEntirelyVisible(layout: HomeLayout, section: HomeSection) {
+        val focused = mutableListOf<String>()
+        compose.setContent { Home(layout, HomeActions(onChannelFocus = { focused += it.title }, onPosterFocus = { focused += it.title }), section) }
+        compose.waitForIdle()
+        val safeBottom = compose.onRoot().getBoundsInRoot().bottom - 27.dp
+        var checked = 0
+        repeat(6) {
+            press(Key.DirectionDown)
+            val group = focused.lastOrNull()?.substringBefore(" · ")?.removePrefix("Groupe ")?.toIntOrNull() ?: return@repeat
+            val card = compose.onNode(isFocused()).getBoundsInRoot()
+            val previous = runCatching { compose.onNodeWithText("Groupe ${group - 1} · 0").isDisplayed() }.getOrDefault(false)
+            println("$layout $section, Groupe $group : vignette ${card.top}..${card.bottom} (limite $safeBottom), précédente visible : $previous")
+            assertTrue("$layout $section, Groupe $group : vignette coupée en bas (${card.bottom} > $safeBottom)", card.bottom <= safeBottom)
+            assertTrue("$layout $section, Groupe $group : titre caché", compose.onNodeWithText("Groupe $group").isDisplayed())
+            assertTrue("$layout $section, Groupe $group : rangée précédente visible au-dessus", !previous)
+            checked++
+        }
+        assertTrue("$layout $section : rangées vérifiées : $checked", checked >= 4)
     }
 
     /** Retour du lecteur : la liste revient à sa place et la chaîne ouverte reprend le focus. */

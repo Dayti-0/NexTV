@@ -112,9 +112,9 @@ internal fun PremiumHome(
             val shelves = shelfList(content)
             val listState = rememberSaveable(section, saver = LazyListState.Saver) { LazyListState() }
             RestoreRow(listState, lastOpened, shelves.map { it.key })
-            AnchoredRows {
+            AnchoredRows { anchor ->
                 LazyColumn(
-                    Modifier.weight(1f).bottomFade({ listState.canScrollForward }),
+                    Modifier.weight(1f).bottomFade({ listState.canScrollForward }, maxPx = { anchor.spaceBelowFocusedRow(listState) }),
                     state = listState,
                     contentPadding = PaddingValues(top = 10.dp, bottom = 48.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),

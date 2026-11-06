@@ -654,13 +654,15 @@ val BottomFadeLength: Dp = 56.dp
 /**
  * Fondu en bas d'une zone qui défile, tant qu'il reste du contenu plus bas : le contenu s'estompe
  * vers la transparence (quel que soit le fond : image, dégradé) et le fondu disparaît en fin de liste.
+ * [maxPx] : hauteur à ne pas dépasser (place libre sous l'élément choisi, qui ne s'estompe jamais).
  */
-fun Modifier.bottomFade(canScrollDown: () -> Boolean, length: Dp = BottomFadeLength): Modifier = this
+fun Modifier.bottomFade(canScrollDown: () -> Boolean, length: Dp = BottomFadeLength, maxPx: (() -> Float)? = null): Modifier = this
     .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
     .drawWithContent {
         drawContent()
         if (!canScrollDown()) return@drawWithContent
-        val fade = length.toPx().coerceAtMost(size.height)
+        val fade = minOf(length.toPx(), maxPx?.invoke() ?: Float.MAX_VALUE).coerceAtMost(size.height)
+        if (fade <= 0f) return@drawWithContent
         val top = size.height - fade
         drawRect(
             brush = Brush.verticalGradient(0f to Color.Black, 1f to Color.Transparent, startY = top, endY = size.height),
