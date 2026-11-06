@@ -43,7 +43,12 @@ interface ProgressDao {
     @Query("SELECT * FROM progress WHERE sourceId = :sourceId AND itemKey = :itemKey")
     fun observe(sourceId: Long, itemKey: String): Flow<ProgressEntity?>
 
-    @Query("SELECT * FROM progress WHERE sourceId = :sourceId AND kind = :kind ORDER BY updatedAt DESC")
+    /**
+     * Films ou séries en cours. Une position sans durée vient d'un direct enregistré comme épisode par
+     * une version précédente (« DAZN 1 » dans les séries) : écartée. L'épisode suivant d'une série,
+     * à reprendre au début, n'a ni durée ni position.
+     */
+    @Query("SELECT * FROM progress WHERE sourceId = :sourceId AND kind = :kind AND NOT (durationMs <= 0 AND positionMs > 0) ORDER BY updatedAt DESC")
     fun observeAll(sourceId: Long, kind: String): Flow<List<ProgressEntity>>
 
     @Query("DELETE FROM progress WHERE sourceId = :sourceId AND itemKey = :itemKey")
@@ -63,7 +68,8 @@ abstract class ProgressDatabase : RoomDatabase() {
 /**
  * Reprise de lecture des films et séries.
  *
- * - Position enregistrée au fil de la lecture ; rien avant [MIN_POSITION_MS] (simple aperçu).
+ * - Position enregistrée au fil de la lecture ; rien avant [MIN_POSITION_MS] (simple aperçu), ni
+ *   sans durée connue (flux en direct).
  * - Fin atteinte (moins de [END_MARGIN_MS] restantes ou 95 %) : la lecture n'est plus « en cours ».
  */
 class ProgressRepository(database: ProgressDatabase, private val clock: () -> Long = System::currentTimeMillis) {
@@ -77,8 +83,9 @@ class ProgressRepository(database: ProgressDatabase, private val clock: () -> Lo
     fun observeAll(sourceId: Long, kind: String): Flow<List<ProgressEntity>> = dao.observeAll(sourceId, kind)
 
     suspend fun save(progress: ProgressEntity) {
-        val finished = progress.durationMs > 0 &&
-            (progress.durationMs - progress.positionMs < END_MARGIN_MS || progress.positionMs >= progress.durationMs * 95 / 100)
+        // Durée inconnue : flux en direct (même rangé avec les films ou les séries), rien à reprendre.
+        if (progress.durationMs <= 0) return
+        val finished = progress.durationMs - progress.positionMs < END_MARGIN_MS || progress.positionMs >= progress.durationMs * 95 / 100
         when {
             finished -> dao.delete(progress.sourceId, progress.itemKey)
             progress.positionMs >= MIN_POSITION_MS -> dao.put(progress.copy(updatedAt = clock()))
