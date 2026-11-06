@@ -29,6 +29,7 @@ import tv.nextv.core.football.Broadcast
 import tv.nextv.core.football.BroadcastFinder
 import tv.nextv.core.football.BroadcastLanguage
 import tv.nextv.core.football.Competition
+import tv.nextv.core.football.CountryNames
 import tv.nextv.core.football.FootballDataError
 import tv.nextv.core.football.FootballDataResult
 import tv.nextv.core.football.MatchStatus
@@ -344,10 +345,14 @@ internal fun scheduledMatches(matches: List<ScheduledMatch>, rows: List<Broadcas
             .let { if (live) it.coerceAtLeast(now + LIVE_GRACE_MILLIS) else it }
         // Match terminé : affiché tant que sa diffusion continue (score final).
         if (end <= now) return@mapNotNull null
+        // Sélections : noms français (« Italie – France »), le calendrier les donne en anglais.
+        val national = match.competition == Competition.NATIONAL_TEAMS
+        val home = CountryNames.french(match.home.name).takeIf { national } ?: match.home.displayName
+        val away = CountryNames.french(match.away.name).takeIf { national } ?: match.away.displayName
         FootballMatch(
             competition = match.competition,
-            home = match.home.displayName,
-            away = match.away.displayName,
+            home = home,
+            away = away,
             kickoffMillis = match.kickoffMillis,
             endMillis = end,
             homeCrest = match.home.crestUrl,
@@ -362,8 +367,8 @@ internal fun scheduledMatches(matches: List<ScheduledMatch>, rows: List<Broadcas
             clock = match.clock.takeIf { live },
             halfTime = match.halfTime && live,
             finished = finished,
-            homeTeam = match.home.name,
-            awayTeam = match.away.name,
+            homeTeam = if (national) home else match.home.name,
+            awayTeam = if (national) away else match.away.name,
         )
     }
 }

@@ -31,7 +31,7 @@ object BroadcastLanguage {
         }
     }
 
-    /** Chaîne du diffuseur officiel de la compétition, choisie en premier (Ligue 1 : Ligue 1+). */
+    /** Chaîne du diffuseur principal de la compétition, choisie en premier (Ligue 1 : Ligue 1+ ; sélections : TF1, M6…). */
     fun isOfficial(competition: Competition, channelName: String): Boolean {
         val official = OFFICIAL[competition] ?: return false
         return official.containsMatchIn(FootballText.fold(channelName))
@@ -40,6 +40,8 @@ object BroadcastLanguage {
     /** « LIGUE 1+| MATCH 3 », « FR| LIGUE 1+ LA CHAINE », « Ligue1+ 2 ». */
     private val OFFICIAL = mapOf(
         Competition.LIGUE_1 to Regex("""\bligue\s*1\s*\+|\bl1\s*\+"""),
+        // Sélections : les chaînes nationales gratuites (l'équipe de France joue le plus souvent sur TF1 ou M6).
+        Competition.NATIONAL_TEAMS to Regex("""\b(tf1|m6|france\s*[234]|tmc|w9|tfx|l\s*'?\s*equipe)\b"""),
     )
 
     /** Débuts de nom à deux lettres qui ne sont pas des pays (« TV| », « HD: »). */

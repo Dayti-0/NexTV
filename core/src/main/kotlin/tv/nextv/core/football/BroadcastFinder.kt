@@ -37,15 +37,21 @@ object BroadcastFinder {
             if (excluded(broadcast, heading, genre)) continue
             val text = textOf(broadcast)
             val competition = FootballMatches.competitionOf(broadcast.title, broadcast.subtitle, broadcast.category, broadcast.description)
+            // Affiche nommée par le programme (« Monaco / Lens ») : il ne diffuse pas un match d'autres équipes.
+            val named = FootballMatches.fixtureOf(broadcast.title, broadcast.subtitle, broadcast.category, broadcast.description)
             val football = competition != null || FootballText.FOOTBALL.containsMatchIn(heading) || FootballText.FOOTBALL.containsMatchIn(genre)
             var best: ScheduledMatch? = null
             var bestScore = 0
             var tie = false
             for (match in candidates) {
                 val (home, away) = teams.getValue(match)
+                if (named != null && !names(named.home, home, away) && !names(named.away, home, away)) continue
                 val cited = listOf(home, away).count { names -> names.any { " $it " in text } }
                 val score = when {
                     cited == 2 -> 3
+                    // Une seule équipe citée : seulement si le programme ne parle pas d'une autre compétition
+                    // (« Championnat de France » ne désigne pas l'équipe de France).
+                    cited == 1 && competition != null && !compatible(competition, match.competition) -> 0
                     cited == 1 && competition == match.competition -> 2
                     cited == 1 && football -> 1
                     else -> 0
@@ -62,6 +68,17 @@ object BroadcastFinder {
         }
         return result
     }
+
+    /** Le nom d'équipe [name] du guide désigne l'une des deux équipes ([home], [away] : leurs noms). */
+    private fun names(name: String, home: Set<String>, away: Set<String>): Boolean {
+        val text = " " + normalize(name) + " "
+        return (home + away).any { " $it " in text }
+    }
+
+    /** Même compétition, ou deux coupes d'Europe (le guide annonce parfois l'une pour l'autre). */
+    private fun compatible(a: Competition, b: Competition): Boolean = a == b || (a in EUROPEAN_CUPS && b in EUROPEAN_CUPS)
+
+    private val EUROPEAN_CUPS = setOf(Competition.CHAMPIONS_LEAGUE, Competition.EUROPA_LEAGUE, Competition.CONFERENCE_LEAGUE)
 
     /** Autre sport, football féminin, magazine… : jamais un match. */
     private fun excluded(broadcast: Broadcast<*>, heading: String, genre: String): Boolean =
@@ -99,7 +116,6 @@ object BroadcastFinder {
             broadcast.startMillis <= kickoff + LATEST_START_MILLIS &&
             broadcast.stopMillis >= kickoff + MIN_COVER_MILLIS
 
-    /** Noms sous lesquels une équipe peut apparaître dans le guide (minuscules, sans accents ni ponctuation). */
     /**
      * Même club sous deux noms de sources différentes : « Paris Saint-Germain FC » (football-data.org,
      * équipes suivies) et « Paris Saint-Germain » (ESPN), « FC Bayern München » et « Bayern Munich ».
@@ -121,7 +137,10 @@ object BroadcastFinder {
 
     private const val ALIAS_CACHE_SIZE = 2_000
 
+    /** Noms sous lesquels une équipe peut apparaître dans le guide (minuscules, sans accents ni ponctuation). */
     internal fun aliases(team: Team): Set<String> {
+        // Sélection nationale : son nom anglais (calendrier) et français (guide), toujours reconnus.
+        val country = CountryNames.french(team.name)?.let { setOf(normalize(team.name), normalize(it)) }.orEmpty()
         val names = mutableSetOf<String>()
         for (name in listOfNotNull(team.name, team.shortName).map(::normalize)) {
             names += name
@@ -136,7 +155,7 @@ object BroadcastFinder {
                 TRANSLATIONS[word]?.let { names += it }
             }
         }
-        return names.filter { it.length >= 2 && it !in AFFIXES && it !in GENERIC }.toSet()
+        return names.filter { it.length >= 2 && it !in AFFIXES && it !in GENERIC }.toSet() + country
     }
 
     private fun normalize(text: String): String =
@@ -197,5 +216,6 @@ object BroadcastFinder {
     private val EXTRA = mapOf(
         "athletic club" to listOf("athletic bilbao", "bilbao"),
         "paris saint germain fc" to listOf("psg", "paris sg"),
+        "paris saint germain" to listOf("psg", "paris sg"),
     )
 }

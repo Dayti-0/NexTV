@@ -83,4 +83,37 @@ class FootballScheduleTest {
         ).single()
         assertEquals(listOf("LIGUE 1+| MATCH 3 (MULTI AUDIO SANS PUB)", "FR| DAZN PPV 1"), shown.channels.map { it.name })
     }
+
+    @Test
+    fun `france plays on the national channel first, under french names`() {
+        val tf1 = EpgChannelRow("tf1.fr", 6, "FR| TF1", "FR| TF1", null)
+        val rts = EpgChannelRow("rts2.ch", 7, "CH| RTS Deux", "CH| RTS Deux", null)
+        val ligue1 = EpgChannelRow("ligue1plus.fr", 8, "FR| LIGUE 1+ LA CHAINE", "FR| LIGUE 1+ LA CHAINE", null)
+        val kickoff = fridayNoon + 6 * 24 * hour + 8 * hour
+        val italy = ScheduledMatch(9, Competition.NATIONAL_TEAMS, kickoff, MatchStatus.SCHEDULED, Team("Italy", null, null, null), Team("France", null, null, null))
+        val shown = scheduledMatches(
+            listOf(italy),
+            listOf(
+                row(rts, "Football: Italie - France", kickoff - 15 * 60_000L, 135),
+                row(tf1, "Football - Ligue des nations : Italie / France", kickoff - 30 * 60_000L, 150),
+                BroadcastRow(
+                    ligue1,
+                    null,
+                    FootballProgrammeRow(
+                        ligue1.epgChannelId!!,
+                        "Ligue 1 McDonald's",
+                        null,
+                        "1ère période du match de la Journée 5 du Championnat de France de Ligue 1 McDonald's opposant AS Monaco et RC Lens",
+                        "Football",
+                        null,
+                        kickoff,
+                        kickoff + 60 * 60_000L,
+                    ),
+                ),
+            ),
+            now,
+        ).single()
+        assertEquals("Italie – France", shown.label)
+        assertEquals(listOf("FR| TF1", "CH| RTS Deux"), shown.channels.map { it.name })
+    }
 }
