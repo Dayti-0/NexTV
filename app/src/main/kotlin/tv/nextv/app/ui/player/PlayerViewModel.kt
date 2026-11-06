@@ -133,13 +133,10 @@ class PlayerViewModel(
     private var rewindInPlace = false
     private var rewindTarget = 0L
     private var resumeAfterRewind = false
-    /** Chaîne affichée (meilleure version), base du zapping. */
-    private var channel: ChannelEntity? = null
-    /** Ligne choisie dans les listes (une version précise : celle de sa catégorie). */
-    private var listed: ChannelEntity? = null
-    /** Version effectivement lue (peut différer de [channel] après un changement de qualité). */
-    private var playing: ChannelEntity? = null
     private val resources = context.resources
+
+    /** Chaîne, version et flux en cours, partagés par les parties du lecteur. */
+    private val session = PlaybackSession()
 
     private val mutableState = MutableStateFlow(PlayerUiState())
     val state: StateFlow<PlayerUiState> = mutableState.asStateFlow()
@@ -162,8 +159,6 @@ class PlayerViewModel(
     /** Chaîne sélectionnée dans le menu : son programme s'affiche à côté. */
     fun focusMenuChannel(row: ChannelListRow) = channelMenu.focus(row)
 
-    private var request: PlaybackRequest? = null
-    private var triedHlsFallback = false
     private var resumeOnStart = true
     private var multicastLock: WifiManager.MulticastLock? = null
     private var loadJob: Job? = null
@@ -199,21 +194,12 @@ class PlayerViewModel(
     private var timeshift: TimeshiftBuffer? = null
     private var recorder: TimeshiftRecorder? = null
     private var playingTimeshift = false
-    private var playingAsHls = false
-
-    // Serveurs de secours de la playlist.
-    /** Serveurs de la playlist en cours (principal puis secours), vide sans serveur de secours. */
-    private var serverRoots: List<String> = emptyList()
-
-    /** Même flux sur les autres serveurs, essayés si celui-ci ne répond pas. */
-    private var backupUrls: List<String> = emptyList()
 
     /** Dernier serveur qui a répondu (playlist, racine) : les chaînes suivantes commencent par lui. */
     private var workingServer: Pair<Long, String>? = null
 
     // Reprise de lecture des films et épisodes.
     private var resumeMode: String = handle.get<String>(ARG_RESUME) ?: RESUME_ASK
-    private var startPositionMs = 0L
     private var pendingResume: Pair<ChannelEntity, ProgressEntity>? = null
     private val bandwidthMeter: DefaultBandwidthMeter = container.playerFactory.newBandwidthMeter()
 
@@ -401,7 +387,7 @@ class PlayerViewModel(
         if (switcher == null || quality == null || variant.kind != ContentKind.LIVE.name || variant.variantKey.isEmpty()) return
         workingQualityJob = viewModelScope.launch {
             delay(WORKING_QUALITY_MILLIS)
-            if (playing?.id == variant.id && state.value.error == null) {
+            if (session.playing?.id == variant.id && state.value.error == null) {
                 container.settings.rememberWorkingQuality(variant.sourceId, variant.variantKey, quality)
             }
         }
@@ -506,7 +492,7 @@ class PlayerViewModel(
 
     /** Chaîne regardée juste avant celle-ci (touche « chaîne précédente », ⏪). */
     fun previousChannel() {
-        val current = listed ?: return
+        val current = session.listed ?: return
         if (current.kind != ContentKind.LIVE.name) return
         viewModelScope.launch {
             val key = container.settings.recentChannels(current.sourceId).first().firstOrNull { it != current.itemKey } ?: return@launch
@@ -517,7 +503,7 @@ class PlayerViewModel(
 
     /** Chaîne suivante (+1) ou précédente (-1) de la playlist, en boucle. */
     fun zap(direction: Int) {
-        val current = listed ?: return
+        val current = session.listed ?: return
         if (current.kind != ContentKind.LIVE.name) return
         viewModelScope.launch {
             val dao = container.channelDao
@@ -533,7 +519,7 @@ class PlayerViewModel(
     }
 
     fun openMenu() {
-        val current = listed ?: return
+        val current = session.listed ?: return
         channelMenu.open(current)
     }
 
@@ -548,7 +534,7 @@ class PlayerViewModel(
 
     fun playFromMenu(id: Long) {
         closeMenu()
-        if (id != listed?.id) load(id)
+        if (id != session.listed?.id) load(id)
     }
 
     private fun load(id: Long) {
@@ -573,8 +559,8 @@ class PlayerViewModel(
         val isLive = requested.kind == ContentKind.LIVE.name
         // Pour l'affichage et le zapping : la meilleure version de la chaîne.
         val primary = if (isLive && requested.variantKey.isNotEmpty()) dao.primaryOf(requested.sourceId, requested.variantKey) ?: requested else requested
-        channel = primary
-        listed = requested
+        session.channel = primary
+        session.listed = requested
         val replayed = replay
         if (replayed != null && isLive) {
             // Programme encore en cours : « Depuis le début », avec le bandeau du direct.
@@ -639,7 +625,7 @@ class PlayerViewModel(
         }
         refreshProgrammes()
         if (!isLive) mutableState.update { it.copy(vod = vodInfo(requested), upNext = null) }
-        if (isLive) startPositionMs = 0
+        if (isLive) session.startPositionMs = 0
         if (!isLive && handleResume(requested)) return
         val firstId = switcher?.current?.channelId ?: startId
         val variant = if (firstId == requested.id) requested else dao.get(firstId) ?: requested
@@ -741,17 +727,17 @@ class PlayerViewModel(
             mutableState.update { it.copy(buffering = false, error = resources.getString(R.string.player_replay_unavailable)) }
             return
         }
-        playing = recorded
-        startPositionMs = 0
-        serverRoots = serverRootsOf(source)
-        backupUrls = Mirrors.alternatives(url, serverRoots)
-        request = PlaybackRequest(
+        session.playing = recorded
+        session.startPositionMs = 0
+        session.serverRoots = serverRootsOf(source)
+        session.backupUrls = Mirrors.alternatives(url, session.serverRoots)
+        session.request = PlaybackRequest(
             stream = recorded.toStream().copy(url = url, format = if (replayHls) StreamFormat.HLS else StreamFormat.PROGRESSIVE),
             userAgent = source.userAgent,
             credentials = null,
             credentialsOrigin = null,
         )
-        triedHlsFallback = true
+        session.triedHlsFallback = true
         start(forceHls = false)
     }
 
@@ -759,13 +745,13 @@ class PlayerViewModel(
     private fun fallBackToContinuousReplay(): Boolean {
         if (!replayHls) return false
         replayHls = false
-        val source = playing?.sourceId ?: return false
+        val source = session.playing?.sourceId ?: return false
         hlsReplayRefused += source
         val url = replayUrlFrom?.invoke(segmentStart) ?: return false
-        val playback = request ?: return false
+        val playback = session.request ?: return false
         container.logger.info(TAG, "Replay HLS refusé par le serveur : flux continu")
-        request = playback.copy(stream = playback.stream.copy(url = url, format = StreamFormat.PROGRESSIVE))
-        backupUrls = Mirrors.alternatives(url, serverRoots)
+        session.request = playback.copy(stream = playback.stream.copy(url = url, format = StreamFormat.PROGRESSIVE))
+        session.backupUrls = Mirrors.alternatives(url, session.serverRoots)
         mutableState.update { it.copy(jumpStepSeconds = MINUTE_SECONDS) }
         start(forceHls = false)
         return true
@@ -774,7 +760,7 @@ class PlayerViewModel(
     /** Lance la lecture d'une version précise de la chaîne. */
     private suspend fun playVariant(variant: ChannelEntity, notice: String?) {
         stopTimeshift()
-        playing = variant
+        session.playing = variant
         rememberWhenStable(variant)
         val stream = variant.toStream()
         mutableState.update {
@@ -791,19 +777,19 @@ class PlayerViewModel(
             return
         }
         val source = container.sourceRepository.getSource(variant.sourceId)
-        serverRoots = source?.let(::serverRootsOf).orEmpty()
+        session.serverRoots = source?.let(::serverRootsOf).orEmpty()
         val url = workingServer?.takeIf { it.first == variant.sourceId }
-            ?.let { (_, root) -> stream.url.takeIf { Mirrors.alternatives(it, serverRoots).isNotEmpty() }?.let { Mirrors.rewrite(it, root) } }
+            ?.let { (_, root) -> stream.url.takeIf { Mirrors.alternatives(it, session.serverRoots).isNotEmpty() }?.let { Mirrors.rewrite(it, root) } }
             ?: stream.url
-        backupUrls = Mirrors.alternatives(url, serverRoots)
-        request = PlaybackRequest(
+        session.backupUrls = Mirrors.alternatives(url, session.serverRoots)
+        session.request = PlaybackRequest(
             stream = stream.copy(url = url),
             userAgent = source?.userAgent,
             credentials = container.sourceRepository.credentialsFor(variant.sourceId),
             credentialsOrigin = (source?.location as? SourceLocation.Remote)?.url,
         )
         if (stream.format == StreamFormat.UDP) acquireMulticastLock() else releaseMulticastLock()
-        triedHlsFallback = false
+        session.triedHlsFallback = false
         start(forceHls = false)
     }
 
@@ -824,7 +810,7 @@ class PlayerViewModel(
     }
 
     private suspend fun refreshProgrammes() {
-        val current = channel ?: return
+        val current = session.channel ?: return
         if (current.kind != ContentKind.LIVE.name || (replay != null && !restarting)) return
         // En différé : le programme à l'écran, pas celui du direct.
         val shown = state.value
@@ -834,7 +820,7 @@ class PlayerViewModel(
         val live = upcoming.firstOrNull()?.takeIf { it.startMillis <= now }
         mutableState.update { it.copy(now = live, next = upcoming.firstOrNull { p -> p != live }) }
         val match = if (live != null) matchOnAir(current.id, now) else null
-        if (channel?.id == current.id) mutableState.update { it.copy(match = match) }
+        if (session.channel?.id == current.id) mutableState.update { it.copy(match = match) }
     }
 
     /**
@@ -884,17 +870,17 @@ class PlayerViewModel(
     }
 
     private fun start(forceHls: Boolean) {
-        val playbackRequest = request ?: return
+        val playbackRequest = session.request ?: return
         releasePlayer()
         mutableState.update { it.copy(info = PlaybackInfo(), audioProblem = null) }
-        playingAsHls = forceHls || playbackRequest.stream.format == StreamFormat.HLS
+        session.playingAsHls = forceHls || playbackRequest.stream.format == StreamFormat.HLS
         val player = container.playerFactory.create(playbackRequest, bandwidthMeter, preferredDecoders, adVolume, passthrough = audioPassthrough).apply {
             applyTrackPreferences()
             addListener(listener)
             addAnalyticsListener(analytics)
             val item = container.playerFactory.mediaItem(playbackRequest.stream, forceHls)
             // Position de départ seulement pour une reprise : un direct démarre au plus près du direct.
-            if (startPositionMs > 0) setMediaItem(item, startPositionMs) else setMediaItem(item)
+            if (session.startPositionMs > 0) setMediaItem(item, session.startPositionMs) else setMediaItem(item)
             playWhenReady = true
             prepare()
         }
@@ -904,7 +890,7 @@ class PlayerViewModel(
 
     private fun handleError(error: PlaybackException) {
         val player = mutablePlayer.value ?: return
-        val playbackRequest = request ?: return
+        val playbackRequest = session.request ?: return
         if (playingTimeshift) {
             // Enregistrement du différé interrompu : retour au direct.
             container.logger.warn(TAG, "Différé interrompu (${error.errorCodeName})", error)
@@ -920,20 +906,20 @@ class PlayerViewModel(
             return
         }
         val format = playbackRequest.stream.format
-        if (!triedHlsFallback && format in HLS_FALLBACK_FORMATS && error.errorCode in HLS_FALLBACK_ERRORS) {
+        if (!session.triedHlsFallback && format in HLS_FALLBACK_FORMATS && error.errorCode in HLS_FALLBACK_ERRORS) {
             // Beaucoup d'URL IPTV sans extension servent en réalité du HLS.
-            triedHlsFallback = true
+            session.triedHlsFallback = true
             container.logger.info(TAG, "Format non reconnu, nouvelle tentative en HLS")
             start(forceHls = true)
             return
         }
-        if (error.errorCode in SERVER_ERRORS && backupUrls.isNotEmpty()) {
+        if (error.errorCode in SERVER_ERRORS && session.backupUrls.isNotEmpty()) {
             // Serveur injoignable : même flux sur un serveur de secours de la playlist.
             container.logger.info(TAG, "Serveur injoignable (${error.errorCodeName}), essai d'un serveur de secours")
-            request = playbackRequest.copy(stream = playbackRequest.stream.copy(url = backupUrls.first()))
-            backupUrls = backupUrls.drop(1)
+            session.request = playbackRequest.copy(stream = playbackRequest.stream.copy(url = session.backupUrls.first()))
+            session.backupUrls = session.backupUrls.drop(1)
             mutableState.update { it.copy(qualityNotice = resources.getString(R.string.player_backup_server)) }
-            start(forceHls = playingAsHls)
+            start(forceHls = session.playingAsHls)
             return
         }
         container.logger.warn(TAG, "Lecture impossible (${error.errorCodeName}) : ${playbackRequest.stream.url}", error)
@@ -957,21 +943,21 @@ class PlayerViewModel(
 
     /** Le flux joue : son serveur sert de départ aux chaînes suivantes de la playlist. */
     private fun rememberServer() {
-        val variant = playing ?: return
-        if (serverRoots.isEmpty() || playingTimeshift) return
-        val url = request?.stream?.url ?: return
-        if (Mirrors.alternatives(url, serverRoots).isEmpty()) return
+        val variant = session.playing ?: return
+        if (session.serverRoots.isEmpty() || playingTimeshift) return
+        val url = session.request?.stream?.url ?: return
+        if (Mirrors.alternatives(url, session.serverRoots).isEmpty()) return
         Mirrors.normalize(url)?.let { workingServer = variant.sourceId to it }
     }
 
     fun retry() {
-        triedHlsFallback = false
-        val variant = playing
-        if (request == null || variant == null) {
+        session.triedHlsFallback = false
+        val variant = session.playing
+        if (session.request == null || variant == null) {
             load(channelId)
         } else {
             // Nouvel essai complet : toutes les versions redeviennent candidates.
-            load(listed?.id ?: variant.id)
+            load(session.listed?.id ?: variant.id)
         }
     }
 
@@ -1006,11 +992,11 @@ class PlayerViewModel(
     private fun pauseLive(player: ExoPlayer) {
         player.pause()
         val now = System.currentTimeMillis()
-        val playback = request
+        val playback = session.request
         // Flux continu (MPEG-TS…) : le serveur le coupe si on cesse de le lire. Il est donc
         // enregistré pendant la pause, puis relu depuis l'enregistrement.
         // « Depuis le début » : l'enregistrement est celui du serveur, il suffit d'arrêter la lecture.
-        if (!restarting && timeshift == null && playback != null && !playingAsHls && playback.stream.format in RECORDABLE_FORMATS) {
+        if (!restarting && timeshift == null && playback != null && !session.playingAsHls && playback.stream.format in RECORDABLE_FORMATS) {
             // Le lecteur libère d'abord sa connexion (l'image reste affichée) : beaucoup de
             // fournisseurs n'acceptent qu'une connexion à la fois.
             player.stop()
@@ -1036,7 +1022,7 @@ class PlayerViewModel(
 
     /** Lecture depuis l'enregistrement du différé. */
     private fun startTimeshiftPlayback(buffer: TimeshiftBuffer) {
-        val playbackRequest = request ?: return
+        val playbackRequest = session.request ?: return
         releasePlayer()
         playingTimeshift = true
         val player = container.playerFactory.create(playbackRequest, bandwidthMeter, preferredDecoders, adVolume, passthrough = audioPassthrough).apply {
@@ -1067,7 +1053,7 @@ class PlayerViewModel(
             player.seekToDefaultPosition()
             player.play()
         } else {
-            start(forceHls = playingAsHls && request?.stream?.format != StreamFormat.HLS)
+            start(forceHls = session.playingAsHls && session.request?.stream?.format != StreamFormat.HLS)
         }
     }
 
@@ -1132,10 +1118,10 @@ class PlayerViewModel(
         val latest = if (restarting) now - MINUTE_MILLIS else programme.second - MINUTE_MILLIS
         val target = (wanted.coerceIn(programme.first - MAX_EARLY_MILLIS, latest) / MINUTE_MILLIS) * MINUTE_MILLIS
         val url = urlFrom(target) ?: return
-        val playback = request ?: return
+        val playback = session.request ?: return
         segmentStart = target
-        request = playback.copy(stream = playback.stream.copy(url = url))
-        backupUrls = Mirrors.alternatives(url, serverRoots)
+        session.request = playback.copy(stream = playback.stream.copy(url = url))
+        session.backupUrls = Mirrors.alternatives(url, session.serverRoots)
         mutableState.update {
             it.copy(
                 watchedAt = target,
@@ -1311,13 +1297,13 @@ class PlayerViewModel(
     private suspend fun handleResume(requested: ChannelEntity): Boolean {
         val mode = resumeMode
         resumeMode = RESUME_ASK
-        startPositionMs = 0
+        session.startPositionMs = 0
         if (mode == RESUME_NO) return false
         val progress = container.progress.get(requested.sourceId, requested.itemKey) ?: return false
         val sameItem = progress.channelId == requested.id
         if (mode == RESUME_YES) {
             if (sameItem) {
-                startPositionMs = progress.positionMs
+                session.startPositionMs = progress.positionMs
                 return false
             }
             resumeOther(progress)
@@ -1347,11 +1333,11 @@ class PlayerViewModel(
         viewModelScope.launch {
             when {
                 !resume -> {
-                    startPositionMs = 0
+                    session.startPositionMs = 0
                     playVariant(requested, notice = null)
                 }
                 progress.channelId == requested.id -> {
-                    startPositionMs = progress.positionMs
+                    session.startPositionMs = progress.positionMs
                     playVariant(requested, notice = null)
                 }
                 else -> resumeOther(progress)
@@ -1367,7 +1353,7 @@ class PlayerViewModel(
 
     /** Enregistre la position du film ou de l'épisode en cours. */
     private suspend fun saveProgress(positionMs: Long? = null, durationMs: Long? = null) {
-        val item = playing ?: return
+        val item = session.playing ?: return
         if (item.kind == ContentKind.LIVE.name || state.value.resumePrompt != null) return
         val player = mutablePlayer.value
         val position = positionMs ?: player?.currentPosition ?: return
@@ -1484,7 +1470,7 @@ class PlayerViewModel(
     override fun onCleared() {
         // Dernière position (le ViewModel disparaît : enregistrement dans la portée de l'application).
         val player = mutablePlayer.value
-        val item = playing
+        val item = session.playing
         if (player != null && item != null && item.kind != ContentKind.LIVE.name && state.value.resumePrompt == null) {
             val position = player.currentPosition
             val duration = player.duration
