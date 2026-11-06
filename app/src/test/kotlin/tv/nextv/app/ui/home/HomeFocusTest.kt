@@ -66,7 +66,7 @@ class HomeFocusTest {
         channels = { group ->
             delay(150)
             val number = group.removePrefix("Groupe ").toInt()
-            SampleData.channels.take(4).mapIndexed { index, channel ->
+            List(12) { SampleData.channels[it % SampleData.channels.size] }.mapIndexed { index, channel ->
                 channel.copy(id = number * 100L + index, itemKey = "g$number-$index", title = "$group · $index", groupTitle = group)
             }
         },
@@ -189,6 +189,37 @@ class HomeFocusTest {
         assertTrue("$layout : « $previous » encore visible au-dessus de la rangée choisie", !visible)
         // Le titre de la rangée choisie reste entier, en haut.
         assertTrue("$layout : titre « Groupe $group » caché", compose.onNodeWithText("Groupe $group").isDisplayed())
+    }
+
+    /** Gauche / droite dans une rangée : la liste ne bouge pas verticalement (pas de tremblement). */
+    @Test
+    fun premiumRowsDoNotShakeWhenMovingSideways() = assertNoShake(HomeLayout.PREMIUM)
+
+    @Test
+    fun streamingRowsDoNotShakeWhenMovingSideways() = assertNoShake(HomeLayout.STREAMING)
+
+    private fun assertNoShake(layout: HomeLayout) {
+        val focused = mutableListOf<ChannelListRow>()
+        compose.setContent { Home(layout, HomeActions(onChannelFocus = { focused += it })) }
+        compose.waitForIdle()
+        repeat(3) { press(Key.DirectionDown) }
+        val title = focused.last().groupTitle!!
+        val tops = mutableListOf<Float>()
+        val lefts = mutableListOf<Float>()
+        compose.mainClock.autoAdvance = false
+        listOf(Key.DirectionRight, Key.DirectionRight, Key.DirectionRight, Key.DirectionRight, Key.DirectionLeft, Key.DirectionLeft).forEach { key ->
+            compose.onRoot().performKeyInput { pressKey(key) }
+            repeat(40) {
+                compose.mainClock.advanceTimeByFrame()
+                tops += compose.onNodeWithText(title).getBoundsInRoot().top.value
+                lefts += compose.onNode(isFocused()).getBoundsInRoot().left.value
+            }
+            lefts += Float.NaN
+        }
+        compose.mainClock.autoAdvance = true
+        println("$layout : haut de « $title » = ${tops.distinct()}")
+        println("$layout : gauche de la vignette choisie = ${lefts.joinToString(" ") { "%.1f".format(it) }}")
+        assertTrue("$layout : la rangée bouge verticalement : ${tops.distinct()}", tops.max() - tops.min() < 0.5f)
     }
 
     /** Retour du lecteur : la liste revient à sa place et la chaîne ouverte reprend le focus. */

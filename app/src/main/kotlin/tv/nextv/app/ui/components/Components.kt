@@ -65,6 +65,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.InputMode
@@ -265,10 +266,9 @@ fun FocusSurface(
     Box(
         modifier = modifier
             .zIndex(if (focused) 1f else 0f)
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
+            // Agrandissement au dessin seulement : la taille vue par les listes ne change pas, elles ne
+            // le suivent donc pas en défilant (sinon la rangée tremble à chaque gauche / droite).
+            .drawWithContent { if (scale == 1f) drawContent() else scale(scale) { this@drawWithContent.drawContent() } }
             .shadow(if (focused) 8.dp else 0.dp, shape, clip = false)
             .clip(shape)
             .background(if (focused) focusedColor else color)
