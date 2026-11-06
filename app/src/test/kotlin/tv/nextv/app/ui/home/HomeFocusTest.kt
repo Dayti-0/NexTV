@@ -265,6 +265,34 @@ class HomeFocusTest {
         assertTrue("$layout $section : rangées vérifiées : $checked", checked >= 4)
     }
 
+    /**
+     * Volet de droite du Live Center : « droite » depuis la liste y entre, « bas » le fait défiler
+     * jusqu'à « Plus tard », « gauche » revient à la chaîne d'où l'on venait.
+     */
+    @Test
+    fun liveCenterPaneCanBeScrolledWithTheRemote() {
+        val focused = mutableListOf<ChannelListRow>()
+        compose.setContent { Home(HomeLayout.LIVE_CENTER, HomeActions(onChannelFocus = { focused += it }), preview = SampleData.channelPreview) }
+        compose.waitForIdle()
+        // Onglets → recherche → catégories, puis la liste des chaînes et sa 4e chaîne.
+        press(Key.DirectionDown)
+        press(Key.DirectionDown)
+        press(Key.DirectionRight)
+        repeat(3) { press(Key.DirectionDown) }
+        val chosen = focused.last()
+        val list = compose.onNode(isFocused()).getBoundsInRoot()
+        assertTrue("« Plus tard » déjà visible : le volet ne dépasse pas", !compose.onNodeWithText("Journal de la nuit").isDisplayed())
+        press(Key.DirectionRight)
+        val pane = compose.onNode(isFocused()).getBoundsInRoot()
+        assertTrue("Focus dans le volet : $pane (liste : $list)", pane.left >= list.right)
+        repeat(4) { press(Key.DirectionDown) }
+        assertTrue("« Plus tard » visible après défilement", compose.onNodeWithText("Journal de la nuit").isDisplayed())
+        press(Key.DirectionLeft)
+        println("Volet : retour sur ${focused.last().title} (choisie : ${chosen.title})")
+        assertEquals(chosen.id, focused.last().id)
+        assertTrue("Focus revenu dans la liste", compose.onNode(isFocused()).getBoundsInRoot().right <= pane.left)
+    }
+
     /** Retour du lecteur : la liste revient à sa place et la chaîne ouverte reprend le focus. */
     @Test
     fun openedChannelGetsFocusBackAfterReturning() {
@@ -316,7 +344,7 @@ class HomeFocusTest {
     }
 
     @Composable
-    private fun Home(layout: HomeLayout, actions: HomeActions, section: HomeSection = HomeSection.TV) {
+    private fun Home(layout: HomeLayout, actions: HomeActions, section: HomeSection = HomeSection.TV, preview: ChannelPreview? = null) {
         NexTvTheme(ThemeStyle.NIGHT) {
             val channels = remember { flowOf(PagingData.from(SampleData.channels)) }.collectAsLazyPagingItems()
             val movies = remember { flowOf(PagingData.from(SampleData.movies)) }.collectAsLazyPagingItems()
@@ -342,6 +370,7 @@ class HomeFocusTest {
                 football = {},
                 layout = layout,
                 rows = rows,
+                preview = preview,
             )
         }
     }
