@@ -263,7 +263,6 @@ private fun ProgrammeCell(
                     fontWeight = FontWeight.Bold,
                     color = if (live) NexTvColors.Live else MaterialTheme.colorScheme.primary,
                 )
-                if (live) StatusPill(stringResource(R.string.guide_now), NexTvColors.Live)
                 Text(
                     listOfNotNull(formatDuration(programme.stopMillis - programme.startMillis), programme.category).joinToString("  ·  "),
                     style = MaterialTheme.typography.labelMedium,

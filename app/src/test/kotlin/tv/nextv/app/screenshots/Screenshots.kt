@@ -124,6 +124,11 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
+    fun homeTvMosaic() = capture("05m_accueil_live_center_mosaique") {
+        Home(HomeSection.TV, Category.All, preview = true, grid = GridColumns(liveCenterMosaic = true))
+    }
+
+    @Test
     fun homeTvPreview() = capture("05c_accueil_tout_voir") {
         Home(HomeSection.TV, Category.Group(SampleData.groups[0].title.orEmpty()), preview = true, layout = HomeLayout.STREAMING)
     }

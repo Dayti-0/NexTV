@@ -112,6 +112,7 @@ class SettingsRepository(
                 channels = (prefs[CHANNEL_COLUMNS] ?: GridColumns.DEFAULT_CHANNELS).coerceIn(GridColumns.CHANNELS),
                 posters = (prefs[POSTER_COLUMNS] ?: GridColumns.DEFAULT_POSTERS).coerceIn(GridColumns.POSTERS),
                 channelList = prefs[CHANNEL_LIST] ?: false,
+                liveCenterMosaic = prefs[LIVE_CENTER_MOSAIC] ?: false,
             )
         }
         .distinctUntilChanged()
@@ -121,6 +122,7 @@ class SettingsRepository(
             prefs[CHANNEL_COLUMNS] = columns.channels.coerceIn(GridColumns.CHANNELS)
             prefs[POSTER_COLUMNS] = columns.posters.coerceIn(GridColumns.POSTERS)
             prefs[CHANNEL_LIST] = columns.channelList
+            prefs[LIVE_CENTER_MOSAIC] = columns.liveCenterMosaic
         }
     }
 
@@ -428,6 +430,7 @@ class SettingsRepository(
         val EPG_IMPORT_VERSION = intPreferencesKey("epg_import_version")
         val CATALOG_IMPORT_VERSION = intPreferencesKey("catalog_import_version")
         val CHANNEL_LIST = booleanPreferencesKey("channel_list")
+        val LIVE_CENTER_MOSAIC = booleanPreferencesKey("live_center_mosaic")
         val HIDE_UHD = booleanPreferencesKey("hide_uhd")
         val FRANCE3_REGION = stringPreferencesKey("france3_region")
         val AUDIO_PASSTHROUGH = booleanPreferencesKey("audio_passthrough")
@@ -455,6 +458,8 @@ data class GridColumns(
     val posters: Int = DEFAULT_POSTERS,
     /** Chaînes en liste (logo, nom, programme en cours) plutôt qu'en mosaïque. */
     val channelList: Boolean = false,
+    /** Live Center : chaînes en mosaïque de vignettes plutôt qu'en liste. */
+    val liveCenterMosaic: Boolean = false,
 ) {
     companion object {
         val CHANNELS = 3..9

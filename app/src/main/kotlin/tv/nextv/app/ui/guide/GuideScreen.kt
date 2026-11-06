@@ -7,6 +7,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.ScrollState
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -307,6 +311,9 @@ private fun GuideGrid(
     var anchor by remember { mutableLongStateOf(state.now) }
     var focusedRow by remember { mutableIntStateOf(-1) }
     var verticalMove by remember { mutableStateOf(false) }
+    // Haut / bas : la frise horaire reste en place (le programme visé couvre l'heure affichée) ;
+    // gauche / droite la font défiler comme avant.
+    var timelineLocked by remember { mutableStateOf(false) }
     val minutePx = with(density) { minuteWidth.toPx() }
     val rowStepPx = with(density) { (rowHeight + 6.dp).toPx() }
     val onProgrammeFocus: (Int, GuideProgramme) -> Unit = { index, programme ->
@@ -338,12 +345,16 @@ private fun GuideGrid(
                 val step = when (event.key) {
                     Key.DirectionDown -> 1
                     Key.DirectionUp -> -1
-                    else -> return@onPreviewKeyEvent false
+                    else -> {
+                        if (event.key == Key.DirectionLeft || event.key == Key.DirectionRight) timelineLocked = false
+                        return@onPreviewKeyEvent false
+                    }
                 }
                 val target = focusedRow + step
                 // Première ligne vers le haut (catégories), dernière vers le bas, ligne sans programme : comportement habituel.
                 if (target !in state.channels.indices || visibleProgrammes(state.channels[target], state).isEmpty()) return@onPreviewKeyEvent false
                 verticalMove = true
+                timelineLocked = true
                 pendingFocus = target to anchor
                 // Ligne hors de l'écran : elle n'existe pas encore, on fait défiler d'une ligne.
                 if (listState.layoutInfo.visibleItemsInfo.none { it.index == target }) {
@@ -363,6 +374,7 @@ private fun GuideGrid(
                     compact = compact,
                     focusRequester = initialFocus.takeIf { channel == state.channels.first() },
                     focusAt = pendingFocus?.takeIf { it.first == index }?.second,
+                    timelineLocked = { timelineLocked },
                     onFocusAtDone = { pendingFocus = null },
                     onChannelFocus = { focusedRow = -1 },
                     selected = channel.itemKey in selection,
@@ -475,6 +487,7 @@ private fun TimeRuler(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun GuideRow(
     channel: GuideChannel,
@@ -488,6 +501,8 @@ private fun GuideRow(
     /** Heure dont le programme doit prendre le focus (haut / bas depuis une autre ligne). */
     focusAt: Long?,
     onFocusAtDone: () -> Unit,
+    /** Frise horaire figée : le programme visé, visible, ne la fait pas défiler. */
+    timelineLocked: () -> Boolean,
     onChannelFocus: () -> Unit,
     /** Chaîne de « L'essentiel » ; appui long sur la chaîne pour l'y ajouter ou l'en retirer. */
     selected: Boolean,
@@ -537,45 +552,64 @@ private fun GuideRow(
             }
         }
         Spacer(Modifier.width(6.dp))
-        Box(Modifier.fillMaxHeight().horizontalScroll(scroll)) {
-            Box(Modifier.width(totalWidth).fillMaxHeight()) {
-                if (channel.programmes.isEmpty()) {
-                    Text(
-                        stringResource(R.string.guide_no_programme),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NexTvColors.TextMuted,
-                        modifier = Modifier.align(Alignment.CenterStart).padding(start = 12.dp),
-                    )
-                }
-                shown.forEach { programme ->
-                    val start = maxOf(programme.startMillis, state.windowStart)
-                    val end = minOf(programme.stopMillis, state.windowEnd)
-                    val live = programme.isLive(state.now)
-                    ProgrammeBlock(
-                        programme = programme,
-                        live = live,
-                        past = programme.stopMillis <= state.now,
-                        replay = Catchup.isAvailable(channel.catchupDays, programme.startMillis, state.now),
-                        modifier = Modifier
-                            .offset(x = minutes(start - state.windowStart) * minuteWidth)
-                            .width(minutes(end - start) * minuteWidth)
+        val parentSpec = LocalBringIntoViewSpec.current
+        val timelineSpec = remember(parentSpec) { TimelineBringIntoViewSpec(parentSpec, timelineLocked) }
+        CompositionLocalProvider(LocalBringIntoViewSpec provides timelineSpec) {
+            Box(Modifier.fillMaxHeight().horizontalScroll(scroll)) {
+                Box(Modifier.width(totalWidth).fillMaxHeight()) {
+                    if (channel.programmes.isEmpty()) {
+                        Text(
+                            stringResource(R.string.guide_no_programme),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NexTvColors.TextMuted,
+                            modifier = Modifier.align(Alignment.CenterStart).padding(start = 12.dp),
+                        )
+                    }
+                    shown.forEach { programme ->
+                        val start = maxOf(programme.startMillis, state.windowStart)
+                        val end = minOf(programme.stopMillis, state.windowEnd)
+                        val live = programme.isLive(state.now)
+                        ProgrammeBlock(
+                            programme = programme,
+                            live = live,
+                            past = programme.stopMillis <= state.now,
+                            replay = Catchup.isAvailable(channel.catchupDays, programme.startMillis, state.now),
+                            modifier = Modifier
+                                .offset(x = minutes(start - state.windowStart) * minuteWidth)
+                                .width(minutes(end - start) * minuteWidth)
+                                .fillMaxHeight()
+                                .padding(end = 4.dp)
+                                .focusRequester(requesters.getValue(programme))
+                                .then(if (live && focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier),
+                            onClick = { onOpen(programme) },
+                            onFocus = { onFocus(programme) },
+                        )
+                    }
+                    Box(
+                        Modifier
+                            .offset(x = minutes(state.now - state.windowStart) * minuteWidth - 1.dp)
+                            .width(2.dp)
                             .fillMaxHeight()
-                            .padding(end = 4.dp)
-                            .focusRequester(requesters.getValue(programme))
-                            .then(if (live && focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier),
-                        onClick = { onOpen(programme) },
-                        onFocus = { onFocus(programme) },
+                            .background(NexTvColors.Live),
                     )
                 }
-                Box(
-                    Modifier
-                        .offset(x = minutes(state.now - state.windowStart) * minuteWidth - 1.dp)
-                        .width(2.dp)
-                        .fillMaxHeight()
-                        .background(NexTvColors.Live),
-                )
             }
         }
+    }
+}
+
+/**
+ * Défilement horizontal d'une ligne du guide quand un programme prend le focus : rien tant que la
+ * frise est figée (haut / bas) et que le programme est à l'écran, sinon le comportement habituel.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+private class TimelineBringIntoViewSpec(
+    private val parent: BringIntoViewSpec,
+    private val locked: () -> Boolean,
+) : BringIntoViewSpec {
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+        if (locked() && offset < containerSize && offset + size > 0f) return 0f
+        return parent.calculateScrollDistance(offset, size, containerSize)
     }
 }
 
@@ -673,12 +707,6 @@ fun ProgrammeSheetContent(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                }
-                when {
-                    programme == null -> Unit
-                    programme.isLive(now) -> StatusPill(stringResource(R.string.player_live), NexTvColors.Live)
-                    programme.stopMillis <= now -> StatusPill(stringResource(R.string.guide_ended), NexTvColors.TextSecondary)
-                    else -> StatusPill(stringResource(R.string.guide_upcoming), NexTvColors.Primary)
                 }
             }
             if (programme == null) {

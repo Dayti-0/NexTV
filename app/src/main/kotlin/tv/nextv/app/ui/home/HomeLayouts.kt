@@ -690,7 +690,6 @@ internal fun ChannelBillboard(preview: ChannelPreview?, player: Player?, now: Lo
             }
             val channel = preview.channel
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatusPill(stringResource(R.string.player_live), NexTvColors.Live)
                 channel.channelNumber?.let { Badge(it) }
                 Text(
                     channel.title,

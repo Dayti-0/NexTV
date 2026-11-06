@@ -383,7 +383,7 @@ private fun WideMatch(match: FootballMatch, now: Long, followed: Boolean) {
             } else {
                 Text(timeOf(match.kickoffMillis), style = MaterialTheme.typography.titleLarge)
             }
-            if (live) StatusPill(liveLabel(match), NexTvColors.Live)
+            if (live) liveLabel(match)?.let { StatusPill(it, NexTvColors.Live) }
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             MatchHeading(match, followed)
@@ -408,7 +408,7 @@ private fun CompactMatch(match: FootballMatch, now: Long, followed: Boolean) {
             } else {
                 Text(timeOf(match.kickoffMillis), style = MaterialTheme.typography.titleMedium)
             }
-            if (live) StatusPill(liveLabel(match), NexTvColors.Live)
+            if (live) liveLabel(match)?.let { StatusPill(it, NexTvColors.Live) }
             MatchHeading(match, followed)
         }
         Teams(match, large = false)
@@ -543,7 +543,7 @@ private fun MatchSheet(
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    if (match.isLive(now)) StatusPill(liveLabel(match), NexTvColors.Live)
+                    if (match.isLive(now)) liveLabel(match)?.let { StatusPill(it, NexTvColors.Live) }
                 }
                 Teams(match, large = true)
                 match.score?.let { Text(it, style = MaterialTheme.typography.headlineMedium, color = NexTvColors.Live) }
@@ -832,8 +832,6 @@ private fun TeamMatchLine(match: ScheduledMatch, team: Team, now: Long, past: Bo
             Box(Modifier.size(26.dp).background(color, CircleShape), contentAlignment = Alignment.Center) {
                 Text(letter, style = MaterialTheme.typography.labelMedium, color = Color.Black, maxLines = 1)
             }
-        } else if (!past && match.kickoffMillis <= now) {
-            StatusPill(stringResource(R.string.player_live), NexTvColors.Live)
         }
     }
 }
@@ -927,13 +925,12 @@ private fun competitionLogoUrl(competition: Competition): String? = when (compet
     Competition.NATIONAL_TEAMS -> null
 }?.let { "https://crests.football-data.org/$it.png" }
 
-/** Pastille d'un match en cours : « Mi-temps », la minute de jeu (« 81' », « 45+2' »), sinon « En direct ». */
+/** Pastille d'un match en cours : « Mi-temps » ou la minute de jeu (« 81' », « 45+2' ») ; rien sinon. */
 @Composable
-private fun liveLabel(match: FootballMatch): String = when {
+private fun liveLabel(match: FootballMatch): String? = when {
     match.finished -> stringResource(R.string.football_finished)
     match.halfTime -> stringResource(R.string.football_half_time)
-    match.clock != null -> match.clock
-    else -> stringResource(R.string.player_live)
+    else -> match.clock
 }
 
 @Composable

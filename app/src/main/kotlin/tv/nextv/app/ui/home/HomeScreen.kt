@@ -556,9 +556,10 @@ private fun CatalogBody(
                 if (section == HomeSection.TV) LivePane(preview, previewPlayer, now, paneModifier) else SpotlightPane(section, spotlight, paneModifier)
             },
         ) {
-            // Chaînes : une par ligne avec leur programme ; films et séries : affiches.
-            val columns = if (section == HomeSection.TV) gridColumns.copy(channelList = true) else gridColumns.copy(posters = (gridColumns.posters - 2).coerceAtLeast(3))
-            CatalogGrid(section, window, columns, list = section == HomeSection.TV, body = body)
+            // Chaînes : une par ligne avec leur programme, ou en mosaïque (réglages) ; films et séries : affiches.
+            val channelList = section == HomeSection.TV && !gridColumns.liveCenterMosaic
+            val columns = if (section == HomeSection.TV) gridColumns.copy(channelList = channelList) else gridColumns.copy(posters = (gridColumns.posters - 2).coerceAtLeast(3))
+            CatalogGrid(section, window, columns, list = channelList, body = body)
         }
         return
     }

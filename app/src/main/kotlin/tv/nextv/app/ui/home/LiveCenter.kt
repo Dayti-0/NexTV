@@ -107,7 +107,6 @@ internal fun LivePane(preview: ChannelPreview?, player: Player?, now: Long, modi
         ) {
             preview?.channel?.let { ChannelLogo(it.logoUrl, it.title, Modifier.fillMaxWidth(0.4f).aspectRatio(16f / 9f), monogramSize = 30.dp) }
             if (player != null) PreviewVideo(player, Modifier.fillMaxSize())
-            if (preview != null) StatusPill(stringResource(R.string.player_live), NexTvColors.Live, Modifier.align(Alignment.TopStart).padding(10.dp))
         }
         if (preview == null) {
             Text(stringResource(R.string.box_hint), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -123,7 +122,6 @@ internal fun LivePane(preview: ChannelPreview?, player: Player?, now: Long, modi
         if (current == null) {
             Text(stringResource(R.string.channels_no_epg), style = MaterialTheme.typography.bodyLarge, color = NexTvColors.TextMuted)
         } else {
-            PaneLabel(stringResource(R.string.box_now))
             Text(current.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("${shortTime(current.startMillis)} – ${shortTime(current.stopMillis)}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)

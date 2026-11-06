@@ -140,13 +140,6 @@ internal fun PremiumHome(
 private fun PremiumInfo(section: HomeSection, spotlight: Spotlight?) {
     Column(Modifier.fillMaxWidth(0.58f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically)) {
         Text(
-            sectionLabel(section).uppercase(),
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.SemiBold,
-            letterSpacing = 2.sp,
-        )
-        Text(
             spotlight?.item?.title ?: allLabel(section),
             style = MaterialTheme.typography.displaySmall.copy(fontSize = 40.sp, lineHeight = 44.sp, letterSpacing = (-0.5).sp),
             fontWeight = FontWeight.Bold,
@@ -174,16 +167,13 @@ private fun PremiumLiveInfo(preview: ChannelPreview?, now: Long) {
             Text(stringResource(R.string.preview_hint), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.78f))
             return@Column
         }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            StatusPill(stringResource(R.string.player_live), NexTvColors.Live)
-            Text(
-                listOfNotNull(preview.channel.channelNumber, preview.channel.title).joinToString("  "),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.9f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+        Text(
+            listOfNotNull(preview.channel.channelNumber, preview.channel.title).joinToString("  "),
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.9f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
         val current = preview.current
         Text(
             current?.title ?: preview.channel.title,

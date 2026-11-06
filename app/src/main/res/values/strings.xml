@@ -221,8 +221,6 @@
     <string name="guide_no_programme">Pas de programme</string>
     <string name="guide_no_favorites_title">Aucune chaîne favorite</string>
     <string name="guide_no_favorites_message">Ajoutez des chaînes aux favoris (appui long sur OK) pour les retrouver ici.</string>
-    <string name="guide_ended">Terminé</string>
-    <string name="guide_upcoming">À venir</string>
     <string name="guide_no_description">Pas de description dans le guide.</string>
     <string name="guide_watch">Regarder</string>
     <string name="guide_watch_live">Regarder le direct</string>
@@ -230,7 +228,6 @@
     <string name="guide_restart">Depuis le début</string>
     <string name="guide_yesterday">Hier</string>
     <string name="guide_tomorrow">Demain</string>
-    <string name="guide_now">En cours</string>
     <string name="guide_tonight">Ce soir</string>
     <string name="guide_essential">L’essentiel</string>
     <string name="guide_selection_added">%1$s ajoutée à L’essentiel</string>
@@ -248,7 +245,6 @@
 
     <!-- Lecteur -->
     <string name="player_next">Ensuite %1$s · %2$s</string>
-    <string name="player_live">En direct</string>
     <string name="football_half_time">Mi-temps</string>
     <string name="football_finished">Terminé</string>
     <string name="player_no_audio">Aucun son disponible</string>
@@ -428,6 +424,9 @@
     <string name="appearance_title">Apparence</string>
     <string name="appearance_open">Interface et couleurs</string>
     <string name="appearance_interface">Interface de l’accueil</string>
+    <string name="appearance_channels">Chaînes</string>
+    <string name="appearance_channels_list">Liste</string>
+    <string name="appearance_channels_mosaic">Mosaïque</string>
     <string name="appearance_palette">Palette de couleurs</string>
     <string name="appearance_palette_help">Sélectionnez une palette pour la voir appliquée à tout l’écran, puis OK pour la garder (enregistrée aussitôt).</string>
     <string name="appearance_default">Par défaut</string>

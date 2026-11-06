@@ -54,6 +54,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import tv.nextv.app.AppContainer
@@ -79,6 +81,7 @@ class AppearanceViewModel(private val container: AppContainer) : ViewModel() {
     val theme: StateFlow<ThemeStyle> = settings.themeStyle.stateIn(viewModelScope, SharingStarted.Eagerly, ThemeStyle.DEFAULT)
     val previousTheme: StateFlow<ThemeStyle?> = settings.previousThemeStyle.stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val layout: StateFlow<HomeLayout> = settings.homeLayout.stateIn(viewModelScope, SharingStarted.Eagerly, HomeLayout.DEFAULT)
+    val channelMosaic: StateFlow<Boolean> = settings.gridColumns.map { it.liveCenterMosaic }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     fun setTheme(style: ThemeStyle) {
         viewModelScope.launch { settings.setThemeStyle(style) }
@@ -86,6 +89,11 @@ class AppearanceViewModel(private val container: AppContainer) : ViewModel() {
 
     fun setLayout(layout: HomeLayout) {
         viewModelScope.launch { settings.setHomeLayout(layout) }
+    }
+
+    /** Live Center : chaînes en mosaïque ou en liste. */
+    fun setChannelMosaic(mosaic: Boolean) {
+        viewModelScope.launch { settings.setGridColumns(settings.gridColumns.first().copy(liveCenterMosaic = mosaic)) }
     }
 }
 
@@ -99,6 +107,7 @@ fun AppearanceScreen(onBack: () -> Unit) {
     val theme by viewModel.theme.collectAsStateWithLifecycle()
     val previous by viewModel.previousTheme.collectAsStateWithLifecycle()
     val layout by viewModel.layout.collectAsStateWithLifecycle()
+    val channelMosaic by viewModel.channelMosaic.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val resources = LocalContext.current.resources
@@ -125,6 +134,8 @@ fun AppearanceScreen(onBack: () -> Unit) {
             }
         },
         onLayout = viewModel::setLayout,
+        channelMosaic = channelMosaic,
+        onChannelMosaic = viewModel::setChannelMosaic,
         snackbar = snackbar,
     )
 }
@@ -138,6 +149,8 @@ fun AppearanceContent(
     onBack: () -> Unit,
     onTheme: (ThemeStyle) -> Unit,
     onLayout: (HomeLayout) -> Unit,
+    channelMosaic: Boolean = false,
+    onChannelMosaic: (Boolean) -> Unit = {},
     snackbar: SnackbarHostState = remember { SnackbarHostState() },
 ) {
     val window = rememberWindowInfo()
@@ -168,6 +181,22 @@ fun AppearanceContent(
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         HomeLayout.entries.forEach { option ->
                             LayoutCard(option, selected = option == layout, onClick = { onLayout(option) }, modifier = Modifier.width(300.dp))
+                        }
+                    }
+                }
+                if (layout == HomeLayout.LIVE_CENTER) {
+                    // Live Center : chaînes en liste (logo, nom, programme) ou en mosaïque de vignettes.
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(stringResource(R.string.appearance_channels), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(end = 6.dp))
+                        listOf(false to R.string.appearance_channels_list, true to R.string.appearance_channels_mosaic).forEach { (mosaic, label) ->
+                            val selected = mosaic == channelMosaic
+                            PillButton(
+                                stringResource(label),
+                                { onChannelMosaic(mosaic) },
+                                icon = if (selected) Icons.Filled.Check else null,
+                                style = if (selected) PillStyle.Primary else PillStyle.Secondary,
+                                modifier = Modifier.resetPreviewOnFocus(),
+                            )
                         }
                     }
                 }
