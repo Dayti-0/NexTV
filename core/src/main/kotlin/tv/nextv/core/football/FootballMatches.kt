@@ -35,8 +35,14 @@ internal object FootballText {
     private val MARKS = Regex("\\p{Mn}+")
 
     /** Minuscules sans accents (« Équipe » → « equipe »). */
-    fun fold(text: String): String =
-        Normalizer.normalize(text.lowercase(), Normalizer.Form.NFD).replace(MARKS, "").replace('’', '\'')
+    fun fold(text: String): String {
+        val folded = Normalizer.normalize(text.lowercase(), Normalizer.Form.NFD).replace(MARKS, "").replace('’', '\'')
+        // Lettres sans décomposition (« Nordsjælland », « Bodø », « Gießen ») : écrites aussi sans elles.
+        if (folded.all { it.code < 0x80 }) return folded
+        return LIGATURES.entries.fold(folded) { acc, (letter, plain) -> acc.replace(letter.toString(), plain) }
+    }
+
+    private val LIGATURES = mapOf('æ' to "ae", 'ø' to "o", 'œ' to "oe", 'ß' to "ss", 'ł' to "l", 'đ' to "d", 'ı' to "i", 'ð' to "d", 'þ' to "th")
 
     /** Autres sports : la Ligue des champions ou la Coupe du monde existent aussi en judo, en rugby… */
     val OTHER_SPORTS = Regex(
@@ -175,13 +181,39 @@ object FootballMatches {
      * chaque équipe a un mot distinctif de son nom en commun avec son vis-à-vis (« Crystal Palace » /
      * « Palace », « Hoffenheim » / « TSG Hoffenheim »).
      */
-    fun sameTeams(home: String, away: String, otherHome: String, otherAway: String): Boolean {
-        val h = teamWords(home)
-        val a = teamWords(away)
-        val oh = teamWords(otherHome)
-        val oa = teamWords(otherAway)
-        if (h.isEmpty() || a.isEmpty() || oh.isEmpty() || oa.isEmpty()) return false
-        return (h.any { it in oh } && a.any { it in oa }) || (h.any { it in oa } && a.any { it in oh })
+    fun sameTeams(home: String, away: String, otherHome: String, otherAway: String): Boolean =
+        sameTeams(teamWords(home), teamWords(away), teamWords(otherHome), teamWords(otherAway))
+
+    /** [sameTeams] d'après les mots déjà extraits par [teamWords]. */
+    fun sameTeams(home: Set<String>, away: Set<String>, otherHome: Set<String>, otherAway: Set<String>): Boolean {
+        if (home.isEmpty() || away.isEmpty() || otherHome.isEmpty() || otherAway.isEmpty()) return false
+        return (sameTeam(home, otherHome) && sameTeam(away, otherAway)) || (sameTeam(home, otherAway) && sameTeam(away, otherHome))
+    }
+
+    /** Un mot en commun, à une faute près pour les mots longs (« Olympiakos » / « Olympiacos »). */
+    fun sameTeam(words: Set<String>, other: Set<String>): Boolean =
+        words.any { word -> word in other || (word.length >= FUZZY_LENGTH && other.any { oneEditApart(word, it) }) }
+
+    private const val FUZZY_LENGTH = 6
+
+    /** Les deux mots ne diffèrent que d'une lettre (changée, ajoutée ou retirée). */
+    private fun oneEditApart(a: String, b: String): Boolean {
+        if (b.length < FUZZY_LENGTH || kotlin.math.abs(a.length - b.length) > 1) return false
+        val (short, long) = if (a.length <= b.length) a to b else b to a
+        var i = 0
+        var j = 0
+        var edits = 0
+        while (i < short.length && j < long.length) {
+            if (short[i] == long[j]) {
+                i++
+                j++
+                continue
+            }
+            if (++edits > 1) return false
+            if (short.length == long.length) i++
+            j++
+        }
+        return edits + (long.length - j) + (short.length - i) <= 1
     }
 
     /** Mots distinctifs d'un nom d'équipe (sans « FC », « Real », « United »…). */

@@ -153,6 +153,30 @@ class LiveScoresTest {
     }
 
     @Test
+    fun `european cup airing with no match of either team around it is not live`() {
+        val thursday = LiveScoreClient.parse(
+            JSONObject(
+                """{"events":[
+                ${event("2026-11-05T20:00Z", "post", "STATUS_FULL_TIME", "FT", "90'+4'", "Bayer Leverkusen", "0", "Marseille", "1", "B04", "OLM")},
+                ${event("2026-11-05T17:45Z", "post", "STATUS_FULL_TIME", "FT", "90'+4'", "Lyon", "2", "Real Sociedad", "1")}
+                ]}""",
+            ),
+            Competition.EUROPA_LEAGUE,
+        )
+        val friday = 1_793_963_880_000L + 2 * 60 * 60_000L // 2026-11-06T13:18Z
+        val window = LiveScoreClient.REPLAY_GAP_MILLIS
+        // Vendredi après-midi : aucune des équipes ne joue en coupe d'Europe.
+        assertTrue(LiveScoreClient.absent(thursday, "Rennes", "Olympiakos", friday - window, friday + 3 * 60 * 60_000L))
+        // Jeudi soir, avant-match compris : le direct est gardé, même avec une seule équipe reconnue.
+        val evening = 1_793_908_800_000L - 45 * 60_000L
+        assertFalse(LiveScoreClient.absent(thursday, "Bayer Leverkusen", "Marseille", evening - window, evening + 3 * 60 * 60_000L))
+        assertFalse(LiveScoreClient.absent(thursday, "Leverkusen", "OM", evening - window, evening + 3 * 60 * 60_000L))
+        assertFalse(LiveScoreClient.absent(thursday, "Olympique Lyonnais", "Real Sociedad", evening - window, evening + 3 * 60 * 60_000L))
+        // Équipe sans nom exploitable : rien n'est affirmé.
+        assertFalse(LiveScoreClient.absent(thursday, "OM", "Rennes", friday - window, friday + 3 * 60 * 60_000L))
+    }
+
+    @Test
     fun `score boards cover every day of the window`() {
         val from = 1_793_963_880_000L - 2 * 24 * 60 * 60_000L
         assertEquals(listOf("20261104", "20261105", "20261106"), LiveScoreClient.days(from, 1_793_963_880_000L - LiveScoreClient.REPLAY_GAP_MILLIS))

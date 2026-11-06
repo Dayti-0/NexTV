@@ -247,8 +247,9 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
     }
 
     /**
-     * Affiches du guide seul qui reprennent un match déjà joué (match de la veille au soir rediffusé
-     * le midi) : écartées d'après la source des scores, qui connaît le vrai coup d'envoi. Seules celles
+     * Affiches du guide seul qui ne sont pas des directs (match de la veille au soir rediffusé le midi,
+     * vieille affiche de coupe d'Europe) : écartées d'après la source des scores, qui connaît les vrais
+     * coups d'envoi. Seules celles
      * des prochaines heures sont vérifiées (les suivantes le seront le moment venu).
      */
     private val withoutReplays: Flow<Assembled> = assembled.transformLatest { result ->
@@ -268,7 +269,7 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
     }
 
     private suspend fun replaysAmong(matches: List<FootballMatch>): Set<String> =
-        matches.filter { container.liveScores.playedBefore(it.competition, it.home, it.away, it.kickoffMillis) }.mapTo(HashSet()) { it.key }
+        matches.filter { container.liveScores.isReplay(it.competition, it.home, it.away, it.kickoffMillis) }.mapTo(HashSet()) { it.key }
 
     private fun Assembled.without(keys: Set<String>): Assembled =
         if (keys.isEmpty()) this else Assembled(matches.filterNot { it.key in keys }, notice)
@@ -507,9 +508,7 @@ private class Aired(val row: BroadcastRow, val fixture: Fixture) {
     val home = FootballMatches.teamWords(fixture.home)
     val away = FootballMatches.teamWords(fixture.away)
 
-    fun sameTeams(other: Aired): Boolean =
-        home.isNotEmpty() && away.isNotEmpty() &&
-            ((home.any { it in other.home } && away.any { it in other.away }) || (home.any { it in other.away } && away.any { it in other.home }))
+    fun sameTeams(other: Aired): Boolean = FootballMatches.sameTeams(home, away, other.home, other.away)
 }
 
 /**

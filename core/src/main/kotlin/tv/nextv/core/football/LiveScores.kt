@@ -107,22 +107,32 @@ class LiveScoreClient(
     }
 
     /**
-     * La diffusion de l'affiche [home] – [away] qui commence à [startMillis] reprend un match déjà
-     * joué (ou prévu) au moins [REPLAY_GAP_MILLIS] plus tôt, d'après la source des scores : c'est une
-     * rediffusion (match de la veille au soir rediffusé le midi). `false` quand rien ne le montre.
+     * La diffusion de l'affiche [home] – [away] qui commence à [startMillis] n'est pas un direct,
+     * d'après la source des scores : c'est une rediffusion quand
+     * - le match a été joué (ou est prévu) au moins [REPLAY_GAP_MILLIS] plus tôt dans les deux jours
+     *   précédents (match de la veille au soir rediffusé le midi) ;
+     * - ou, pour les coupes d'Europe (calendrier complet chez la source), quand aucune des deux équipes
+     *   ne joue autour de l'heure de diffusion (vieille affiche rediffusée).
+     * `false` quand rien ne le montre (tableaux injoignables, équipes inconnues…).
      */
-    suspend fun playedBefore(competition: Competition?, home: String, away: String, startMillis: Long): Boolean {
+    suspend fun isReplay(competition: Competition?, home: String, away: String, startMillis: Long): Boolean {
         val competitions = competition?.let(::related) ?: (Competition.entries - Competition.NATIONAL_TEAMS)
         val from = startMillis - REPLAY_LOOKBACK_MILLIS
-        val to = startMillis - REPLAY_GAP_MILLIS
-        val boards = competitions.flatMap { c -> LEAGUES[c].orEmpty().flatMap { league -> days(from, to).map { day -> Triple(c, league, day) } } }
+        val until = startMillis + LATE_KICKOFF_MILLIS
+        val wanted = competitions.flatMap { c -> LEAGUES[c].orEmpty().flatMap { league -> days(from, until).map { day -> Triple(c, league, day) } } }
         // Tableaux demandés ensemble : un appareil lent n'attend pas chacun à son tour.
-        val scores = coroutineScope { boards.map { (c, league, day) -> async { board(c, league, day) } }.awaitAll() }.flatten()
-        return earlier(scores, home, away, from, to) != null
+        val boards = coroutineScope { wanted.map { (c, league, day) -> async { board(c, league, day) } }.awaitAll() }
+        val scores = boards.flatMap { it.orEmpty() }
+        if (earlier(scores, home, away, from, startMillis - REPLAY_GAP_MILLIS) != null) return true
+        return competition in EUROPEAN_CUPS && boards.none { it == null } &&
+            absent(scores, home, away, startMillis - REPLAY_GAP_MILLIS, until)
     }
 
-    /** Tableau des scores d'une journée ([day] : « 20261105 »), gardé plus longtemps pour les jours passés. */
-    private suspend fun board(competition: Competition, league: String, day: String): List<LiveScore> {
+    /**
+     * Tableau des scores d'une journée ([day] : « 20261105 »), gardé plus longtemps pour les jours
+     * passés ; `null` quand il n'a jamais pu être lu.
+     */
+    private suspend fun board(competition: Competition, league: String, day: String): List<LiveScore>? {
         val key = "$league|$day"
         val now = clock()
         val maxAge = if (day < dayOf(now)) PAST_BOARD_MILLIS else TODAY_BOARD_MILLIS
@@ -135,7 +145,7 @@ class LiveScoreClient(
                 // Seuls les jours encore utiles restent en mémoire.
                 boards.entries.removeAll { now - it.value.first > PAST_BOARD_MILLIS }
             }
-            scores ?: boards[key]?.second.orEmpty()
+            scores ?: boards[key]?.second
         }
     }
 
@@ -167,9 +177,10 @@ class LiveScoreClient(
             Competition.LA_LIGA to listOf("esp.1"),
             Competition.SERIE_A to listOf("ita.1"),
             Competition.BUNDESLIGA to listOf("ger.1"),
-            Competition.CHAMPIONS_LEAGUE to listOf("uefa.champions"),
-            Competition.EUROPA_LEAGUE to listOf("uefa.europa"),
-            Competition.CONFERENCE_LEAGUE to listOf("uefa.europa.conf"),
+            // Tours préliminaires (juillet, août) : tableaux à part.
+            Competition.CHAMPIONS_LEAGUE to listOf("uefa.champions", "uefa.champions_qual"),
+            Competition.EUROPA_LEAGUE to listOf("uefa.europa", "uefa.europa_qual"),
+            Competition.CONFERENCE_LEAGUE to listOf("uefa.europa.conf", "uefa.europa.conf_qual"),
             Competition.NATIONAL_TEAMS to listOf("uefa.nations", "fifa.worldq.uefa", "fifa.world", "uefa.euro", "fifa.friendly"),
         )
 
@@ -188,6 +199,9 @@ class LiveScoreClient(
          * mi-temps ; marge en plus pour un guide décalé d'une heure ou deux.
          */
         const val REPLAY_GAP_MILLIS = 3 * 60 * 60_000L + 30 * 60_000L
+
+        /** Un direct commence au plus tôt 3 h avant le coup d'envoi (avant-match compris). */
+        private const val LATE_KICKOFF_MILLIS = 3 * 60 * 60_000L
 
         /** Les rediffusions reprennent les matchs des deux derniers jours. */
         private const val REPLAY_LOOKBACK_MILLIS = 2 * 24 * 60 * 60_000L
@@ -220,11 +234,31 @@ class LiveScoreClient(
          * Match de [scores] entre [home] et [away] (les deux équipes reconnues, dans un sens ou dans
          * l'autre) dont le coup d'envoi tombe entre [from] et [to].
          */
-        fun earlier(scores: List<LiveScore>, home: String, away: String, from: Long, to: Long): LiveScore? =
-            scores.firstOrNull { score ->
+        fun earlier(scores: List<LiveScore>, home: String, away: String, from: Long, to: Long): LiveScore? {
+            val homeWords = FootballMatches.teamWords(home)
+            val awayWords = FootballMatches.teamWords(away)
+            return scores.firstOrNull { score ->
                 score.kickoffMillis in from..to && !score.cancelled &&
-                    FootballMatches.sameTeams(home, away, score.home.names.joinToString(" "), score.away.names.joinToString(" "))
+                    FootballMatches.sameTeams(homeWords, awayWords, score.home.words(), score.away.words())
             }
+        }
+
+        /**
+         * Aucune des deux équipes ([home], [away]) n'a de match dont le coup d'envoi tombe entre [from]
+         * et [to]. `false` quand une équipe n'a aucun mot reconnaissable (rien ne peut être affirmé).
+         */
+        fun absent(scores: List<LiveScore>, home: String, away: String, from: Long, to: Long): Boolean {
+            val homeWords = FootballMatches.teamWords(home)
+            val awayWords = FootballMatches.teamWords(away)
+            if (homeWords.isEmpty() || awayWords.isEmpty()) return false
+            return scores.none { score ->
+                score.kickoffMillis in from..to && listOf(score.home.words(), score.away.words()).any { team ->
+                    FootballMatches.sameTeam(homeWords, team) || FootballMatches.sameTeam(awayWords, team)
+                }
+            }
+        }
+
+        private fun LiveTeam.words(): Set<String> = names.flatMapTo(HashSet()) { FootballMatches.teamWords(it) }
 
         /** Avant le coup d'envoi, l'émission commence souvent par l'avant-match. */
         private const val PRESHOW_MILLIS = 30 * 60_000L
