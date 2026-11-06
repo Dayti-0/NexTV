@@ -166,4 +166,12 @@ class TmdbClientTest {
         assertNull(Translator.parseGoogle("<html>Sorry…</html>"))
         assertNull(Translator.parseMyMemory("""{"responseData":{"translatedText":"QUERY LENGTH LIMIT EXCEEDED"},"responseStatus":403}"""))
     }
+
+    /** Programmes du guide hors films et séries : seulement un titre identique, jamais le plus proche. */
+    @Test
+    fun `exact lookups ignore titles that only look alike`() = runBlocking {
+        assertEquals(TmdbResult.NotFound, client.lookup(MediaType.MOVIE, "Avatar 3", null, exact = true))
+        val found = client.lookup(MediaType.MOVIE, "Avatar", null, exact = true) as TmdbResult.Found
+        assertEquals(19995L, found.details.tmdbId)
+    }
 }

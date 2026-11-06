@@ -85,14 +85,18 @@ class TmdbClient(
     private class NotFoundException : Exception()
 
     /** Recherche un film ou une série par titre (et année si connue), puis en lit la fiche. */
-    suspend fun lookup(type: MediaType, title: String, year: Int?): TmdbResult {
+    /**
+     * Fiche du film ou de la série [title]. [exact] : seulement un résultat portant exactement ce titre
+     * (programmes du guide hors films et séries : pas de fiche approchante, donc pas de fausse image).
+     */
+    suspend fun lookup(type: MediaType, title: String, year: Int?, exact: Boolean = false): TmdbResult {
         val fallback = fallbackApiKey()?.trim()?.takeIf { it.isNotEmpty() }
         val key = apiKey()?.trim()?.takeIf { it.isNotEmpty() } ?: fallback ?: return TmdbResult.Failed(TmdbError.MISSING_KEY)
-        val result = lookupWith(key, type, title, year)
+        val result = lookupWith(key, type, title, year, exact)
         // Clé des réglages refusée (ancienne, mal recopiée…) : celle fournie avec l'application.
         if (result == TmdbResult.Failed(TmdbError.INVALID_KEY) && fallback != null && fallback != key) {
             logger.warn(TAG, "Clé TMDB des réglages refusée : clé fournie avec l'application")
-            return lookupWith(fallback, type, title, year)
+            return lookupWith(fallback, type, title, year, exact)
         }
         return result
     }
@@ -134,7 +138,7 @@ class TmdbClient(
         return titles
     }
 
-    private suspend fun lookupWith(key: String, type: MediaType, title: String, year: Int?): TmdbResult {
+    private suspend fun lookupWith(key: String, type: MediaType, title: String, year: Int?, exact: Boolean = false): TmdbResult {
         return try {
             // Titre tel quel, puis sans ses parties entre parenthèses ou crochets ; avec l'année, puis sans.
             val queries = listOf(title, title.replace(BRACKETED, " ").replace(SPACES, " ").trim())
@@ -142,7 +146,7 @@ class TmdbClient(
                 .distinct()
             var id: Long? = null
             for (query in queries) {
-                id = search(key, type, query, year) ?: year?.let { search(key, type, query, null) }
+                id = search(key, type, query, year, exact) ?: year?.let { search(key, type, query, null, exact) }
                 if (id != null) break
             }
             if (id == null) return TmdbResult.NotFound
@@ -162,7 +166,7 @@ class TmdbClient(
         }
     }
 
-    private suspend fun search(key: String, type: MediaType, title: String, year: Int?): Long? {
+    private suspend fun search(key: String, type: MediaType, title: String, year: Int?, exact: Boolean = false): Long? {
         val path = if (type == MediaType.MOVIE) "search/movie" else "search/tv"
         val url = baseUrl.newBuilder().addPathSegments(path)
             .addQueryParameter("query", title)
@@ -175,7 +179,7 @@ class TmdbClient(
         val results = get(key, url).optJSONArray("results") ?: return null
         if (results.length() == 0) return null
         val wanted = normalize(title)
-        var best: JSONObject = results.getJSONObject(0)
+        var best: JSONObject? = if (exact) null else results.getJSONObject(0)
         for (i in 0 until results.length()) {
             val candidate = results.getJSONObject(i)
             val names = listOf("title", "original_title", "name", "original_name").map { normalize(candidate.optString(it)) }
@@ -184,7 +188,7 @@ class TmdbClient(
                 break
             }
         }
-        return best.optLong("id").takeIf { it > 0 }
+        return best?.optLong("id")?.takeIf { it > 0 }
     }
 
     private suspend fun details(key: String, type: MediaType, id: Long): MediaDetails {

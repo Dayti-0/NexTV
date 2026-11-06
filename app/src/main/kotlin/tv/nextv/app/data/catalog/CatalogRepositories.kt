@@ -31,13 +31,13 @@ class MetadataRepository(
 ) {
     private val dao = database.tmdbDao()
 
-    suspend fun details(cacheKey: String, type: MediaType, title: String, year: Int?): MetadataState {
+    suspend fun details(cacheKey: String, type: MediaType, title: String, year: Int?, exact: Boolean = false): MetadataState {
         val now = clock()
         dao.get(cacheKey)?.let { cached ->
             val ttl = if (cached.found) FOUND_TTL else NOT_FOUND_TTL
             if (now - cached.fetchedAt < ttl) return if (cached.found) MetadataState.Available(cached.toDetails(type)) else MetadataState.NotFound
         }
-        return when (val result = client.lookup(type, title, year)) {
+        return when (val result = client.lookup(type, title, year, exact)) {
             is TmdbResult.Found -> {
                 dao.put(result.details.toEntity(cacheKey, now))
                 MetadataState.Available(result.details)
