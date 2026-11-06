@@ -235,4 +235,17 @@ class EpgImporterTest {
         val years = generateSequence { reader.next() }.filterIsInstance<XmltvProgramme>().map { it.year }.toList()
         assertEquals(listOf(1999, 2023, null), years)
     }
+
+    @Test
+    fun `unknown genres are not kept`() {
+        val xml = """
+            <tv>
+              <programme start="20240101120000 +0000" stop="20240101130000 +0000" channel="a"><title>Enquêtes</title><category>Inconnu</category></programme>
+              <programme start="20240101130000 +0000" stop="20240101140000 +0000" channel="a"><title>Doc</title><category>Unknown</category><category>Documentaire</category></programme>
+            </tv>
+        """.trimIndent()
+        val reader = XmltvReader(xml.byteInputStream()) { KXmlParser() }
+        val genres = generateSequence { reader.next() }.filterIsInstance<XmltvProgramme>().map { it.category }.toList()
+        assertEquals(listOf(null, "Documentaire"), genres)
+    }
 }

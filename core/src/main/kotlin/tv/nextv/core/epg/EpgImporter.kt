@@ -216,7 +216,7 @@ class EpgImporter(
          * avec une version antérieure est réimporté dès le lancement suivant, sans attendre sa
          * réimportation quotidienne.
          */
-        const val VERSION = 3
+        const val VERSION = 4
 
         private const val CANCELLATION_CHECK_INTERVAL = 500
         private val NON_ALPHANUMERIC = Regex("[^\\p{L}\\p{Nd}]+")

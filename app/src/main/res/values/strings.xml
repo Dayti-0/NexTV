@@ -219,7 +219,6 @@
     <string name="guide_no_programme">Pas de programme</string>
     <string name="guide_no_favorites_title">Aucune chaîne favorite</string>
     <string name="guide_no_favorites_message">Aucune chaîne en favori.</string>
-    <string name="guide_no_description">Pas de description dans le guide.</string>
     <string name="guide_watch">Regarder</string>
     <string name="guide_watch_live">Regarder le direct</string>
     <string name="guide_replay">Revoir</string>

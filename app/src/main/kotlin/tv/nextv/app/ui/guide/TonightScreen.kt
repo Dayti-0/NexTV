@@ -246,11 +246,14 @@ private fun ProgrammeCell(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
         // Vignette du programme quand le guide en donne une (soirée : programme principal).
-        if (main && programme.imageUrl != null) {
+        // Image introuvable : pas de vignette vide.
+        var thumbnailFailed by remember(programme.imageUrl) { mutableStateOf(false) }
+        if (main && programme.imageUrl != null && !thumbnailFailed) {
             AsyncImage(
                 model = programme.imageUrl,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
+                onError = { thumbnailFailed = true },
                 modifier = Modifier.padding(start = 8.dp).width(84.dp).aspectRatio(16f / 9f).clip(MaterialTheme.shapes.small),
             )
         }

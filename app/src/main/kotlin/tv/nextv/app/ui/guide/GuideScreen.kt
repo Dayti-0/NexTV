@@ -721,12 +721,14 @@ fun ProgrammeSheetContent(
                     Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                 }
                 if (programme.isLive(now)) LiveProgress(programme.startMillis, programme.stopMillis, now)
-                Text(
-                    programme.description ?: stringResource(R.string.guide_no_description),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.heightIn(max = 220.dp).verticalScroll(rememberScrollState()),
-                )
+                programme.description?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.heightIn(max = 220.dp).verticalScroll(rememberScrollState()),
+                    )
+                }
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 4.dp)) {
                 if (replayFirst && onReplay != null) {

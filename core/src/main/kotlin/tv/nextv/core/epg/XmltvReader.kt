@@ -135,7 +135,8 @@ class XmltvReader(
                 }
                 "sub-title" -> readText().let { if (subtitle.isNullOrEmpty()) subtitle = it }
                 "desc" -> readText().let { if (description.isNullOrEmpty()) description = it }
-                "category" -> readText().takeIf { it.isNotEmpty() }?.let { text ->
+                // « Inconnu », « Unknown » : genre vide, rien à afficher.
+                "category" -> readText().takeIf { it.isNotEmpty() && it.lowercase() !in UNKNOWN_CATEGORIES }?.let { text ->
                     if (categories.none { it.equals(text, ignoreCase = true) }) categories += text
                 }
                 // « 2019 », « 20190314 »… : seule une année plausible est retenue.
@@ -202,6 +203,9 @@ class XmltvReader(
     }
 
     private companion object {
+        /** Genres qui n'en sont pas. */
+        private val UNKNOWN_CATEGORIES = setOf("inconnu", "unknown", "non défini", "non defini", "n/a", "undefined", "autre", "other")
+
         const val FEATURE_RELAXED = "http://xmlpull.org/v1/doc/features.html#relaxed"
         const val MAX_TITLE_LENGTH = 300
         const val MAX_DESCRIPTION_LENGTH = 2000

@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -72,15 +75,22 @@ private val NO_SHEET_TITLE = Regex("""^(le |la |les )?(journal|jt|météo|meteo|
 
 private const val LOOKUP_DELAY_MILLIS = 400L
 
-/** Visuel du programme en fondu, ou rien (le reste de la mise en page ne bouge pas). */
+/** Visuel du programme en fondu, ou rien : une image introuvable ne laisse pas de cadre vide. */
 @Composable
 fun ProgrammeArt(programme: GuideProgramme?, modifier: Modifier) {
     val image = rememberProgrammeImage(programme)
+    var failed by remember(image) { mutableStateOf(false) }
+    if (image == null || failed) return
     Crossfade(image, animationSpec = tween(300), label = "programme-art", modifier = modifier.clip(MaterialTheme.shapes.medium)) { url ->
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
-            if (url != null) {
-                AsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Crop, alignment = Alignment.Center, modifier = Modifier.fillMaxSize())
-            }
+            AsyncImage(
+                model = url,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                alignment = Alignment.Center,
+                onError = { failed = true },
+                modifier = Modifier.fillMaxSize(),
+            )
         }
     }
 }
