@@ -351,7 +351,7 @@ abstract class ScreenshotSuite(private val device: String) {
         }
     }
 
-    /** Programme avec image et longue description : la fiche tient dans l'écran, boutons compris. */
+    /** Programme avec image et longue description : description entière, boutons compris. */
     @Test
     fun programmeLong() = capture("10c_programme_image") {
         val channel = SampleData.guide.channels[0]
@@ -367,7 +367,7 @@ abstract class ScreenshotSuite(private val device: String) {
             imageUrl = "https://example.com/star-academy.jpg",
         )
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background.copy(alpha = 0.9f)), contentAlignment = Alignment.Center) {
-            Box(Modifier.widthIn(max = 640.dp).padding(24.dp)) {
+            Box(Modifier.padding(24.dp)) {
                 ProgrammeSheetContent(channel, programme, SampleData.NOW, onWatch = {}, onDismiss = {}, inSelection = false)
             }
         }

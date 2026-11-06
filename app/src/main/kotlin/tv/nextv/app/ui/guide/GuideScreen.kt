@@ -54,7 +54,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalDensity
@@ -62,6 +61,14 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.foundation.border
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.focus.onFocusChanged
+import tv.nextv.app.ui.components.bottomFade
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.foundation.gestures.scrollBy
@@ -669,8 +676,9 @@ fun ProgrammeSheet(
     inSelection: Boolean? = null,
     onToggleSelection: () -> Unit = {},
 ) {
-    Dialog(onDismissRequest = onDismiss) {
-        Box(Modifier.ignoreHeldOk()) {
+    // Largeur propre à la fiche (plus large que celle d'une boîte de dialogue) : la description tient entière.
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(Modifier.ignoreHeldOk().padding(24.dp)) {
             ProgrammeSheetContent(channel, programme, now, onWatch, onDismiss, onReplay, inSelection, onToggleSelection)
         }
     }
@@ -693,10 +701,15 @@ fun ProgrammeSheetContent(
     val replayFirst = onReplay != null && programme != null && programme.stopMillis <= now
     LaunchedEffect(Unit) { runCatching { watchFocus.requestFocus() } }
     val wide = rememberWindowInfo().isWide
+    // Description trop longue pour l'écran : « haut » depuis les boutons y entre, haut / bas la font défiler.
+    val detailsScroll = rememberScrollState()
+    val scope = rememberCoroutineScope()
+    var detailsFocused by remember { mutableStateOf(false) }
+    val step = with(LocalDensity.current) { SHEET_SCROLL_STEP.toPx() }
     Surface(
         shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        modifier = Modifier.widthIn(max = 640.dp),
+        modifier = Modifier.widthIn(max = if (wide) SHEET_WIDTH_WIDE else SHEET_WIDTH),
     ) {
         Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -715,8 +728,29 @@ fun ProgrammeSheetContent(
             if (programme == null) {
                 Text(stringResource(R.string.channels_no_epg), style = MaterialTheme.typography.headlineSmall)
             } else {
-                // Fiche plus haute que l'écran (TV) : ce bloc se réduit, les boutons restent visibles en bas.
-                Column(Modifier.weight(1f, fill = false).clipToBounds(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                // Fiche plus haute que l'écran : ce bloc défile (description entière), les boutons restent visibles en bas.
+                Column(
+                    Modifier
+                        .weight(1f, fill = false)
+                        .then(if (detailsFocused) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, MaterialTheme.shapes.medium) else Modifier)
+                        .onFocusChanged { detailsFocused = it.isFocused }
+                        .onKeyEvent { event ->
+                            if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
+                            when (event.key) {
+                                // En bas du texte, « bas » revient aux boutons.
+                                Key.DirectionDown -> detailsScroll.canScrollForward.also { if (it) scope.launch { detailsScroll.animateScrollBy(step) } }
+                                Key.DirectionUp -> {
+                                    if (detailsScroll.canScrollBackward) scope.launch { detailsScroll.animateScrollBy(-step) }
+                                    true
+                                }
+                                else -> false
+                            }
+                        }
+                        .focusable(enabled = detailsScroll.maxValue > 0)
+                        .bottomFade({ detailsScroll.canScrollForward })
+                        .verticalScroll(detailsScroll),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
                     val details: @Composable () -> Unit = {
                         Text(programme.title, style = MaterialTheme.typography.headlineSmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
                         programme.subtitle?.let { Text(it, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis) }
@@ -742,8 +776,6 @@ fun ProgrammeSheetContent(
                             it,
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = SHEET_DESCRIPTION_LINES,
-                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 }
@@ -783,9 +815,11 @@ fun ProgrammeSheetContent(
 
 private fun GuideProgramme.isLive(now: Long) = startMillis <= now && stopMillis > now
 
-/** Fiche d'un programme : largeur de l'image (TV) et lignes de description. */
+/** Fiche d'un programme : largeurs (TV, autres écrans), image (TV) et pas de défilement de la description. */
+private val SHEET_WIDTH = 640.dp
+private val SHEET_WIDTH_WIDE = 860.dp
 private val SHEET_ART_WIDTH = 220.dp
-private const val SHEET_DESCRIPTION_LINES = 6
+private val SHEET_SCROLL_STEP = 120.dp
 
 /** Programmes affichés d'une ligne : au moins une minute dans la fenêtre de la grille. */
 private fun visibleProgrammes(channel: GuideChannel, state: GuideUiState): List<GuideProgramme> =
