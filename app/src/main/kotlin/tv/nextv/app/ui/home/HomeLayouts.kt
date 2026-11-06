@@ -32,7 +32,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -45,16 +45,20 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -228,7 +232,7 @@ internal fun SearchResults(
         title = stringResource(R.string.home_rows_results),
         count = itemCount(section, count),
         padding = padding,
-        onSeeAll = null,
+        onMore = null,
         itemWidth = if (tv) sizes.channel else sizes.poster,
         imageRatio = if (tv) CHANNEL_RATIO else POSTER_RATIO,
         rowKey = "results",
@@ -254,8 +258,8 @@ internal fun SearchResults(
 internal sealed interface ShelfSpec {
     val key: String
 
-    data class Channels(override val key: String, val title: Int, val channels: List<ChannelListRow>, val category: Category) : ShelfSpec
-    data class Posters(override val key: String, val title: Int, val items: List<PosterItem>, val category: Category?, val from: String? = null) : ShelfSpec
+    data class Channels(override val key: String, val title: Int, val channels: List<ChannelListRow>) : ShelfSpec
+    data class Posters(override val key: String, val title: Int, val items: List<PosterItem>, val from: String? = null) : ShelfSpec
     data class Continue(override val key: String, val items: List<ProgressEntity>) : ShelfSpec
     data class Group(override val key: String, val group: GroupRow) : ShelfSpec
 }
@@ -264,17 +268,17 @@ internal sealed interface ShelfSpec {
 internal fun shelfList(content: ShelfContent): List<ShelfSpec> = buildList {
     when (content.section) {
         HomeSection.TV -> {
-            if (content.favoriteChannels.isNotEmpty()) add(ShelfSpec.Channels("favorites", R.string.home_favorites, content.favoriteChannels, Category.Favorites))
-            if (content.recentChannels.isNotEmpty()) add(ShelfSpec.Channels("recent", R.string.home_recent, content.recentChannels, Category.Recent))
+            if (content.favoriteChannels.isNotEmpty()) add(ShelfSpec.Channels("favorites", R.string.home_favorites, content.favoriteChannels))
+            if (content.recentChannels.isNotEmpty()) add(ShelfSpec.Channels("recent", R.string.home_recent, content.recentChannels))
         }
         HomeSection.MOVIES, HomeSection.SERIES -> {
             if (content.continueItems.isNotEmpty()) add(ShelfSpec.Continue("continue", content.continueItems))
             val discover = content.discover
-            if (discover.trending.isNotEmpty()) add(ShelfSpec.Posters("trending", R.string.home_rows_trending, discover.trending, null))
-            if (discover.newest.isNotEmpty()) add(ShelfSpec.Posters("newest", R.string.home_rows_newest, discover.newest, null))
-            if (discover.recommended.isNotEmpty()) add(ShelfSpec.Posters("recommended", R.string.home_rows_recommended, discover.recommended, null, discover.recommendedFrom))
+            if (discover.trending.isNotEmpty()) add(ShelfSpec.Posters("trending", R.string.home_rows_trending, discover.trending))
+            if (discover.newest.isNotEmpty()) add(ShelfSpec.Posters("newest", R.string.home_rows_newest, discover.newest))
+            if (discover.recommended.isNotEmpty()) add(ShelfSpec.Posters("recommended", R.string.home_rows_recommended, discover.recommended, discover.recommendedFrom))
             val favorites = if (content.section == HomeSection.MOVIES) content.favoriteMovies.map { it.toPoster() } else content.favoriteSeries.map { it.toPoster() }
-            if (favorites.isNotEmpty()) add(ShelfSpec.Posters("favorites", R.string.home_favorites, favorites, Category.Favorites))
+            if (favorites.isNotEmpty()) add(ShelfSpec.Posters("favorites", R.string.home_favorites, favorites))
         }
         HomeSection.GUIDE, HomeSection.FOOTBALL -> Unit
     }
@@ -346,7 +350,7 @@ internal fun LazyListScope.shelfItems(
                 title = stringResource(spec.title),
                 count = null,
                 padding = padding,
-                onSeeAll = { actions.onCategory(spec.category) },
+                onMore = null,
                 itemWidth = sizes.channel,
                 imageRatio = CHANNEL_RATIO,
                 rowKey = spec.key,
@@ -362,7 +366,7 @@ internal fun LazyListScope.shelfItems(
                 title = spec.from?.let { stringResource(R.string.home_rows_because, it) } ?: stringResource(spec.title),
                 count = null,
                 padding = padding,
-                onSeeAll = spec.category?.let { category -> { actions.onCategory(category) } },
+                onMore = null,
                 itemWidth = sizes.poster,
                 imageRatio = POSTER_RATIO,
                 rowKey = spec.key,
@@ -378,7 +382,7 @@ internal fun LazyListScope.shelfItems(
                 title = stringResource(R.string.home_continue),
                 count = null,
                 padding = padding,
-                onSeeAll = { actions.onCategory(Category.ContinueWatching) },
+                onMore = null,
                 itemWidth = sizes.poster,
                 imageRatio = POSTER_RATIO,
                 rowKey = spec.key,
@@ -409,26 +413,68 @@ private fun GroupShelf(
     val group = spec.group
     val title = group.title.orEmpty()
     val name = group.title ?: stringResource(R.string.channels_no_group)
-    val seeAll = { actions.onCategory(Category.Group(title)) }
     val count = itemCount(section, group.count)
     val version = rowVersion(section, group, content.now / ROW_REFRESH_MILLIS)
-    if (section == HomeSection.TV) {
-        // Rangée déjà lue : affichée tout de suite, puis relue si elle a changé.
-        val channels by produceState(content.rows.cached<ChannelListRow>(section, title), title, version) {
-            value = loadSafely { content.rows.fresh<ChannelListRow>(section, title, version) } ?: value.orEmpty()
-        }
-        val list = channels.orEmpty()
-        Shelf(name, count, padding, seeAll, sizes.channel, CHANNEL_RATIO, spec.key, list.size, lastOpened, loading = channels == null, style = style) {
-            itemsIndexed(list, key = { _, it -> it.id }) { index, channel -> ShelfChannel(channel, index, spec.key, sizes.channel, content, lastOpened, actions, style) }
+    // « Voir plus » : la rangée s'allonge sur place, dans la même interface.
+    var limit by rememberSaveable(spec.key) { mutableIntStateOf(HomeRows.ROW_SIZE) }
+    val more = remember(spec.key) { MoreFocus() }
+    // Pendant la lecture de la suite, « Voir plus » reste là (et choisi) jusqu'à l'arrivée des nouveaux éléments.
+    fun onMore(shown: Int): (() -> Unit)? = if (shown < group.count && (shown >= limit || more.index == shown)) {
+        {
+            more.index = shown
+            limit = shown + HomeRows.MORE_SIZE
         }
     } else {
-        val posters by produceState(content.rows.cachedPosters(section, title), title, version) {
-            value = loadSafely { content.rows.freshPosters(section, title, version) } ?: value.orEmpty()
+        null
+    }
+    if (section == HomeSection.TV) {
+        // Rangée déjà lue : affichée tout de suite, puis relue si elle a changé.
+        val channels by produceState(content.rows.cached<ChannelListRow>(section, title), title, version, limit) {
+            value = loadSafely { content.rows.fresh<ChannelListRow>(section, title, version, limit) } ?: value.orEmpty()
+        }
+        val list = channels.orEmpty()
+        LaunchedEffect(list.size) { more.focusNewItem(list.size) }
+        Shelf(name, count, padding, onMore(list.size), sizes.channel, CHANNEL_RATIO, spec.key, list.size, lastOpened, loading = channels == null, style = style) {
+            itemsIndexed(list, key = { _, it -> it.id }) { index, channel ->
+                ShelfChannel(channel, index, spec.key, sizes.channel, content, lastOpened, actions, style, more.requesterFor(index))
+            }
+        }
+    } else {
+        val posters by produceState(content.rows.cachedPosters(section, title), title, version, limit) {
+            value = loadSafely { content.rows.freshPosters(section, title, version, limit) } ?: value.orEmpty()
         }
         val list = posters.orEmpty()
-        Shelf(name, count, padding, seeAll, sizes.poster, POSTER_RATIO, spec.key, list.size, lastOpened, loading = posters == null, style = style) {
-            itemsIndexed(list, key = { _, it -> it.itemKey }) { index, item -> ShelfPoster(item, index, spec.key, sizes.poster, content.favoriteKeys, lastOpened, actions, style) }
+        LaunchedEffect(list.size) { more.focusNewItem(list.size) }
+        Shelf(name, count, padding, onMore(list.size), sizes.poster, POSTER_RATIO, spec.key, list.size, lastOpened, loading = posters == null, style = style) {
+            itemsIndexed(list, key = { _, it -> it.itemKey }) { index, item ->
+                ShelfPoster(item, index, spec.key, sizes.poster, content.favoriteKeys, lastOpened, actions, style, more.requesterFor(index))
+            }
         }
+    }
+}
+
+/** « Voir plus » : une fois la rangée allongée, la sélection passe au premier élément ajouté ([index]). */
+private class MoreFocus {
+    private val requester = FocusRequester()
+    var index by mutableIntStateOf(-1)
+
+    fun requesterFor(item: Int): FocusRequester? = requester.takeIf { item == index }
+
+    suspend fun focusNewItem(size: Int) {
+        if (index !in 0 until size) return
+        // L'élément est créé par la rangée à l'image suivante.
+        repeat(FOCUS_TRIES) {
+            withFrameNanos { }
+            if (runCatching { requester.requestFocus() }.isSuccess) {
+                index = -1
+                return
+            }
+        }
+        index = -1
+    }
+
+    private companion object {
+        const val FOCUS_TRIES = 10
     }
 }
 
@@ -438,9 +484,9 @@ private fun HomeRows.cachedPosters(section: HomeSection, group: String): List<Po
     else -> cached<SeriesRow>(section, group)?.map { it.toPoster() }
 }
 
-private suspend fun HomeRows.freshPosters(section: HomeSection, group: String, version: String): List<PosterItem> = when (section) {
-    HomeSection.MOVIES -> fresh<MovieRow>(section, group, version).map { it.toPoster() }
-    else -> fresh<SeriesRow>(section, group, version).map { it.toPoster() }
+private suspend fun HomeRows.freshPosters(section: HomeSection, group: String, version: String, limit: Int): List<PosterItem> = when (section) {
+    HomeSection.MOVIES -> fresh<MovieRow>(section, group, version, limit).map { it.toPoster() }
+    else -> fresh<SeriesRow>(section, group, version, limit).map { it.toPoster() }
 }
 
 /**
@@ -481,8 +527,9 @@ private suspend fun <T> loadSafely(block: suspend () -> T): T? = try {
 }
 
 /**
- * Rangée : titre, nombre d'éléments et défilement horizontal, terminé par « Tout voir ». Sa place
- * est gardée au retour (lecteur, fiche). Pendant le chargement, des emplacements vides gardent sa hauteur.
+ * Rangée : titre, nombre d'éléments et défilement horizontal, terminé par « Voir plus » quand la
+ * catégorie a d'autres éléments. Sa place est gardée au retour (lecteur, fiche). Pendant le
+ * chargement, des emplacements vides gardent sa hauteur.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -490,8 +537,8 @@ internal fun Shelf(
     title: String,
     count: String?,
     padding: Dp,
-    /** `null` : pas de « Tout voir » (résultats de recherche). */
-    onSeeAll: (() -> Unit)?,
+    /** « Voir plus » : ajoute les éléments suivants ; `null` : la rangée est complète. */
+    onMore: (() -> Unit)?,
     itemWidth: Dp,
     imageRatio: Float,
     rowKey: String,
@@ -557,7 +604,7 @@ internal fun Shelf(
                     }
                 } else {
                     content()
-                    if (onSeeAll != null) item(key = "see-all") { SeeAllCard(onSeeAll, itemWidth, imageRatio) }
+                    if (onMore != null) item(key = "more") { MoreCard(onMore, itemWidth, imageRatio) }
                 }
             }
         }
@@ -565,8 +612,8 @@ internal fun Shelf(
 }
 
 @Composable
-private fun SeeAllCard(onClick: () -> Unit, width: Dp, imageRatio: Float) {
-    // Même hauteur que les visuels de la rangée, assez large pour « Tout voir ».
+private fun MoreCard(onClick: () -> Unit, width: Dp, imageRatio: Float) {
+    // Même hauteur que les visuels de la rangée, assez large pour « Voir plus ».
     FocusSurface(
         onClick = onClick,
         modifier = Modifier.width(maxOf(width * 0.7f, SEE_ALL_MIN_WIDTH)),
@@ -579,9 +626,9 @@ private fun SeeAllCard(onClick: () -> Unit, width: Dp, imageRatio: Float) {
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(28.dp))
+            Icon(Icons.Filled.Add, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(28.dp))
             Spacer(Modifier.height(8.dp))
-            Text(stringResource(R.string.home_rows_see_all), style = MaterialTheme.typography.labelLarge, maxLines = 1)
+            Text(stringResource(R.string.home_rows_more), style = MaterialTheme.typography.labelLarge, maxLines = 1)
         }
     }
 }
@@ -596,9 +643,12 @@ internal fun ShelfChannel(
     lastOpened: MutableState<OpenedItem?>,
     actions: HomeActions,
     style: ShelfStyle = ShelfStyle.STREAMING,
+    /** Premier élément ajouté par « Voir plus » : il prend la sélection. */
+    focusRequester: FocusRequester? = null,
 ) {
     val modifier = Modifier
         .width(width)
+        .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
         .restoreFocus(channel.itemKey, lastOpened)
         .onFocusChanged { if (it.isFocused) actions.onChannelFocus(channel) }
     val onClick = {
@@ -640,6 +690,8 @@ internal fun ShelfPoster(
     lastOpened: MutableState<OpenedItem?>,
     actions: HomeActions,
     style: ShelfStyle = ShelfStyle.STREAMING,
+    /** Premier élément ajouté par « Voir plus » : il prend la sélection. */
+    focusRequester: FocusRequester? = null,
 ) {
     val onClick = {
         lastOpened.value = OpenedItem(item.itemKey, index, row)
@@ -648,6 +700,7 @@ internal fun ShelfPoster(
     val onLongClick = { actions.onToggleFavorite(item.kind, item.itemKey, item.title, item.imageUrl) }
     val modifier = Modifier
         .width(width)
+        .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
         .restoreFocus(item.itemKey, lastOpened)
         .onFocusChanged { if (it.isFocused) actions.onPosterFocus(item) }
     if (style == ShelfStyle.PREMIUM) {

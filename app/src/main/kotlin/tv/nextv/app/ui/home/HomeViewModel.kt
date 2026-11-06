@@ -83,37 +83,50 @@ data class ChannelPreview(
     val later: List<GuideProgramme> = emptyList(),
 )
 
-/** Contenu des rangées de l'interface « Streaming » : premiers éléments d'une catégorie ([String] vide : sans groupe). */
+/**
+ * Contenu des rangées des interfaces « Streaming » et « Cinéma Premium » : premiers éléments d'une
+ * catégorie ([String] vide : sans groupe), au plus le nombre demandé (« Voir plus » l'augmente).
+ */
 class HomeRows(
-    val channels: suspend (group: String) -> List<ChannelListRow> = { emptyList() },
-    val movies: suspend (group: String) -> List<MovieRow> = { emptyList() },
-    val series: suspend (group: String) -> List<SeriesRow> = { emptyList() },
+    val channels: suspend (group: String, limit: Int) -> List<ChannelListRow> = { _, _ -> emptyList() },
+    val movies: suspend (group: String, limit: Int) -> List<MovieRow> = { _, _ -> emptyList() },
+    val series: suspend (group: String, limit: Int) -> List<SeriesRow> = { _, _ -> emptyList() },
 ) {
+    private class Entry(val version: String, val limit: Int, val rows: List<Any>)
+
     /**
-     * Rangées déjà lues, avec la version de leur lecture : une rangée qui revient à l'écran (ou que la
-     * télécommande vise juste en dessous) est remplie aussitôt, sans attendre la base.
+     * Rangées déjà lues, avec la version et la longueur de leur lecture : une rangée qui revient à
+     * l'écran (ou que la télécommande vise juste en dessous) est remplie aussitôt, sans attendre la base.
      */
-    private val cache = ConcurrentHashMap<Pair<HomeSection, String>, Pair<String, List<Any>>>()
+    private val cache = ConcurrentHashMap<Pair<HomeSection, String>, Entry>()
 
     /** Dernière lecture de la rangée, quelle que soit sa version. */
     @Suppress("UNCHECKED_CAST")
-    fun <T : Any> cached(section: HomeSection, group: String): List<T>? = cache[section to group]?.second as List<T>?
+    fun <T : Any> cached(section: HomeSection, group: String): List<T>? = cache[section to group]?.rows as List<T>?
 
-    /** La rangée dans la [version] demandée : gardée si elle est déjà lue, sinon lue dans la base. */
+    /** La rangée dans la [version] demandée, avec au moins [limit] éléments s'il y en a : gardée si elle est déjà lue, sinon lue dans la base. */
     @Suppress("UNCHECKED_CAST")
-    suspend fun <T : Any> fresh(section: HomeSection, group: String, version: String): List<T> {
-        cache[section to group]?.takeIf { it.first == version }?.let { return it.second as List<T> }
+    suspend fun <T : Any> fresh(section: HomeSection, group: String, version: String, limit: Int = ROW_SIZE): List<T> {
+        cache[section to group]?.takeIf { it.version == version && it.limit >= limit }?.let { return it.rows as List<T> }
         val rows: List<Any> = when (section) {
-            HomeSection.TV -> channels(group)
-            HomeSection.MOVIES -> movies(group)
-            else -> series(group)
+            HomeSection.TV -> channels(group, limit)
+            HomeSection.MOVIES -> movies(group, limit)
+            else -> series(group, limit)
         }
-        cache[section to group] = version to rows
+        cache[section to group] = Entry(version, limit, rows)
         return rows as List<T>
     }
 
     /** Autre playlist : rien n'est gardé. */
     fun clear() = cache.clear()
+
+    companion object {
+        /** Éléments d'une rangée à son premier affichage. */
+        const val ROW_SIZE = 24
+
+        /** Éléments ajoutés par « Voir plus ». */
+        const val MORE_SIZE = 48
+    }
 }
 
 /**
@@ -313,9 +326,9 @@ class HomeViewModel(
 
     /** Premiers éléments de chaque catégorie, lus d'avance et gardés pendant que l'accueil existe. */
     val rows = HomeRows(
-        channels = { group -> sourceId.value?.let { dao.channelRow(it, group, System.currentTimeMillis(), ROW_SIZE) }.orEmpty() },
-        movies = { group -> sourceId.value?.let { dao.movieRow(it, group.ifEmpty { null }, ROW_SIZE) }.orEmpty() },
-        series = { group -> sourceId.value?.let { dao.seriesRow(it, group.ifEmpty { null }, ROW_SIZE) }.orEmpty() },
+        channels = { group, limit -> sourceId.value?.let { dao.channelRow(it, group, System.currentTimeMillis(), limit) }.orEmpty() },
+        movies = { group, limit -> sourceId.value?.let { dao.movieRow(it, group.ifEmpty { null }, limit) }.orEmpty() },
+        series = { group, limit -> sourceId.value?.let { dao.seriesRow(it, group.ifEmpty { null }, limit) }.orEmpty() },
     )
 
     init {
@@ -539,7 +552,7 @@ class HomeViewModel(
         const val NOW_REFRESH_MILLIS = 30_000L
         const val PREVIEW_DELAY_MILLIS = 900L
         const val PREVIEW_PROGRAMMES = 6
-        const val ROW_SIZE = 24
+        const val ROW_SIZE = HomeRows.ROW_SIZE
         const val SPOTLIGHT_DELAY_MILLIS = 350L
     }
 }

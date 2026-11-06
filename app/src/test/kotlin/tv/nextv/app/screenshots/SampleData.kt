@@ -432,9 +432,9 @@ object SampleData {
 
     /** Rangées de l'interface « Streaming » : éléments de chaque catégorie. */
     val rows = HomeRows(
-        channels = { group -> channels.filter { it.groupTitle.orEmpty() == group } },
-        movies = { group -> movies.filter { it.groupTitle == group }.ifEmpty { movies.reversed() } },
-        series = { group -> series.filter { it.groupTitle == group }.ifEmpty { series.reversed() } },
+        channels = { group, limit -> channels.filter { it.groupTitle.orEmpty() == group }.take(limit) },
+        movies = { group, limit -> movies.filter { it.groupTitle == group }.ifEmpty { movies.reversed() }.take(limit) },
+        series = { group, limit -> series.filter { it.groupTitle == group }.ifEmpty { series.reversed() }.take(limit) },
     )
 
     val movieDiscover = Discover(

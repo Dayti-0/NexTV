@@ -380,7 +380,7 @@
     <string name="home_layout_live_help">Catégories à gauche, liste des chaînes au centre, aperçu vidéo et programme à droite. Pensée pour la télévision en direct.</string>
     <string name="home_layout_streaming_help">Grande bannière, rangées de jaquettes : reprises, nouveautés, tendances et recommandations, comme sur les plateformes de streaming.</string>
     <string name="home_layout_premium_help">Visuels plein écran, grandes affiches et typographie soignée, pour mettre en valeur films et séries.</string>
-    <string name="home_rows_see_all">Tout voir</string>
+    <string name="home_rows_more">Voir plus</string>
     <string name="home_rows_results">Résultats</string>
     <string name="box_now">En ce moment</string>
     <string name="box_later">Plus tard</string>

@@ -13,6 +13,8 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.isDisplayed
+import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import tv.nextv.app.ui.components.BottomFadeLength
@@ -62,21 +64,21 @@ class HomeFocusTest {
     /** Affiche choisie : mise en avant comme dans l'application (bannière, fond). */
     private var spotlight by mutableStateOf<Spotlight?>(null)
 
-    private val groups = (1..30).map { GroupRow("Groupe $it", 4) }
+    private val groups = (1..30).map { GroupRow("Groupe $it", 60) }
 
     /** Chaînes d'une catégorie, lues avec le délai d'une base de données. */
     private val rows = HomeRows(
-        channels = { group ->
+        channels = { group, _ ->
             delay(150)
             val number = group.removePrefix("Groupe ").toInt()
             List(12) { SampleData.channels[it % SampleData.channels.size] }.mapIndexed { index, channel ->
                 channel.copy(id = number * 100L + index, itemKey = "g$number-$index", title = "$group · $index", groupTitle = group)
             }
         },
-        movies = { group ->
+        movies = { group, limit ->
             delay(150)
             val number = group.removePrefix("Groupe ").toInt()
-            List(12) { SampleData.movies[it % SampleData.movies.size] }.mapIndexed { index, movie ->
+            List(minOf(limit, 60)) { SampleData.movies[it % SampleData.movies.size] }.mapIndexed { index, movie ->
                 movie.copy(id = number * 100L + index, itemKey = "m$number-$index", title = "$group · $index", groupTitle = group)
             }
         },
@@ -322,6 +324,34 @@ class HomeFocusTest {
         println("Premium films, $group : haut = ${tops.distinct()} (${focused.last()})")
         assertTrue("$group bouge en allant à droite : ${tops.distinct()}", tops.max() - tops.min() < 0.5f)
         assertTrue("$previous revenu au-dessus", !compose.onNodeWithText(previous).isDisplayed())
+    }
+
+    /**
+     * « Voir plus » au bout d'une rangée : elle s'allonge sur place, dans la même interface (pas de
+     * passage à l'affichage classique), et la sélection passe au premier élément ajouté.
+     */
+    @Test
+    fun voirPlusExtendsTheRowInPlace() {
+        val focused = mutableListOf<String>()
+        val categories = mutableListOf<Category>()
+        compose.setContent { Home(HomeLayout.PREMIUM, HomeActions(onPosterFocus = { focused += it.title }, onCategory = { categories += it }), HomeSection.MOVIES) }
+        compose.waitForIdle()
+        // Onglets, puis la première rangée.
+        repeat(3) { if (focused.isEmpty()) press(Key.DirectionDown) }
+        val group = focused.last().substringBefore(" · ")
+        repeat(HomeRows.ROW_SIZE) { press(Key.DirectionRight) }
+        compose.onNodeWithText("Voir plus").assertIsFocused()
+        press(Key.DirectionCenter)
+        // Pendant la lecture de la suite : « Voir plus » reste choisi.
+        compose.onNodeWithText("Voir plus").assertIsFocused()
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
+        println("Voir plus : ${focused.last()}, catégories ouvertes : $categories")
+        assertEquals("$group · ${HomeRows.ROW_SIZE}", focused.last())
+        assertTrue("Affichage classique ouvert : $categories", categories.isEmpty())
+        // 60 éléments, tous affichés : plus de « Voir plus ».
+        repeat(3) { press(Key.DirectionRight) }
+        assertTrue("« Voir plus » encore là", compose.onAllNodesWithText("Voir plus").fetchSemanticsNodes().isEmpty())
     }
 
     /** Retour du lecteur : la liste revient à sa place et la chaîne ouverte reprend le focus. */
