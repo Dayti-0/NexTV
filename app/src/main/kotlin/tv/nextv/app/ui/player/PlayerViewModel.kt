@@ -84,8 +84,6 @@ import tv.nextv.core.stream.QualitySwitcher
 import tv.nextv.core.stream.QualityTarget
 import java.util.Locale
 
-private const val WORKING_QUALITY_MILLIS = 60_000L
-
 @OptIn(UnstableApi::class)
 @kotlin.OptIn(ExperimentalCoroutinesApi::class)
 class PlayerViewModel(
@@ -162,8 +160,6 @@ class PlayerViewModel(
     private var resumeOnStart = true
     private var multicastLock: WifiManager.MulticastLock? = null
     private var loadJob: Job? = null
-    private var switcher: QualitySwitcher? = null
-    private var autoQuality = true
     private var preferredDecoders: Map<String, String> = emptyMap()
 
     /** Langues choisies en dernier (audio ; sous-titres, `null` : désactivés), proposées en premier. */
@@ -172,9 +168,6 @@ class PlayerViewModel(
 
     /** Son Dolby / DTS envoyé tel quel à l'ampli (sinon décodé par l'appareil). */
     private var audioPassthrough = false
-
-    /** Versions 4K écartées (réglage « Masquer la 4K »). */
-    private var hideUhd = false
 
     /** Option « baisser le son des pubs », lue par le traitement du son de chaque lecteur. */
     private val adVolume = AdVolumeControl()
@@ -187,9 +180,6 @@ class PlayerViewModel(
     private var countedPlayer: ExoPlayer? = null
     private var countedDroppedFrames = 0
 
-    /** Qualité que l'appareil n'a pas su décoder (images perdues), retenue d'une chaîne à l'autre. */
-    private var decoderCeilingRank: Int? = null
-
     // Différé du direct.
     private var timeshift: TimeshiftBuffer? = null
     private var recorder: TimeshiftRecorder? = null
@@ -197,6 +187,18 @@ class PlayerViewModel(
 
     /** Dernier serveur qui a répondu (playlist, racine) : les chaînes suivantes commencent par lui. */
     private var workingServer: Pair<Long, String>? = null
+
+    // Qualité automatique (versions SD, HD, FHD, 4K d'une même chaîne).
+    private val quality = AutoQualityController(
+        container = container,
+        scope = viewModelScope,
+        state = mutableState,
+        session = session,
+        resources = resources,
+        host = object : AutoQualityController.Host {
+            override suspend fun playVariant(variant: ChannelEntity, notice: String) = this@PlayerViewModel.playVariant(variant, notice)
+        },
+    )
 
     // Reprise de lecture des films et épisodes.
     private val resume = ResumeController(
@@ -216,9 +218,9 @@ class PlayerViewModel(
     private val listener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
             when (playbackState) {
-                Player.STATE_BUFFERING -> switcher?.onBufferingStarted()
+                Player.STATE_BUFFERING -> quality.onBufferingStarted()
                 Player.STATE_READY -> {
-                    switcher?.onReady()
+                    quality.onReady()
                     rememberServer()
                 }
                 Player.STATE_ENDED -> onEnded()
@@ -321,10 +323,6 @@ class PlayerViewModel(
 
     init {
         viewModelScope.launch {
-            container.settings.autoQuality.collect { autoQuality = it }
-        }
-
-        viewModelScope.launch {
             container.settings.preferredDecoders.collect { preferredDecoders = it }
         }
         viewModelScope.launch {
@@ -332,9 +330,6 @@ class PlayerViewModel(
         }
         viewModelScope.launch {
             container.settings.audioPassthrough.collect { audioPassthrough = it }
-        }
-        viewModelScope.launch {
-            container.settings.hideUhd.collect { hideUhd = it }
         }
         viewModelScope.launch {
             container.settings.subtitleLanguage.collect { subtitleLanguage = it }
@@ -365,18 +360,7 @@ class PlayerViewModel(
                 val dropped = newDroppedFrames()
                 // Pause ou différé : changer de version ramènerait au direct.
                 if (timeshift != null || state.value.paused || state.value.liveDelayMs > 0) continue
-                // L'appareil ne suit pas cette qualité (4K sur une petite box…) : version inférieure si elle existe.
-                if (dropped > 0) {
-                    val decision = switcher?.onDroppedFrames(dropped)
-                    if (decision is QualitySwitcher.Decision.Switch) {
-                        decoderCeilingRank = switcher?.decoderCeilingRank
-                        switchQuality(decision)
-                        continue
-                    }
-                }
-                val estimate = state.value.bandwidthMbps?.let { (it * 1_000_000).toLong() }
-                val decision = switcher?.evaluate(estimate)
-                if (decision is QualitySwitcher.Decision.Switch) switchQuality(decision)
+                quality.check(dropped)
             }
         }
         // Position des films et épisodes, pour la reprise de lecture.
@@ -384,21 +368,6 @@ class PlayerViewModel(
             while (true) {
                 delay(PROGRESS_SAVE_MILLIS)
                 resume.save()
-            }
-        }
-    }
-
-    private var workingQualityJob: Job? = null
-
-    /** Version qui joue sans erreur une minute durant : la chaîne commencera par elle la prochaine fois. */
-    private fun rememberWhenStable(variant: ChannelEntity) {
-        workingQualityJob?.cancel()
-        val quality = variant.quality
-        if (switcher == null || quality == null || variant.kind != ContentKind.LIVE.name || variant.variantKey.isEmpty()) return
-        workingQualityJob = viewModelScope.launch {
-            delay(WORKING_QUALITY_MILLIS)
-            if (session.playing?.id == variant.id && state.value.error == null) {
-                container.settings.rememberWorkingQuality(variant.sourceId, variant.variantKey, quality)
             }
         }
     }
@@ -583,39 +552,7 @@ class PlayerViewModel(
         sourceId.value = primary.sourceId
         val source = container.sourceRepository.getSource(primary.sourceId)
 
-        val variants = if (isLive && primary.variantKey.isNotEmpty()) dao.variants(primary.sourceId, primary.variantKey) else emptyList()
-        // 4K écartée quand l'écran ou le décodeur ne la suivent pas (image saccadée), ou masquée dans les réglages.
-        val uhdAllowed = !hideUhd && container.playerFactory.supportsUhd
-        val options = variants.filter { it.streamSupport != StreamSupport.UNSUPPORTED.name }
-            .map { QualityOption(it.id, StreamQuality.entries.firstOrNull { q -> q.name == it.quality }) }
-            .let { all -> if (uhdAllowed) all else all.filter { it.quality != StreamQuality.UHD }.ifEmpty { all } }
-        // Chaîne ouverte sur sa meilleure version : départ par la qualité qui a fonctionné la dernière fois.
-        val remembered = if (autoQuality && requested.isPrimary && options.size > 1) {
-            container.settings.workingQuality(primary.sourceId, primary.variantKey)?.let { name -> StreamQuality.entries.firstOrNull { it.name == name } }
-        } else {
-            null
-        }
-        val rememberedStart = remembered?.let { quality ->
-            val rank = StreamQuality.rankOf(quality)
-            options.sortedByDescending { StreamQuality.rankOf(it.quality) }.firstOrNull { StreamQuality.rankOf(it.quality) <= rank }?.channelId
-        }
-        val preferredId = rememberedStart
-            ?: if (options.any { it.channelId == requested.id }) requested.id else options.firstOrNull()?.channelId ?: requested.id
-        // Qualité visée (réglages) : au plus HD, ou SD pour économiser la connexion.
-        val qualityTarget = container.settings.qualityTarget.first()
-        val startId = if (options.size > 1) qualityTarget.start(options, preferredId) else preferredId
-        switcher = if (options.size > 1) {
-            QualitySwitcher(
-                options,
-                startId,
-                enabled = autoQuality,
-                clock = System::currentTimeMillis,
-                decoderCeilingRank = decoderCeilingRank,
-                maxRank = qualityTarget.maxRank(options),
-            )
-        } else {
-            null
-        }
+        val startId = quality.prepare(requested, primary, isLive)
 
         mutableState.update {
             it.copy(
@@ -637,7 +574,7 @@ class PlayerViewModel(
         if (!isLive) mutableState.update { it.copy(vod = resume.vodInfo(requested), upNext = null) }
         if (isLive) session.startPositionMs = 0
         if (!isLive && resume.handle(requested)) return
-        val firstId = switcher?.current?.channelId ?: startId
+        val firstId = quality.currentChannelId ?: startId
         val variant = if (firstId == requested.id) requested else dao.get(firstId) ?: requested
         playVariant(variant, notice = null)
     }
@@ -649,7 +586,7 @@ class PlayerViewModel(
      */
     private suspend fun playReplay(requested: ChannelEntity, primary: ChannelEntity, programme: Pair<Long, Long>, restart: Boolean) {
         val (start, stop) = programme
-        switcher = null
+        quality.reset()
         restarting = restart
         // Version enregistrée par le serveur : toutes les qualités ne le sont pas forcément.
         val recorded = requested.takeIf { it.catchupDays > 0 }
@@ -771,7 +708,7 @@ class PlayerViewModel(
     private suspend fun playVariant(variant: ChannelEntity, notice: String?) {
         stopTimeshift()
         session.playing = variant
-        rememberWhenStable(variant)
+        quality.rememberWhenStable(variant)
         val stream = variant.toStream()
         mutableState.update {
             it.copy(
@@ -801,22 +738,6 @@ class PlayerViewModel(
         if (stream.format == StreamFormat.UDP) acquireMulticastLock() else releaseMulticastLock()
         session.triedHlsFallback = false
         start(forceHls = false)
-    }
-
-    private fun switchQuality(decision: QualitySwitcher.Decision.Switch) {
-        val notice = resources.getString(
-            when (decision.reason) {
-                QualitySwitcher.Reason.UPGRADE -> R.string.player_quality_up
-                QualitySwitcher.Reason.DECODER -> R.string.player_quality_decoder
-                QualitySwitcher.Reason.ERROR, QualitySwitcher.Reason.BUFFERING -> R.string.player_quality_down
-            },
-            decision.option.quality?.label ?: resources.getString(R.string.player_quality_unknown),
-        )
-        container.logger.info(TAG, "Qualité ${decision.reason} → ${decision.option.quality}")
-        viewModelScope.launch {
-            val variant = container.channelDao.get(decision.option.channelId) ?: return@launch
-            playVariant(variant, notice)
-        }
     }
 
     private suspend fun refreshProgrammes() {
@@ -934,11 +855,7 @@ class PlayerViewModel(
         }
         container.logger.warn(TAG, "Lecture impossible (${error.errorCodeName}) : ${playbackRequest.stream.url}", error)
         // Autre version de la même chaîne, de qualité inférieure, si elle existe.
-        val decision = switcher?.onError()
-        if (decision is QualitySwitcher.Decision.Switch) {
-            switchQuality(decision)
-            return
-        }
+        if (quality.onError()) return
         val viaProxy = container.httpClients.usesProxy(RequestPurpose.STREAM) &&
             format != StreamFormat.RTSP && format != StreamFormat.UDP
         mutableState.update { it.copy(buffering = false, error = resources.describePlaybackError(error, viaProxy)) }
