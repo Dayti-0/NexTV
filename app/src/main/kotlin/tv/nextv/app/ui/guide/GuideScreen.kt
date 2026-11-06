@@ -36,7 +36,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
@@ -55,6 +54,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalDensity
@@ -692,6 +692,7 @@ fun ProgrammeSheetContent(
     // Programme terminé : « Revoir » passe en premier.
     val replayFirst = onReplay != null && programme != null && programme.stopMillis <= now
     LaunchedEffect(Unit) { runCatching { watchFocus.requestFocus() } }
+    val wide = rememberWindowInfo().isWide
     Surface(
         shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -714,23 +715,37 @@ fun ProgrammeSheetContent(
             if (programme == null) {
                 Text(stringResource(R.string.channels_no_epg), style = MaterialTheme.typography.headlineSmall)
             } else {
-                if (rememberProgrammeImage(programme) != null) {
-                    ProgrammeArt(programme, Modifier.fillMaxWidth().aspectRatio(16f / 7f))
-                }
-                Text(programme.title, style = MaterialTheme.typography.headlineSmall)
-                programme.subtitle?.let { Text(it, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                // Genre et année de production, quand le guide les indique.
-                listOfNotNull(programme.category, programme.year?.toString()).joinToString("  ·  ").takeIf { it.isNotEmpty() }?.let {
-                    Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                }
-                if (programme.isLive(now)) LiveProgress(programme.startMillis, programme.stopMillis, now)
-                programme.description?.let {
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.heightIn(max = 220.dp).verticalScroll(rememberScrollState()),
-                    )
+                // Fiche plus haute que l'écran (TV) : ce bloc se réduit, les boutons restent visibles en bas.
+                Column(Modifier.weight(1f, fill = false).clipToBounds(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    val details: @Composable () -> Unit = {
+                        Text(programme.title, style = MaterialTheme.typography.headlineSmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                        programme.subtitle?.let { Text(it, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+                        // Genre et année de production, quand le guide les indique.
+                        listOfNotNull(programme.category, programme.year?.toString()).joinToString("  ·  ").takeIf { it.isNotEmpty() }?.let {
+                            Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                        }
+                        if (programme.isLive(now)) LiveProgress(programme.startMillis, programme.stopMillis, now)
+                    }
+                    val image = rememberProgrammeImage(programme) != null
+                    if (wide && image) {
+                        // TV : image à côté du titre, la fiche tient dans la hauteur de l'écran.
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                            ProgrammeArt(programme, Modifier.width(SHEET_ART_WIDTH).aspectRatio(16f / 9f))
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) { details() }
+                        }
+                    } else {
+                        if (image) ProgrammeArt(programme, Modifier.fillMaxWidth().aspectRatio(16f / 7f))
+                        details()
+                    }
+                    programme.description?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = SHEET_DESCRIPTION_LINES,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 4.dp)) {
@@ -767,6 +782,10 @@ fun ProgrammeSheetContent(
 }
 
 private fun GuideProgramme.isLive(now: Long) = startMillis <= now && stopMillis > now
+
+/** Fiche d'un programme : largeur de l'image (TV) et lignes de description. */
+private val SHEET_ART_WIDTH = 220.dp
+private const val SHEET_DESCRIPTION_LINES = 6
 
 /** Programmes affichés d'une ligne : au moins une minute dans la fenêtre de la grille. */
 private fun visibleProgrammes(channel: GuideChannel, state: GuideUiState): List<GuideProgramme> =

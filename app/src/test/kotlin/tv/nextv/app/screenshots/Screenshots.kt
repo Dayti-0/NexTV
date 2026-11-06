@@ -351,6 +351,28 @@ abstract class ScreenshotSuite(private val device: String) {
         }
     }
 
+    /** Programme avec image et longue description : la fiche tient dans l'écran, boutons compris. */
+    @Test
+    fun programmeLong() = capture("10c_programme_image") {
+        val channel = SampleData.guide.channels[0]
+        val programme = GuideProgramme(
+            "Star Academy",
+            SampleData.NOW - 30 * 60_000L,
+            SampleData.NOW + 50 * 60_000L,
+            description = "Les talents en herbe retenus pour cette quatorzième saison ont intégré le château de Dammarie-les-Lys, " +
+                "où un nouveau directeur les a accueillis, en la personne de Mosimann, gagnant de la saison 7. A ses côtés, une équipe " +
+                "de professeurs composée de Sofia Morgavi, Jonathan Jenvrin, Fanny Delaigue et Philippine Leroy-Beaulieu, qui les " +
+                "accompagneront chaque semaine jusqu'aux évaluations et aux primes du samedi soir.",
+            category = "Téléréalité",
+            imageUrl = "https://example.com/star-academy.jpg",
+        )
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background.copy(alpha = 0.9f)), contentAlignment = Alignment.Center) {
+            Box(Modifier.widthIn(max = 640.dp).padding(24.dp)) {
+                ProgrammeSheetContent(channel, programme, SampleData.NOW, onWatch = {}, onDismiss = {}, inSelection = false)
+            }
+        }
+    }
+
     @Test
     fun movie() = capture("11_fiche_film") {
         DetailContent(
