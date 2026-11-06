@@ -1,5 +1,6 @@
 package tv.nextv.app.ui.home
 
+import tv.nextv.app.ui.components.bottomFade
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -89,11 +90,13 @@ internal fun LiveCenterSection(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun LivePane(preview: ChannelPreview?, player: Player?, now: Long, modifier: Modifier) {
+    val scroll = rememberScrollState()
     Column(
         modifier
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
             .padding(horizontal = 20.dp, vertical = 14.dp)
-            .verticalScroll(rememberScrollState()),
+            .bottomFade({ scroll.canScrollForward })
+            .verticalScroll(scroll),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Box(
@@ -157,11 +160,13 @@ private fun UpcomingLine(programme: GuideProgramme, highlight: Boolean = false) 
 /** Volet d'un film ou d'une série : visuel, titre, année, genres, note et résumé (TMDB). */
 @Composable
 internal fun SpotlightPane(spotlight: Spotlight?, modifier: Modifier) {
+    val scroll = rememberScrollState()
     Column(
         modifier
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
             .padding(horizontal = 20.dp, vertical = 14.dp)
-            .verticalScroll(rememberScrollState()),
+            .bottomFade({ scroll.canScrollForward })
+            .verticalScroll(scroll),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         val image = spotlight?.backdropUrl ?: spotlight?.item?.imageUrl

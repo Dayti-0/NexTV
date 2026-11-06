@@ -1,5 +1,6 @@
 package tv.nextv.app.ui.guide
 
+import tv.nextv.app.ui.components.FadingBottom
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
@@ -155,26 +156,28 @@ internal fun TonightView(
                 ColumnTitle(stringResource(R.string.tonight_second_part), Modifier.weight(1f))
             }
         }
-        LazyColumn(
-            state = listState,
-            contentPadding = PaddingValues(start = window.horizontalPadding, end = window.horizontalPadding, bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            itemsIndexed(state.rows, key = { _, row -> row.channel.id }) { index, row ->
-                TonightLine(
-                    row = row,
-                    now = state.now,
-                    wide = window.isWide,
-                    firstFocus = firstBlock.takeIf { index == 0 && back?.get(0) != 0 },
-                    backFocus = backFocus.takeIf { back?.get(0) == index },
-                    backColumn = back?.get(1) ?: 0,
-                    onFocus = { programme -> focused = row.channel to programme },
-                    onOpen = { programme ->
-                        opened = listOf(index, if (programme == row.first) 0 else 1, visit)
-                        onOpen(row.channel, programme)
-                    },
-                )
+        FadingBottom({ listState.canScrollForward }) { fade ->
+            LazyColumn(
+                state = listState,
+                contentPadding = PaddingValues(start = window.horizontalPadding, end = window.horizontalPadding, bottom = 32.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.fillMaxSize().then(fade),
+            ) {
+                itemsIndexed(state.rows, key = { _, row -> row.channel.id }) { index, row ->
+                    TonightLine(
+                        row = row,
+                        now = state.now,
+                        wide = window.isWide,
+                        firstFocus = firstBlock.takeIf { index == 0 && back?.get(0) != 0 },
+                        backFocus = backFocus.takeIf { back?.get(0) == index },
+                        backColumn = back?.get(1) ?: 0,
+                        onFocus = { programme -> focused = row.channel to programme },
+                        onOpen = { programme ->
+                            opened = listOf(index, if (programme == row.first) 0 else 1, visit)
+                            onOpen(row.channel, programme)
+                        },
+                    )
+                }
             }
         }
     }

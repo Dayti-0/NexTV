@@ -1,5 +1,6 @@
 package tv.nextv.app.ui.home
 
+import tv.nextv.app.ui.components.bottomFade
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
@@ -178,7 +179,7 @@ internal fun StreamingHome(
         RestoreRow(listState, lastOpened, listOf("search") + shelves.map { it.key })
         CompositionLocalProvider(LocalRowSnap provides rememberRowSnap(listState)) {
             LazyColumn(
-                Modifier.weight(1f),
+                Modifier.weight(1f).bottomFade({ listState.canScrollForward }),
                 state = listState,
                 contentPadding = PaddingValues(top = 4.dp, bottom = 40.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),

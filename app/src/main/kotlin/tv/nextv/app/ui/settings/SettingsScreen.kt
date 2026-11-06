@@ -1,5 +1,6 @@
 package tv.nextv.app.ui.settings
 
+import tv.nextv.app.ui.components.FadingBottom
 import android.content.ActivityNotFoundException
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -310,339 +311,342 @@ fun SettingsContent(
                 modifier = Modifier.padding(start = window.horizontalPadding - 12.dp, end = window.horizontalPadding, top = window.topPadding, bottom = 8.dp),
                 navigation = { IconAction(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back), onBack) },
             )
-            Box(Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()), contentAlignment = Alignment.TopCenter) {
-                Column(
-                    Modifier.widthIn(max = 760.dp).fillMaxWidth().padding(horizontal = window.horizontalPadding, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    // Dernier plantage : en tête, pour pouvoir le signaler (photo de l'écran).
-                    state.lastCrash?.let { crash ->
-                        SectionCard(stringResource(R.string.settings_crash), icon = Icons.Filled.Warning) {
-                            InfoText(stringResource(R.string.settings_crash_help, relativeTime(crash.atMillis, now).lowercaseFirst(), crash.version))
-                            Text(crash.summary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
-                            Text(
-                                crash.details,
-                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = CRASH_LINES,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            PillButton(stringResource(R.string.settings_crash_clear), onClearCrash, icon = Icons.Filled.Delete, style = PillStyle.Ghost)
+            val settingsScroll = rememberScrollState()
+            FadingBottom({ settingsScroll.canScrollForward }) { fade ->
+                Box(Modifier.fillMaxSize().imePadding().then(fade).verticalScroll(settingsScroll), contentAlignment = Alignment.TopCenter) {
+                    Column(
+                        Modifier.widthIn(max = 760.dp).fillMaxWidth().padding(horizontal = window.horizontalPadding, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        // Dernier plantage : en tête, pour pouvoir le signaler (photo de l'écran).
+                        state.lastCrash?.let { crash ->
+                            SectionCard(stringResource(R.string.settings_crash), icon = Icons.Filled.Warning) {
+                                InfoText(stringResource(R.string.settings_crash_help, relativeTime(crash.atMillis, now).lowercaseFirst(), crash.version))
+                                Text(crash.summary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+                                Text(
+                                    crash.details,
+                                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = CRASH_LINES,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                PillButton(stringResource(R.string.settings_crash_clear), onClearCrash, icon = Icons.Filled.Delete, style = PillStyle.Ghost)
+                            }
                         }
-                    }
 
-                    // Playlist active.
-                    SectionCard(stringResource(R.string.settings_playlist), icon = NexTvIcons.Tv) {
-                        val playlist = state.playlist
-                        if (playlist == null) {
-                            InfoText(stringResource(R.string.settings_no_playlist))
-                        } else {
-                            Text(playlist.name, style = MaterialTheme.typography.titleLarge)
-                            val status = playlist.status
-                            InfoText(
-                                listOfNotNull(
-                                    resources.getQuantityString(R.plurals.channels_count, status.channelCount, status.channelCount),
-                                    status.lastSuccessAtMillis?.let { stringResource(R.string.settings_updated, relativeTime(it, now).lowercaseFirst()) },
-                                ).joinToString("  ·  "),
-                            )
-                            status.error?.let { ErrorText(resources.describe(it)) }
-                            account?.let { AccountText(it, now) }
-                            if (state.refreshing) LinearProgressIndicator(Modifier.fillMaxWidth(), color = NexTvColors.Live)
-                            // Fréquence de mise à jour automatique (le guide TV, lui, se met à jour chaque jour).
-                            ValueRow(
-                                title = stringResource(R.string.settings_playlist_refresh),
-                                value = playlistRefreshLabel(state.playlistRefresh),
-                                onClick = onCyclePlaylistRefresh,
-                            )
-                            InfoText(stringResource(R.string.settings_playlist_refresh_help))
-                        }
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            PillButton(
-                                stringResource(R.string.settings_manage_playlists, state.playlistCount),
-                                onPlaylists,
-                                icon = NexTvIcons.Grid,
-                                style = PillStyle.Primary,
-                            )
-                            if (playlist != null) {
+                        // Playlist active.
+                        SectionCard(stringResource(R.string.settings_playlist), icon = NexTvIcons.Tv) {
+                            val playlist = state.playlist
+                            if (playlist == null) {
+                                InfoText(stringResource(R.string.settings_no_playlist))
+                            } else {
+                                Text(playlist.name, style = MaterialTheme.typography.titleLarge)
+                                val status = playlist.status
+                                InfoText(
+                                    listOfNotNull(
+                                        resources.getQuantityString(R.plurals.channels_count, status.channelCount, status.channelCount),
+                                        status.lastSuccessAtMillis?.let { stringResource(R.string.settings_updated, relativeTime(it, now).lowercaseFirst()) },
+                                    ).joinToString("  ·  "),
+                                )
+                                status.error?.let { ErrorText(resources.describe(it)) }
+                                account?.let { AccountText(it, now) }
+                                if (state.refreshing) LinearProgressIndicator(Modifier.fillMaxWidth(), color = NexTvColors.Live)
+                                // Fréquence de mise à jour automatique (le guide TV, lui, se met à jour chaque jour).
+                                ValueRow(
+                                    title = stringResource(R.string.settings_playlist_refresh),
+                                    value = playlistRefreshLabel(state.playlistRefresh),
+                                    onClick = onCyclePlaylistRefresh,
+                                )
+                                InfoText(stringResource(R.string.settings_playlist_refresh_help))
+                            }
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 PillButton(
-                                    stringResource(R.string.settings_refresh_playlist_now),
-                                    onRefreshPlaylist,
+                                    stringResource(R.string.settings_manage_playlists, state.playlistCount),
+                                    onPlaylists,
+                                    icon = NexTvIcons.Grid,
+                                    style = PillStyle.Primary,
+                                )
+                                if (playlist != null) {
+                                    PillButton(
+                                        stringResource(R.string.settings_refresh_playlist_now),
+                                        onRefreshPlaylist,
+                                        icon = Icons.Filled.Refresh,
+                                        enabled = !state.refreshing,
+                                    )
+                                }
+                            }
+                        }
+
+                        // Lecture.
+                        SectionCard(stringResource(R.string.settings_playback), icon = Icons.Filled.PlayArrow) {
+                            ValueRow(
+                                title = stringResource(R.string.settings_quality_target),
+                                value = qualityTargetLabel(state.qualityTarget),
+                                onClick = onCycleQualityTarget,
+                            )
+                            InfoText(qualityTargetHelp(state.qualityTarget))
+                            ToggleRow(
+                                title = stringResource(R.string.settings_auto_quality),
+                                description = stringResource(R.string.settings_auto_quality_help),
+                                checked = state.autoQuality,
+                                onChange = onAutoQuality,
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_start_last_channel),
+                                description = stringResource(R.string.settings_start_last_channel_help),
+                                checked = state.startOnLastChannel,
+                                onChange = onStartOnLastChannel,
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_lower_ads),
+                                description = stringResource(R.string.settings_lower_ads_help),
+                                checked = state.lowerAdVolume,
+                                onChange = onLowerAdVolume,
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_hide_uhd),
+                                description = stringResource(R.string.settings_hide_uhd_help),
+                                checked = state.hideUhd,
+                                onChange = onHideUhd,
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_audio_passthrough),
+                                description = stringResource(R.string.settings_audio_passthrough_help),
+                                checked = state.audioPassthrough,
+                                onChange = onAudioPassthrough,
+                            )
+                            // Une seule édition régionale de France 3 dans les listes.
+                            var choosingRegion by remember { mutableStateOf(false) }
+                            ValueRow(
+                                title = stringResource(R.string.settings_france3_region),
+                                value = state.france3Regions.firstOrNull { it.key == state.france3Region }?.label
+                                    ?: state.france3Region?.let { stringResource(R.string.settings_france3_region_missing) }
+                                    ?: stringResource(R.string.settings_france3_region_all),
+                                onClick = { choosingRegion = true },
+                                enabled = state.france3Regions.isNotEmpty() || state.france3Region != null,
+                            )
+                            InfoText(
+                                if (state.france3Regions.isEmpty()) {
+                                    stringResource(R.string.settings_france3_region_none)
+                                } else {
+                                    stringResource(R.string.settings_france3_region_help)
+                                },
+                            )
+                            if (choosingRegion) {
+                                RegionDialog(
+                                    regions = state.france3Regions,
+                                    selected = state.france3Region,
+                                    onSelect = {
+                                        choosingRegion = false
+                                        onFrance3Region(it)
+                                    },
+                                    onDismiss = { choosingRegion = false },
+                                )
+                            }
+                            state.decoders.forEach { choice -> DecoderRow(choice) { onCycleDecoder(choice.mimeType) } }
+                            if (state.decoders.isNotEmpty()) InfoText(stringResource(R.string.settings_decoder_help))
+                        }
+
+                        // Affichage de l'accueil.
+                        SectionCard(stringResource(R.string.settings_display), icon = NexTvIcons.Grid) {
+                            val grid = state.gridColumns
+                            // Interface de l'accueil et palette de couleurs : écran Apparence.
+                            ValueRow(
+                                title = stringResource(R.string.appearance_open),
+                                value = "${homeLayoutLabel(state.homeLayout)}  ·  ${themeLabel(state.theme)}",
+                                onClick = onAppearance,
+                            )
+                            NumberRow(
+                                title = stringResource(R.string.settings_channel_columns),
+                                value = grid.channels,
+                                range = GridColumns.CHANNELS,
+                                onChange = { onGridColumns(grid.copy(channels = it)) },
+                            )
+                            NumberRow(
+                                title = stringResource(R.string.settings_poster_columns),
+                                value = grid.posters,
+                                range = GridColumns.POSTERS,
+                                onChange = { onGridColumns(grid.copy(posters = it)) },
+                            )
+                            InfoText(stringResource(R.string.settings_columns_help))
+                            ToggleRow(
+                                title = stringResource(R.string.settings_channel_preview),
+                                description = stringResource(R.string.settings_channel_preview_help),
+                                checked = state.channelPreview,
+                                onChange = onChannelPreview,
+                            )
+                            if (state.channelPreview) {
+                                ValueRow(
+                                    title = stringResource(R.string.settings_preview_volume),
+                                    value = previewVolumeLabel(state.previewVolume),
+                                    onClick = onCyclePreviewVolume,
+                                )
+                            }
+                            if (state.playlist != null) {
+                                // Catégories masquables : chaînes, films, séries.
+                                listOf(
+                                    ContentKind.LIVE to R.string.settings_channel_groups,
+                                    ContentKind.MOVIE to R.string.settings_movie_groups,
+                                    ContentKind.SERIES to R.string.settings_series_groups,
+                                ).forEach { (kind, title) ->
+                                    val hidden = state.hiddenGroups[kind] ?: 0
+                                    ValueRow(
+                                        title = stringResource(title),
+                                        value = if (hidden == 0) {
+                                            stringResource(R.string.settings_channel_groups_visible)
+                                        } else {
+                                            resources.getQuantityString(R.plurals.channel_groups_hidden, hidden, hidden)
+                                        },
+                                        onClick = { onGroups(kind) },
+                                    )
+                                }
+                            }
+                        }
+
+                        // Guide TV commun.
+                        SectionCard(
+                            stringResource(R.string.settings_guide),
+                            subtitle = stringResource(R.string.settings_guide_help, HttpEpgFeedProvider.XMLTV_FR_URL),
+                            icon = NexTvIcons.Guide,
+                        ) {
+                            val epg = state.playlist?.status?.epg
+                            InfoText(
+                                state.guideDownloadedAt?.let { stringResource(R.string.settings_guide_downloaded, relativeTime(it, now).lowercaseFirst()) }
+                                    ?: stringResource(R.string.settings_guide_never),
+                            )
+                            if (epg != null && epg.programmeCount > 0) {
+                                InfoText(stringResource(R.string.settings_guide_matched, epg.programmeCount, epg.matchedChannelCount))
+                            }
+                            epg?.error?.let { ErrorText(resources.describe(it)) }
+                            if (state.playlist != null) {
+                                PillButton(
+                                    stringResource(R.string.settings_guide_refresh),
+                                    onRefreshGuide,
                                     icon = Icons.Filled.Refresh,
                                     enabled = !state.refreshing,
                                 )
                             }
                         }
-                    }
 
-                    // Lecture.
-                    SectionCard(stringResource(R.string.settings_playback), icon = Icons.Filled.PlayArrow) {
-                        ValueRow(
-                            title = stringResource(R.string.settings_quality_target),
-                            value = qualityTargetLabel(state.qualityTarget),
-                            onClick = onCycleQualityTarget,
-                        )
-                        InfoText(qualityTargetHelp(state.qualityTarget))
-                        ToggleRow(
-                            title = stringResource(R.string.settings_auto_quality),
-                            description = stringResource(R.string.settings_auto_quality_help),
-                            checked = state.autoQuality,
-                            onChange = onAutoQuality,
-                        )
-                        ToggleRow(
-                            title = stringResource(R.string.settings_start_last_channel),
-                            description = stringResource(R.string.settings_start_last_channel_help),
-                            checked = state.startOnLastChannel,
-                            onChange = onStartOnLastChannel,
-                        )
-                        ToggleRow(
-                            title = stringResource(R.string.settings_lower_ads),
-                            description = stringResource(R.string.settings_lower_ads_help),
-                            checked = state.lowerAdVolume,
-                            onChange = onLowerAdVolume,
-                        )
-                        ToggleRow(
-                            title = stringResource(R.string.settings_hide_uhd),
-                            description = stringResource(R.string.settings_hide_uhd_help),
-                            checked = state.hideUhd,
-                            onChange = onHideUhd,
-                        )
-                        ToggleRow(
-                            title = stringResource(R.string.settings_audio_passthrough),
-                            description = stringResource(R.string.settings_audio_passthrough_help),
-                            checked = state.audioPassthrough,
-                            onChange = onAudioPassthrough,
-                        )
-                        // Une seule édition régionale de France 3 dans les listes.
-                        var choosingRegion by remember { mutableStateOf(false) }
-                        ValueRow(
-                            title = stringResource(R.string.settings_france3_region),
-                            value = state.france3Regions.firstOrNull { it.key == state.france3Region }?.label
-                                ?: state.france3Region?.let { stringResource(R.string.settings_france3_region_missing) }
-                                ?: stringResource(R.string.settings_france3_region_all),
-                            onClick = { choosingRegion = true },
-                            enabled = state.france3Regions.isNotEmpty() || state.france3Region != null,
-                        )
-                        InfoText(
-                            if (state.france3Regions.isEmpty()) {
-                                stringResource(R.string.settings_france3_region_none)
-                            } else {
-                                stringResource(R.string.settings_france3_region_help)
-                            },
-                        )
-                        if (choosingRegion) {
-                            RegionDialog(
-                                regions = state.france3Regions,
-                                selected = state.france3Region,
-                                onSelect = {
-                                    choosingRegion = false
-                                    onFrance3Region(it)
-                                },
-                                onDismiss = { choosingRegion = false },
-                            )
-                        }
-                        state.decoders.forEach { choice -> DecoderRow(choice) { onCycleDecoder(choice.mimeType) } }
-                        if (state.decoders.isNotEmpty()) InfoText(stringResource(R.string.settings_decoder_help))
-                    }
-
-                    // Affichage de l'accueil.
-                    SectionCard(stringResource(R.string.settings_display), icon = NexTvIcons.Grid) {
-                        val grid = state.gridColumns
-                        // Interface de l'accueil et palette de couleurs : écran Apparence.
-                        ValueRow(
-                            title = stringResource(R.string.appearance_open),
-                            value = "${homeLayoutLabel(state.homeLayout)}  ·  ${themeLabel(state.theme)}",
-                            onClick = onAppearance,
-                        )
-                        NumberRow(
-                            title = stringResource(R.string.settings_channel_columns),
-                            value = grid.channels,
-                            range = GridColumns.CHANNELS,
-                            onChange = { onGridColumns(grid.copy(channels = it)) },
-                        )
-                        NumberRow(
-                            title = stringResource(R.string.settings_poster_columns),
-                            value = grid.posters,
-                            range = GridColumns.POSTERS,
-                            onChange = { onGridColumns(grid.copy(posters = it)) },
-                        )
-                        InfoText(stringResource(R.string.settings_columns_help))
-                        ToggleRow(
-                            title = stringResource(R.string.settings_channel_preview),
-                            description = stringResource(R.string.settings_channel_preview_help),
-                            checked = state.channelPreview,
-                            onChange = onChannelPreview,
-                        )
-                        if (state.channelPreview) {
-                            ValueRow(
-                                title = stringResource(R.string.settings_preview_volume),
-                                value = previewVolumeLabel(state.previewVolume),
-                                onClick = onCyclePreviewVolume,
-                            )
-                        }
-                        if (state.playlist != null) {
-                            // Catégories masquables : chaînes, films, séries.
-                            listOf(
-                                ContentKind.LIVE to R.string.settings_channel_groups,
-                                ContentKind.MOVIE to R.string.settings_movie_groups,
-                                ContentKind.SERIES to R.string.settings_series_groups,
-                            ).forEach { (kind, title) ->
-                                val hidden = state.hiddenGroups[kind] ?: 0
-                                ValueRow(
-                                    title = stringResource(title),
-                                    value = if (hidden == 0) {
-                                        stringResource(R.string.settings_channel_groups_visible)
-                                    } else {
-                                        resources.getQuantityString(R.plurals.channel_groups_hidden, hidden, hidden)
+                        // Fiches films et séries.
+                        SectionCard(
+                            stringResource(R.string.settings_tmdb),
+                            subtitle = stringResource(R.string.settings_tmdb_help),
+                            icon = Icons.Filled.Star,
+                        ) {
+                            var key by rememberSaveable { mutableStateOf("") }
+                            InfoText(
+                                stringResource(
+                                    when {
+                                        state.tmdbKeySaved -> R.string.settings_tmdb_saved
+                                        state.tmdbBuiltIn -> R.string.settings_tmdb_builtin
+                                        else -> R.string.settings_tmdb_missing
                                     },
-                                    onClick = { onGroups(kind) },
+                                ),
+                            )
+                            NexTvTextField(
+                                value = key,
+                                onValueChange = { key = it.trim() },
+                                label = stringResource(R.string.settings_tmdb_key),
+                                keyboardType = KeyboardType.Password,
+                                visualTransformation = PasswordVisualTransformation(),
+                            )
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                PillButton(
+                                    stringResource(R.string.settings_tmdb_save),
+                                    {
+                                        onSaveTmdbKey(key)
+                                        key = ""
+                                    },
+                                    icon = Icons.Filled.Check,
+                                    enabled = key.isNotBlank(),
                                 )
+                                if (state.tmdbKeySaved) {
+                                    PillButton(stringResource(R.string.settings_tmdb_remove), onClearTmdbKey, icon = Icons.Filled.Delete, style = PillStyle.Ghost)
+                                }
                             }
                         }
-                    }
 
-                    // Guide TV commun.
-                    SectionCard(
-                        stringResource(R.string.settings_guide),
-                        subtitle = stringResource(R.string.settings_guide_help, HttpEpgFeedProvider.XMLTV_FR_URL),
-                        icon = NexTvIcons.Guide,
-                    ) {
-                        val epg = state.playlist?.status?.epg
-                        InfoText(
-                            state.guideDownloadedAt?.let { stringResource(R.string.settings_guide_downloaded, relativeTime(it, now).lowercaseFirst()) }
-                                ?: stringResource(R.string.settings_guide_never),
-                        )
-                        if (epg != null && epg.programmeCount > 0) {
-                            InfoText(stringResource(R.string.settings_guide_matched, epg.programmeCount, epg.matchedChannelCount))
-                        }
-                        epg?.error?.let { ErrorText(resources.describe(it)) }
-                        if (state.playlist != null) {
-                            PillButton(
-                                stringResource(R.string.settings_guide_refresh),
-                                onRefreshGuide,
-                                icon = Icons.Filled.Refresh,
-                                enabled = !state.refreshing,
+                        // Matchs de la section Foot.
+                        SectionCard(
+                            stringResource(R.string.settings_football),
+                            subtitle = stringResource(R.string.settings_football_help),
+                            icon = NexTvIcons.Football,
+                        ) {
+                            var key by rememberSaveable { mutableStateOf("") }
+                            InfoText(
+                                stringResource(
+                                    when {
+                                        state.footballKeySaved -> R.string.settings_tmdb_saved
+                                        state.footballBuiltIn -> R.string.settings_tmdb_builtin
+                                        else -> R.string.settings_football_missing
+                                    },
+                                ),
                             )
-                        }
-                    }
-
-                    // Fiches films et séries.
-                    SectionCard(
-                        stringResource(R.string.settings_tmdb),
-                        subtitle = stringResource(R.string.settings_tmdb_help),
-                        icon = Icons.Filled.Star,
-                    ) {
-                        var key by rememberSaveable { mutableStateOf("") }
-                        InfoText(
-                            stringResource(
-                                when {
-                                    state.tmdbKeySaved -> R.string.settings_tmdb_saved
-                                    state.tmdbBuiltIn -> R.string.settings_tmdb_builtin
-                                    else -> R.string.settings_tmdb_missing
-                                },
-                            ),
-                        )
-                        NexTvTextField(
-                            value = key,
-                            onValueChange = { key = it.trim() },
-                            label = stringResource(R.string.settings_tmdb_key),
-                            keyboardType = KeyboardType.Password,
-                            visualTransformation = PasswordVisualTransformation(),
-                        )
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            PillButton(
-                                stringResource(R.string.settings_tmdb_save),
-                                {
-                                    onSaveTmdbKey(key)
-                                    key = ""
-                                },
-                                icon = Icons.Filled.Check,
-                                enabled = key.isNotBlank(),
+                            NexTvTextField(
+                                value = key,
+                                onValueChange = { key = it.trim() },
+                                label = stringResource(R.string.settings_football_key),
+                                keyboardType = KeyboardType.Password,
+                                visualTransformation = PasswordVisualTransformation(),
                             )
-                            if (state.tmdbKeySaved) {
-                                PillButton(stringResource(R.string.settings_tmdb_remove), onClearTmdbKey, icon = Icons.Filled.Delete, style = PillStyle.Ghost)
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                PillButton(
+                                    stringResource(R.string.settings_tmdb_save),
+                                    {
+                                        onSaveFootballKey(key)
+                                        key = ""
+                                    },
+                                    icon = Icons.Filled.Check,
+                                    enabled = key.isNotBlank(),
+                                )
+                                if (state.footballKeySaved) {
+                                    PillButton(stringResource(R.string.settings_tmdb_remove), onClearFootballKey, icon = Icons.Filled.Delete, style = PillStyle.Ghost)
+                                }
                             }
                         }
-                    }
 
-                    // Matchs de la section Foot.
-                    SectionCard(
-                        stringResource(R.string.settings_football),
-                        subtitle = stringResource(R.string.settings_football_help),
-                        icon = NexTvIcons.Football,
-                    ) {
-                        var key by rememberSaveable { mutableStateOf("") }
-                        InfoText(
-                            stringResource(
-                                when {
-                                    state.footballKeySaved -> R.string.settings_tmdb_saved
-                                    state.footballBuiltIn -> R.string.settings_tmdb_builtin
-                                    else -> R.string.settings_football_missing
-                                },
-                            ),
-                        )
-                        NexTvTextField(
-                            value = key,
-                            onValueChange = { key = it.trim() },
-                            label = stringResource(R.string.settings_football_key),
-                            keyboardType = KeyboardType.Password,
-                            visualTransformation = PasswordVisualTransformation(),
-                        )
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            PillButton(
-                                stringResource(R.string.settings_tmdb_save),
-                                {
-                                    onSaveFootballKey(key)
-                                    key = ""
-                                },
-                                icon = Icons.Filled.Check,
-                                enabled = key.isNotBlank(),
+                        // Réseau.
+                        SectionCard(stringResource(R.string.settings_network), icon = NexTvIcons.Cloud) {
+                            ValueRow(
+                                title = stringResource(R.string.settings_dns),
+                                value = dnsLabel(state.dns),
+                                onClick = onCycleDns,
                             )
-                            if (state.footballKeySaved) {
-                                PillButton(stringResource(R.string.settings_tmdb_remove), onClearFootballKey, icon = Icons.Filled.Delete, style = PillStyle.Ghost)
+                            InfoText(stringResource(R.string.settings_dns_help))
+                            InfoText(
+                                if (state.proxyEnabled) {
+                                    stringResource(R.string.settings_proxy_on, state.proxyAddress.orEmpty())
+                                } else {
+                                    stringResource(R.string.settings_proxy_off)
+                                },
+                            )
+                            PillButton(stringResource(R.string.settings_proxy_configure), onProxy, icon = Icons.Filled.Settings)
+                        }
+
+                        // Mise à jour de l'application.
+                        // Sauvegarde et restauration.
+                        SectionCard(stringResource(R.string.settings_backup), subtitle = stringResource(R.string.settings_backup_help), icon = Icons.Filled.Lock) {
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                PillButton(stringResource(R.string.settings_backup_save), onBackup, icon = Icons.Filled.Check)
+                                PillButton(stringResource(R.string.settings_backup_restore), onRestore, icon = Icons.Filled.Refresh)
                             }
                         }
-                    }
 
-                    // Réseau.
-                    SectionCard(stringResource(R.string.settings_network), icon = NexTvIcons.Cloud) {
-                        ValueRow(
-                            title = stringResource(R.string.settings_dns),
-                            value = dnsLabel(state.dns),
-                            onClick = onCycleDns,
-                        )
-                        InfoText(stringResource(R.string.settings_dns_help))
-                        InfoText(
-                            if (state.proxyEnabled) {
-                                stringResource(R.string.settings_proxy_on, state.proxyAddress.orEmpty())
-                            } else {
-                                stringResource(R.string.settings_proxy_off)
-                            },
-                        )
-                        PillButton(stringResource(R.string.settings_proxy_configure), onProxy, icon = Icons.Filled.Settings)
-                    }
-
-                    // Mise à jour de l'application.
-                    // Sauvegarde et restauration.
-                    SectionCard(stringResource(R.string.settings_backup), subtitle = stringResource(R.string.settings_backup_help), icon = Icons.Filled.Lock) {
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            PillButton(stringResource(R.string.settings_backup_save), onBackup, icon = Icons.Filled.Check)
-                            PillButton(stringResource(R.string.settings_backup_restore), onRestore, icon = Icons.Filled.Refresh)
+                        SectionCard(stringResource(R.string.settings_update), icon = Icons.Filled.Refresh) {
+                            UpdateSection(state.version, update, onCheckUpdate, onInstallUpdate, onAllowInstall)
                         }
-                    }
 
-                    SectionCard(stringResource(R.string.settings_update), icon = Icons.Filled.Refresh) {
-                        UpdateSection(state.version, update, onCheckUpdate, onInstallUpdate, onAllowInstall)
-                    }
-
-                    Row(
-                        Modifier.fillMaxWidth().padding(bottom = 24.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(Icons.Filled.Info, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        InfoText(stringResource(R.string.settings_version, state.version))
-                        // Mentions légales (licence GPL v3, imposée par le décodeur FFmpeg).
-                        InfoText(stringResource(R.string.settings_license))
+                        Row(
+                            Modifier.fillMaxWidth().padding(bottom = 24.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Filled.Info, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            InfoText(stringResource(R.string.settings_version, state.version))
+                            // Mentions légales (licence GPL v3, imposée par le décodeur FFmpeg).
+                            InfoText(stringResource(R.string.settings_license))
+                        }
                     }
                 }
             }

@@ -5,10 +5,15 @@ import android.content.res.Configuration
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
+import androidx.compose.foundation.interaction.FocusInteraction
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +23,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,6 +32,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -38,57 +45,58 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
-import tv.nextv.app.R
-import androidx.compose.ui.res.stringResource
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.ui.res.painterResource
-import androidx.compose.foundation.Image
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.InputMode
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.input.key.type
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
-import kotlinx.coroutines.awaitCancellation
-import androidx.compose.ui.platform.LocalInputModeManager
-import androidx.compose.ui.input.InputMode
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.focusProperties
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.foundation.interaction.FocusInteraction
-import androidx.compose.foundation.focusable
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.launch
+import tv.nextv.app.R
 import tv.nextv.app.ui.theme.NexTvColors
-import tv.nextv.core.catalog.ContentClassifier
 import tv.nextv.app.ui.theme.NexTvIcons
+import tv.nextv.core.catalog.ContentClassifier
 
 // --- Disposition adaptative -------------------------------------------------------------------
 
@@ -639,3 +647,51 @@ fun WindowInfo.contentPadding(top: Dp = 8.dp, bottom: Dp = 24.dp) =
  * section qui s'ouvre ne doit pas leur prendre le focus.
  */
 val LocalTabsFocused = compositionLocalOf<() -> Boolean> { { false } }
+
+/** Hauteur du fondu en bas des listes. */
+val BottomFadeLength: Dp = 56.dp
+
+/**
+ * Fondu en bas d'une zone qui défile, tant qu'il reste du contenu plus bas : le contenu s'estompe
+ * vers la transparence (quel que soit le fond : image, dégradé) et le fondu disparaît en fin de liste.
+ */
+fun Modifier.bottomFade(canScrollDown: () -> Boolean, length: Dp = BottomFadeLength): Modifier = this
+    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+    .drawWithContent {
+        drawContent()
+        if (!canScrollDown()) return@drawWithContent
+        val fade = length.toPx().coerceAtMost(size.height)
+        val top = size.height - fade
+        drawRect(
+            brush = Brush.verticalGradient(0f to Color.Black, 1f to Color.Transparent, startY = top, endY = size.height),
+            topLeft = Offset(0f, top),
+            size = Size(size.width, fade),
+            blendMode = BlendMode.DstIn,
+        )
+    }
+
+/**
+ * Liste parcourue à la télécommande avec le fondu du bas : [content] reçoit le modificateur du
+ * fondu, et l'élément choisi ne s'arrête jamais dedans (la liste défile un peu plus).
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun FadingBottom(canScrollDown: () -> Boolean, content: @Composable (fade: Modifier) -> Unit) {
+    val parent = LocalBringIntoViewSpec.current
+    val margin = with(LocalDensity.current) { BottomFadeLength.toPx() }
+    val spec = remember(parent, margin) { BottomMarginBringIntoViewSpec(parent, margin) }
+    CompositionLocalProvider(LocalBringIntoViewSpec provides spec) {
+        content(Modifier.bottomFade(canScrollDown))
+    }
+}
+
+/** Élément amené à l'écran au-dessus du fondu du bas ([margin]) ; sinon comme d'habitude. */
+@OptIn(ExperimentalFoundationApi::class)
+private class BottomMarginBringIntoViewSpec(private val parent: BringIntoViewSpec, private val margin: Float) : BringIntoViewSpec {
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+        val usable = containerSize - margin
+        if (size > usable || offset < 0f) return parent.calculateScrollDistance(offset, size, containerSize)
+        val trailing = offset + size
+        return if (trailing > usable) trailing - usable else 0f
+    }
+}

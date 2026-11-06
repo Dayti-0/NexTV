@@ -1,5 +1,6 @@
 package tv.nextv.app.ui.guide
 
+import tv.nextv.app.ui.components.FadingBottom
 import android.widget.Toast
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
@@ -335,62 +336,64 @@ private fun GuideGrid(
             channelColumnWidth = channelColumnWidth,
             modifier = Modifier.padding(start = horizontalPadding),
         )
-        LazyColumn(
-            state = listState,
-            contentPadding = PaddingValues(start = horizontalPadding, bottom = 24.dp, top = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.fillMaxSize().onPreviewKeyEvent { event ->
-                if (event.type != KeyEventType.KeyDown || focusedRow < 0) return@onPreviewKeyEvent false
-                val step = when (event.key) {
-                    Key.DirectionDown -> 1
-                    Key.DirectionUp -> -1
-                    else -> {
-                        if (event.key == Key.DirectionLeft || event.key == Key.DirectionRight) timelineLocked = false
-                        return@onPreviewKeyEvent false
+        FadingBottom({ listState.canScrollForward }) { fade ->
+            LazyColumn(
+                state = listState,
+                contentPadding = PaddingValues(start = horizontalPadding, bottom = 24.dp, top = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.fillMaxSize().then(fade).onPreviewKeyEvent { event ->
+                    if (event.type != KeyEventType.KeyDown || focusedRow < 0) return@onPreviewKeyEvent false
+                    val step = when (event.key) {
+                        Key.DirectionDown -> 1
+                        Key.DirectionUp -> -1
+                        else -> {
+                            if (event.key == Key.DirectionLeft || event.key == Key.DirectionRight) timelineLocked = false
+                            return@onPreviewKeyEvent false
+                        }
                     }
+                    val target = focusedRow + step
+                    // Première ligne vers le haut (catégories), dernière vers le bas, ligne sans programme : comportement habituel.
+                    if (target !in state.channels.indices || visibleProgrammes(state.channels[target], state).isEmpty()) return@onPreviewKeyEvent false
+                    verticalMove = true
+                    timelineLocked = true
+                    pendingFocus = target to anchor
+                    // Ligne hors de l'écran : elle n'existe pas encore, on fait défiler d'une ligne.
+                    if (listState.layoutInfo.visibleItemsInfo.none { it.index == target }) {
+                        scope.launch { listState.scrollBy(step * rowStepPx) }
+                    }
+                    true
+                },
+            ) {
+                itemsIndexed(state.channels, key = { _, channel -> channel.id }) { index, channel ->
+                    GuideRow(
+                        channel = channel,
+                        state = state,
+                        scroll = scroll,
+                        minuteWidth = minuteWidth,
+                        channelColumnWidth = channelColumnWidth,
+                        rowHeight = rowHeight,
+                        compact = compact,
+                        focusRequester = initialFocus.takeIf { channel == state.channels.first() },
+                        focusAt = pendingFocus?.takeIf { it.first == index }?.second,
+                        timelineLocked = { timelineLocked },
+                        onFocusAtDone = { pendingFocus = null },
+                        onChannelFocus = { focusedRow = -1 },
+                        selected = channel.itemKey in selection,
+                        onToggleSelection = { onToggleSelection(channel) },
+                        onPlay = {
+                            rememberOpened(index, state.now)
+                            onPlay(channel.id)
+                        },
+                        onFocus = { programme ->
+                            onProgrammeFocus(index, programme)
+                            onFocus(channel to programme)
+                        },
+                        onOpen = { programme ->
+                            rememberOpened(index, maxOf(programme.startMillis, minOf(anchor, programme.stopMillis - 1)))
+                            onOpen(channel to programme)
+                        },
+                    )
                 }
-                val target = focusedRow + step
-                // Première ligne vers le haut (catégories), dernière vers le bas, ligne sans programme : comportement habituel.
-                if (target !in state.channels.indices || visibleProgrammes(state.channels[target], state).isEmpty()) return@onPreviewKeyEvent false
-                verticalMove = true
-                timelineLocked = true
-                pendingFocus = target to anchor
-                // Ligne hors de l'écran : elle n'existe pas encore, on fait défiler d'une ligne.
-                if (listState.layoutInfo.visibleItemsInfo.none { it.index == target }) {
-                    scope.launch { listState.scrollBy(step * rowStepPx) }
-                }
-                true
-            },
-        ) {
-            itemsIndexed(state.channels, key = { _, channel -> channel.id }) { index, channel ->
-                GuideRow(
-                    channel = channel,
-                    state = state,
-                    scroll = scroll,
-                    minuteWidth = minuteWidth,
-                    channelColumnWidth = channelColumnWidth,
-                    rowHeight = rowHeight,
-                    compact = compact,
-                    focusRequester = initialFocus.takeIf { channel == state.channels.first() },
-                    focusAt = pendingFocus?.takeIf { it.first == index }?.second,
-                    timelineLocked = { timelineLocked },
-                    onFocusAtDone = { pendingFocus = null },
-                    onChannelFocus = { focusedRow = -1 },
-                    selected = channel.itemKey in selection,
-                    onToggleSelection = { onToggleSelection(channel) },
-                    onPlay = {
-                        rememberOpened(index, state.now)
-                        onPlay(channel.id)
-                    },
-                    onFocus = { programme ->
-                        onProgrammeFocus(index, programme)
-                        onFocus(channel to programme)
-                    },
-                    onOpen = { programme ->
-                        rememberOpened(index, maxOf(programme.startMillis, minOf(anchor, programme.stopMillis - 1)))
-                        onOpen(channel to programme)
-                    },
-                )
             }
         }
     }

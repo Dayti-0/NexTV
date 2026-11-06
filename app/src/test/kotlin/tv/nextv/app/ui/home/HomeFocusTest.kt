@@ -14,6 +14,10 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.isDisplayed
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import tv.nextv.app.ui.components.BottomFadeLength
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.test.isFocused
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
 import androidx.paging.PagingData
@@ -118,6 +122,25 @@ class HomeFocusTest {
         val last = focused.lastOrNull()?.groupTitle
         println("Cinéma Premium, focus après 10 × bas : $last")
         assertTrue("Focus : $last", last != null && last.removePrefix("Groupe ").toInt() >= 5)
+    }
+
+    /** En descendant dans la liste des chaînes, la chaîne choisie reste au-dessus du fondu du bas. */
+    @Test
+    fun focusedChannelStaysAboveTheBottomFade() {
+        compose.setContent { Home(HomeLayout.LIVE_CENTER, HomeActions()) }
+        compose.waitForIdle()
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionRight) }
+        compose.waitForIdle()
+        val screen = compose.onRoot().getBoundsInRoot().bottom
+        repeat(8) {
+            compose.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
+            compose.mainClock.advanceTimeBy(600)
+            compose.waitForIdle()
+            val focused = compose.onNode(isFocused()).getBoundsInRoot().bottom
+            assertTrue("Chaîne choisie dans le fondu : $focused / $screen", focused <= screen - BottomFadeLength + 1.dp)
+        }
     }
 
     /** La rangée choisie est calée en haut : rien de la précédente ne reste visible, coupé, au-dessus. */

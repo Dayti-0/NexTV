@@ -1,5 +1,6 @@
 package tv.nextv.app.ui.football
 
+import tv.nextv.app.ui.components.FadingBottom
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -209,20 +211,25 @@ fun FootballContent(
     val myTeamsCount = state.matches.count { it.involves(favoriteTeams) }
     if (window.isWide) {
         Row(modifier.fillMaxSize()) {
-            LazyColumn(
-                modifier = Modifier
-                    .width(290.dp)
-                    .fillMaxHeight()
-                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
-                    .padding(start = window.horizontalPadding - 16.dp, end = 12.dp),
-                contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                item { CompetitionItem(competitionLabel(null), count(null), null, !myTeams && competition == null) { onCompetition(null) } }
-                item { CompetitionItem(stringResource(R.string.football_my_teams), myTeamsCount, null, myTeams, star = true, onClick = onMyTeams) }
-                items(Competition.entries) { choice ->
-                    CompetitionItem(competitionLabel(choice), count(choice), choice, !myTeams && choice == competition) {
-                        onCompetition(choice)
+            val railState = rememberLazyListState()
+            FadingBottom({ railState.canScrollForward }) { fade ->
+                LazyColumn(
+                    state = railState,
+                    modifier = Modifier
+                        .width(290.dp)
+                        .fillMaxHeight()
+                        .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                        .padding(start = window.horizontalPadding - 16.dp, end = 12.dp)
+                        .then(fade),
+                    contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    item { CompetitionItem(competitionLabel(null), count(null), null, !myTeams && competition == null) { onCompetition(null) } }
+                    item { CompetitionItem(stringResource(R.string.football_my_teams), myTeamsCount, null, myTeams, star = true, onClick = onMyTeams) }
+                    items(Competition.entries) { choice ->
+                        CompetitionItem(competitionLabel(choice), count(choice), choice, !myTeams && choice == competition) {
+                            onCompetition(choice)
+                        }
                     }
                 }
             }
@@ -299,48 +306,52 @@ private fun MatchList(
             opened = null
         }
     }
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = if (compact) horizontalPadding else 28.dp, end = horizontalPadding, top = 8.dp, bottom = 32.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        if (notice != null) {
-            item(key = "notice") {
-                Text(
-                    noticeText(notice),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
+    val listState = rememberLazyListState()
+    FadingBottom({ listState.canScrollForward }) { fade ->
+        LazyColumn(
+            state = listState,
+            modifier = modifier.fillMaxSize().then(fade),
+            contentPadding = PaddingValues(start = if (compact) horizontalPadding else 28.dp, end = horizontalPadding, top = 8.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            if (notice != null) {
+                item(key = "notice") {
+                    Text(
+                        noticeText(notice),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
             }
-        }
-        days.forEach { (day, dayMatches) ->
-            item(key = "day-$day") {
-                Text(
-                    dayLabel(day, now),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
-                )
-            }
-            items(dayMatches, key = { it.key }) { match ->
-                val channel = match.channel
-                MatchRow(
-                    match = match,
-                    now = now,
-                    compact = compact,
-                    followed = match.involves(favoriteTeams),
-                    onClick = {
-                        if (channel != null) {
-                            opened = listOf(match.key, visit.toString())
-                            onPlay(channel.id)
-                        } else {
-                            onDetails(match)
-                        }
-                    },
-                    onLongClick = { onDetails(match) },
-                    modifier = if (match.key == backKey) Modifier.focusRequester(backFocus) else Modifier,
-                )
+            days.forEach { (day, dayMatches) ->
+                item(key = "day-$day") {
+                    Text(
+                        dayLabel(day, now),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+                    )
+                }
+                items(dayMatches, key = { it.key }) { match ->
+                    val channel = match.channel
+                    MatchRow(
+                        match = match,
+                        now = now,
+                        compact = compact,
+                        followed = match.involves(favoriteTeams),
+                        onClick = {
+                            if (channel != null) {
+                                opened = listOf(match.key, visit.toString())
+                                onPlay(channel.id)
+                            } else {
+                                onDetails(match)
+                            }
+                        },
+                        onLongClick = { onDetails(match) },
+                        modifier = if (match.key == backKey) Modifier.focusRequester(backFocus) else Modifier,
+                    )
+                }
             }
         }
     }
@@ -638,42 +649,46 @@ private fun StandingsTable(
                 modifier = modifier,
             )
         } else {
-            LazyColumn(
-                modifier = modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = if (compact) horizontalPadding else 28.dp, end = horizontalPadding, top = 12.dp, bottom = 32.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                item(key = "header") {
-                    StandingLine(
-                        position = "#",
-                        crest = null,
-                        name = stringResource(R.string.football_table_team),
-                        played = stringResource(R.string.football_table_played),
-                        difference = stringResource(R.string.football_table_difference),
-                        points = stringResource(R.string.football_table_points),
-                        header = true,
-                        followed = false,
-                    )
-                }
-                items(state.table, key = { "${it.position}-${it.team.name}" }) { row ->
-                    FocusSurface(
-                        onClick = { onTeam(row.team) },
-                        onLongClick = { onToggleTeam(row.team.name) },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = MaterialTheme.shapes.small,
-                        color = MaterialTheme.colorScheme.surfaceContainer,
-                        focusScale = 1.01f,
-                    ) {
+            val tableState = rememberLazyListState()
+            FadingBottom({ tableState.canScrollForward }) { fade ->
+                LazyColumn(
+                    state = tableState,
+                    modifier = modifier.fillMaxSize().then(fade),
+                    contentPadding = PaddingValues(start = if (compact) horizontalPadding else 28.dp, end = horizontalPadding, top = 12.dp, bottom = 32.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    item(key = "header") {
                         StandingLine(
-                            position = row.position.toString(),
-                            crest = row.team.crestUrl,
-                            name = row.team.displayName,
-                            played = row.played.toString(),
-                            difference = if (row.goalDifference > 0) "+${row.goalDifference}" else row.goalDifference.toString(),
-                            points = row.points.toString(),
-                            header = false,
-                            followed = row.team.name in favoriteTeams,
+                            position = "#",
+                            crest = null,
+                            name = stringResource(R.string.football_table_team),
+                            played = stringResource(R.string.football_table_played),
+                            difference = stringResource(R.string.football_table_difference),
+                            points = stringResource(R.string.football_table_points),
+                            header = true,
+                            followed = false,
                         )
+                    }
+                    items(state.table, key = { "${it.position}-${it.team.name}" }) { row ->
+                        FocusSurface(
+                            onClick = { onTeam(row.team) },
+                            onLongClick = { onToggleTeam(row.team.name) },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.small,
+                            color = MaterialTheme.colorScheme.surfaceContainer,
+                            focusScale = 1.01f,
+                        ) {
+                            StandingLine(
+                                position = row.position.toString(),
+                                crest = row.team.crestUrl,
+                                name = row.team.displayName,
+                                played = row.played.toString(),
+                                difference = if (row.goalDifference > 0) "+${row.goalDifference}" else row.goalDifference.toString(),
+                                points = row.points.toString(),
+                                header = false,
+                                followed = row.team.name in favoriteTeams,
+                            )
+                        }
                     }
                 }
             }

@@ -1,5 +1,6 @@
 package tv.nextv.app.ui.home
 
+import tv.nextv.app.ui.components.FadingBottom
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
@@ -845,37 +847,40 @@ internal fun CategoryRail(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         SearchField(query, searchHint(section), actions.onQuery)
-        LazyColumn(contentPadding = PaddingValues(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            item {
-                CategoryItem(stringResource(R.string.home_favorites), favoritesCount, category == Category.Favorites, star = true, dense = dense) {
-                    actions.onCategory(Category.Favorites)
-                }
-            }
-            if (recentCount != null) {
+        val railState = rememberLazyListState()
+        FadingBottom({ railState.canScrollForward }) { fade ->
+            LazyColumn(state = railState, contentPadding = PaddingValues(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(2.dp), modifier = fade) {
                 item {
-                    CategoryItem(stringResource(R.string.home_recent), recentCount, category == Category.Recent, dense = dense) {
-                        actions.onCategory(Category.Recent)
+                    CategoryItem(stringResource(R.string.home_favorites), favoritesCount, category == Category.Favorites, star = true, dense = dense) {
+                        actions.onCategory(Category.Favorites)
                     }
                 }
-            }
-            if (resumeCount != null) {
-                item {
-                    CategoryItem(stringResource(R.string.home_continue), resumeCount, category == Category.ContinueWatching, dense = dense) {
-                        actions.onCategory(Category.ContinueWatching)
+                if (recentCount != null) {
+                    item {
+                        CategoryItem(stringResource(R.string.home_recent), recentCount, category == Category.Recent, dense = dense) {
+                            actions.onCategory(Category.Recent)
+                        }
                     }
                 }
-            }
-            item { CategoryItem(allLabel(section), allCount, category == Category.All, dense = dense) { actions.onCategory(Category.All) } }
-            items(groups, key = { it.title ?: NO_GROUP_KEY }) { group ->
-                val title = group.title.orEmpty()
-                CategoryItem(
-                    group.title ?: stringResource(R.string.channels_no_group),
-                    group.count,
-                    category == Category.Group(title),
-                    onLongClick = hide(title),
-                    dense = dense,
-                ) {
-                    actions.onCategory(Category.Group(title))
+                if (resumeCount != null) {
+                    item {
+                        CategoryItem(stringResource(R.string.home_continue), resumeCount, category == Category.ContinueWatching, dense = dense) {
+                            actions.onCategory(Category.ContinueWatching)
+                        }
+                    }
+                }
+                item { CategoryItem(allLabel(section), allCount, category == Category.All, dense = dense) { actions.onCategory(Category.All) } }
+                items(groups, key = { it.title ?: NO_GROUP_KEY }) { group ->
+                    val title = group.title.orEmpty()
+                    CategoryItem(
+                        group.title ?: stringResource(R.string.channels_no_group),
+                        group.count,
+                        category == Category.Group(title),
+                        onLongClick = hide(title),
+                        dense = dense,
+                    ) {
+                        actions.onCategory(Category.Group(title))
+                    }
                 }
             }
         }
@@ -1089,21 +1094,23 @@ internal fun TvBody(
         else -> channels.itemCount
     }
     RestoreScroll(state, lastOpened, count)
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(grid.columns),
-        state = state,
-        contentPadding = padding,
-        horizontalArrangement = Arrangement.spacedBy(grid.spacing),
-        verticalArrangement = Arrangement.spacedBy(if (grid.columns == 1) 2.dp else grid.spacing),
-        modifier = Modifier.fillMaxSize().onFocusChanged { if (!it.hasFocus) focused.value = null },
-    ) {
-        if (favoritesMode) {
-            items(favorites.size, key = { favorites[it].itemKey }) { index -> card(favorites[index], index, true) }
-        } else if (recentMode) {
-            items(recent.size, key = { recent[it].itemKey }) { index -> card(recent[index], index, false) }
-        } else {
-            items(count = channels.itemCount, key = channels.itemKey { it.id }) { index ->
-                channels[index]?.let { card(it, index, false) }
+    FadingBottom({ state.canScrollForward }) { fade ->
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(grid.columns),
+            state = state,
+            contentPadding = padding,
+            horizontalArrangement = Arrangement.spacedBy(grid.spacing),
+            verticalArrangement = Arrangement.spacedBy(if (grid.columns == 1) 2.dp else grid.spacing),
+            modifier = Modifier.fillMaxSize().then(fade).onFocusChanged { if (!it.hasFocus) focused.value = null },
+        ) {
+            if (favoritesMode) {
+                items(favorites.size, key = { favorites[it].itemKey }) { index -> card(favorites[index], index, true) }
+            } else if (recentMode) {
+                items(recent.size, key = { recent[it].itemKey }) { index -> card(recent[index], index, false) }
+            } else {
+                items(count = channels.itemCount, key = channels.itemKey { it.id }) { index ->
+                    channels[index]?.let { card(it, index, false) }
+                }
             }
         }
     }
@@ -1160,19 +1167,21 @@ private fun MoviesBody(
     }
     val state = rememberSaveable(category, saver = LazyGridState.Saver) { LazyGridState() }
     RestoreScroll(state, lastOpened, if (favoritesMode) favorites.size else movies.itemCount)
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(grid.columns),
-        state = state,
-        contentPadding = gridPadding(window),
-        horizontalArrangement = Arrangement.spacedBy(grid.spacing),
-        verticalArrangement = Arrangement.spacedBy(grid.spacing),
-        modifier = Modifier.fillMaxSize().onFocusChanged { if (!it.hasFocus) focused.value = null },
-    ) {
-        if (favoritesMode) {
-            items(favorites.size, key = { favorites[it].itemKey }) { index -> poster(favorites[index], index, true) }
-        } else {
-            items(count = movies.itemCount, key = movies.itemKey { it.id }) { index ->
-                movies[index]?.let { poster(it, index, false) }
+    FadingBottom({ state.canScrollForward }) { fade ->
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(grid.columns),
+            state = state,
+            contentPadding = gridPadding(window),
+            horizontalArrangement = Arrangement.spacedBy(grid.spacing),
+            verticalArrangement = Arrangement.spacedBy(grid.spacing),
+            modifier = Modifier.fillMaxSize().then(fade).onFocusChanged { if (!it.hasFocus) focused.value = null },
+        ) {
+            if (favoritesMode) {
+                items(favorites.size, key = { favorites[it].itemKey }) { index -> poster(favorites[index], index, true) }
+            } else {
+                items(count = movies.itemCount, key = movies.itemKey { it.id }) { index ->
+                    movies[index]?.let { poster(it, index, false) }
+                }
             }
         }
     }
@@ -1230,19 +1239,21 @@ private fun SeriesBody(
     }
     val state = rememberSaveable(category, saver = LazyGridState.Saver) { LazyGridState() }
     RestoreScroll(state, lastOpened, if (favoritesMode) favorites.size else series.itemCount)
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(grid.columns),
-        state = state,
-        contentPadding = gridPadding(window),
-        horizontalArrangement = Arrangement.spacedBy(grid.spacing),
-        verticalArrangement = Arrangement.spacedBy(grid.spacing),
-        modifier = Modifier.fillMaxSize().onFocusChanged { if (!it.hasFocus) focused.value = null },
-    ) {
-        if (favoritesMode) {
-            items(favorites.size, key = { favorites[it].itemKey }) { index -> poster(favorites[index], index, true) }
-        } else {
-            items(count = series.itemCount, key = series.itemKey { it.itemKey }) { index ->
-                series[index]?.let { poster(it, index, false) }
+    FadingBottom({ state.canScrollForward }) { fade ->
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(grid.columns),
+            state = state,
+            contentPadding = gridPadding(window),
+            horizontalArrangement = Arrangement.spacedBy(grid.spacing),
+            verticalArrangement = Arrangement.spacedBy(grid.spacing),
+            modifier = Modifier.fillMaxSize().then(fade).onFocusChanged { if (!it.hasFocus) focused.value = null },
+        ) {
+            if (favoritesMode) {
+                items(favorites.size, key = { favorites[it].itemKey }) { index -> poster(favorites[index], index, true) }
+            } else {
+                items(count = series.itemCount, key = series.itemKey { it.itemKey }) { index ->
+                    series[index]?.let { poster(it, index, false) }
+                }
             }
         }
     }
@@ -1264,39 +1275,41 @@ private fun ContinueBody(
     }
     val state = rememberSaveable(saver = LazyGridState.Saver) { LazyGridState() }
     RestoreScroll(state, lastOpened, items.size)
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(grid.columns),
-        state = state,
-        contentPadding = gridPadding(window),
-        horizontalArrangement = Arrangement.spacedBy(grid.spacing),
-        verticalArrangement = Arrangement.spacedBy(grid.spacing),
-        modifier = Modifier.fillMaxSize().onFocusChanged { if (!it.hasFocus) focused.value = null },
-    ) {
-        items(items.size, key = { items[it].itemKey }) { index ->
-            val item = items[index]
-            val remaining = (item.durationMs - item.positionMs).coerceAtLeast(0)
-            val subtitle = when {
-                item.episodeLabel != null && item.positionMs <= 0 -> stringResource(R.string.home_continue_next, item.episodeLabel)
-                item.episodeLabel != null && item.durationMs > 0 ->
-                    stringResource(R.string.home_continue_episode, item.episodeLabel, formatDuration(remaining))
-                item.episodeLabel != null -> item.episodeLabel
-                item.durationMs > 0 -> stringResource(R.string.home_continue_remaining, formatDuration(remaining))
-                else -> null
+    FadingBottom({ state.canScrollForward }) { fade ->
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(grid.columns),
+            state = state,
+            contentPadding = gridPadding(window),
+            horizontalArrangement = Arrangement.spacedBy(grid.spacing),
+            verticalArrangement = Arrangement.spacedBy(grid.spacing),
+            modifier = Modifier.fillMaxSize().then(fade).onFocusChanged { if (!it.hasFocus) focused.value = null },
+        ) {
+            items(items.size, key = { items[it].itemKey }) { index ->
+                val item = items[index]
+                val remaining = (item.durationMs - item.positionMs).coerceAtLeast(0)
+                val subtitle = when {
+                    item.episodeLabel != null && item.positionMs <= 0 -> stringResource(R.string.home_continue_next, item.episodeLabel)
+                    item.episodeLabel != null && item.durationMs > 0 ->
+                        stringResource(R.string.home_continue_episode, item.episodeLabel, formatDuration(remaining))
+                    item.episodeLabel != null -> item.episodeLabel
+                    item.durationMs > 0 -> stringResource(R.string.home_continue_remaining, formatDuration(remaining))
+                    else -> null
+                }
+                PosterCard(
+                    title = item.title,
+                    subtitle = subtitle,
+                    imageUrl = item.logoUrl,
+                    isFavorite = false,
+                    onClick = {
+                        lastOpened.value = OpenedItem(item.itemKey, index)
+                        actions.onResume(item.channelId)
+                    },
+                    onLongClick = { actions.onClearProgress(item.itemKey) },
+                    modifier = Modifier.restoreFocus(item.itemKey, lastOpened).showWhenFocused(focused, FocusedItem(item.title, subtitle)),
+                    progress = if (item.durationMs > 0) item.positionMs.toFloat() / item.durationMs else null,
+                    compact = grid.cellWidth < COMPACT_POSTER_WIDTH,
+                )
             }
-            PosterCard(
-                title = item.title,
-                subtitle = subtitle,
-                imageUrl = item.logoUrl,
-                isFavorite = false,
-                onClick = {
-                    lastOpened.value = OpenedItem(item.itemKey, index)
-                    actions.onResume(item.channelId)
-                },
-                onLongClick = { actions.onClearProgress(item.itemKey) },
-                modifier = Modifier.restoreFocus(item.itemKey, lastOpened).showWhenFocused(focused, FocusedItem(item.title, subtitle)),
-                progress = if (item.durationMs > 0) item.positionMs.toFloat() / item.durationMs else null,
-                compact = grid.cellWidth < COMPACT_POSTER_WIDTH,
-            )
         }
     }
 }
