@@ -23,6 +23,10 @@ import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.unit.toSize
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasAnyDescendant
 import androidx.paging.PagingData
 import androidx.paging.compose.collectAsLazyPagingItems
 import kotlinx.coroutines.delay
@@ -300,6 +304,61 @@ class HomeFocusTest {
     }
 
     /**
+     * L'élément choisi s'agrandit un peu (onglet ×1,06, catégorie ×1,02, affiche ×1,07) : sa liste lui
+     * laisse cette place, sinon elle le coupe à son bord (cadre de sélection rogné). [vertical] : une
+     * rangée qui défile de gauche à droite ne coupe pas en hauteur (Compose y garde une marge).
+     */
+    private fun assertRoomToGrow(scale: Float, what: String, vertical: Boolean = true) {
+        val item = focusedRect()
+        val list = focusedListRect()
+        val grownX = item.width * (scale - 1) / 2
+        val grownY = item.height * (scale - 1) / 2
+        println("$what : $item dans $list (+$grownX, +$grownY)")
+        assertTrue("$what coupé à gauche", item.left - grownX >= list.left)
+        assertTrue("$what coupé à droite", item.right + grownX <= list.right)
+        if (vertical) assertTrue("$what coupé en haut", item.top - grownY >= list.top)
+    }
+
+    private fun focusedRect() = compose.onNode(isFocused()).fetchSemanticsNode().let { Rect(it.positionInRoot, it.size.toSize()) }
+
+    /** Liste (ou grille, rangée d'onglets) qui défile et contient l'élément choisi : la plus proche. */
+    private fun focusedListRect() = compose.onAllNodes(hasScrollAction() and hasAnyDescendant(isFocused())).fetchSemanticsNodes()
+        .map { Rect(it.positionInRoot, it.size.toSize()) }
+        .minBy { it.width * it.height }
+
+    @Test
+    fun focusedTabsAndCategoriesAreNotCut() {
+        compose.setContent { Home(HomeLayout.LIVE_CENTER, HomeActions()) }
+        compose.waitForIdle()
+        // Premier onglet (TV), puis le dernier (Foot).
+        assertRoomToGrow(1.06f, "Onglet TV", vertical = false)
+        repeat(HomeSection.entries.size - 1) { press(Key.DirectionRight) }
+        assertRoomToGrow(1.06f, "Onglet Foot", vertical = false)
+        // Onglets → recherche → première catégorie.
+        repeat(HomeSection.entries.size - 1) { press(Key.DirectionLeft) }
+        press(Key.DirectionDown)
+        press(Key.DirectionDown)
+        assertRoomToGrow(1.02f, "Catégorie")
+    }
+
+    @Test
+    fun focusedPosterOfTheFirstRowIsNotCut() {
+        compose.setContent { Home(HomeLayout.LIVE_CENTER, HomeActions(), HomeSection.MOVIES) }
+        compose.waitForIdle()
+        // Onglets → recherche → catégories, puis la grille, et haut jusqu'à sa première ligne.
+        press(Key.DirectionDown)
+        press(Key.DirectionDown)
+        press(Key.DirectionRight)
+        repeat(4) {
+            val item = focusedRect()
+            if (item.top - focusedListRect().top > item.height / 2) press(Key.DirectionUp)
+        }
+        val item = focusedRect()
+        assertTrue("Affiche de la première ligne : $item", item.top - focusedListRect().top < item.height / 2)
+        assertRoomToGrow(1.07f, "Affiche")
+    }
+
+    /**
      * Cinéma Premium, films : à droite dans une rangée (l'affiche choisie change la mise en avant),
      * la rangée reste calée en haut, sans que la précédente revienne au-dessus.
      */
@@ -457,7 +516,6 @@ class HomeFocusTest {
             val series = remember { flowOf(PagingData.from(SampleData.series)) }.collectAsLazyPagingItems()
             HomeContent(
                 section = section,
-                sourceName = "Bouquet",
                 groups = groups,
                 category = Category.All,
                 query = "",

@@ -197,10 +197,6 @@ class HomeViewModel(
     val sourceId: StateFlow<Long?> = container.settings.activePlaylistId
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    val sourceName: StateFlow<String> = sourceId.flatMapLatest { id ->
-        if (id == null) flowOf("") else container.playlistStore.observeSource(id).map { it?.name.orEmpty() }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
-
     val section = MutableStateFlow(HomeSection.TV)
 
     private val categories = MutableStateFlow<Map<HomeSection, Category>>(emptyMap())

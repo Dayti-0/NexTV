@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyRow
@@ -154,7 +153,6 @@ fun HomeScreen(
     val viewModel = appViewModel { container, _ -> HomeViewModel(container, resources) }
     val section by viewModel.section.collectAsStateWithLifecycle()
     val sourceId by viewModel.sourceId.collectAsStateWithLifecycle()
-    val sourceName by viewModel.sourceName.collectAsStateWithLifecycle()
     val groups by viewModel.groups.collectAsStateWithLifecycle()
     val category by viewModel.category.collectAsStateWithLifecycle()
     val query by viewModel.query.collectAsStateWithLifecycle()
@@ -215,7 +213,6 @@ fun HomeScreen(
 
     HomeContent(
         section = section,
-        sourceName = sourceName,
         groups = groups,
         category = category,
         query = query,
@@ -315,7 +312,6 @@ fun HomeScreen(
 @Composable
 fun HomeContent(
     section: HomeSection,
-    sourceName: String,
     groups: List<GroupRow>,
     category: Category,
     query: String,
@@ -383,7 +379,7 @@ fun HomeContent(
     )
     // Barre des onglets de l'interface choisie, la même dans toutes les sections (Guide TV et Foot compris).
     val topBar: @Composable () -> Unit = {
-        HomeTopBar(section, sourceName, window, actions, onTabsFocused = { tabsFocused.value = it }, style = layout)
+        HomeTopBar(section, window, actions, onTabsFocused = { tabsFocused.value = it }, style = layout)
     }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -602,7 +598,6 @@ private fun ReorderHint(reorder: ReorderState, window: WindowInfo) {
 @Composable
 private fun HomeTopBar(
     section: HomeSection,
-    sourceName: String,
     window: WindowInfo,
     actions: HomeActions,
     onTabsFocused: (Boolean) -> Unit = {},
@@ -629,7 +624,9 @@ private fun HomeTopBar(
     ) {
         // Logo NixTV ; écran étroit : onglets réduits à leur icône, pour que les sections restent visibles.
         BrandMark(compact = true, showName = window.isWide)
-        Spacer(Modifier.width(if (window.isWide) 32.dp else 12.dp))
+        // Place laissée dans la rangée défilante (ci-dessous) à l'onglet agrandi : retirée ici.
+        val tabRoom = if (minimal) PREMIUM_TAB_FOCUS_ROOM else TAB_FOCUS_ROOM
+        Spacer(Modifier.width((if (window.isWide) 32.dp else 12.dp) - tabRoom))
         Row(
             Modifier
                 .weight(1f)
@@ -644,7 +641,9 @@ private fun HomeTopBar(
                 // En remontant vers les onglets : celui de la section affichée (pas le plus proche, qui en changerait).
                 .focusProperties { onEnter = { runCatching { initialFocus.requestFocus() } } }
                 .focusGroup()
-                .horizontalScroll(rememberScrollState()),
+                .horizontalScroll(rememberScrollState())
+                // Le premier et le dernier onglet, agrandis au focus, ne sont pas coupés par le bord de la rangée.
+                .padding(horizontal = tabRoom),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             HomeSection.entries.forEach { target ->
@@ -661,17 +660,6 @@ private fun HomeTopBar(
                 )
             }
         }
-        if (window.isWide && sourceName.isNotEmpty() && !minimal) {
-            // Largeur limitée : un nom très long ne doit jamais masquer les onglets.
-            Text(
-                sourceName,
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = 12.dp).widthIn(max = 220.dp),
-            )
-        }
         if (minimal) {
             // Sur l'image ou le direct (souvent clairs) : même fond translucide que les onglets, pour rester visible.
             Spacer(Modifier.width(10.dp))
@@ -686,6 +674,10 @@ private fun HomeTopBar(
 
 /** Fond des onglets et du bouton des réglages de Cinéma Premium, lisible sur une image claire. */
 private const val PREMIUM_BAR_ALPHA = 0.72f
+
+/** Marge de part et d'autre des onglets pour l'onglet agrandi au focus (×1,06) ; Premium : en plus de celle de la capsule. */
+private val TAB_FOCUS_ROOM = 10.dp
+private val PREMIUM_TAB_FOCUS_ROOM = 2.dp
 
 @Composable
 private fun SectionTab(
@@ -840,17 +832,24 @@ internal fun CategoryRail(
 ) {
     // Appui long sur une catégorie pour la masquer.
     val hide: (String) -> (() -> Unit)? = { title -> if (section.kind() != null) ({ actions.onHideCategory(title) }) else null }
+    // La catégorie choisie s'agrandit un peu : la liste (coupée à ses bords par le fondu du bas) lui laisse
+    // RAIL_FOCUS_ROOM de chaque côté, retirés des marges autour pour que rien ne bouge.
     Column(
         modifier
             .fillMaxHeight()
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .padding(start = window.horizontalPadding - 16.dp, end = 12.dp, top = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+            .padding(start = (window.horizontalPadding - 16.dp - RAIL_FOCUS_ROOM).coerceAtLeast(0.dp), end = 12.dp - RAIL_FOCUS_ROOM, top = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp - RAIL_FOCUS_ROOM),
     ) {
-        SearchField(query, searchHint(section), actions.onQuery)
+        SearchField(query, searchHint(section), actions.onQuery, Modifier.padding(horizontal = RAIL_FOCUS_ROOM))
         val railState = rememberLazyListState()
         FadingBottom({ railState.canScrollForward }) { fade ->
-            LazyColumn(state = railState, contentPadding = PaddingValues(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(2.dp), modifier = fade) {
+            LazyColumn(
+                state = railState,
+                contentPadding = PaddingValues(start = RAIL_FOCUS_ROOM, end = RAIL_FOCUS_ROOM, top = RAIL_FOCUS_ROOM, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+                modifier = fade,
+            ) {
                 item {
                     CategoryItem(stringResource(R.string.home_favorites), favoritesCount, category == Category.Favorites, star = true, dense = dense) {
                         actions.onCategory(Category.Favorites)
@@ -1349,12 +1348,19 @@ internal fun FocusedItemLabel(item: FocusedItem, modifier: Modifier = Modifier) 
     }
 }
 
+/**
+ * Marges des grilles : en haut, de quoi voir en entier une carte de la première ligne agrandie au focus
+ * (affiche ×1,07, petite vignette ×1,1) ; la grille la couperait à son bord.
+ */
 internal fun gridPadding(window: WindowInfo, end: Dp = window.horizontalPadding) = PaddingValues(
     start = if (window.isWide) 28.dp else window.horizontalPadding,
     end = end,
-    top = 4.dp,
+    top = 12.dp,
     bottom = 32.dp,
 )
+
+/** Place laissée autour d'une catégorie agrandie au focus (×1,02) dans la colonne des catégories. */
+internal val RAIL_FOCUS_ROOM = 6.dp
 
 @Composable
 internal fun CategoryItem(

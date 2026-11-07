@@ -721,7 +721,6 @@ abstract class ScreenshotSuite(private val device: String) {
         val series = remember { flowOf(PagingData.from(SampleData.series)) }.collectAsLazyPagingItems()
         HomeContent(
             section = section,
-            sourceName = "Bouquet Maison",
             groups = when (section) {
                 HomeSection.MOVIES -> SampleData.movieGroups
                 HomeSection.SERIES -> SampleData.seriesGroups

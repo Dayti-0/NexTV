@@ -65,6 +65,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import tv.nextv.app.R
 import tv.nextv.app.ui.common.appViewModel
+import tv.nextv.app.ui.home.RAIL_FOCUS_ROOM
 import tv.nextv.app.ui.components.ChannelLogo
 import tv.nextv.app.ui.components.EmptyState
 import tv.nextv.app.ui.components.FocusSurface
@@ -241,9 +242,10 @@ fun FootballContent(
                         .width(290.dp)
                         .fillMaxHeight()
                         .background(MaterialTheme.colorScheme.surfaceContainerLow)
-                        .padding(start = window.horizontalPadding - 16.dp, end = 12.dp)
+                        // Compétition choisie agrandie (×1,02) : place gardée dans la liste, que le fondu coupe à ses bords.
+                        .padding(start = (window.horizontalPadding - 16.dp - RAIL_FOCUS_ROOM).coerceAtLeast(0.dp), end = 12.dp - RAIL_FOCUS_ROOM)
                         .then(fade),
-                    contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp),
+                    contentPadding = PaddingValues(start = RAIL_FOCUS_ROOM, end = RAIL_FOCUS_ROOM, top = 12.dp, bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
                     item { CompetitionItem(competitionLabel(null), count(null), null, !myTeams && competition == null) { onCompetition(null) } }
