@@ -53,7 +53,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -159,7 +158,7 @@ fun FootballContent(
             all = myTeams,
         )
     }
-    // Compteurs : matchs en carte (ceux qui ne sont pas diffusés en France ne comptent pas).
+    // Compteurs : matchs en carte (ceux que le guide ne trouve sur aucune chaîne ne comptent pas).
     val cards = remember(state.matches, state.guideUntilMillis, favoriteTeams) {
         selectMatches(state.matches, state.guideUntilMillis, favoriteTeams).cards
     }
@@ -393,8 +392,8 @@ private fun MatchList(
 }
 
 /**
- * Matchs du jour qu'aucune chaîne ne diffuse d'après le guide : une ligne discrète après les cartes
- * (« Pas diffusés en France : 15:00 Cagliari – Frosinone (Serie A) · … »).
+ * Matchs du jour que le guide ne trouve sur aucune chaîne : une ligne discrète après les cartes
+ * (« Pas dans le guide TV : 15:00 Cagliari – Frosinone (Serie A) · … »).
  */
 @Composable
 private fun NotBroadcast(matches: List<FootballMatch>, withCompetition: Boolean, compact: Boolean) {
@@ -403,7 +402,7 @@ private fun NotBroadcast(matches: List<FootballMatch>, withCompetition: Boolean,
         if (withCompetition) "$label (${match.competition.label})" else label
     }
     Text(
-        pluralStringResource(R.plurals.football_not_broadcast_list, matches.size, list),
+        stringResource(R.string.football_not_broadcast_list, list),
         style = if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(start = 4.dp, top = 2.dp, bottom = 4.dp),
@@ -513,7 +512,7 @@ private fun Teams(match: FootballMatch, large: Boolean) {
 
 /**
  * Chaîne de la playlist qui diffuse le match (et combien d'autres), ou son absence du guide : pas
- * diffusé en France quand le guide couvre déjà son jour ([guideUntilMillis]), sinon pas encore dans le
+ * dans le guide quand il couvre déjà son jour ([guideUntilMillis]), sinon pas encore dans le
  * guide. [inline] : nom et autres chaînes sur une seule ligne.
  */
 @Composable
@@ -543,12 +542,16 @@ private fun RowScope.ChannelInfo(match: FootballMatch, guideUntilMillis: Long, l
     val others = match.otherChannels.takeIf { it > 0 }?.let {
         LocalContext.current.resources.getQuantityString(R.plurals.football_other_channels, it, it)
     }
+    // Chaîne « événement » que le guide ne décrit pas : déduite de son numéro, seulement probable.
+    val probable = if (match.probable) stringResource(R.string.football_probable_channel) else null
     if (inline) {
         Text(channel.name, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+        probable?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = NexTvColors.Warning, maxLines = 1) }
         others?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
     } else {
         Column {
             Text(channel.name, style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            probable?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = NexTvColors.Warning) }
             others?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
     }
@@ -556,7 +559,7 @@ private fun RowScope.ChannelInfo(match: FootballMatch, guideUntilMillis: Long, l
 
 /** Chaîne qui diffuse le match, dans la fiche : logo, nom, et « Regarder » sur la préférée. */
 @Composable
-private fun ChannelChoice(channel: GuideChannel, preferred: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun ChannelChoice(channel: GuideChannel, preferred: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, probable: Boolean = false) {
     FocusSurface(
         onClick = onClick,
         modifier = modifier.fillMaxWidth(),
@@ -577,6 +580,7 @@ private fun ChannelChoice(channel: GuideChannel, preferred: Boolean, onClick: ()
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
+            if (probable) Text(stringResource(R.string.football_probable_channel), style = MaterialTheme.typography.labelMedium, color = NexTvColors.Warning)
             Icon(Icons.Filled.PlayArrow, contentDescription = stringResource(R.string.guide_watch), modifier = Modifier.size(20.dp))
         }
     }
@@ -649,6 +653,7 @@ private fun MatchSheet(
                                 preferred = index == 0,
                                 onClick = { onWatch(channel.id) },
                                 modifier = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier,
+                                probable = channel.id in match.probableChannels,
                             )
                         }
                     }

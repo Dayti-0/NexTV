@@ -161,7 +161,9 @@
     <string name="football_empty_title">Aucun match trouvé</string>
     <string name="football_empty_message">Pas de match dans les 8 prochains jours pour cette compétition.</string>
     <string name="football_no_channel">Pas encore dans le guide</string>
-    <string name="football_not_broadcast">Pas diffusé en France</string>
+    <string name="football_not_broadcast">Pas dans le guide TV</string>
+    <string name="football_probable_channel">chaîne probable</string>
+    <string name="football_not_broadcast_list">Pas dans le guide TV : %1$s</string>
     <string name="football_guide_only_channel">Sur %1$s · chaîne pas reliée à la playlist</string>
     <string name="football_loading">Recherche des matchs…</string>
     <string name="football_matches">Matchs</string>
@@ -561,10 +563,6 @@
     <plurals name="football_other_channels">
         <item quantity="one">+%d autre chaîne</item>
         <item quantity="other">+%d autres chaînes</item>
-    </plurals>
-    <plurals name="football_not_broadcast_list">
-        <item quantity="one">Pas diffusé en France : %1$s</item>
-        <item quantity="other">Pas diffusés en France : %1$s</item>
     </plurals>
     <plurals name="channel_groups_hidden">
         <item quantity="one">%d masquée</item>

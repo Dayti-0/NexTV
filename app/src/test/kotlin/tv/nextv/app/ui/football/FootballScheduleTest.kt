@@ -4,8 +4,10 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import tv.nextv.app.data.db.EpgChannelRow
+import tv.nextv.app.data.db.EventChannelRow
 import tv.nextv.app.data.db.FootballProgrammeRow
 import tv.nextv.core.football.Competition
+import tv.nextv.core.football.EventChannels
 import tv.nextv.core.football.MatchStatus
 import tv.nextv.core.football.ScheduledMatch
 import tv.nextv.core.football.Team
@@ -134,5 +136,37 @@ class FootballScheduleTest {
         ).single()
         assertEquals("Italie – France", shown.label)
         assertEquals(listOf("FR| TF1", "CH| RTS Deux"), shown.channels.map { it.name })
+    }
+    @Test
+    fun `liga matches missing from the guide are offered on the playlist event channels`() {
+        // Samedi : les chaînes « FR| DAZN LALIGA n (LIVE MATCH) », sans programme dans le guide, montrent
+        // le n-ième match de Liga du jour (images d'attente de LALIGA 1, 2 et 4).
+        val day = fridayNoon + 24 * hour - 11 * hour - 18 * 60_000L // samedi, minuit passé
+        val malaga = match(21, Competition.LA_LIGA, "Málaga", "Racing Santander", day + 14 * hour)
+        val espanyol = match(22, Competition.LA_LIGA, "Espanyol", "Deportivo", day + 16 * hour + 15 * 60_000L)
+        val osasuna = match(23, Competition.LA_LIGA, "Osasuna", "Athletic Club", day + 18 * hour + 30 * 60_000L)
+        val valencia = match(24, Competition.LA_LIGA, "Valencia", "Real Madrid", day + 21 * hour)
+        val events = (1..4).map { number ->
+            val name = "FR| DAZN LALIGA $number (LIVE MATCH)"
+            EventChannelRow(100L + number, name, name, null, hasGuide = false) to checkNotNull(EventChannels.parse(name))
+        }
+        val dazn2 = EpgChannelRow("dazn2.fr", 9, "FR| DAZN PPV 2", "FR| DAZN PPV 2", null)
+        val shown = scheduledMatches(
+            listOf(malaga, espanyol, osasuna, valencia),
+            listOf(row(dazn2, "Valence / Real Madrid", day + 20 * hour + 55 * 60_000L, 155)),
+            day + 9 * hour,
+            events,
+            dayOf = { day },
+        ).associateBy { it.label }
+        val first = shown.getValue("Málaga – Racing Santander")
+        assertEquals("FR| DAZN LALIGA 1 (LIVE MATCH)", first.channel?.name)
+        assertTrue(first.probable)
+        assertEquals("FR| DAZN LALIGA 2 (LIVE MATCH)", shown.getValue("Espanyol – Deportivo").channel?.name)
+        assertEquals("FR| DAZN LALIGA 3 (LIVE MATCH)", shown.getValue("Osasuna – Athletic Club").channel?.name)
+        // Annoncé par le guide sur DAZN 2 : cette chaîne d'abord, la chaîne événement en plus.
+        val classico = shown.getValue("Valencia – Real Madrid")
+        assertEquals(listOf("FR| DAZN PPV 2", "FR| DAZN LALIGA 4 (LIVE MATCH)"), classico.channels.map { it.name })
+        assertTrue(!classico.probable)
+        assertEquals(1, classico.otherChannels)
     }
 }

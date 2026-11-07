@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.launch
 import tv.nextv.app.AppContainer
 import tv.nextv.app.data.db.EpgChannelRow
+import tv.nextv.app.data.db.EventChannelRow
 import tv.nextv.app.data.db.FootballProgrammeRow
 import tv.nextv.app.ui.guide.GuideChannel
 import tv.nextv.app.ui.guide.GuideProgramme
@@ -30,6 +31,8 @@ import tv.nextv.core.football.BroadcastFinder
 import tv.nextv.core.football.BroadcastLanguage
 import tv.nextv.core.football.Competition
 import tv.nextv.core.football.CountryNames
+import tv.nextv.core.football.EventChannel
+import tv.nextv.core.football.EventChannels
 import tv.nextv.core.football.FootballDataError
 import tv.nextv.core.football.FootballDataResult
 import tv.nextv.core.football.MatchStatus
@@ -40,6 +43,7 @@ import tv.nextv.core.football.Team
 import tv.nextv.core.football.TeamMatches
 import tv.nextv.core.football.TeamMatchesResult
 import tv.nextv.core.model.ContentKind
+import java.util.Calendar
 
 /** Match de la section Foot, avec la chaîne de la playlist qui le diffuse quand le guide la donne. */
 @Immutable
@@ -75,7 +79,15 @@ data class FootballMatch(
     /** Noms complets des équipes, pour les équipes suivies. */
     val homeTeam: String = home,
     val awayTeam: String = away,
+    /**
+     * Chaînes « événement » seulement probables (« FR| DAZN LALIGA 2 (LIVE MATCH) ») : le guide ne les
+     * décrit pas, le match y est déduit de leur numéro.
+     */
+    val probableChannels: Set<Long> = emptySet(),
 ) {
+    /** La chaîne proposée n'est que probable (chaîne événement, voir [probableChannels]). */
+    val probable: Boolean get() = channel != null && channel.id in probableChannels
+
     /** « PSG – Marseille ». */
     val label: String get() = "$home – $away"
 
@@ -94,7 +106,7 @@ data class FootballMatch(
 
     /**
      * Aucune chaîne ne le diffuse alors que le guide annonce déjà les matchs de son jour
-     * ([guideUntilMillis], voir [FootballUiState]) : il n'est pas diffusé en France.
+     * ([guideUntilMillis], voir [FootballUiState]) : sa chaîne n'est pas dans le guide.
      */
     fun notBroadcast(guideUntilMillis: Long): Boolean = !inGuide && kickoffMillis < guideUntilMillis
 }
@@ -132,7 +144,8 @@ data class FootballUiState(
     val notice: FootballNotice? = null,
     /**
      * Le guide annonce les matchs jusque-là : un match qu'il ne trouve sur aucune chaîne avant cette
-     * heure n'est pas diffusé en France. 0 : guide pas encore chargé.
+     * heure n'est pas dans le guide (pas diffusé en France, ou sur une chaîne sans programmes). 0 : guide
+     * pas encore chargé.
      */
     val guideUntilMillis: Long = 0,
 )
@@ -145,7 +158,7 @@ data class MatchSelection(val cards: List<FootballMatch>, val others: List<Footb
 
 /**
  * Seuls les matchs diffusés ont leur carte : ceux que le guide ne trouve sur aucune chaîne alors qu'il
- * couvre déjà leur jour ([guideUntilMillis] ; aucune chaîne française ne les diffuse, comme la plupart
+ * couvre déjà leur jour ([guideUntilMillis] ; pas diffusés en France, ou sur une chaîne sans programmes, comme la plupart
  * des matchs de Liga et de Serie A) sont seulement cités en fin de journée, sauf ceux des équipes
  * suivies ([favoriteTeams]) et dans « Mes équipes » ([all]).
  */
@@ -226,7 +239,10 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
     /** Calendrier des matchs, de l'une ou l'autre source. */
     private data class Schedule(val matches: List<ScheduledMatch>, val notice: FootballNotice?)
 
-    private var cachedGuide: Pair<Any, List<BroadcastRow>>? = null
+    /** Programmes du guide qui peuvent être des matchs, et chaînes « événement » de la playlist (sans guide). */
+    private class GuideData(val rows: List<BroadcastRow>, val events: List<Pair<EventChannelRow, EventChannel>>)
+
+    private var cachedGuide: Pair<Any, GuideData>? = null
 
     /**
      * Ce qui change le résultat du guide : playlist ou guide rechargés (environ toutes les 12 h),
@@ -240,7 +256,7 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
     ) { version, hidden -> version to hidden }
 
     // Jamais annulé par le changement suivant (conflate + map) : un appareil lent finit toujours son calcul.
-    private val guide: Flow<List<BroadcastRow>> = guideVersion
+    private val guide: Flow<GuideData> = guideVersion
         .conflate()
         .map { version -> cachedGuide?.takeIf { it.first == version }?.second ?: loadGuide().also { cachedGuide = version to it } }
 
@@ -267,7 +283,9 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
     }.distinctUntilChanged()
 
     private suspend fun loadSchedule(now: Long): Schedule {
-        container.liveScores.schedule(now - LIVE_WINDOW_MILLIS, now + WINDOW_MILLIS)?.let { return Schedule(it, null) }
+        // Depuis minuit : les chaînes « événement » numérotent les matchs du jour, terminés compris.
+        val from = minOf(now - LIVE_WINDOW_MILLIS, localDayStart(now))
+        container.liveScores.schedule(from, now + WINDOW_MILLIS)?.let { return Schedule(it, null) }
         // ESPN injoignable : liste de football-data.org (compétitions de son offre gratuite), si une clé est là.
         return when (val api = container.footballData.matches(now, now + WINDOW_MILLIS)) {
             is FootballDataResult.Success -> Schedule(api.matches, FootballNotice.SCHEDULE_PARTIAL)
@@ -296,7 +314,7 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
             .flowOn(Dispatchers.Default)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FootballUiState())
 
-    private suspend fun loadGuide(): List<BroadcastRow> {
+    private suspend fun loadGuide(): GuideData {
         val now = System.currentTimeMillis()
         // Chaîne qui diffuse les programmes de chaque identifiant du guide : sa meilleure version visible.
         val channels = HashMap<String, EpgChannelRow>()
@@ -306,21 +324,26 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
         }
         // Chaînes de sport du guide absentes de la playlist : le match est affiché avec leur nom.
         val guideOnly = container.guideOnlyChannelDao.list(sourceId).associate { it.epgChannelId to it.name }
-        return container.programmeDao.footballCandidates(sourceId, now - LIVE_WINDOW_MILLIS, now + WINDOW_MILLIS).mapNotNull { programme ->
+        val rows = container.programmeDao.footballCandidates(sourceId, now - LIVE_WINDOW_MILLIS, now + WINDOW_MILLIS).mapNotNull { programme ->
             channels[programme.epgChannelId]?.let { BroadcastRow(it, null, programme) }
                 ?: guideOnly[programme.epgChannelId]?.let { BroadcastRow(null, it, programme) }
         }
+        // Chaînes « événement » (« FR| DAZN LALIGA 2 (LIVE MATCH) ») : seulement celles que le guide ne décrit pas.
+        val events = container.channelDao.eventChannelCandidates(sourceId, now - LIVE_WINDOW_MILLIS, now + WINDOW_MILLIS)
+            .filterNot { it.hasGuide }
+            .mapNotNull { channel -> EventChannels.parse(channel.name)?.let { channel to it } }
+        return GuideData(rows, events)
     }
 
     /** Matchs prêts à afficher, et heure jusqu'à laquelle le guide les annonce (voir [FootballUiState.guideUntilMillis]). */
     private class Assembled(val matches: List<FootballMatch>, val notice: FootballNotice?, val guideUntilMillis: Long)
 
-    private fun assemble(rows: List<BroadcastRow>, schedule: Schedule): Assembled {
-        val matches = scheduledMatches(schedule.matches, rows, System.currentTimeMillis())
+    private fun assemble(guide: GuideData, schedule: Schedule): Assembled {
+        val matches = scheduledMatches(schedule.matches, guide.rows, System.currentTimeMillis(), guide.events)
         return Assembled(
             matches.sortedWith(compareBy({ it.kickoffMillis }, { it.competition.ordinal })),
             schedule.notice,
-            guideUntil(rows),
+            guideUntil(guide.rows),
         )
     }
 
@@ -366,6 +389,15 @@ internal class BroadcastRow(channel: EpgChannelRow?, guideName: String?, program
 
 private const val MATCH_MILLIS = 2 * 60 * 60_000L
 
+/** Début du jour (heure de l'appareil) : les chaînes « événement » numérotent les matchs de chaque jour. */
+internal fun localDayStart(millis: Long): Long = Calendar.getInstance().apply {
+    timeInMillis = millis
+    set(Calendar.HOUR_OF_DAY, 0)
+    set(Calendar.MINUTE, 0)
+    set(Calendar.SECOND, 0)
+    set(Calendar.MILLISECOND, 0)
+}.timeInMillis
+
 /**
  * Le guide ne couvre pas autant de jours sur toutes les chaînes (Ligue 1+ : une semaine, beIN Sports :
  * neuf jours) : il annonce tous les matchs jusqu'à deux jours avant son dernier programme de football.
@@ -384,14 +416,28 @@ private const val LIVE_GRACE_MILLIS = 15 * 60_000L
  * équipes. Les matchs de sélections ne sont gardés que s'ils sont diffusés (le calendrier en compte
  * des dizaines chaque jour de trêve, partout dans le monde).
  */
-internal fun scheduledMatches(matches: List<ScheduledMatch>, rows: List<BroadcastRow>, now: Long): List<FootballMatch> {
+internal fun scheduledMatches(
+    matches: List<ScheduledMatch>,
+    rows: List<BroadcastRow>,
+    now: Long,
+    /** Chaînes « événement » de la playlist, sans programme dans le guide. */
+    events: List<Pair<EventChannelRow, EventChannel>> = emptyList(),
+    dayOf: (Long) -> Long = ::localDayStart,
+): List<FootballMatch> {
     val playable = matches.filter { it.status == MatchStatus.SCHEDULED || it.status == MatchStatus.LIVE || it.status == MatchStatus.FINISHED }
     val broadcasts = rows.map { Broadcast(it, it.title, it.subtitle, it.category, it.description, it.startMillis, it.stopMillis) }
     val found = BroadcastFinder.assign(playable, broadcasts)
+    // « FR| DAZN LALIGA 2 (LIVE MATCH) » : 2e match de Liga du jour, d'après la numérotation du fournisseur.
+    val probable = EventChannels.assign(playable, events, dayOf)
     return playable.mapNotNull { match ->
         // Chaînes de la playlist d'abord (celles du guide seul ne se regardent pas), françaises en tête.
         val shows = ranked(found[match].orEmpty(), match.competition)
         if (match.competition == Competition.NATIONAL_TEAMS && shows.isEmpty()) return@mapNotNull null
+        // Chaînes événement probables, après celles que le guide annonce.
+        val guideChannels = shows.mapNotNull(::channelOf)
+        val guessed = probable[match].orEmpty()
+            .map { GuideChannel(it.id, it.title.ifBlank { it.name }, null, it.logoUrl, emptyList()) }
+            .filter { channel -> guideChannels.none { it.id == channel.id } }
         val first = shows.firstOrNull()
         val live = match.status == MatchStatus.LIVE
         val finished = match.status == MatchStatus.FINISHED
@@ -411,11 +457,13 @@ internal fun scheduledMatches(matches: List<ScheduledMatch>, rows: List<Broadcas
             endMillis = end,
             homeCrest = match.home.crestUrl,
             awayCrest = match.away.crestUrl,
-            channel = first?.let(::channelOf),
+            // Sans chaîne de la playlist dans le guide : la chaîne événement probable, qui se regarde.
+            channel = first?.let(::channelOf) ?: guessed.firstOrNull(),
             programme = first?.let(::programmeOf),
-            guideChannel = first?.takeIf { it.channelId == null }?.channelName,
-            otherChannels = (shows.size - 1).coerceAtLeast(0),
-            channels = shows.mapNotNull(::channelOf),
+            guideChannel = first?.takeIf { it.channelId == null && guessed.isEmpty() }?.channelName,
+            otherChannels = (shows.size + guessed.size - 1).coerceAtLeast(0),
+            channels = guideChannels + guessed,
+            probableChannels = guessed.mapTo(HashSet()) { it.id },
             homeScore = match.homeScore.takeIf { live || finished },
             awayScore = match.awayScore.takeIf { live || finished },
             clock = match.clock.takeIf { live },

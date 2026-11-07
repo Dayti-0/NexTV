@@ -235,6 +235,9 @@ data class FootballProgrammeRow(
 /** Chaîne visible associée au guide (section Foot). */
 data class EpgChannelRow(val epgChannelId: String?, val id: Long, val name: String, val title: String, val logoUrl: String?)
 
+/** Chaîne qui peut être une chaîne « événement » (section Foot) ; [hasGuide] : elle a des programmes dans le guide. */
+data class EventChannelRow(val id: Long, val name: String, val title: String, val logoUrl: String?, val hasGuide: Boolean)
+
 /** Version (qualité) d'une chaîne. */
 data class VariantRow(val id: Long, val quality: String?, val position: Int, val streamSupport: String)
 
@@ -615,6 +618,25 @@ interface ChannelDao {
         """,
     )
     suspend fun epgChannels(sourceId: Long): List<EpgChannelRow>
+
+    /**
+     * Chaînes dont le nom cite un championnat (« FR| DAZN LALIGA 2 (LIVE MATCH) ») : chaînes « événement »
+     * possibles de la section Foot, la meilleure version visible d'abord (celles des catégories masquées
+     * en dernier), avec la présence de programmes du guide entre [from] et [to].
+     */
+    @Query(
+        """
+        SELECT c.id, c.name, c.title, c.logoUrl, EXISTS (
+            SELECT 1 FROM programmes p JOIN sources s ON s.id = p.sourceId AND p.generation = s.epgGeneration
+            WHERE p.sourceId = c.sourceId AND p.epgChannelId = c.epgChannelId AND p.stopMillis > :from AND p.startMillis < :to
+        ) AS hasGuide
+        FROM channels c
+        WHERE c.sourceId = :sourceId AND c.kind = 'LIVE'
+          AND (c.name LIKE '%liga%' OR c.name LIKE '%serie a%' OR c.name LIKE '%premier league%')
+        ORDER BY NOT ($NOT_HIDDEN), c.qualityRank DESC, c.position
+        """,
+    )
+    suspend fun eventChannelCandidates(sourceId: Long, from: Long, to: Long): List<EventChannelRow>
 
     /** Chaînes associées au guide, pour la grille des programmes (hors catégories masquées). */
     @Query(

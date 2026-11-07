@@ -101,10 +101,10 @@ class FootballNotBroadcastTest {
         compose.waitForIdle()
         compose.onNodeWithText("Leeds – Spurs").assertIsDisplayed()
         compose.onAllNodesWithText("Málaga – Racing").assertCountEquals(0)
-        compose.onNodeWithText("Pas diffusé en France : ${time(malaga.kickoffMillis)} Málaga – Racing (Liga)").assertIsDisplayed()
+        compose.onNodeWithText("Pas dans le guide TV : ${time(malaga.kickoffMillis)} Málaga – Racing (Liga)").assertIsDisplayed()
         // Équipe suivie : sa carte reste, avec la raison de l'absence de chaîne.
         compose.onNodeWithText("Cagliari – Frosinone").assertIsDisplayed()
-        compose.onNodeWithText("Pas diffusé en France").assertIsDisplayed()
+        compose.onNodeWithText("Pas dans le guide TV").assertIsDisplayed()
     }
 
     @Test
