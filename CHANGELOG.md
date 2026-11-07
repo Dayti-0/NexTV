@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.41
+- Foot : les chaînes « LIVE MATCH » sont prises à tour de rôle ; un match annoncé par le guide du fournisseur donne la chaîne de tous les autres (Elche – Betis reste sur LALIGA 5, le match suivant revient sur LALIGA 1)
+
 ## 0.2.40
 - Lecteur, liste des chaînes : le titre du programme en cours s'affiche en entier (plus petit quand il est long)
 

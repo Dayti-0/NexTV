@@ -192,10 +192,10 @@ class FootballScheduleTest {
         val sure = shown.getValue("Espanyol – Deportivo")
         assertEquals("FR| DAZN LALIGA 3 (LIVE MATCH ONLY)", sure.channel?.name)
         assertTrue(!sure.probable)
-        // Les autres restent devinés, sans la chaîne dont le fournisseur a donné le match.
+        // Les autres sont devinés à tour de rôle à partir de lui : la chaîne d'avant, celle d'après.
         val first = shown.getValue("Málaga – Racing Santander")
-        assertEquals("FR| DAZN LALIGA 1 (LIVE MATCH ONLY)", first.channel?.name)
+        assertEquals("FR| DAZN LALIGA 2 (LIVE MATCH ONLY)", first.channel?.name)
         assertTrue(first.probable)
-        assertEquals(null, shown.getValue("Osasuna – Athletic Club").channel)
+        assertEquals("FR| DAZN LALIGA 4 (LIVE MATCH ONLY)", shown.getValue("Osasuna – Athletic Club").channel?.name)
     }
 }

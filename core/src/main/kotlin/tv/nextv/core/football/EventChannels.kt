@@ -64,30 +64,45 @@ object EventChannels {
         }
 
     /**
-     * Chaînes probables de chaque match : le fournisseur numérote les matchs d'une compétition depuis le
-     * début de la journée ([dayStart], minuit), dans l'ordre des coups d'envoi, matchs terminés compris,
-     * et continue avec ceux des jours suivants sur les chaînes qui restent. Deux matchs au même coup
+     * Chaînes probables de chaque match. Le fournisseur met chaque match sur la chaîne suivante, à tour de
+     * rôle (après LALIGA 5, LALIGA 1) : la précédente est souvent encore occupée (temps additionnel,
+     * interviews). Un match dont la chaîne est connue ([anchors] : son numéro, d'après le guide du
+     * fournisseur) donne donc celle de tous les autres. Sans lui, la numérotation part du premier match de
+     * la journée ([dayStart], minuit) sur la chaîne 1, matchs terminés compris. Deux matchs au même coup
      * d'envoi se partagent leurs deux chaînes, celle de leur rang en premier.
      */
-    fun <T> assign(matches: List<ScheduledMatch>, channels: List<Pair<T, EventChannel>>, dayStart: Long): Map<ScheduledMatch, List<T>> {
+    fun <T> assign(
+        matches: List<ScheduledMatch>,
+        channels: List<Pair<T, EventChannel>>,
+        dayStart: Long,
+        anchors: Map<ScheduledMatch, Int> = emptyMap(),
+    ): Map<ScheduledMatch, List<T>> {
         val result = LinkedHashMap<ScheduledMatch, List<T>>()
         for ((competition, numbered) in primaries(channels).groupBy { it.second.competition }) {
             val byNumber = numbered.associate { (item, event) -> event.number to item }
-            val day = matches
-                .filter { it.competition == competition && it.kickoffMillis >= dayStart && it.status in NUMBERED }
+            val count = byNumber.keys.max()
+            val played = matches.filter { it.competition == competition && it.status in NUMBERED }
+            val anchor = anchors.entries.firstOrNull { it.key.competition == competition && it.key in played }
+            val ordered = played
+                .filter { anchor != null || it.kickoffMillis >= dayStart }
                 .sortedWith(compareBy({ it.kickoffMillis }, { it.id }))
-                .groupBy { it.kickoffMillis }
-            var rank = 1
-            for (group in day.values) {
-                val ranks = rank until rank + group.size
+            // Rang 0 : le match de référence (sur sa chaîne connue), sinon le premier de la journée (chaîne 1).
+            val origin = anchor?.let { ordered.indexOf(it.key) } ?: 0
+            val originNumber = anchor?.value ?: 1
+            // Avec une référence, à tour de rôle ; sans, le rang dans la journée (rien au-delà de la dernière chaîne).
+            fun numberOf(index: Int): Int =
+                if (anchor == null) index + 1 else Math.floorMod(originNumber - 1 + index - origin, count) + 1
+            var index = 0
+            for (group in ordered.groupBy { it.kickoffMillis }.values) {
+                val numbers = (index until index + group.size).map(::numberOf)
                 if (group.size <= MAX_TIED) {
-                    group.forEachIndexed { index, match ->
-                        val own = rank + index
-                        val items = (listOf(own) + ranks.filter { it != own }).mapNotNull { byNumber[it] }
+                    group.forEachIndexed { position, match ->
+                        val own = numbers[position]
+                        val items = (listOf(own) + numbers.filter { it != own }).mapNotNull { byNumber[it] }
                         if (items.isNotEmpty()) result[match] = items
                     }
                 }
-                rank += group.size
+                index += group.size
             }
         }
         return result

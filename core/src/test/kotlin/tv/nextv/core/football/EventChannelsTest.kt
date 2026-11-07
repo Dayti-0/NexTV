@@ -135,4 +135,30 @@ class EventChannelsTest {
         val best = EventChannels.primaries(laliga + listOf("FR| DAZN LALIGA 1 (LIVE MATCH ONLY) HD" to laliga[0].second) + spanish)
         assertEquals(laliga.map { it.first }, best.map { it.first })
     }
+
+    @Test
+    fun `a known channel gives the turn of the others`() {
+        // Espanyol – Deportivo annoncé sur LALIGA 2 : les matchs suivants prennent les chaînes à tour de rôle,
+        // Elche – Betis reste sur la 5, Real Sociedad – Rayo revient sur la 1 (la 1 est libre depuis samedi).
+        val malaga = match(2, "Málaga", "Racing Santander", at(7, 14), status = MatchStatus.FINISHED)
+        val espanyol = match(3, "Espanyol", "Deportivo", at(7, 16, 15), status = MatchStatus.LIVE)
+        val osasuna = match(4, "Osasuna", "Athletic Club", at(7, 18, 30))
+        val valencia = match(5, "Valencia", "Real Madrid", at(7, 21))
+        val elche = match(6, "Elche", "Real Betis", at(8, 14))
+        val sociedad = match(7, "Real Sociedad", "Rayo Vallecano", at(8, 16, 15))
+        val celta = match(8, "Celta Vigo", "Levante", at(8, 18, 30))
+        val villarreal = match(9, "Villarreal", "Getafe", at(8, 18, 30))
+        val atletico = match(10, "Atlético Madrid", "Barcelona", at(8, 21))
+        val matches = listOf(malaga, espanyol, osasuna, valencia, elche, sociedad, celta, villarreal, atletico)
+        // Dimanche : le match de samedi encore dans le calendrier sert de référence.
+        val result = EventChannels.assign(matches, laliga, midnight(8), anchors = mapOf(espanyol to 2))
+        fun channel(n: Int) = "FR| DAZN LALIGA $n (LIVE MATCH ONLY)"
+        assertEquals(listOf(channel(1)), result[malaga])
+        assertEquals(listOf(channel(3)), result[osasuna])
+        assertEquals(listOf(channel(5)), result[elche])
+        assertEquals(listOf(channel(1)), result[sociedad])
+        assertEquals(listOf(channel(2), channel(3)), result[celta])
+        assertEquals(listOf(channel(3), channel(2)), result[villarreal])
+        assertEquals(listOf(channel(4)), result[atletico])
+    }
 }

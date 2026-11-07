@@ -440,10 +440,14 @@ internal fun scheduledMatches(
     val playable = matches.filter { it.status == MatchStatus.SCHEDULED || it.status == MatchStatus.LIVE || it.status == MatchStatus.FINISHED }
     val broadcasts = rows.map { Broadcast(it, it.title, it.subtitle, it.category, it.description, it.startMillis, it.stopMillis) }
     val found = BroadcastFinder.assign(playable, broadcasts)
-    // « FR| DAZN LALIGA 2 (LIVE MATCH) » : 2e match de Liga de la journée, d'après la numérotation du
-    // fournisseur ; sauf les chaînes dont son guide a déjà donné le match (source sûre).
-    val announced = found.values.flatMapTo(HashSet()) { rows -> rows.mapNotNull { it.channelId } }
-    val probable = EventChannels.assign(playable, events.filter { (channel, _) -> channel.id !in announced }, dayStart)
+    // « FR| DAZN LALIGA 2 (LIVE MATCH) » : chaînes prises à tour de rôle par les matchs. Un match dont le guide
+    // du fournisseur donne la chaîne (source sûre) fixe le tour des autres ; sinon, rang dans la journée.
+    val numbers = events.associate { (channel, event) -> channel.id to event }
+    val anchors = found.entries.mapNotNull { (match, rows) ->
+        rows.firstNotNullOfOrNull { row -> numbers[row.channelId]?.takeIf { it.competition == match.competition }?.number }
+            ?.let { match to it }
+    }.toMap()
+    val probable = EventChannels.assign(playable, events, dayStart, anchors)
     return playable.mapNotNull { match ->
         // Chaînes de la playlist d'abord (celles du guide seul ne se regardent pas), françaises en tête.
         val shows = ranked(found[match].orEmpty(), match.competition)
