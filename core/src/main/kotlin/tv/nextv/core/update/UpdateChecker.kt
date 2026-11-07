@@ -27,6 +27,11 @@ data class AppRelease(
     val apkSize: Long,
     /** Empreinte SHA-256 publiée avec l'APK (fichier `.sha256`), si présente. */
     val sha256Url: String?,
+    /**
+     * Nouveautés à afficher avant l'installation : celles de cette version et des versions sautées depuis
+     * celle installée (voir [UpdateChecker.changesSince]).
+     */
+    val changes: String? = null,
 )
 
 enum class UpdateError {
@@ -70,10 +75,12 @@ class UpdateChecker(
                 response.code == 404 -> UpdateCheck.Failed(UpdateError.NOT_PUBLISHED)
                 !response.isSuccessful -> UpdateCheck.Failed(UpdateError.SERVER)
                 else -> {
-                    val latest = parseReleases(response.body.string()).maxWithOrNull { a, b -> compareVersions(a.version, b.version) }
+                    val releases = parseReleases(response.body.string())
+                    val latest = releases.maxWithOrNull { a, b -> compareVersions(a.version, b.version) }
                     when {
                         latest == null -> UpdateCheck.Failed(UpdateError.NOT_PUBLISHED)
-                        compareVersions(latest.version, currentVersion) > 0 -> UpdateCheck.Available(latest)
+                        compareVersions(latest.version, currentVersion) > 0 ->
+                            UpdateCheck.Available(latest.copy(changes = changesSince(releases, currentVersion)))
                         else -> UpdateCheck.UpToDate
                     }
                 }
@@ -168,6 +175,36 @@ class UpdateChecker(
                     sha256Url = sha?.optString("browser_download_url")?.takeIf { it.isNotBlank() },
                 )
             }
+        }
+
+        /**
+         * Nouveautés des versions plus récentes que [installed], la plus récente d'abord, chacune sous son
+         * numéro quand il y en a plusieurs. Elles viennent de la section « Nouveautés » des notes (tirée de
+         * CHANGELOG.md à la publication) ; les versions qui n'en ont pas (0.2.35 et avant) sont passées.
+         */
+        fun changesSince(releases: List<AppRelease>, installed: String): String? {
+            val sections = releases
+                .filter { compareVersions(it.version, installed) > 0 }
+                .sortedWith { a, b -> compareVersions(b.version, a.version) }
+                .distinctBy { it.version }
+                .mapNotNull { release -> release.notes?.let(::changesOf)?.let { release.version to it } }
+            return when (sections.size) {
+                0 -> null
+                1 -> sections.single().second
+                else -> sections.joinToString("\n\n") { (version, changes) -> "Version $version\n$changes" }
+            }
+        }
+
+        /** Section « Nouveautés » de notes de version : ses lignes, jusqu'à la section suivante (« **Installation** »). */
+        fun changesOf(notes: String): String? {
+            val lines = notes.lines()
+            val start = lines.indexOfFirst { it.trim().trimStart('*', '#', ' ').startsWith("Nouveautés") }
+            if (start < 0) return null
+            return lines.drop(start + 1)
+                .takeWhile { line -> line.trim().let { !it.startsWith("**") && !it.startsWith("#") } }
+                .joinToString("\n")
+                .trim()
+                .takeIf { it.isNotEmpty() }
         }
 
         /**

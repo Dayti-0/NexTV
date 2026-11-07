@@ -56,8 +56,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -511,10 +513,17 @@ fun NexTvTextField(
     visualTransformation: VisualTransformation = VisualTransformation.None,
     trailing: (@Composable () -> Unit)? = null,
 ) {
+    // Texte et curseur. Une valeur donnée de l'extérieur (préremplie, « http://www. ») met le curseur à la
+    // fin : la saisie la complète au lieu de s'écrire devant.
+    var field by remember { mutableStateOf(TextFieldValue(value, TextRange(value.length))) }
+    val shown = if (field.text == value) field else TextFieldValue(value, TextRange(value.length))
     RemoteTextField(modifier.fillMaxWidth()) { fieldModifier, interactionSource ->
         OutlinedTextField(
-            value = value,
-            onValueChange = onValueChange,
+            value = shown,
+            onValueChange = { new ->
+                field = new
+                if (new.text != value) onValueChange(new.text)
+            },
             label = { Text(label) },
             placeholder = placeholder?.let { text -> @Composable { Text(text) } },
             singleLine = true,

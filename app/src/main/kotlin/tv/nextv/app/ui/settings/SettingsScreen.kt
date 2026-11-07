@@ -728,13 +728,17 @@ private fun UpdateSection(
 private fun ReleaseInfo(release: AppRelease, installed: String) {
     Text(stringResource(R.string.settings_update_available, release.version), style = MaterialTheme.typography.titleMedium)
     InfoText(stringResource(R.string.settings_update_installed, installed))
-    // Notes de version : la liste des nouveautés, sans la partie installation.
-    release.notes
-        ?.substringBefore("**Installation**")
-        ?.replace("**", "")
-        ?.trim()
-        ?.takeIf { it.isNotEmpty() }
-        ?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 12) }
+    // Seulement les nouveautés de la version (et des versions sautées), pas toute la liste des fonctionnalités.
+    release.changes?.let { changes ->
+        Text(stringResource(R.string.settings_update_changes), style = MaterialTheme.typography.labelLarge)
+        Text(
+            changes.replace("**", ""),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 20,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
 }
 
 private fun megabytes(bytes: Long): String = String.format(Locale.FRANCE, "%.1f", bytes / 1_000_000.0)

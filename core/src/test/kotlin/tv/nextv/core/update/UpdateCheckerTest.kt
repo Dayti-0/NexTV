@@ -31,11 +31,12 @@ class UpdateCheckerTest {
     private fun releasesJson() = """
         [
           {"tag_name":"v0.3.0","draft":true,"body":"","assets":[{"name":"NexTV-v0.3.0.apk","size":1,"browser_download_url":"${server.url("/draft.apk")}"}]},
-          {"tag_name":"v0.2.10","draft":false,"prerelease":true,"body":"Nouveautés","assets":[
+          {"tag_name":"v0.2.10","draft":false,"prerelease":true,"body":"Version 0.2.10 de NexTV.\r\n\r\n**Nouveautés**\r\n- Foot : chaînes probables\r\n\r\n**Installation** : téléchargez l'APK.","assets":[
             {"name":"NexTV-v0.2.10.apk","size":${apk.size},"browser_download_url":"${server.url("/NexTV-v0.2.10.apk")}"},
             {"name":"NexTV-v0.2.10.apk.sha256","size":90,"browser_download_url":"${server.url("/NexTV-v0.2.10.apk.sha256")}"}
           ]},
-          {"tag_name":"v0.2.9","draft":false,"body":"","assets":[{"name":"NexTV-v0.2.9.apk","size":1,"browser_download_url":"${server.url("/old.apk")}"}]},
+          {"tag_name":"v0.2.9","draft":false,"body":"**Nouveautés**\n- Guide : textes sans balises","assets":[{"name":"NexTV-v0.2.9.apk","size":1,"browser_download_url":"${server.url("/old.apk")}"}]},
+          {"tag_name":"v0.2.8","draft":false,"body":"**Fonctionnalités**\n- Toute la liste","assets":[{"name":"NexTV-v0.2.8.apk","size":1,"browser_download_url":"${server.url("/older.apk")}"}]},
           {"tag_name":"v0.1.0","draft":false,"body":"","assets":[]}
         ]
     """.trimIndent()
@@ -61,10 +62,18 @@ class UpdateCheckerTest {
 
     @Test
     fun `newest published version with an apk is offered, drafts are ignored`() = runBlocking {
-        val result = checker.check("0.2.2") as UpdateCheck.Available
+        val result = checker.check("0.2.9") as UpdateCheck.Available
         assertEquals("0.2.10", result.release.version)
-        assertEquals("Nouveautés", result.release.notes)
+        // Seulement les nouveautés, sans la partie installation.
+        assertEquals("- Foot : chaînes probables", result.release.changes)
         assertEquals(apk.size.toLong(), result.release.apkSize)
+    }
+
+    @Test
+    fun `changes of the skipped versions are listed too, newest first`() = runBlocking {
+        val result = checker.check("0.2.2") as UpdateCheck.Available
+        // 0.2.8 n'a que la liste complète des fonctionnalités (anciennes notes) : rien à en dire.
+        assertEquals("Version 0.2.10\n- Foot : chaînes probables\n\nVersion 0.2.9\n- Guide : textes sans balises", result.release.changes)
     }
 
     @Test

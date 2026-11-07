@@ -68,12 +68,21 @@ data class EditorState(
     val isNew get() = sourceId == null
 }
 
+/**
+ * Début de l'adresse d'un serveur Xtream, déjà écrit dans le champ (il ne reste que le nom du site) ;
+ * il s'efface comme le reste.
+ */
+const val XTREAM_SERVER_PREFIX = "http://www."
+
+/** Adresse du serveur Xtream vide, ou seulement son début prérempli. */
+val EditorState.serverMissing: Boolean get() = server.isBlank() || server.trim() == XTREAM_SERVER_PREFIX
+
 /** Change de mode en reprenant ce qui est déjà saisi (lien Xtream ↔ serveur et identifiants). */
 fun EditorState.withMode(target: LocationMode): EditorState = when {
     target == LocationMode.XTREAM && server.isBlank() ->
         XtreamAccount.parse(url)?.let { copy(mode = target, server = it.server, xtreamUsername = it.username, xtreamPassword = it.password) }
-            ?: copy(mode = target)
-    target == LocationMode.URL && url.isBlank() && server.isNotBlank() ->
+            ?: copy(mode = target, server = XTREAM_SERVER_PREFIX)
+    target == LocationMode.URL && url.isBlank() && !serverMissing ->
         copy(mode = target, url = XtreamAccount(server, xtreamUsername.trim(), xtreamPassword).playlistUrl().orEmpty())
     else -> copy(mode = target)
 }
@@ -228,7 +237,7 @@ class SourceEditorViewModel(
 
     private fun xtreamProblems(state: EditorState): Map<SourceInputField, SourceError> = buildMap {
         when {
-            state.server.isBlank() -> put(SourceInputField.LOCATION, SourceError.InvalidUrl(InvalidUrlReason.EMPTY))
+            state.serverMissing -> put(SourceInputField.LOCATION, SourceError.InvalidUrl(InvalidUrlReason.EMPTY))
             XtreamAccount.serverUrl(state.server) == null -> put(SourceInputField.LOCATION, SourceError.InvalidUrl(InvalidUrlReason.MALFORMED))
         }
         if (state.xtreamUsername.isBlank()) put(SourceInputField.USERNAME, SourceError.InvalidUrl(InvalidUrlReason.EMPTY))

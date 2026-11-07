@@ -482,6 +482,7 @@
     <string name="settings_update_checking">Recherche d’une nouvelle version…</string>
     <string name="settings_update_up_to_date">NixTV est à jour (version %1$s).</string>
     <string name="settings_update_available">Version %1$s disponible</string>
+    <string name="settings_update_changes">Nouveautés</string>
     <string name="settings_update_downloading">Téléchargement de la version %1$s : %2$s / %3$s Mo</string>
     <string name="settings_update_installing">Version %1$s téléchargée : confirmez l’installation dans la fenêtre du système. Playlists et réglages sont conservés.</string>
     <string name="settings_update_permission">Pour installer la mise à jour, NixTV doit être autorisée à installer des applications. Choisissez « Autoriser », activez NixTV, revenez ici puis lancez l’installation.</string>

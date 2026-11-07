@@ -54,6 +54,8 @@ Commandes :
 
 ## Publier une version
 
+- Écrire d'abord la section `## X.Y.Z` de `CHANGELOG.md` (en français, une ligne par changement visible) : elle
+  devient les notes de la version, seules affichées par l'application avant la mise à jour.
 - Pousser une branche `release/vX.Y.Z` sur le commit à publier : le workflow « Release » construit l'APK signé et
   crée la version GitHub, que l'application propose en mise à jour.
 - Numéro : la dernière version + 1 (`git ls-remote --heads origin 'release/*'`).
