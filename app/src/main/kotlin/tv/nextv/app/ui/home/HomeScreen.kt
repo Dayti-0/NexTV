@@ -173,6 +173,7 @@ fun HomeScreen(
     val gridColumns by viewModel.gridColumns.collectAsStateWithLifecycle()
     val layout by viewModel.layout.collectAsStateWithLifecycle()
     val channelCount by viewModel.channelCount.collectAsStateWithLifecycle()
+    val menuCounts by viewModel.menuCounts.collectAsStateWithLifecycle()
     val recentChannels by viewModel.recentChannels.collectAsStateWithLifecycle()
     val previewEnabled by viewModel.previewEnabled.collectAsStateWithLifecycle()
     val preview by viewModel.preview.collectAsStateWithLifecycle()
@@ -310,6 +311,7 @@ fun HomeScreen(
             },
             onSettings = onSettings,
             onSearch = openSearch,
+            counts = menuCounts,
             subscription = subscription,
         )
         return

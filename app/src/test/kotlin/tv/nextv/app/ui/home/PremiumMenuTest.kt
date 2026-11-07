@@ -52,13 +52,14 @@ class PremiumMenuTest {
                     onFavorites = {},
                     onContinue = {},
                     onSettings = {},
+                    counts = mapOf(HomeSection.TV to 1131, HomeSection.MOVIES to 2400, HomeSection.SERIES to 380),
                     subscription = "Abonnement jusqu’au 10 novembre 2026",
                 )
             }
         }
         compose.waitForIdle()
         // Sur la télé, la tuile de la dernière section (Films) a le focus d'office (ici, au toucher, on la choisit).
-        compose.onNodeWithText("Tous les films").assertIsDisplayed()
+        compose.onNodeWithText("1131 chaînes").assertIsDisplayed()
         compose.onRoot().performKeyInput { pressKey(Key.DirectionRight) }
         compose.onNode(hasText("Films") and hasClickAction()).performSemanticsAction(SemanticsActions.RequestFocus)
         compose.waitForIdle()

@@ -238,6 +238,25 @@ class HomeViewModel(
         if (id == null) flowOf(null) else dao.observeListedCount(id)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    /** Nombres affichés sur les tuiles du menu de Cinéma Premium : chaînes, films et séries. */
+    val menuCounts: StateFlow<Map<HomeSection, Int>> = sourceId.flatMapLatest { id ->
+        if (id == null) {
+            flowOf(emptyMap())
+        } else {
+            combine(
+                dao.observeListedCount(id),
+                dao.observeGroups(id, ContentKind.MOVIE.name).map { groups -> groups.sumOf { it.count } },
+                dao.observeGroups(id, ContentKind.SERIES.name).map { groups -> groups.sumOf { it.count } },
+            ) { channels, movies, series ->
+                buildMap {
+                    channels?.let { put(HomeSection.TV, it) }
+                    put(HomeSection.MOVIES, movies)
+                    put(HomeSection.SERIES, series)
+                }
+            }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
     val favoriteKeys: StateFlow<Set<String>> = sourceId.flatMapLatest { id ->
         if (id == null) flowOf(emptySet()) else container.favorites.observeKeys(id).map { it.toSet() }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())

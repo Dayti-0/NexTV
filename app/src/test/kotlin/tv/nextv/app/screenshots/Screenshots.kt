@@ -182,6 +182,7 @@ abstract class ScreenshotSuite(private val device: String) {
             onFavorites = {},
             onContinue = {},
             onSettings = {},
+            counts = mapOf(HomeSection.TV to 1131, HomeSection.MOVIES to 2400, HomeSection.SERIES to 380),
             subscription = "Abonnement jusqu’au 10 novembre 2026",
         )
     }

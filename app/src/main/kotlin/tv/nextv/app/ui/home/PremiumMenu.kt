@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
@@ -57,6 +58,8 @@ fun PremiumMenu(
     onSettings: () -> Unit,
     /** Recherche de partout : chaînes, films et séries. */
     onSearch: () -> Unit = {},
+    /** Nombre de chaînes, de films et de séries, sous leur tuile (Guide TV et Foot n'en ont pas). */
+    counts: Map<HomeSection, Int> = emptyMap(),
     /** « Abonnement jusqu'au 10 novembre 2026 » (compte Xtream), `null` si inconnu. */
     subscription: String? = null,
     modifier: Modifier = Modifier,
@@ -80,6 +83,11 @@ fun PremiumMenu(
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 BrandMark(showName = true)
                 Spacer(Modifier.weight(1f))
+                // Fin de l'abonnement, en haut à côté de l'heure (en bas, les raccourcis prennent la place).
+                subscription?.let {
+                    Text(it, style = MaterialTheme.typography.titleSmall, color = colors.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Spacer(Modifier.width(24.dp))
+                }
                 CurrentTime()
             }
             // Tuiles : en une rangée sur la télé, deux par ligne sur un écran étroit.
@@ -88,7 +96,7 @@ fun PremiumMenu(
                 MENU_ORDER.chunked(perRow).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(if (window.isWide) 20.dp else 12.dp)) {
                         row.forEach { section ->
-                            MenuTile(section, onClick = { onSection(section) }, modifier = Modifier.weight(1f).focusRequester(focus.getValue(section)))
+                            MenuTile(section, counts[section], onClick = { onSection(section) }, modifier = Modifier.weight(1f).focusRequester(focus.getValue(section)))
                         }
                         repeat(perRow - row.size) { Spacer(Modifier.weight(1f)) }
                     }
@@ -99,10 +107,6 @@ fun PremiumMenu(
                 PillButton(stringResource(R.string.home_favorites), onFavorites, icon = Icons.Filled.Star)
                 PillButton(stringResource(R.string.home_continue), onContinue, icon = Icons.Filled.PlayArrow)
                 PillButton(stringResource(R.string.settings_title), onSettings, icon = Icons.Filled.Settings)
-                Spacer(Modifier.weight(1f))
-                subscription?.let {
-                    Text(it, style = MaterialTheme.typography.titleSmall, color = colors.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
             }
         }
     }
@@ -112,7 +116,7 @@ fun PremiumMenu(
 private val MENU_ORDER = listOf(HomeSection.TV, HomeSection.GUIDE, HomeSection.MOVIES, HomeSection.SERIES, HomeSection.FOOTBALL)
 
 @Composable
-private fun MenuTile(section: HomeSection, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun MenuTile(section: HomeSection, count: Int?, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
     FocusSurface(
         onClick = onClick,
@@ -131,22 +135,11 @@ private fun MenuTile(section: HomeSection, onClick: () -> Unit, modifier: Modifi
             Icon(sectionIcon(section), contentDescription = null, modifier = Modifier.size(56.dp))
             Spacer(Modifier.height(14.dp))
             Text(sectionLabel(section), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, maxLines = 1)
-            Spacer(Modifier.height(4.dp))
-            Text(
-                stringResource(
-                    when (section) {
-                        HomeSection.TV -> R.string.menu_tv_hint
-                        HomeSection.GUIDE -> R.string.menu_guide_hint
-                        HomeSection.MOVIES -> R.string.menu_movies_hint
-                        HomeSection.SERIES -> R.string.menu_series_hint
-                        HomeSection.FOOTBALL -> R.string.menu_football_hint
-                    },
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
+            // Nombre de chaînes, de films ou de séries ; rien pour le guide et le foot.
+            count?.let {
+                Spacer(Modifier.height(4.dp))
+                Text(itemCount(section, it), style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, maxLines = 1)
+            }
         }
     }
 }

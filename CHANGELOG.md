@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.52
+- Menu de Cinéma Premium : le nombre de chaînes, de films et de séries sous leur tuile, à la place des descriptions ; la fin de l'abonnement passe en haut, à côté de l'heure
+
 ## 0.2.51
 - Live Center : plus de titre (« Toutes les chaînes », nombre de chaînes) au-dessus de la liste, déjà indiqué dans la colonne de gauche
 
