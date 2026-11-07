@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.49
+- Scores en direct mis à jour plus vite : toutes les 15 à 20 s dans le bandeau du lecteur et dans Foot (au lieu d'une minute)
+
 ## 0.2.48
 - Cinéma Premium : menu d'accueil à grandes tuiles (TV, Guide TV, Films, Séries, Foot), avec Favoris, Reprendre la lecture, Réglages et la fin de l'abonnement ; « Retour » ou « Menu » y ramène depuis une section
 

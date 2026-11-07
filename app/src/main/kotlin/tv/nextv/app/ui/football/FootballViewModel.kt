@@ -234,7 +234,7 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
         .map { version -> cachedGuide?.takeIf { it.first == version }?.second ?: loadGuide().also { cachedGuide = version to it } }
 
     /**
-     * Calendrier d'ESPN, redemandé chaque minute pendant les matchs (scores, minute de jeu), juste
+     * Calendrier d'ESPN, redemandé toutes les 20 s pendant les matchs (scores, minute de jeu), juste
      * avant le prochain coup d'envoi, et toutes les 30 min sinon ; le client garde les réponses.
      */
     private val schedule: Flow<Schedule> = flow {
@@ -372,8 +372,8 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
 
     private companion object {
         const val SCHEDULE_REFRESH_MILLIS = 30 * 60_000L
-        /** Pendant les matchs : score et minute de jeu redemandés chaque minute. */
-        const val LIVE_REFRESH_MILLIS = 60_000L
+        /** Pendant les matchs : score et minute de jeu redemandés toutes les 20 s. */
+        const val LIVE_REFRESH_MILLIS = 20_000L
         const val TICK_MILLIS = 30_000L
 
         /** Matchs commencés depuis moins de 3 h : peut-être encore en cours (prolongations). */

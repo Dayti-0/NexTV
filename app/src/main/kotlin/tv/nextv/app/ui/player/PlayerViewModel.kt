@@ -159,7 +159,8 @@ class PlayerViewModel(
         viewModelScope.launch {
             while (true) {
                 refreshProgrammes()
-                delay(PROGRAMME_REFRESH_MILLIS)
+                // Match en cours dans le bandeau : score relu plus souvent (un but s'affiche vite).
+                delay(if (state.value.match?.live == true) MATCH_REFRESH_MILLIS else PROGRAMME_REFRESH_MILLIS)
             }
         }
         // Surveillance de la lecture (2 fois par seconde) : blocage, images perdues, retour à une meilleure qualité.
@@ -585,6 +586,7 @@ class PlayerViewModel(
         private const val PROGRESS_SAVE_MILLIS = 10_000L
         private const val TAG = "Player"
         private const val PROGRAMME_REFRESH_MILLIS = 30_000L
+        private const val MATCH_REFRESH_MILLIS = 15_000L
 
         /** Même période que la section Foot : la réponse de football-data.org est partagée. */
         private const val FOOTBALL_WINDOW_MILLIS = 8 * 24 * 60 * 60_000L

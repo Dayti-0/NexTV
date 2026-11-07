@@ -151,7 +151,7 @@ class LiveScoreClient(
 
     /**
      * Matchs d'une compétition un jour donné ([day] : « 20261106 » ; `null` : tableau du moment).
-     * Gardés 1 min pendant les matchs, plus longtemps sinon ; `null` s'il n'a jamais pu être lu.
+     * Gardés 20 s pendant les matchs, plus longtemps sinon ; `null` s'il n'a jamais pu être lu.
      */
     private suspend fun board(competition: Competition, league: String, day: String?): List<ScheduledMatch>? {
         val key = "$league|${day.orEmpty()}"
@@ -231,7 +231,7 @@ class LiveScoreClient(
         private const val CALENDAR_MILLIS = 12 * 60 * 60_000L
 
         /** Tableau d'un jour : pendant les matchs, le jour même, les jours suivants, les jours passés. */
-        private const val LIVE_BOARD_MILLIS = 50_000L
+        private const val LIVE_BOARD_MILLIS = 20_000L
         private const val TODAY_BOARD_MILLIS = 10 * 60_000L
         private const val FUTURE_BOARD_MILLIS = 3 * 60 * 60_000L
         private const val PAST_BOARD_MILLIS = 12 * 60 * 60_000L
