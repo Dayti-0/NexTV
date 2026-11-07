@@ -54,7 +54,7 @@
     <string name="editor_mode_xtream_short">Xtream Codes</string>
     <string name="editor_mode_xtream_hint">Serveur, identifiant et mot de passe</string>
     <string name="editor_xtream_server">Adresse du serveur</string>
-    <string name="editor_xtream_server_help">Donnée par le fournisseur, avec le port s’il y en a un (« :8080 »). Le lien de la playlist est construit automatiquement.</string>
+    <string name="editor_xtream_server_help">Donnée par le fournisseur, avec le port s’il y en a un (« :8080 »). « http://www. » est déjà écrit : tapez la suite, ou l’adresse entière (http://…, https://…) pour le remplacer. Le lien de la playlist est construit automatiquement.</string>
     <string name="editor_xtream_username">Identifiant</string>
     <string name="editor_xtream_username_missing">Indiquez l’identifiant.</string>
     <string name="editor_section_connection">Connexion</string>
@@ -64,7 +64,7 @@
     <string name="editor_mode_file_short">Fichier</string>
     <string name="editor_mode_file_hint">Fichier .m3u de l’appareil</string>
     <string name="editor_url">URL de la playlist M3U/M3U8</string>
-    <string name="editor_url_help">Les redirections sont suivies. Une URL de flux (HLS…) donne une chaîne unique.</string>
+    <string name="editor_url_help">« http://www. » est déjà écrit : tapez la suite, ou l’adresse entière (http://…, https://…) pour le remplacer. Les redirections sont suivies. Une URL de flux (HLS…) donne une chaîne unique.</string>
     <string name="editor_file_help">Fichier .m3u ou .m3u8. Il est relu à chaque actualisation.</string>
     <string name="editor_file_not_persisted">Ce fournisseur de fichiers n’accorde pas d’accès durable : le fichier pourra devoir être sélectionné à nouveau.</string>
     <string name="editor_pick_file">Choisir un fichier</string>

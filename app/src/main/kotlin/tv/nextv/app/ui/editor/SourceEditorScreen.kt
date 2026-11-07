@@ -207,10 +207,10 @@ fun SourceEditorContent(
                                     value = state.url,
                                     onValueChange = { value -> onEdit { it.copy(url = value) } },
                                     label = stringResource(R.string.editor_url),
-                                    placeholder = "https://exemple.com/playlist.m3u8",
                                     error = errorText(SourceInputField.LOCATION),
                                     help = stringResource(R.string.editor_url_help),
                                     keyboardType = KeyboardType.Uri,
+                                    addressPrefix = true,
                                 )
                                 LocationMode.XTREAM -> XtreamFields(
                                     state = state,
@@ -356,10 +356,10 @@ private fun XtreamFields(
         value = state.server,
         onValueChange = { value -> onEdit { it.copy(server = value) } },
         label = stringResource(R.string.editor_xtream_server),
-        placeholder = "http://exemple.com:8080",
         error = serverError,
         help = stringResource(R.string.editor_xtream_server_help),
         keyboardType = KeyboardType.Uri,
+        addressPrefix = true,
     )
     NexTvTextField(
         value = state.xtreamUsername,
@@ -512,17 +512,25 @@ fun NexTvTextField(
     keyboardType: KeyboardType = KeyboardType.Text,
     visualTransformation: VisualTransformation = VisualTransformation.None,
     trailing: (@Composable () -> Unit)? = null,
+    /**
+     * Adresse : « http://www. » est affiché d'office devant le texte tapé, sans en faire partie (voir
+     * [AddressPrefix]) ; [value] et [onValueChange] portent l'adresse complète.
+     */
+    addressPrefix: Boolean = false,
 ) {
-    // Texte et curseur. Une valeur donnée de l'extérieur (préremplie, « http://www. ») met le curseur à la
-    // fin : la saisie la complète au lieu de s'écrire devant.
-    var field by remember { mutableStateOf(TextFieldValue(value, TextRange(value.length))) }
-    val shown = if (field.text == value) field else TextFieldValue(value, TextRange(value.length))
+    val typedOf: (String) -> String = if (addressPrefix) AddressPrefix::typed else { text -> text }
+    val fullOf: (String) -> String = if (addressPrefix) AddressPrefix::full else { text -> text }
+    // Texte tapé et curseur. Une valeur donnée de l'extérieur (adresse d'une playlist existante) met le
+    // curseur à la fin : la saisie la complète au lieu de s'écrire devant.
+    var field by remember { mutableStateOf(typedOf(value).let { TextFieldValue(it, TextRange(it.length)) }) }
+    val shown = if (fullOf(field.text) == value) field else typedOf(value).let { TextFieldValue(it, TextRange(it.length)) }
     RemoteTextField(modifier.fillMaxWidth()) { fieldModifier, interactionSource ->
         OutlinedTextField(
             value = shown,
             onValueChange = { new ->
                 field = new
-                if (new.text != value) onValueChange(new.text)
+                val full = fullOf(new.text)
+                if (full != value) onValueChange(full)
             },
             label = { Text(label) },
             placeholder = placeholder?.let { text -> @Composable { Text(text) } },
@@ -530,7 +538,12 @@ fun NexTvTextField(
             isError = error != null,
             supportingText = (error ?: help)?.let { text -> @Composable { Text(text) } },
             keyboardOptions = fieldKeyboardOptions(keyboardType),
-            visualTransformation = visualTransformation,
+            visualTransformation = when {
+                !addressPrefix -> visualTransformation
+                // Adresse venue d'ailleurs sans « http:// » (import) : affichée telle quelle, comme elle sera lue.
+                fullOf(shown.text) != value -> VisualTransformation.None
+                else -> PrefixTransformation(AddressPrefix.shown(shown.text))
+            },
             trailingIcon = trailing,
             shape = MaterialTheme.shapes.medium,
             colors = nexTvTextFieldColors(),

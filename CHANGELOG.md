@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.38
+- Compte Xtream et lien M3U : « http://www. » reste affiché devant ce que vous tapez, même quand le clavier de la Fire TV remplace le texte du champ ; une adresse tapée en entier (http://…, https://…) le remplace
+
 ## 0.2.37
 - Listes : fondu en haut quand on peut remonter, comme en bas (Guide TV, « Ce soir », accueil, Foot)
 - Réglages : la liste défile jusqu'en haut (titre de la première carte) et jusqu'en bas (mentions)
