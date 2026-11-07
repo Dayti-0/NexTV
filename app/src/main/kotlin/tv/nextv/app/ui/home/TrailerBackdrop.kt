@@ -74,16 +74,19 @@ private fun trailerView(context: android.content.Context, key: String, captions:
     settings.mediaPlaybackRequiresUserGesture = false
     settings.domStorageEnabled = true
     webChromeClient = WebChromeClient()
-    // Page avec le lecteur intégré : son adresse de base sert d'origine (YouTube refuse un lecteur sans).
-    // La vidéo occupe tout le cadre (16/9), en entier : rien n'est coupé en haut ni en bas.
+    // Page avec le lecteur intégré (comme en 0.2.54, où l'image s'affiche sur la Fire TV) : son adresse de
+    // base sert d'origine (YouTube refuse un lecteur sans). Le cadre est au format de la vidéo (16/9) :
+    // rien n'est coupé. L'API YouTube se branche sur ce lecteur pour le son, la pause et les sous-titres.
     val html = """
         <html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>
         html,body{margin:0;height:100%;background:#000;overflow:hidden}
-        iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:0;pointer-events:none}
+        iframe{position:absolute;top:50%;left:50%;width:177.78vh;min-width:100%;height:56.25vw;min-height:100%;transform:translate(-50%,-50%);border:0;pointer-events:none}
         </style></head><body>
-        <div id="player"></div>
+        <iframe id="player" src="https://www.youtube-nocookie.com/embed/$key?autoplay=1&mute=1&controls=0&loop=1&playlist=$key&modestbranding=1&rel=0&playsinline=1&iv_load_policy=3&disablekb=1&fs=0&hl=fr&cc_load_policy=${captions.loadPolicy}&enablejsapi=1&origin=https%3A%2F%2Fnixtv.app"
+        allow="autoplay; encrypted-media" referrerpolicy="strict-origin-when-cross-origin"></iframe>
         <script>
         var player=null;
+        var unmuted=false;
         function pause(){try{player.pauseVideo();}catch(e){}}
         function resume(){try{player.playVideo();}catch(e){}}
         var captions='${captions.name}';
@@ -109,14 +112,13 @@ private fun trailerView(context: android.content.Context, key: String, captions:
         }
         function onYouTubeIframeAPIReady(){
           player=new YT.Player('player',{
-            host:'https://www.youtube-nocookie.com',
-            videoId:'$key',
-            playerVars:{autoplay:1,controls:0,loop:1,playlist:'$key',modestbranding:1,rel:0,playsinline:1,
-              iv_load_policy:3,disablekb:1,fs:0,hl:'fr',origin:'https://nixtv.app',
-              cc_load_policy:${captions.loadPolicy}},
             events:{
-              onReady:function(e){e.target.unMute();e.target.setVolume(100);applyCaptions(e.target);watchCaptions(e.target);e.target.playVideo();},
-              onApiChange:function(e){applyCaptions(e.target);}
+              onReady:function(e){applyCaptions(e.target);watchCaptions(e.target);},
+              onApiChange:function(e){applyCaptions(e.target);},
+              // Démarrage sans le son (comme avant), puis le son dès que l'image défile.
+              onStateChange:function(e){
+                if(e.data==1&&!unmuted){unmuted=true;call(function(){e.target.unMute();e.target.setVolume(100);});}
+              }
             }
           });
         }

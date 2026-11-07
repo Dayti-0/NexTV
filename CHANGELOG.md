@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.56
+- Streaming : l'image de la bande-annonce s'affiche de nouveau (carré noir avec seulement le son en 0.2.55)
+
 ## 0.2.55
 - Réglages refaits : la liste des pages à gauche (Playlist, Lecture, Affichage, Guide TV, Films, séries et foot, Réseau, Sauvegarde, Mise à jour), avec un résumé sous chacune ; la page choisie s'affiche à droite, rangée en petites cartes. → ou OK entre dans la page, ← ou Retour revient à la liste
 - Configuration rapide en 5 étapes (interface, couleurs, qualité et lecture) : proposée une seule fois, à l'ouverture qui suit cette mise à jour ou après l'installation, puis toujours disponible en haut des réglages
