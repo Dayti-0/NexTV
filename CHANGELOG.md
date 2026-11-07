@@ -10,7 +10,7 @@ d'installer la mise à jour (Réglages › Mise à jour), avec celles des versio
 - Lecteur, infos de lecture : « Débit reçu » s'affiche aussi pour les chaînes en flux continu (il restait sur « — ») ; « Vitesse réseau » en plus pour les chaînes en HLS
 - Foot : « chaîne probable » n'apparaît plus sur les cartes de la liste, seulement dans la fiche du match
 - Lecteur, options (touche Menu) : la qualité visée (Meilleure qualité, HD maximum, Économie) se change pendant la lecture et s'applique tout de suite à la chaîne quand elle existe en plusieurs versions
-- Streaming : la bande-annonce en fond n'affiche plus de sous-titres sous la grande affiche ; la version doublée (VF) est préférée à la VOSTFR
+- Streaming : la bande-annonce derrière la grande affiche s'affiche en entier (plus coupée en haut et en bas), avec le son ; la version française doublée (VF) est préférée, puis la VOSTFR ; elle se met en pause quand on quitte l'appli
 
 ## 0.2.54
 - Interface Streaming façon Netflix : menu à gauche en icônes (Rechercher, sections, Catégories, Réglages) qui s'ouvre avec ←, à la place des onglets du haut

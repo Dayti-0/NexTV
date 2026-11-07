@@ -11,19 +11,25 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.delay
 
 /**
- * Bande-annonce YouTube ([key]) en fond de la grande affiche, sans le son ni les commandes, après
+ * Bande-annonce YouTube ([key]) derrière la grande affiche, avec le son et sans les commandes, après
  * [TRAILER_DELAY_MILLIS] sur le même film (pas de lecture en passant d'une affiche à l'autre). Elle
- * passe par une page web (lecteur YouTube intégré) qui ne prend jamais le focus de la télécommande.
+ * passe par une page web (lecteur YouTube intégré) qui ne prend jamais le focus de la télécommande,
+ * et se met en pause quand l'appli passe en arrière-plan.
  */
 @Composable
 internal fun TrailerBackdrop(key: String, modifier: Modifier = Modifier) {
@@ -33,9 +39,24 @@ internal fun TrailerBackdrop(key: String, modifier: Modifier = Modifier) {
         show = true
     }
     AnimatedVisibility(show, enter = fadeIn(tween(800)), exit = fadeOut(), modifier = modifier) {
+        var view by remember { mutableStateOf<WebView?>(null) }
+        val lifecycle = LocalLifecycleOwner.current.lifecycle
+        DisposableEffect(lifecycle, view) {
+            val web = view
+            val observer = LifecycleEventObserver { _, event ->
+                when (event) {
+                    // Appli quittée (touche Accueil…) : le son ne continue pas en arrière-plan.
+                    Lifecycle.Event.ON_STOP -> web?.evaluateJavascript("pause()", null)
+                    Lifecycle.Event.ON_START -> web?.evaluateJavascript("resume()", null)
+                    else -> Unit
+                }
+            }
+            lifecycle.addObserver(observer)
+            onDispose { lifecycle.removeObserver(observer) }
+        }
         AndroidView(
-            factory = { context -> trailerView(context, key) },
-            onRelease = { view -> view.destroy() },
+            factory = { context -> trailerView(context, key).also { view = it } },
+            onRelease = { web -> web.destroy() },
             modifier = Modifier.fillMaxSize(),
         )
     }
@@ -52,26 +73,25 @@ private fun trailerView(context: android.content.Context, key: String): WebView 
     settings.domStorageEnabled = true
     webChromeClient = WebChromeClient()
     // Page avec le lecteur intégré : son adresse de base sert d'origine (YouTube refuse un lecteur sans).
-    // Sous-titres coupés : YouTube les affiche d'office sur une vidéo sans le son, et ils débordaient sous l'affiche.
+    // La vidéo occupe tout le cadre (16/9), en entier : rien n'est coupé en haut ni en bas.
     val html = """
         <html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>
         html,body{margin:0;height:100%;background:#000;overflow:hidden}
-        iframe{position:absolute;top:50%;left:50%;width:177.78vh;min-width:100%;height:56.25vw;min-height:100%;transform:translate(-50%,-50%);border:0;pointer-events:none}
+        iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:0;pointer-events:none}
         </style></head><body>
         <div id="player"></div>
         <script>
-        function call(f){try{f();}catch(e){}}
-        function noCaptions(p){call(function(){p.unloadModule('captions');});call(function(){p.unloadModule('cc');});call(function(){p.setOption('captions','track',{});});}
+        var player=null;
+        function pause(){try{player.pauseVideo();}catch(e){}}
+        function resume(){try{player.playVideo();}catch(e){}}
         function onYouTubeIframeAPIReady(){
-          new YT.Player('player',{
+          player=new YT.Player('player',{
             host:'https://www.youtube-nocookie.com',
             videoId:'$key',
-            playerVars:{autoplay:1,mute:1,controls:0,loop:1,playlist:'$key',modestbranding:1,rel:0,playsinline:1,
-              iv_load_policy:3,disablekb:1,fs:0,cc_load_policy:0,origin:'https://nixtv.app'},
+            playerVars:{autoplay:1,controls:0,loop:1,playlist:'$key',modestbranding:1,rel:0,playsinline:1,
+              iv_load_policy:3,disablekb:1,fs:0,hl:'fr',cc_lang_pref:'fr',origin:'https://nixtv.app'},
             events:{
-              onReady:function(e){e.target.mute();noCaptions(e.target);e.target.playVideo();},
-              onApiChange:function(e){noCaptions(e.target);},
-              onStateChange:function(e){noCaptions(e.target);}
+              onReady:function(e){e.target.unMute();e.target.setVolume(100);e.target.playVideo();}
             }
           });
         }

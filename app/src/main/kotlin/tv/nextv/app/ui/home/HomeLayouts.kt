@@ -910,9 +910,10 @@ internal fun SpotlightBillboard(
         }
         val trailerKey = spotlight?.details?.trailerYoutubeKey
         if (trailer && !compact && trailerKey != null) {
-            Box(Modifier.align(Alignment.CenterEnd).fillMaxHeight().fillMaxWidth(0.66f)) {
+            // Cadre au format de la vidéo (16/9) sur toute la hauteur : l'image entière, rien de coupé.
+            Box(Modifier.align(Alignment.CenterEnd).fillMaxHeight().aspectRatio(16f / 9f)) {
                 TrailerBackdrop(trailerKey, Modifier.fillMaxSize())
-                BillboardFade(background)
+                TrailerFade(background)
             }
         }
         Column(
@@ -986,6 +987,13 @@ internal fun MetaLine(spotlight: Spotlight, color: Color = MaterialTheme.colorSc
         }
         if (parts.isNotEmpty()) Text(parts.joinToString("  ·  "), style = MaterialTheme.typography.labelLarge, color = color)
     }
+}
+
+/** Fondu léger autour de la bande-annonce : bord gauche et bas seulement, la vidéo reste visible. */
+@Composable
+private fun TrailerFade(background: Color) {
+    Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to background, 0.12f to Color.Transparent)))
+    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.88f to Color.Transparent, 1f to background)))
 }
 
 /** Fondu du visuel vers le fond, à gauche et en bas. */
