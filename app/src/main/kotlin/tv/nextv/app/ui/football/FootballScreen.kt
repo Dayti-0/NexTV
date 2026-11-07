@@ -468,10 +468,11 @@ private fun Teams(match: FootballMatch, large: Boolean) {
 
 /**
  * Chaîne de la playlist qui diffuse le match (et combien d'autres), ou son absence du guide.
- * [inline] : nom et autres chaînes sur une seule ligne.
+ * [inline] : nom et autres chaînes sur une seule ligne. [showProbable] : « chaîne probable » sous le nom,
+ * seulement dans la fiche du match (pas sur les cartes de la liste).
  */
 @Composable
-private fun RowScope.ChannelInfo(match: FootballMatch, logoWidth: Dp, inline: Boolean = false) {
+private fun RowScope.ChannelInfo(match: FootballMatch, logoWidth: Dp, inline: Boolean = false, showProbable: Boolean = false) {
     val channel = match.channel
     if (channel == null) {
         // Chaîne connue du guide mais pas reliée à la playlist : son nom, pour la retrouver soi-même.
@@ -498,7 +499,7 @@ private fun RowScope.ChannelInfo(match: FootballMatch, logoWidth: Dp, inline: Bo
         LocalContext.current.resources.getQuantityString(R.plurals.football_other_channels, it, it)
     }
     // Chaîne « événement » que le guide ne décrit pas : déduite de son numéro, seulement probable.
-    val probable = if (match.probable) stringResource(R.string.football_probable_channel) else null
+    val probable = if (showProbable && match.probable) stringResource(R.string.football_probable_channel) else null
     if (inline) {
         Text(channel.name, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
         probable?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = NexTvColors.Warning, maxLines = 1) }
@@ -579,7 +580,7 @@ private fun MatchSheet(
                 match.score?.let { Text(it, style = MaterialTheme.typography.headlineMedium, color = NexTvColors.Live) }
                 if (channels.size <= 1) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        ChannelInfo(match, logoWidth = 56.dp)
+                        ChannelInfo(match, logoWidth = 56.dp, showProbable = true)
                     }
                 }
                 match.programme?.description?.let {

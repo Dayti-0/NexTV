@@ -3,6 +3,8 @@ package tv.nextv.app.ui.football
 import android.app.Application
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.onNodeWithText
 import org.junit.Rule
 import org.junit.Test
@@ -17,7 +19,8 @@ import java.util.Calendar
 
 /**
  * Tous les matchs ont leur carte : avec la chaîne du guide, la chaîne « événement » probable de la
- * playlist (« FR| DAZN LALIGA 1 (LIVE MATCH) »), ou « Pas trouvé dans le guide ».
+ * playlist (« FR| DAZN LALIGA 1 (LIVE MATCH) », « chaîne probable » dans sa fiche seulement), ou
+ * « Pas trouvé dans le guide ».
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class, qualifiers = "fr-rFR-w960dp-h540dp-land-television-xhdpi")
@@ -59,8 +62,12 @@ class FootballListTest {
         compose.waitForIdle()
         compose.onNodeWithText("Málaga – Racing").assertIsDisplayed()
         compose.onNodeWithText("FR| DAZN LALIGA 1 (LIVE MATCH)").assertIsDisplayed()
-        compose.onNodeWithText("chaîne probable").assertIsDisplayed()
+        // « chaîne probable » n'est pas sur la carte, seulement dans la fiche du match.
+        compose.onNodeWithText("chaîne probable").assertDoesNotExist()
         compose.onNodeWithText("Espanyol – Deportivo").assertIsDisplayed()
         compose.onNodeWithText("Pas trouvé dans le guide").assertIsDisplayed()
+        compose.onNodeWithText("Málaga – Racing").performTouchInput { longClick() }
+        compose.waitForIdle()
+        compose.onNodeWithText("chaîne probable").assertIsDisplayed()
     }
 }
