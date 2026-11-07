@@ -34,7 +34,8 @@ class TmdbClientTest {
          "videos":{"results":[
            {"site":"YouTube","type":"Featurette","key":"feat","iso_639_1":"fr"},
            {"site":"YouTube","type":"Trailer","key":"en-trailer","iso_639_1":"en"},
-           {"site":"YouTube","type":"Trailer","key":"fr-trailer","iso_639_1":"fr"}
+           {"site":"YouTube","type":"Trailer","key":"vostfr-trailer","iso_639_1":"fr","name":"Bande-annonce officielle (VOSTFR)","official":true},
+           {"site":"YouTube","type":"Trailer","key":"fr-trailer","iso_639_1":"fr","name":"Bande-annonce (VF)"}
          ]}}
     """.trimIndent()
 

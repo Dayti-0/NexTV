@@ -35,7 +35,9 @@ class MetadataRepository(
         val now = clock()
         dao.get(cacheKey)?.let { cached ->
             val ttl = if (cached.found) FOUND_TTL else NOT_FOUND_TTL
-            if (now - cached.fetchedAt < ttl) return if (cached.found) MetadataState.Available(cached.toDetails(type)) else MetadataState.NotFound
+            // Fiche lue avant le choix actuel de la bande-annonce (VF plutôt que VOSTFR) : relue une fois.
+            val current = !cached.found || cached.fetchedAt >= FOUND_VALID_FROM || now < FOUND_VALID_FROM
+            if (current && now - cached.fetchedAt < ttl) return if (cached.found) MetadataState.Available(cached.toDetails(type)) else MetadataState.NotFound
         }
         return when (val result = client.lookup(type, title, year, exact)) {
             is TmdbResult.Found -> {
@@ -108,6 +110,9 @@ class MetadataRepository(
         const val FOUND_TTL = 30 * DAY
         const val NOT_FOUND_TTL = 7 * DAY
         const val TRENDING_TTL = 6 * 60 * 60_000L
+
+        /** Fiches trouvées avant cette date (7 novembre 2026) : relues pour le nouveau choix de bande-annonce. */
+        const val FOUND_VALID_FROM = 1_794_009_600_000L
     }
 }
 

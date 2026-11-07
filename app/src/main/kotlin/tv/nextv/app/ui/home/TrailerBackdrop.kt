@@ -52,13 +52,31 @@ private fun trailerView(context: android.content.Context, key: String): WebView 
     settings.domStorageEnabled = true
     webChromeClient = WebChromeClient()
     // Page avec le lecteur intégré : son adresse de base sert d'origine (YouTube refuse un lecteur sans).
+    // Sous-titres coupés : YouTube les affiche d'office sur une vidéo sans le son, et ils débordaient sous l'affiche.
     val html = """
         <html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>
         html,body{margin:0;height:100%;background:#000;overflow:hidden}
         iframe{position:absolute;top:50%;left:50%;width:177.78vh;min-width:100%;height:56.25vw;min-height:100%;transform:translate(-50%,-50%);border:0;pointer-events:none}
         </style></head><body>
-        <iframe src="https://www.youtube-nocookie.com/embed/$key?autoplay=1&mute=1&controls=0&loop=1&playlist=$key&modestbranding=1&rel=0&playsinline=1&iv_load_policy=3&disablekb=1&fs=0"
-        allow="autoplay; encrypted-media" referrerpolicy="strict-origin-when-cross-origin"></iframe>
+        <div id="player"></div>
+        <script>
+        function call(f){try{f();}catch(e){}}
+        function noCaptions(p){call(function(){p.unloadModule('captions');});call(function(){p.unloadModule('cc');});call(function(){p.setOption('captions','track',{});});}
+        function onYouTubeIframeAPIReady(){
+          new YT.Player('player',{
+            host:'https://www.youtube-nocookie.com',
+            videoId:'$key',
+            playerVars:{autoplay:1,mute:1,controls:0,loop:1,playlist:'$key',modestbranding:1,rel:0,playsinline:1,
+              iv_load_policy:3,disablekb:1,fs:0,cc_load_policy:0,origin:'https://nixtv.app'},
+            events:{
+              onReady:function(e){e.target.mute();noCaptions(e.target);e.target.playVideo();},
+              onApiChange:function(e){noCaptions(e.target);},
+              onStateChange:function(e){noCaptions(e.target);}
+            }
+          });
+        }
+        </script>
+        <script src="https://www.youtube.com/iframe_api"></script>
         </body></html>
     """.trimIndent()
     loadDataWithBaseURL("https://nixtv.app/", html, "text/html", "utf-8", null)

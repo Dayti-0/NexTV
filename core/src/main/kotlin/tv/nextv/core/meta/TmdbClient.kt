@@ -230,13 +230,17 @@ class TmdbClient(
         )
     }
 
-    /** Bande-annonce YouTube, de préférence dans la langue de l'interface. */
+    /**
+     * Bande-annonce YouTube, de préférence dans la langue de l'interface, et doublée plutôt que
+     * sous-titrée (« VOSTFR » : sous-titres incrustés dans l'image, gênants sous la grande affiche).
+     */
     private fun trailerKey(videos: JSONArray?): String? {
         val candidates = videos.objects().filter { it.optString("site").equals("YouTube", ignoreCase = true) && it.optStringOrNull("key") != null }
         val lang = language.substringBefore('-')
         val ranked = candidates.sortedWith(
             compareByDescending<JSONObject> { it.optString("type") == "Trailer" }
                 .thenByDescending { it.optString("iso_639_1") == lang }
+                .thenByDescending { !SUBTITLED.containsMatchIn(it.optString("name")) }
                 .thenByDescending { it.optBoolean("official") },
         )
         return ranked.firstOrNull { it.optString("type") == "Trailer" || it.optString("type") == "Teaser" }?.optString("key")
@@ -276,6 +280,9 @@ class TmdbClient(
 
     private companion object {
         const val TAG = "Tmdb"
+
+        /** Bande-annonce sous-titrée : « VOSTFR », « VOST », « sous-titré(e) », « subtitled ». */
+        val SUBTITLED = Regex("""\bvost|sous[- ]titr|subtitled""", RegexOption.IGNORE_CASE)
         val BRACKETED = Regex("""\s*[(\[][^)\]]*[)\]]?""")
         val SPACES = Regex("""\s{2,}""")
         val MARKS = Regex("\\p{Mn}+")
