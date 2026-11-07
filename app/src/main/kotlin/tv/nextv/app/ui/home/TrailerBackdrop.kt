@@ -9,6 +9,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -24,6 +25,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 
 /**
  * Bande-annonce YouTube ([key]) derrière la grande affiche, avec le son et sans les commandes, après
@@ -41,31 +43,47 @@ internal fun TrailerBackdrop(key: String, language: String?, modifier: Modifier 
         show = true
     }
     AnimatedVisibility(show, enter = fadeIn(tween(800)), exit = fadeOut(), modifier = modifier) {
-        var view by remember { mutableStateOf<WebView?>(null) }
-        val lifecycle = LocalLifecycleOwner.current.lifecycle
-        DisposableEffect(lifecycle, view) {
-            val web = view
-            val observer = LifecycleEventObserver { _, event ->
-                when (event) {
-                    // Appli quittée (touche Accueil…) : le son ne continue pas en arrière-plan.
-                    Lifecycle.Event.ON_STOP -> web?.evaluateJavascript("pause()", null)
-                    Lifecycle.Event.ON_START -> web?.evaluateJavascript("resume()", null)
-                    else -> Unit
+        // Taille du cadre donnée au lecteur en pixels CSS (= dp) : sur la Fire TV, la page calcule mal la
+        // hauteur disponible (100 %, vh), et la vidéo ne tenait qu'une bande en haut, ou rien (carré noir).
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val width = maxWidth.value.roundToInt()
+            val height = maxHeight.value.roundToInt()
+            if (width > 0 && height > 0) {
+                androidx.compose.runtime.key(width, height) {
+                    TrailerPage(key, captions(language), width, height)
                 }
             }
-            lifecycle.addObserver(observer)
-            onDispose { lifecycle.removeObserver(observer) }
         }
-        AndroidView(
-            factory = { context -> trailerView(context, key, captions(language)).also { view = it } },
-            onRelease = { web -> web.destroy() },
-            modifier = Modifier.fillMaxSize(),
-        )
     }
 }
 
+/** Page du lecteur YouTube, mise en pause quand l'appli passe en arrière-plan. */
+@Composable
+private fun TrailerPage(key: String, captions: Captions, width: Int, height: Int) {
+    var view by remember { mutableStateOf<WebView?>(null) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle, view) {
+        val web = view
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                // Appli quittée (touche Accueil…) : le son ne continue pas en arrière-plan.
+                Lifecycle.Event.ON_STOP -> web?.evaluateJavascript("pause()", null)
+                Lifecycle.Event.ON_START -> web?.evaluateJavascript("resume()", null)
+                else -> Unit
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+    AndroidView(
+        factory = { context -> trailerView(context, key, captions, width, height).also { view = it } },
+        onRelease = { web -> web.destroy() },
+        modifier = Modifier.fillMaxSize(),
+    )
+}
+
 @SuppressLint("SetJavaScriptEnabled")
-private fun trailerView(context: android.content.Context, key: String, captions: Captions): WebView = WebView(context).apply {
+private fun trailerView(context: android.content.Context, key: String, captions: Captions, width: Int, height: Int): WebView = WebView(context).apply {
     isFocusable = false
     isFocusableInTouchMode = false
     importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
@@ -74,15 +92,15 @@ private fun trailerView(context: android.content.Context, key: String, captions:
     settings.mediaPlaybackRequiresUserGesture = false
     settings.domStorageEnabled = true
     webChromeClient = WebChromeClient()
-    // Page avec le lecteur intégré (comme en 0.2.54, où l'image s'affiche sur la Fire TV) : son adresse de
-    // base sert d'origine (YouTube refuse un lecteur sans). Le cadre est au format de la vidéo (16/9) :
+    // Page avec le lecteur intégré, à la taille exacte du cadre : son adresse de base sert d'origine
+    // (YouTube refuse un lecteur sans). Le cadre est au format de la vidéo (16/9) :
     // rien n'est coupé. L'API YouTube se branche sur ce lecteur pour le son, la pause et les sous-titres.
     val html = """
         <html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>
-        html,body{margin:0;height:100%;background:#000;overflow:hidden}
-        iframe{position:absolute;top:50%;left:50%;width:177.78vh;min-width:100%;height:56.25vw;min-height:100%;transform:translate(-50%,-50%);border:0;pointer-events:none}
+        html,body{margin:0;width:${width}px;height:${height}px;background:#000;overflow:hidden}
+        iframe{position:absolute;top:0;left:0;width:${width}px;height:${height}px;border:0;pointer-events:none}
         </style></head><body>
-        <iframe id="player" src="https://www.youtube-nocookie.com/embed/$key?autoplay=1&mute=1&controls=0&loop=1&playlist=$key&modestbranding=1&rel=0&playsinline=1&iv_load_policy=3&disablekb=1&fs=0&hl=fr&cc_load_policy=${captions.loadPolicy}&enablejsapi=1&origin=https%3A%2F%2Fnixtv.app"
+        <iframe id="player" width="$width" height="$height" src="https://www.youtube-nocookie.com/embed/$key?autoplay=1&mute=1&controls=0&loop=1&playlist=$key&modestbranding=1&rel=0&playsinline=1&iv_load_policy=3&disablekb=1&fs=0&hl=fr&cc_load_policy=${captions.loadPolicy}&enablejsapi=1&origin=https%3A%2F%2Fnixtv.app"
         allow="autoplay; encrypted-media" referrerpolicy="strict-origin-when-cross-origin"></iframe>
         <script>
         var player=null;
