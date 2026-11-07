@@ -140,8 +140,9 @@ class FootballScheduleTest {
     @Test
     fun `liga matches missing from the guide are offered on the playlist event channels`() {
         // Samedi : les chaînes « FR| DAZN LALIGA n (LIVE MATCH) », sans programme dans le guide, montrent
-        // le n-ième match de Liga du jour (images d'attente de LALIGA 1, 2 et 4).
+        // le n-ième prochain match de Liga (images d'attente de LALIGA 1 à 5).
         val day = fridayNoon + 24 * hour - 11 * hour - 18 * 60_000L // samedi, minuit passé
+        val sevilla = match(20, Competition.LA_LIGA, "Sevilla", "Alavés", day - 3 * hour, MatchStatus.FINISHED)
         val malaga = match(21, Competition.LA_LIGA, "Málaga", "Racing Santander", day + 14 * hour)
         val espanyol = match(22, Competition.LA_LIGA, "Espanyol", "Deportivo", day + 16 * hour + 15 * 60_000L)
         val osasuna = match(23, Competition.LA_LIGA, "Osasuna", "Athletic Club", day + 18 * hour + 30 * 60_000L)
@@ -152,11 +153,10 @@ class FootballScheduleTest {
         }
         val dazn2 = EpgChannelRow("dazn2.fr", 9, "FR| DAZN PPV 2", "FR| DAZN PPV 2", null)
         val shown = scheduledMatches(
-            listOf(malaga, espanyol, osasuna, valencia),
+            listOf(sevilla, malaga, espanyol, osasuna, valencia),
             listOf(row(dazn2, "Valence / Real Madrid", day + 20 * hour + 55 * 60_000L, 155)),
             day + 9 * hour,
             events,
-            dayOf = { day },
         ).associateBy { it.label }
         val first = shown.getValue("Málaga – Racing Santander")
         assertEquals("FR| DAZN LALIGA 1 (LIVE MATCH)", first.channel?.name)

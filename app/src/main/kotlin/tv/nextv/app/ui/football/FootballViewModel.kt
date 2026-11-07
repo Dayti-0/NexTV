@@ -43,7 +43,6 @@ import tv.nextv.core.football.Team
 import tv.nextv.core.football.TeamMatches
 import tv.nextv.core.football.TeamMatchesResult
 import tv.nextv.core.model.ContentKind
-import java.util.Calendar
 
 /** Match de la section Foot, avec la chaîne de la playlist qui le diffuse quand le guide la donne. */
 @Immutable
@@ -250,9 +249,7 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
     }.distinctUntilChanged()
 
     private suspend fun loadSchedule(now: Long): Schedule {
-        // Depuis minuit : les chaînes « événement » numérotent les matchs du jour, terminés compris.
-        val from = minOf(now - LIVE_WINDOW_MILLIS, localDayStart(now))
-        container.liveScores.schedule(from, now + WINDOW_MILLIS)?.let { return Schedule(it, null) }
+        container.liveScores.schedule(now - LIVE_WINDOW_MILLIS, now + WINDOW_MILLIS)?.let { return Schedule(it, null) }
         // ESPN injoignable : liste de football-data.org (compétitions de son offre gratuite), si une clé est là.
         return when (val api = container.footballData.matches(now, now + WINDOW_MILLIS)) {
             is FootballDataResult.Success -> Schedule(api.matches, FootballNotice.SCHEDULE_PARTIAL)
@@ -294,10 +291,12 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
             channels[programme.epgChannelId]?.let { BroadcastRow(it, null, programme) }
                 ?: guideOnly[programme.epgChannelId]?.let { BroadcastRow(null, it, programme) }
         }
-        // Chaînes « événement » (« FR| DAZN LALIGA 2 (LIVE MATCH) ») : seulement celles que le guide ne décrit pas.
+        // Chaînes « événement » (« FR| DAZN LALIGA 2 (LIVE MATCH) ») : seulement celles que le guide ne décrit
+        // pas, françaises d'abord (leur famille donne la numérotation).
         val events = container.channelDao.eventChannelCandidates(sourceId, now - LIVE_WINDOW_MILLIS, now + WINDOW_MILLIS)
             .filterNot { it.hasGuide }
             .mapNotNull { channel -> EventChannels.parse(channel.name)?.let { channel to it } }
+            .sortedBy { (channel, _) -> BroadcastLanguage.rank(channel.name) }
         return GuideData(rows, events)
     }
 
@@ -354,15 +353,6 @@ internal class BroadcastRow(channel: EpgChannelRow?, guideName: String?, program
 
 private const val MATCH_MILLIS = 2 * 60 * 60_000L
 
-/** Début du jour (heure de l'appareil) : les chaînes « événement » numérotent les matchs de chaque jour. */
-internal fun localDayStart(millis: Long): Long = Calendar.getInstance().apply {
-    timeInMillis = millis
-    set(Calendar.HOUR_OF_DAY, 0)
-    set(Calendar.MINUTE, 0)
-    set(Calendar.SECOND, 0)
-    set(Calendar.MILLISECOND, 0)
-}.timeInMillis
-
 /** Un match en cours reste affiché au moins jusque-là, prolongations comprises. */
 private const val LIVE_GRACE_MILLIS = 15 * 60_000L
 
@@ -376,15 +366,14 @@ internal fun scheduledMatches(
     matches: List<ScheduledMatch>,
     rows: List<BroadcastRow>,
     now: Long,
-    /** Chaînes « événement » de la playlist, sans programme dans le guide. */
+    /** Chaînes « événement » de la playlist, sans programme dans le guide, la meilleure d'abord. */
     events: List<Pair<EventChannelRow, EventChannel>> = emptyList(),
-    dayOf: (Long) -> Long = ::localDayStart,
 ): List<FootballMatch> {
     val playable = matches.filter { it.status == MatchStatus.SCHEDULED || it.status == MatchStatus.LIVE || it.status == MatchStatus.FINISHED }
     val broadcasts = rows.map { Broadcast(it, it.title, it.subtitle, it.category, it.description, it.startMillis, it.stopMillis) }
     val found = BroadcastFinder.assign(playable, broadcasts)
-    // « FR| DAZN LALIGA 2 (LIVE MATCH) » : 2e match de Liga du jour, d'après la numérotation du fournisseur.
-    val probable = EventChannels.assign(playable, events, dayOf)
+    // « FR| DAZN LALIGA 2 (LIVE MATCH) » : 2e prochain match de Liga, d'après la numérotation du fournisseur.
+    val probable = EventChannels.assign(playable, events)
     return playable.mapNotNull { match ->
         // Chaînes de la playlist d'abord (celles du guide seul ne se regardent pas), françaises en tête.
         val shows = ranked(found[match].orEmpty(), match.competition)

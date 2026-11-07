@@ -27,8 +27,9 @@ Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3, enti�
   du match (suivre chaque équipe). La liste vient du calendrier public d'ESPN (sans clé : vrais coups d'envoi, jamais
   de rediffusion), le guide TV donne seulement la chaîne ; les matchs de sélections ne sont listés que s'ils sont
   diffusés. Chaînes « événement » de la playlist, sans programmes dans le guide (« FR| DAZN LALIGA 2 (LIVE
-  MATCH) ») : le n-ième match du jour de la compétition y est proposé, marqué « chaîne probable » (numérotation
-  du fournisseur, visible sur l'image d'attente de la chaîne). Tous les matchs sont affichés, même ceux dont la
+  MATCH ONLY) », « FR| DAZN 1 SERIE A (LIVE MATCH ONLY) ») : le n-ième prochain match de la compétition, jours
+  suivants compris, y est proposé, marqué « chaîne probable » (numérotation du fournisseur, visible sur l'image
+  d'attente de la chaîne ; un match terminé libère sa place). Tous les matchs sont affichés, même ceux dont la
   chaîne n'a pas été trouvée (« Pas trouvé dans le guide »).
   Classements et fiches des clubs : [football-data.org](https://www.football-data.org) (clé gratuite,
   Réglages › Matchs de foot, ou secret CI `NEXTV_FOOTBALL_API_KEY`), qui donne aussi la liste quand ESPN ne répond pas.
