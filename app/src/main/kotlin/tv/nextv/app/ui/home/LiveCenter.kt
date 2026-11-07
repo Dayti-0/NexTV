@@ -92,7 +92,7 @@ internal fun LiveCenterSection(
     modifier: Modifier = Modifier,
     action: (@Composable () -> Unit)? = null,
     hint: (@Composable () -> Unit)? = null,
-    /** Appui long sur droite vers le volet (pas pendant la réorganisation des favoris, qui se sert des flèches). */
+    /** Touche ☰ vers le volet et retour (pas pendant la réorganisation des favoris). */
     paneShortcut: Boolean = true,
     pane: @Composable (Modifier) -> Unit,
     body: @Composable () -> Unit,
@@ -100,8 +100,12 @@ internal fun LiveCenterSection(
     val tv = section == HomeSection.TV
     val paneFocus = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
-    val paneKey = remember { PaneKey() }
-    Row(modifier.fillMaxSize()) {
+    var paneFocused by remember { mutableStateOf(false) }
+    Row(
+        modifier
+            .fillMaxSize()
+            .then(if (paneShortcut) Modifier.onPreviewKeyEvent { menuKey(it, paneFocused, focusManager, paneFocus) } else Modifier),
+    ) {
         CategoryRail(section, window, groups, recentCount, allCount, category, query, favoritesCount, resumeCount, actions, Modifier.width(230.dp), dense = true)
         Column(Modifier.weight(1f).fillMaxHeight()) {
             Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -113,14 +117,15 @@ internal fun LiveCenterSection(
             }
             hint?.invoke()
             // Retour depuis le volet (gauche) : sur l'élément choisi, pas sur le plus proche.
-            Box(
-                Modifier
-                    .weight(1f)
-                    .focusRestorer()
-                    .then(if (paneShortcut) Modifier.onPreviewKeyEvent { paneKey.handle(it, focusManager, paneFocus) } else Modifier),
-            ) { body() }
+            Box(Modifier.weight(1f).focusRestorer()) { body() }
         }
-        pane(Modifier.weight(if (tv) 0.82f else 0.62f).fillMaxHeight().focusRequester(paneFocus))
+        pane(
+            Modifier
+                .weight(if (tv) 0.82f else 0.62f)
+                .fillMaxHeight()
+                .focusRequester(paneFocus)
+                .onFocusChanged { paneFocused = it.hasFocus },
+        )
     }
 }
 
@@ -170,8 +175,8 @@ internal fun LivePane(preview: ChannelPreview?, player: Player?, now: Long, modi
 }
 
 /**
- * Volet de droite, que la télécommande peut faire défiler quand il dépasse : « droite » depuis la
- * liste y entre (cadre de sélection), haut / bas le font défiler, « gauche » revient à la liste.
+ * Volet de droite, que la télécommande peut faire défiler quand il dépasse : ☰, ou « droite » depuis
+ * la liste, y entre (cadre de sélection), haut / bas le font défiler, ☰ ou « gauche » revient à la liste.
  * Il repart du haut à chaque nouvelle sélection ([resetKey]).
  */
 @Composable
@@ -197,37 +202,15 @@ private fun ScrollingPane(resetKey: Any?, modifier: Modifier, content: @Composab
 }
 
 /**
- * Droite dans la liste ou la mosaïque : appui court, élément suivant (comme d'habitude) ; appui long,
- * volet de droite de l'élément choisi, sans en changer (en mosaïque, seule la dernière colonne y menait).
+ * Touche ☰ (menu) de la télécommande : volet de droite de l'élément choisi, sans en changer (dans la
+ * mosaïque, « droite » passe à la chaîne suivante) ; dans le volet, retour à l'élément choisi.
  */
-private class PaneKey {
-    /** Droite enfoncée dans la liste, pas encore relâchée. */
-    private var pressed = false
-    private var opened = false
-
-    fun handle(event: KeyEvent, focusManager: FocusManager, pane: FocusRequester): Boolean {
-        if (event.key != Key.DirectionRight) return false
-        return when (event.type) {
-            KeyEventType.KeyDown -> {
-                if (event.nativeKeyEvent.repeatCount == 0) {
-                    pressed = true
-                    opened = false
-                } else if (pressed && !opened) {
-                    // Touche tenue : le volet de l'élément choisi.
-                    opened = true
-                    runCatching { pane.requestFocus() }
-                }
-                true
-            }
-            KeyEventType.KeyUp -> {
-                if (!pressed) return false
-                pressed = false
-                if (!opened) focusManager.moveFocus(FocusDirection.Right)
-                true
-            }
-            else -> false
-        }
+private fun menuKey(event: KeyEvent, paneFocused: Boolean, focusManager: FocusManager, pane: FocusRequester): Boolean {
+    if (event.key != Key.Menu) return false
+    if (event.type == KeyEventType.KeyDown && event.nativeKeyEvent.repeatCount == 0) {
+        if (paneFocused) focusManager.moveFocus(FocusDirection.Left) else runCatching { pane.requestFocus() }
     }
+    return true
 }
 
 /** Haut / bas dans le volet : défilement d'un pas ; en haut, « haut » laisse le focus monter (onglets). */

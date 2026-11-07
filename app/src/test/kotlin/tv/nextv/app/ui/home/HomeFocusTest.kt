@@ -356,11 +356,11 @@ class HomeFocusTest {
     }
 
     /**
-     * Mosaïque du Live Center : droite (appui court) passe à la chaîne suivante ; appui long sur
-     * droite, depuis n'importe quelle colonne, entre dans le volet de la chaîne choisie, sans en changer.
+     * Mosaïque du Live Center : droite passe à la chaîne suivante ; ☰, depuis n'importe quelle
+     * colonne, entre dans le volet de la chaîne choisie, sans en changer, et ☰ y ramène.
      */
     @Test
-    fun longRightOpensThePaneFromAnyMosaicChannel() {
+    fun menuKeyOpensThePaneFromAnyMosaicChannel() {
         val focused = mutableListOf<ChannelListRow>()
         compose.setContent {
             Home(HomeLayout.LIVE_CENTER, HomeActions(onChannelFocus = { focused += it }), preview = SampleData.channelPreview, grid = GridColumns(liveCenterMosaic = true))
@@ -372,27 +372,24 @@ class HomeFocusTest {
         press(Key.DirectionRight)
         val first = focused.last()
         val card = compose.onNode(isFocused()).getBoundsInRoot()
-        // Appui court : la chaîne suivante, sur la même ligne.
+        // Droite : la chaîne suivante, sur la même ligne.
         press(Key.DirectionRight)
         val second = focused.last()
-        assertTrue("Appui court : chaîne suivante (${first.title} → ${second.title})", second.id != first.id)
-        assertTrue("Même ligne", compose.onNode(isFocused()).getBoundsInRoot().top == card.top)
-        // Appui long : le volet, la chaîne choisie ne change pas.
-        compose.onRoot().performKeyInput {
-            keyDown(Key.DirectionRight)
-            advanceEventTime(1_000)
-            keyUp(Key.DirectionRight)
-        }
-        compose.mainClock.advanceTimeBy(500)
-        compose.waitForIdle()
+        val secondCard = compose.onNode(isFocused()).getBoundsInRoot()
+        assertTrue("Droite : chaîne suivante (${first.title} → ${second.title})", second.id != first.id)
+        assertTrue("Même ligne", secondCard.top == card.top)
+        // ☰ : le volet, la chaîne choisie ne change pas.
+        press(Key.Menu)
         val pane = compose.onNode(isFocused()).getBoundsInRoot()
-        println("Appui long : focus ${pane}, chaîne ${focused.last().title} (avant : ${second.title})")
+        println("☰ : focus ${pane}, chaîne ${focused.last().title} (avant : ${second.title})")
         assertEquals(second.id, focused.last().id)
         assertTrue("Focus dans le volet : $pane", pane.left > card.right + 100.dp)
         repeat(4) { press(Key.DirectionDown) }
         assertTrue("« Plus tard » visible", compose.onNodeWithText("Journal de la nuit").isDisplayed())
-        press(Key.DirectionLeft)
+        // ☰ de nouveau : retour sur la chaîne choisie.
+        press(Key.Menu)
         assertEquals(second.id, focused.last().id)
+        assertEquals(secondCard, compose.onNode(isFocused()).getBoundsInRoot())
     }
 
     /** Retour du lecteur : la liste revient à sa place et la chaîne ouverte reprend le focus. */
