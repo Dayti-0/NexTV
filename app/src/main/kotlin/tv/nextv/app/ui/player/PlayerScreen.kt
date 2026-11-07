@@ -1113,7 +1113,15 @@ fun MenuProgrammePanel(info: MenuProgramme, now: Long, modifier: Modifier = Modi
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold,
                     )
-                    Text(current.title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    // Titre en entier : plus petit quand il est long (« Les visages du crime en région »).
+                    Text(
+                        current.title,
+                        style = if (current.title.length > LONG_TITLE) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        maxLines = 4,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1152,6 +1160,9 @@ fun MenuProgrammePanel(info: MenuProgramme, now: Long, modifier: Modifier = Modi
     }
 }
 
+
+/** Au-delà, le titre du programme du volet est écrit plus petit pour tenir en entier. */
+private const val LONG_TITLE = 20
 
 /** Largeur de l'image du programme dans le volet du menu des chaînes. */
 private val MENU_ART_WIDTH = 176.dp

@@ -547,7 +547,8 @@ abstract class ScreenshotSuite(private val device: String) {
             programme = MenuProgramme(
                 SampleData.channels[0],
                 GuideProgramme(
-                    "Le journal du soir",
+                    // Titre long : écrit en entier, plus petit.
+                    "Les visages du crime en région",
                     SampleData.NOW - 15 * 60_000L,
                     SampleData.NOW + 25 * 60_000L,
                     subtitle = "Édition spéciale",
