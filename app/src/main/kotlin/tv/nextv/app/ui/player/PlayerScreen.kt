@@ -1128,8 +1128,15 @@ fun MenuProgrammePanel(info: MenuProgramme, now: Long, modifier: Modifier = Modi
             listOfNotNull(current.subtitle, current.category, current.year?.toString()).takeIf { it.isNotEmpty() }?.let { details ->
                 Text(details.joinToString("  ·  "), style = MaterialTheme.typography.titleSmall, color = Color.White.copy(alpha = 0.8f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
+            // Description entière ; coupée seulement si elle dépasse la hauteur de l'écran (« Plus tard » reste visible).
             current.description?.let {
-                Text(it, style = MaterialTheme.typography.bodyLarge, color = Color.White.copy(alpha = 0.9f), maxLines = MENU_DESCRIPTION_LINES, overflow = TextOverflow.Ellipsis)
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = Color.White.copy(alpha = 0.9f),
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
             }
         }
         info.next?.let { next ->
@@ -1145,8 +1152,6 @@ fun MenuProgrammePanel(info: MenuProgramme, now: Long, modifier: Modifier = Modi
     }
 }
 
-/** Lignes de description dans le volet du menu des chaînes. */
-private const val MENU_DESCRIPTION_LINES = 6
 
 /** Largeur de l'image du programme dans le volet du menu des chaînes. */
 private val MENU_ART_WIDTH = 176.dp
