@@ -1,6 +1,7 @@
 package tv.nextv.app
 
 import android.content.Context
+import tv.nextv.app.data.football.EventTurnStore
 import android.os.Build
 import android.util.Xml
 import java.io.File
@@ -113,6 +114,9 @@ class AppContainer(context: Context) {
 
     /** Comptes Xtream Codes : abonnement (date de fin, connexions simultanées) et chaînes avec replay. */
     val xtreamApi = XtreamApi(httpClients, logger)
+
+    /** Section Foot : tour des chaînes « événement » (LALIGA 1 à 5…) retenu d'un jour à l'autre. */
+    val eventTurns = EventTurnStore(appContext.getSharedPreferences("event_turns", Context.MODE_PRIVATE))
 
     val sourceRepository = SourceRepository(
         store = playlistStore,

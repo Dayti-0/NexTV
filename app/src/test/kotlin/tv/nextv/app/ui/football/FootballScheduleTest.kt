@@ -198,4 +198,32 @@ class FootballScheduleTest {
         assertTrue(first.probable)
         assertEquals("FR| DAZN LALIGA 4 (LIVE MATCH ONLY)", shown.getValue("Osasuna – Athletic Club").channel?.name)
     }
+
+    @Test
+    fun `the turn remembered on saturday carries on on sunday`() {
+        val saturday = fridayNoon + 24 * hour - 11 * hour - 18 * 60_000L // samedi, minuit passé
+        val sunday = saturday + 24 * hour
+        val malaga = match(21, Competition.LA_LIGA, "Málaga", "Racing Santander", saturday + 14 * hour, MatchStatus.FINISHED)
+        val elche = match(26, Competition.LA_LIGA, "Elche", "Real Betis", sunday + 14 * hour)
+        val sociedad = match(27, Competition.LA_LIGA, "Real Sociedad", "Rayo Vallecano", sunday + 16 * hour + 15 * 60_000L)
+        val saturdayMatches = (22..24).map { match(it.toLong(), Competition.LA_LIGA, "A$it", "B$it", saturday + 14 * hour + (it - 21) * 135 * 60_000L) }
+        val events = (1..5).map { number ->
+            val name = "FR| DAZN LALIGA $number (LIVE MATCH ONLY)"
+            EventChannelRow(100L + number, name, name, null, hasGuide = false) to checkNotNull(EventChannels.parse(name))
+        }
+        var remembered: Map<Competition, Pair<ScheduledMatch, Int>> = emptyMap()
+        val shown = scheduledMatches(
+            listOf(malaga) + saturdayMatches + listOf(elche, sociedad),
+            emptyList(),
+            sunday + 9 * hour,
+            events,
+            dayStart = sunday,
+            turns = mapOf(Competition.LA_LIGA to (malaga.id to 1)),
+            onDayTurn = { remembered = it },
+        ).associateBy { it.label }
+        assertEquals("FR| DAZN LALIGA 5 (LIVE MATCH ONLY)", shown.getValue("Elche – Real Betis").channel?.name)
+        assertEquals("FR| DAZN LALIGA 1 (LIVE MATCH ONLY)", shown.getValue("Real Sociedad – Rayo Vallecano").channel?.name)
+        // Retenu pour le lendemain : Elche – Betis sur la 5.
+        assertEquals(elche to 5, remembered[Competition.LA_LIGA])
+    }
 }

@@ -92,8 +92,8 @@ class EventChannelsTest {
         )
         val result = EventChannels.assign(day, laliga, midnight(8))
         assertEquals(listOf("FR| DAZN LALIGA 1 (LIVE MATCH ONLY)"), result[day[0]])
-        assertEquals(listOf("FR| DAZN LALIGA 3 (LIVE MATCH ONLY)", "FR| DAZN LALIGA 4 (LIVE MATCH ONLY)"), result[day[2]])
-        assertEquals(listOf("FR| DAZN LALIGA 4 (LIVE MATCH ONLY)", "FR| DAZN LALIGA 3 (LIVE MATCH ONLY)"), result[day[3]])
+        assertEquals(listOf("FR| DAZN LALIGA 4 (LIVE MATCH ONLY)", "FR| DAZN LALIGA 3 (LIVE MATCH ONLY)"), result[day[2]])
+        assertEquals(listOf("FR| DAZN LALIGA 3 (LIVE MATCH ONLY)", "FR| DAZN LALIGA 4 (LIVE MATCH ONLY)"), result[day[3]])
         assertEquals(listOf("FR| DAZN LALIGA 5 (LIVE MATCH ONLY)"), result[day[4]])
     }
 
@@ -106,8 +106,9 @@ class EventChannelsTest {
         val parma = match(13, "Parma", "Bologna", at(7, 18), Competition.SERIE_A)
         val roma = match(14, "AS Roma", "Sassuolo", at(7, 20, 45), Competition.SERIE_A)
         val result = EventChannels.assign(listOf(cagliari, torino, parma, roma), serieA, midnight(7))
-        assertEquals(listOf("FR| DAZN 1 SERIE A (LIVE MATCH ONLY)", "FR| DAZN 2 SERIE A (LIVE MATCH ONLY)"), result[cagliari])
-        assertEquals(listOf("FR| DAZN 2 SERIE A (LIVE MATCH ONLY)", "FR| DAZN 1 SERIE A (LIVE MATCH ONLY)"), result[torino])
+        // Vu à l'écran : Torino – Lecce sur DAZN 1 SERIE A, Cagliari – Frosinone sur DAZN 2.
+        assertEquals(listOf("FR| DAZN 1 SERIE A (LIVE MATCH ONLY)", "FR| DAZN 2 SERIE A (LIVE MATCH ONLY)"), result[torino])
+        assertEquals(listOf("FR| DAZN 2 SERIE A (LIVE MATCH ONLY)", "FR| DAZN 1 SERIE A (LIVE MATCH ONLY)"), result[cagliari])
         assertEquals(listOf("FR| DAZN 3 SERIE A (LIVE MATCH ONLY)"), result[parma])
         assertNull(result[roma])
     }
@@ -157,8 +158,28 @@ class EventChannelsTest {
         assertEquals(listOf(channel(3)), result[osasuna])
         assertEquals(listOf(channel(5)), result[elche])
         assertEquals(listOf(channel(1)), result[sociedad])
-        assertEquals(listOf(channel(2), channel(3)), result[celta])
-        assertEquals(listOf(channel(3), channel(2)), result[villarreal])
+        assertEquals(listOf(channel(3), channel(2)), result[celta])
+        assertEquals(listOf(channel(2), channel(3)), result[villarreal])
         assertEquals(listOf(channel(4)), result[atletico])
+    }
+
+    @Test
+    fun `the turn of the day carries on the next day`() {
+        val malaga = match(2, "Málaga", "Racing Santander", at(7, 14), status = MatchStatus.FINISHED)
+        val espanyol = match(3, "Espanyol", "Deportivo", at(7, 16, 15))
+        val osasuna = match(4, "Osasuna", "Athletic Club", at(7, 18, 30))
+        val valencia = match(5, "Valencia", "Real Madrid", at(7, 21))
+        val elche = match(6, "Elche", "Real Betis", at(8, 14))
+        val sociedad = match(7, "Real Sociedad", "Rayo Vallecano", at(8, 16, 15))
+        val matches = listOf(malaga, espanyol, osasuna, valencia, elche, sociedad)
+        // Samedi, sans référence : le premier match du jour est sur la 1, et c'est retenu.
+        val saturday = EventChannels.firstOfDay(matches, laliga, midnight(7))
+        assertEquals(malaga to 1, saturday[Competition.LA_LIGA])
+        // Dimanche, le tour de samedi continue : Elche – Betis reste sur la 5, Real Sociedad sur la 1.
+        val anchors = mapOf(malaga to 1)
+        val sunday = EventChannels.assign(matches, laliga, midnight(8), anchors)
+        assertEquals(listOf("FR| DAZN LALIGA 5 (LIVE MATCH ONLY)"), sunday[elche])
+        assertEquals(listOf("FR| DAZN LALIGA 1 (LIVE MATCH ONLY)"), sunday[sociedad])
+        assertEquals(elche to 5, EventChannels.firstOfDay(matches, laliga, midnight(8), anchors)[Competition.LA_LIGA])
     }
 }

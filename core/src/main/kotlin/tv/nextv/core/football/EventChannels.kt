@@ -67,9 +67,9 @@ object EventChannels {
      * Chaînes probables de chaque match. Le fournisseur met chaque match sur la chaîne suivante, à tour de
      * rôle (après LALIGA 5, LALIGA 1) : la précédente est souvent encore occupée (temps additionnel,
      * interviews). Un match dont la chaîne est connue ([anchors] : son numéro, d'après le guide du
-     * fournisseur) donne donc celle de tous les autres. Sans lui, la numérotation part du premier match de
-     * la journée ([dayStart], minuit) sur la chaîne 1, matchs terminés compris. Deux matchs au même coup
-     * d'envoi se partagent leurs deux chaînes, celle de leur rang en premier.
+     * fournisseur ou le tour de la veille) donne donc celle de tous les autres. Sans lui, la numérotation
+     * part du premier match de la journée ([dayStart], minuit) sur la chaîne 1, matchs terminés compris.
+     * Deux matchs au même coup d'envoi se partagent leurs deux chaînes, celle de leur rang en premier.
      */
     fun <T> assign(
         matches: List<ScheduledMatch>,
@@ -80,30 +80,66 @@ object EventChannels {
         val result = LinkedHashMap<ScheduledMatch, List<T>>()
         for ((competition, numbered) in primaries(channels).groupBy { it.second.competition }) {
             val byNumber = numbered.associate { (item, event) -> event.number to item }
-            val count = byNumber.keys.max()
-            val played = matches.filter { it.competition == competition && it.status in NUMBERED }
-            val anchor = anchors.entries.firstOrNull { it.key.competition == competition && it.key in played }
-            val ordered = played
-                .filter { anchor != null || it.kickoffMillis >= dayStart }
-                .sortedWith(compareBy({ it.kickoffMillis }, { it.id }))
-            // Rang 0 : le match de référence (sur sa chaîne connue), sinon le premier de la journée (chaîne 1).
-            val origin = anchor?.let { ordered.indexOf(it.key) } ?: 0
-            val originNumber = anchor?.value ?: 1
-            // Avec une référence, à tour de rôle ; sans, le rang dans la journée (rien au-delà de la dernière chaîne).
-            fun numberOf(index: Int): Int =
-                if (anchor == null) index + 1 else Math.floorMod(originNumber - 1 + index - origin, count) + 1
-            var index = 0
-            for (group in ordered.groupBy { it.kickoffMillis }.values) {
-                val numbers = (index until index + group.size).map(::numberOf)
-                if (group.size <= MAX_TIED) {
-                    group.forEachIndexed { position, match ->
-                        val own = numbers[position]
-                        val items = (listOf(own) + numbers.filter { it != own }).mapNotNull { byNumber[it] }
-                        if (items.isNotEmpty()) result[match] = items
-                    }
-                }
-                index += group.size
+            for ((match, numbers) in turns(matches, competition, byNumber.keys.max(), dayStart, anchors)) {
+                val items = numbers.mapNotNull { byNumber[it] }
+                if (items.isNotEmpty()) result[match] = items
             }
+        }
+        return result
+    }
+
+    /**
+     * Premier match de la journée ([dayStart]) de chaque compétition et le numéro de sa chaîne, d'après
+     * [assign] : retenu, il donne le tour du lendemain (« Elche – Betis reste sur LALIGA 5 »).
+     */
+    fun <T> firstOfDay(
+        matches: List<ScheduledMatch>,
+        channels: List<Pair<T, EventChannel>>,
+        dayStart: Long,
+        anchors: Map<ScheduledMatch, Int> = emptyMap(),
+    ): Map<Competition, Pair<ScheduledMatch, Int>> {
+        val result = LinkedHashMap<Competition, Pair<ScheduledMatch, Int>>()
+        for ((competition, numbered) in primaries(channels).groupBy { it.second.competition }) {
+            val count = numbered.maxOf { it.second.number }
+            turns(matches, competition, count, dayStart, anchors).entries
+                .filter { it.key.kickoffMillis >= dayStart }
+                .minWithOrNull(compareBy({ it.key.kickoffMillis }, { -it.key.id }))
+                ?.let { (match, numbers) -> result[competition] = match to numbers.first() }
+        }
+        return result
+    }
+
+    /** Numéros des chaînes de chaque match d'une compétition ([count] chaînes), le sien en premier. */
+    private fun turns(
+        matches: List<ScheduledMatch>,
+        competition: Competition,
+        count: Int,
+        dayStart: Long,
+        anchors: Map<ScheduledMatch, Int>,
+    ): Map<ScheduledMatch, List<Int>> {
+        val played = matches.filter { it.competition == competition && it.status in NUMBERED }
+        val anchor = anchors.entries.firstOrNull { it.key.competition == competition && it.key in played }
+        // Même coup d'envoi : Torino – Lecce (DAZN 1 SERIE A) avant Cagliari – Frosinone (DAZN 2), l'ordre
+        // inverse des identifiants d'ESPN.
+        val ordered = played
+            .filter { anchor != null || it.kickoffMillis >= dayStart }
+            .sortedWith(compareBy({ it.kickoffMillis }, { -it.id }))
+        val origin = anchor?.let { ordered.indexOf(it.key) } ?: 0
+        val originNumber = anchor?.value ?: 1
+        // Avec une référence, à tour de rôle ; sans, le rang dans la journée (rien au-delà de la dernière chaîne).
+        fun numberOf(index: Int): Int =
+            if (anchor == null) index + 1 else Math.floorMod(originNumber - 1 + index - origin, count) + 1
+        val result = LinkedHashMap<ScheduledMatch, List<Int>>()
+        var index = 0
+        for (group in ordered.groupBy { it.kickoffMillis }.values) {
+            val numbers = (index until index + group.size).map(::numberOf)
+            if (group.size <= MAX_TIED) {
+                group.forEachIndexed { position, match ->
+                    val own = numbers[position]
+                    result[match] = listOf(own) + numbers.filter { it != own }
+                }
+            }
+            index += group.size
         }
         return result
     }

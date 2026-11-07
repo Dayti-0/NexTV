@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.launch
 import tv.nextv.app.AppContainer
+import tv.nextv.app.data.football.EventTurnStore
 import tv.nextv.app.data.db.EpgChannelRow
 import tv.nextv.app.data.db.EventChannelRow
 import tv.nextv.app.data.db.FootballProgrammeRow
@@ -255,8 +256,10 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
     }.distinctUntilChanged()
 
     private suspend fun loadSchedule(now: Long): Schedule {
-        // Depuis minuit : les chaînes « événement » numérotent les matchs de la journée, terminés compris.
-        val from = minOf(now - LIVE_WINDOW_MILLIS, localDayStart(now))
+        // Depuis minuit : les chaînes « événement » numérotent les matchs de la journée, terminés compris ;
+        // et depuis le match retenu la veille, dont le tour continue.
+        val remembered = container.eventTurns.read().values.map { it.kickoffMillis }.filter { it >= now - TURN_MEMORY_MILLIS }
+        val from = (remembered + (now - LIVE_WINDOW_MILLIS) + localDayStart(now)).min()
         container.liveScores.schedule(from, now + WINDOW_MILLIS)?.let { return Schedule(it, null) }
         // ESPN injoignable : liste de football-data.org (compétitions de son offre gratuite), si une clé est là.
         return when (val api = container.footballData.matches(now, now + WINDOW_MILLIS)) {
@@ -348,7 +351,13 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
     private class Assembled(val matches: List<FootballMatch>, val notice: FootballNotice?)
 
     private fun assemble(guide: GuideData, schedule: Schedule, provider: List<BroadcastRow>): Assembled {
-        val matches = scheduledMatches(schedule.matches, guide.rows + provider, System.currentTimeMillis(), guide.events)
+        val now = System.currentTimeMillis()
+        val turns = container.eventTurns.read()
+            .filterValues { it.kickoffMillis >= now - TURN_MEMORY_MILLIS }
+            .mapValues { (_, turn) -> turn.matchId to turn.number }
+        val matches = scheduledMatches(schedule.matches, guide.rows + provider, now, guide.events, turns = turns) { first ->
+            container.eventTurns.write(first.mapValues { (_, turn) -> EventTurnStore.Turn(turn.first.id, turn.first.kickoffMillis, turn.second) })
+        }
         return Assembled(
             matches.sortedWith(compareBy({ it.kickoffMillis }, { it.competition.ordinal })),
             schedule.notice,
@@ -372,6 +381,9 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
 
         /** Le guide couvre en général une semaine. */
         const val WINDOW_MILLIS = 8 * 24 * 60 * 60_000L
+
+        /** Tour des chaînes « événement » retenu : utilisé pendant 4 jours. */
+        const val TURN_MEMORY_MILLIS = 4 * 24 * 60 * 60_000L
 
         /** Guide du fournisseur pour ses chaînes « événement » : relu toutes les 10 min. */
         const val PROVIDER_REFRESH_MILLIS = 10 * 60_000L
@@ -436,6 +448,10 @@ internal fun scheduledMatches(
     events: List<Pair<EventChannelRow, EventChannel>> = emptyList(),
     /** Début de la journée : les chaînes « événement » numérotent ses matchs. */
     dayStart: Long = localDayStart(now),
+    /** Tour retenu d'un jour précédent : match (identifiant) et numéro de sa chaîne, par compétition. */
+    turns: Map<Competition, Pair<Long, Int>> = emptyMap(),
+    /** Premier match de la journée de chaque compétition et sa chaîne, à retenir pour le lendemain. */
+    onDayTurn: (Map<Competition, Pair<ScheduledMatch, Int>>) -> Unit = {},
 ): List<FootballMatch> {
     val playable = matches.filter { it.status == MatchStatus.SCHEDULED || it.status == MatchStatus.LIVE || it.status == MatchStatus.FINISHED }
     val broadcasts = rows.map { Broadcast(it, it.title, it.subtitle, it.category, it.description, it.startMillis, it.stopMillis) }
@@ -443,11 +459,19 @@ internal fun scheduledMatches(
     // « FR| DAZN LALIGA 2 (LIVE MATCH) » : chaînes prises à tour de rôle par les matchs. Un match dont le guide
     // du fournisseur donne la chaîne (source sûre) fixe le tour des autres ; sinon, rang dans la journée.
     val numbers = events.associate { (channel, event) -> channel.id to event }
-    val anchors = found.entries.mapNotNull { (match, rows) ->
+    val announced = found.entries.mapNotNull { (match, rows) ->
         rows.firstNotNullOfOrNull { row -> numbers[row.channelId]?.takeIf { it.competition == match.competition }?.number }
             ?.let { match to it }
     }.toMap()
+    // Sans annonce du fournisseur pour une compétition : le tour retenu la veille.
+    val byId = playable.associateBy { it.id }
+    val remembered = turns.mapNotNull { (competition, turn) ->
+        byId[turn.first]?.takeIf { it.competition == competition && announced.keys.none { known -> known.competition == competition } }
+            ?.let { it to turn.second }
+    }.toMap()
+    val anchors = announced + remembered
     val probable = EventChannels.assign(playable, events, dayStart, anchors)
+    onDayTurn(EventChannels.firstOfDay(playable, events, dayStart, anchors))
     return playable.mapNotNull { match ->
         // Chaînes de la playlist d'abord (celles du guide seul ne se regardent pas), françaises en tête.
         val shows = ranked(found[match].orEmpty(), match.competition)
