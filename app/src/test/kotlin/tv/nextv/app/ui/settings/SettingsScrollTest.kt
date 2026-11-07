@@ -5,9 +5,14 @@ import android.content.pm.PackageManager
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.isFocused
+import tv.nextv.core.update.AppRelease
+import tv.nextv.app.data.update.UpdateState
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performKeyInput
@@ -78,5 +83,45 @@ class SettingsScrollTest {
         // Premier élément choisi en descendant à nouveau : la liste reste en haut.
         press(Key.DirectionDown, 2)
         assertEquals("Encore en haut", 0f, scroll().value(), 1f)
+    }
+
+    @Test
+    fun `every part of the update notes is shown whole`() {
+        val sections = (44 downTo 38).map { version -> "Version 0.2.$version\n" + (1..3).joinToString("\n") { "- Changement $it de la version 0.2.$version, assez long pour tenir sur deux lignes à l'écran de la télé" } }
+        val release = AppRelease("0.2.44", null, "https://example.invalid/NexTV.apk", 1, null, changes = sections.joinToString("\n\n"))
+        compose.setContent {
+            NexTvTheme(ThemeStyle.NIGHT) {
+                SettingsContent(
+                    state = SampleData.settings,
+                    snackbarHostState = remember { SnackbarHostState() },
+                    onBack = {},
+                    onPlaylists = {},
+                    onRefreshPlaylist = {},
+                    onRefreshGuide = {},
+                    onAutoQuality = {},
+                    onSaveTmdbKey = {},
+                    onClearTmdbKey = {},
+                    onProxy = {},
+                    update = UpdateState.Available(release),
+                    now = SampleData.NOW,
+                )
+            }
+        }
+        compose.waitForIdle()
+        val seen = HashSet<String>()
+        repeat(90) {
+            press(Key.DirectionDown, 1)
+            val focused = compose.onNode(isFocused(), useUnmergedTree = true).fetchSemanticsNode()
+            val list = compose.onNode(hasScrollAction()).fetchSemanticsNode().boundsInRoot
+            fun texts(node: SemanticsNode): List<String> =
+                node.config.getOrNull(SemanticsProperties.Text).orEmpty().map { it.text } + node.children.flatMap(::texts)
+            val text = texts(focused).joinToString("\n")
+            val version = Regex("Version 0\\.2\\.(\\d+)\\n").find(text)?.groupValues?.get(1)
+            if (version != null) {
+                seen += version
+                assertTrue("Version 0.2.$version coupée", focused.boundsInRoot.top >= list.top - 1 && focused.boundsInRoot.bottom <= list.bottom + 1)
+            }
+        }
+        assertEquals((38..44).map { it.toString() }.toSet(), seen)
     }
 }

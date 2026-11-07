@@ -50,6 +50,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.focusable
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -726,19 +731,43 @@ private fun UpdateSection(
 
 @Composable
 private fun ReleaseInfo(release: AppRelease, installed: String) {
-    Text(stringResource(R.string.settings_update_available, release.version), style = MaterialTheme.typography.titleMedium)
-    InfoText(stringResource(R.string.settings_update_installed, installed))
-    // Seulement les nouveautés de la version (et des versions sautées), pas toute la liste des fonctionnalités.
-    release.changes?.let { changes ->
-        Text(stringResource(R.string.settings_update_changes), style = MaterialTheme.typography.labelLarge)
-        Text(
-            changes.replace("**", ""),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 20,
-            overflow = TextOverflow.Ellipsis,
-        )
+    // Une partie par version : la télécommande s'arrête sur chacune, toujours entière à l'écran (le texte
+    // seul ne prend pas le focus, la liste sautait d'un bouton à l'autre par-dessus).
+    val sections = release.changes?.replace("**", "")
+        ?.split(Regex("""\n\s*\n"""))
+        ?.map { it.trim() }
+        ?.filter { it.isNotEmpty() }
+        .orEmpty()
+    ReadableBlock {
+        Text(stringResource(R.string.settings_update_available, release.version), style = MaterialTheme.typography.titleMedium)
+        InfoText(stringResource(R.string.settings_update_installed, installed))
+        sections.firstOrNull()?.let { first ->
+            Text(stringResource(R.string.settings_update_changes), style = MaterialTheme.typography.labelLarge)
+            ChangesText(first)
+        }
     }
+    sections.drop(1).forEach { section -> ReadableBlock { ChangesText(section) } }
+}
+
+@Composable
+private fun ChangesText(text: String) {
+    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+/** Texte à lire où la télécommande s'arrête : la liste l'amène entier à l'écran, il s'éclaire au focus. */
+@Composable
+private fun ReadableBlock(content: @Composable () -> Unit) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val focused by interactionSource.collectIsFocusedAsState()
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.medium)
+            .background(if (focused) MaterialTheme.colorScheme.surfaceContainerHighest else Color.Transparent)
+            .focusable(interactionSource = interactionSource)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) { content() }
 }
 
 private fun megabytes(bytes: Long): String = String.format(Locale.FRANCE, "%.1f", bytes / 1_000_000.0)
