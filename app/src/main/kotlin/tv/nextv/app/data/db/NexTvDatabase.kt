@@ -18,7 +18,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         HiddenGroupEntity::class,
         GuideOnlyChannelEntity::class,
     ],
-    version = 9,
+    version = 10,
     exportSchema = false,
 )
 abstract class NexTvDatabase : RoomDatabase() {
@@ -97,6 +97,13 @@ abstract class NexTvDatabase : RoomDatabase() {
             }
         }
 
+        /** Langue de la bande-annonce des fiches TMDB : nouvelle colonne, les fiches avec bande-annonce sont relues. */
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE tmdb_cache ADD COLUMN trailerLanguage TEXT")
+            }
+        }
+
         /**
          * Premier épisode de chaque série (ordre de la playlist) et nombre d'épisodes, comme à l'enregistrement.
          * `position + 0` : le minimum est lu dans l'index par clé, pas en parcourant l'index des positions
@@ -112,7 +119,7 @@ abstract class NexTvDatabase : RoomDatabase() {
 
         fun create(context: Context): NexTvDatabase =
             Room.databaseBuilder(context.applicationContext, NexTvDatabase::class.java, "nextv.db")
-                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
                 // Versions de test antérieures (1) : les données sont rechargées depuis la playlist.
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()

@@ -912,7 +912,7 @@ internal fun SpotlightBillboard(
         if (trailer && !compact && trailerKey != null) {
             // Cadre au format de la vidéo (16/9) sur toute la hauteur : l'image entière, rien de coupé.
             Box(Modifier.align(Alignment.CenterEnd).fillMaxHeight().aspectRatio(16f / 9f)) {
-                TrailerBackdrop(trailerKey, Modifier.fillMaxSize())
+                TrailerBackdrop(trailerKey, spotlight?.details?.trailerLanguage, Modifier.fillMaxSize())
                 TrailerFade(background)
             }
         }

@@ -29,10 +29,12 @@ import kotlinx.coroutines.delay
  * Bande-annonce YouTube ([key]) derrière la grande affiche, avec le son et sans les commandes, après
  * [TRAILER_DELAY_MILLIS] sur le même film (pas de lecture en passant d'une affiche à l'autre). Elle
  * passe par une page web (lecteur YouTube intégré) qui ne prend jamais le focus de la télécommande,
- * et se met en pause quand l'appli passe en arrière-plan.
+ * et se met en pause quand l'appli passe en arrière-plan. Sous-titres selon sa langue ([language],
+ * donnée par TMDB) : aucun en français (VF, ou VOSTFR qui a déjà les siens dans l'image), en français
+ * pour une autre langue, au choix de YouTube si elle est inconnue.
  */
 @Composable
-internal fun TrailerBackdrop(key: String, modifier: Modifier = Modifier) {
+internal fun TrailerBackdrop(key: String, language: String?, modifier: Modifier = Modifier) {
     var show by remember(key) { mutableStateOf(false) }
     LaunchedEffect(key) {
         delay(TRAILER_DELAY_MILLIS)
@@ -55,7 +57,7 @@ internal fun TrailerBackdrop(key: String, modifier: Modifier = Modifier) {
             onDispose { lifecycle.removeObserver(observer) }
         }
         AndroidView(
-            factory = { context -> trailerView(context, key).also { view = it } },
+            factory = { context -> trailerView(context, key, captions(language)).also { view = it } },
             onRelease = { web -> web.destroy() },
             modifier = Modifier.fillMaxSize(),
         )
@@ -63,7 +65,7 @@ internal fun TrailerBackdrop(key: String, modifier: Modifier = Modifier) {
 }
 
 @SuppressLint("SetJavaScriptEnabled")
-private fun trailerView(context: android.content.Context, key: String): WebView = WebView(context).apply {
+private fun trailerView(context: android.content.Context, key: String, captions: Captions): WebView = WebView(context).apply {
     isFocusable = false
     isFocusableInTouchMode = false
     importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
@@ -84,14 +86,37 @@ private fun trailerView(context: android.content.Context, key: String): WebView 
         var player=null;
         function pause(){try{player.pauseVideo();}catch(e){}}
         function resume(){try{player.playVideo();}catch(e){}}
+        var captions='${captions.name}';
+        var captionsSet=false;
+        function call(f){try{f();}catch(e){}}
+        function track(list,lang){return list.filter(function(t){return (t.languageCode||'').indexOf(lang)==0;})[0];}
+        function applyCaptions(p){
+          if(captions=='OFF'){call(function(){p.setOption('captions','track',{});});return;}
+          if(captions!='FRENCH'||captionsSet)return;
+          call(function(){
+            // Piste française, sinon anglaise ; aucune autre (une piste coréenne n'aide pas).
+            var list=p.getOption('captions','tracklist')||[];
+            if(!list.length)return;
+            var t=track(list,'fr')||track(list,'en');
+            p.setOption('captions','track',t?{languageCode:t.languageCode}:{});
+            captionsSet=true;
+          });
+        }
+        // Les pistes arrivent après le démarrage : réglées encore pendant les premières secondes.
+        function watchCaptions(p){
+          var i=setInterval(function(){applyCaptions(p);},1000);
+          setTimeout(function(){clearInterval(i);},12000);
+        }
         function onYouTubeIframeAPIReady(){
           player=new YT.Player('player',{
             host:'https://www.youtube-nocookie.com',
             videoId:'$key',
             playerVars:{autoplay:1,controls:0,loop:1,playlist:'$key',modestbranding:1,rel:0,playsinline:1,
-              iv_load_policy:3,disablekb:1,fs:0,hl:'fr',cc_lang_pref:'fr',origin:'https://nixtv.app'},
+              iv_load_policy:3,disablekb:1,fs:0,hl:'fr',origin:'https://nixtv.app',
+              cc_load_policy:${captions.loadPolicy}},
             events:{
-              onReady:function(e){e.target.unMute();e.target.setVolume(100);e.target.playVideo();}
+              onReady:function(e){e.target.unMute();e.target.setVolume(100);applyCaptions(e.target);watchCaptions(e.target);e.target.playVideo();},
+              onApiChange:function(e){applyCaptions(e.target);}
             }
           });
         }
@@ -100,6 +125,24 @@ private fun trailerView(context: android.content.Context, key: String): WebView 
         </body></html>
     """.trimIndent()
     loadDataWithBaseURL("https://nixtv.app/", html, "text/html", "utf-8", null)
+}
+
+/** Sous-titres de la bande-annonce. */
+private enum class Captions(val loadPolicy: Int) {
+    /** Bande-annonce en français : aucun. */
+    OFF(0),
+
+    /** Autre langue : en français (piste française, sinon anglaise, sinon aucun). */
+    FRENCH(1),
+
+    /** Langue inconnue : au choix de YouTube. */
+    DEFAULT(0),
+}
+
+private fun captions(language: String?): Captions = when {
+    language.isNullOrEmpty() -> Captions.DEFAULT
+    language.startsWith("fr") -> Captions.OFF
+    else -> Captions.FRENCH
 }
 
 /** Temps passé sur la même affiche avant que sa bande-annonce démarre. */

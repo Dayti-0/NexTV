@@ -23,6 +23,7 @@ enum class MediaType { MOVIE, SERIES }
  *
  * @property rating note moyenne sur 10 ([stars] : sur 5).
  * @property trailerYoutubeKey identifiant YouTube de la bande-annonce, si TMDB en connaît une.
+ * @property trailerLanguage langue de cette bande-annonce (« fr », « en »…), vide si TMDB ne la donne pas.
  */
 data class MediaDetails(
     val tmdbId: Long,
@@ -38,6 +39,7 @@ data class MediaDetails(
     val posterUrl: String? = null,
     val backdropUrl: String? = null,
     val trailerYoutubeKey: String? = null,
+    val trailerLanguage: String? = null,
     val runtimeMinutes: Int? = null,
     val seasonCount: Int? = null,
 ) {
@@ -207,6 +209,7 @@ class TmdbClient(
                 ?.let { text -> translator?.translate(text, from = "en", to = language.substringBefore('-')) ?: text }
         }
         val date = json.optStringOrNull(if (type == MediaType.MOVIE) "release_date" else "first_air_date")
+        val trailer = trailer(json.optJSONObject("videos")?.optJSONArray("results"))
         return MediaDetails(
             tmdbId = id,
             type = type,
@@ -220,7 +223,8 @@ class TmdbClient(
             genres = json.optJSONArray("genres").objects().mapNotNull { it.optStringOrNull("name") },
             posterUrl = json.optStringOrNull("poster_path")?.let { "${imageBaseUrl}w500$it" },
             backdropUrl = json.optStringOrNull("backdrop_path")?.let { "${imageBaseUrl}w1280$it" },
-            trailerYoutubeKey = trailerKey(json.optJSONObject("videos")?.optJSONArray("results")),
+            trailerYoutubeKey = trailer?.optString("key"),
+            trailerLanguage = trailer?.let { it.optStringOrNull("iso_639_1").orEmpty() },
             runtimeMinutes = if (type == MediaType.MOVIE) {
                 json.optInt("runtime").takeIf { it > 0 }
             } else {
@@ -231,10 +235,10 @@ class TmdbClient(
     }
 
     /**
-     * Bande-annonce YouTube, de préférence dans la langue de l'interface, et doublée plutôt que
-     * sous-titrée (« VOSTFR » : sous-titres incrustés dans l'image, gênants sous la grande affiche).
+     * Bande-annonce YouTube, de préférence dans la langue de l'interface, et doublée (VF) plutôt
+     * que sous-titrée (VOSTFR).
      */
-    private fun trailerKey(videos: JSONArray?): String? {
+    private fun trailer(videos: JSONArray?): JSONObject? {
         val candidates = videos.objects().filter { it.optString("site").equals("YouTube", ignoreCase = true) && it.optStringOrNull("key") != null }
         val lang = language.substringBefore('-')
         val ranked = candidates.sortedWith(
@@ -243,7 +247,7 @@ class TmdbClient(
                 .thenByDescending { !SUBTITLED.containsMatchIn(it.optString("name")) }
                 .thenByDescending { it.optBoolean("official") },
         )
-        return ranked.firstOrNull { it.optString("type") == "Trailer" || it.optString("type") == "Teaser" }?.optString("key")
+        return ranked.firstOrNull { it.optString("type") == "Trailer" || it.optString("type") == "Teaser" }
     }
 
     private suspend fun get(key: String, url: HttpUrl): JSONObject {

@@ -75,6 +75,7 @@ class TmdbClientTest {
         assertEquals(listOf("Action", "Science-Fiction"), details.genres)
         assertEquals("https://image.tmdb.org/t/p/w500/poster.jpg", details.posterUrl)
         assertEquals("fr-trailer", details.trailerYoutubeKey)
+        assertEquals("fr", details.trailerLanguage)
         assertEquals(162, details.runtimeMinutes)
 
         val search = requests.first()

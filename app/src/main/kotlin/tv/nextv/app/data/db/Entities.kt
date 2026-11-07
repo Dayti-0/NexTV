@@ -170,6 +170,8 @@ data class TmdbCacheEntity(
     val posterUrl: String? = null,
     val backdropUrl: String? = null,
     val trailerKey: String? = null,
+    /** Langue de la bande-annonce (« fr », « en »…), vide si inconnue, `null` : fiche lue avant qu'elle soit retenue. */
+    val trailerLanguage: String? = null,
     val runtimeMinutes: Int? = null,
     val seasonCount: Int? = null,
 )
