@@ -4,6 +4,11 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.54
+- Interface Streaming façon Netflix : menu à gauche en icônes (Rechercher, sections, Catégories, Réglages) qui s'ouvre avec ←, à la place des onglets du haut
+- Streaming, Films et Séries : boutons « Lecture » (ou « Épisodes ») et « Plus d'infos » sur la grande affiche
+- Films et Séries : rangée « Top 10 de la semaine » avec les rangs en grand
+
 ## 0.2.53
 - Streaming et Cinéma Premium : ← depuis le bord gauche des rangées ouvre un volet avec toutes les catégories (TV, Films, Séries) et leur nombre ; OK ouvre la catégorie, → ou Retour referme le volet
 

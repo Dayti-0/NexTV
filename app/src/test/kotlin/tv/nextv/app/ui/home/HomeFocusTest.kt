@@ -94,6 +94,7 @@ class HomeFocusTest {
         val focused = mutableListOf<ChannelListRow>()
         compose.setContent { Home(HomeLayout.STREAMING, HomeActions(onChannelFocus = { focused += it })) }
         compose.waitForIdle()
+        enterStreamingContent()
         repeat(14) {
             compose.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
             compose.waitForIdle()
@@ -114,9 +115,15 @@ class HomeFocusTest {
         val categories = mutableListOf<Category>()
         compose.setContent { Home(layout, HomeActions(onCategory = { categories += it })) }
         compose.waitForIdle()
+        if (layout == HomeLayout.STREAMING) enterStreamingContent()
         // Dans les rangées (première vignette), puis ← : volet ouvert, focus sur ses catégories.
+        // Streaming : ← mène au menu de gauche, dont « Catégories » ouvre le volet.
         repeat(3) { press(Key.DirectionDown) }
         repeat(2) { press(Key.DirectionLeft) }
+        if (layout == HomeLayout.STREAMING) {
+            repeat(5) { press(Key.DirectionDown) }
+            press(Key.DirectionCenter)
+        }
         compose.onNodeWithText("Groupe 1").assertExists()
         // Descente jusqu'à une catégorie, OK : elle s'ouvre.
         repeat(6) { press(Key.DirectionDown) }
@@ -210,6 +217,7 @@ class HomeFocusTest {
         val focused = mutableListOf<ChannelListRow>()
         compose.setContent { Home(layout, HomeActions(onChannelFocus = { focused += it })) }
         compose.waitForIdle()
+        if (layout == HomeLayout.STREAMING) enterStreamingContent()
         if (quick) compose.mainClock.autoAdvance = false
         repeat(6) {
             compose.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
@@ -241,6 +249,7 @@ class HomeFocusTest {
         val focused = mutableListOf<ChannelListRow>()
         compose.setContent { Home(layout, HomeActions(onChannelFocus = { focused += it })) }
         compose.waitForIdle()
+        if (layout == HomeLayout.STREAMING) enterStreamingContent()
         repeat(3) { press(Key.DirectionDown) }
         val title = focused.last().groupTitle!!
         val tops = mutableListOf<Float>()
@@ -281,6 +290,7 @@ class HomeFocusTest {
         val focused = mutableListOf<String>()
         compose.setContent { Home(layout, HomeActions(onChannelFocus = { focused += it.title }, onPosterFocus = { focused += it.title }), section) }
         compose.waitForIdle()
+        if (layout == HomeLayout.STREAMING) enterStreamingContent()
         val safeBottom = compose.onRoot().getBoundsInRoot().bottom - 27.dp
         var checked = 0
         repeat(6) {
@@ -524,6 +534,15 @@ class HomeFocusTest {
     }
 
     /** Appui sur une touche, puis le temps des animations. */
+    /**
+     * Streaming : au premier appui (télécommande), le focus se pose dans le menu de gauche ; → entre dans
+     * le contenu (sur la télé, le contenu a le focus d'office).
+     */
+    private fun enterStreamingContent() {
+        press(Key.DirectionDown)
+        press(Key.DirectionRight)
+    }
+
     private fun press(key: Key) {
         compose.onRoot().performKeyInput { pressKey(key) }
         compose.mainClock.advanceTimeBy(500)

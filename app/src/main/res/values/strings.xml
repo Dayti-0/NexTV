@@ -158,6 +158,11 @@
     <string name="home_football">Foot</string>
     <string name="menu_subscription">Abonnement jusqu’au %1$s</string>
     <string name="menu_back">Menu</string>
+    <string name="nav_categories">Catégories</string>
+    <string name="hero_play">Lecture</string>
+    <string name="hero_episodes">Épisodes</string>
+    <string name="hero_info">Plus d’infos</string>
+    <string name="home_rows_top10">Top 10 de la semaine</string>
     <string name="search_everywhere">Rechercher partout</string>
     <string name="search_everywhere_channels">Chaînes</string>
     <string name="search_everywhere_hint">Chaîne, film ou série…</string>

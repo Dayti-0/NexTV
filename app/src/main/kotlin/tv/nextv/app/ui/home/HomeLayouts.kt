@@ -1,5 +1,12 @@
 package tv.nextv.app.ui.home
 
+import tv.nextv.app.ui.components.PillStyle
+import tv.nextv.app.ui.components.PillButton
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
@@ -163,7 +170,8 @@ internal fun StreamingHome(
     val scrolled by remember { derivedStateOf { listState.firstVisibleItemIndex > 1 } }
     val billboardHeight by animateDpAsState(
         when {
-            !scrolled -> STREAMING_BILLBOARD_HEIGHT
+            // Films et séries : place des boutons « Lecture » et « Plus d'infos » (sans onglets en haut).
+            !scrolled -> if (section == HomeSection.TV) STREAMING_BILLBOARD_HEIGHT else STREAMING_HERO_HEIGHT
             section == HomeSection.TV -> COMPACT_BILLBOARD_HEIGHT
             else -> SLIM_BILLBOARD_HEIGHT
         },
@@ -177,7 +185,7 @@ internal fun StreamingHome(
                     ChannelBillboard(preview, previewPlayer, content.now, padding, compact = scrolled)
                 } else {
                     // Avant toute sélection : la première tendance de la semaine.
-                    SpotlightBillboard(section, spotlight ?: content.discover.trending.firstOrNull()?.let { Spotlight(it) }, padding, compact = scrolled)
+                    SpotlightBillboard(section, spotlight ?: content.discover.trending.firstOrNull()?.let { Spotlight(it) }, padding, compact = scrolled, actions = actions)
                 }
             }
         }
@@ -265,6 +273,9 @@ internal sealed interface ShelfSpec {
     data class Posters(override val key: String, val title: Int, val items: List<PosterItem>, val from: String? = null) : ShelfSpec
     data class Continue(override val key: String, val items: List<ProgressEntity>) : ShelfSpec
     data class Group(override val key: String, val group: GroupRow) : ShelfSpec
+
+    /** Les dix tendances de la semaine, avec leur rang en grand à côté de l'affiche. */
+    data class Top10(override val key: String, val items: List<PosterItem>) : ShelfSpec
 }
 
 /** Rangées dans l'ordre de l'écran ; celles qui sont vides n'apparaissent pas. */
@@ -277,7 +288,12 @@ internal fun shelfList(content: ShelfContent): List<ShelfSpec> = buildList {
         HomeSection.MOVIES, HomeSection.SERIES -> {
             if (content.continueItems.isNotEmpty()) add(ShelfSpec.Continue("continue", content.continueItems))
             val discover = content.discover
-            if (discover.trending.isNotEmpty()) add(ShelfSpec.Posters("trending", R.string.home_rows_trending, discover.trending))
+            // Assez de tendances : un Top 10 à rangs, sinon la rangée ordinaire.
+            if (discover.trending.size >= TOP10_MIN) {
+                add(ShelfSpec.Top10("top10", discover.trending.take(10)))
+            } else if (discover.trending.isNotEmpty()) {
+                add(ShelfSpec.Posters("trending", R.string.home_rows_trending, discover.trending))
+            }
             if (discover.newest.isNotEmpty()) add(ShelfSpec.Posters("newest", R.string.home_rows_newest, discover.newest))
             if (discover.recommended.isNotEmpty()) add(ShelfSpec.Posters("recommended", R.string.home_rows_recommended, discover.recommended, discover.recommendedFrom))
             val favorites = if (content.section == HomeSection.MOVIES) content.favoriteMovies.map { it.toPoster() } else content.favoriteSeries.map { it.toPoster() }
@@ -398,6 +414,38 @@ internal fun LazyListScope.shelfItems(
                 }
             }
             is ShelfSpec.Group -> GroupShelf(spec, content, sizes, padding, lastOpened, actions, style)
+            is ShelfSpec.Top10 -> Shelf(
+                title = stringResource(R.string.home_rows_top10),
+                count = null,
+                padding = padding,
+                onMore = null,
+                itemWidth = sizes.poster + TOP10_NUMBER_WIDTH,
+                imageRatio = POSTER_RATIO,
+                rowKey = spec.key,
+                itemCount = spec.items.size,
+                lastOpened = lastOpened,
+                style = style,
+            ) {
+                itemsIndexed(spec.items, key = { _, it -> it.itemKey }) { index, item ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Rang en grand, en contour, comme sur les plateformes de streaming.
+                        Text(
+                            "${index + 1}",
+                            style = MaterialTheme.typography.displayLarge.copy(
+                                fontSize = 76.sp,
+                                fontWeight = FontWeight.Black,
+                                drawStyle = Stroke(width = 4f),
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+                            maxLines = 1,
+                            softWrap = false,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.width(TOP10_NUMBER_WIDTH),
+                        )
+                        ShelfPoster(item, index, spec.key, sizes.poster, content.favoriteKeys, lastOpened, actions, style)
+                    }
+                }
+            }
         }
     }
 }
@@ -835,7 +883,14 @@ internal fun ChannelBillboard(preview: ChannelPreview?, player: Player?, now: Lo
  * genres, note et résumé à gauche. [compact] : titre et détails seulement.
  */
 @Composable
-internal fun SpotlightBillboard(section: HomeSection, spotlight: Spotlight?, padding: Dp, compact: Boolean = false) {
+internal fun SpotlightBillboard(
+    section: HomeSection,
+    spotlight: Spotlight?,
+    padding: Dp,
+    compact: Boolean = false,
+    /** Boutons « Lecture » (film) ou « Épisodes » (série) et « Plus d'infos », sous le résumé. */
+    actions: HomeActions? = null,
+) {
     val background = MaterialTheme.colorScheme.background
     Box(Modifier.fillMaxSize()) {
         val image = spotlight?.backdropUrl ?: spotlight?.item?.imageUrl
@@ -872,6 +927,23 @@ internal fun SpotlightBillboard(section: HomeSection, spotlight: Spotlight?, pad
             if (!compact) {
                 spotlight?.overview?.let { overview ->
                     Text(overview, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+                val item = spotlight?.item
+                if (actions != null && item != null) {
+                    Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        val series = item.kind == ContentKind.SERIES
+                        PillButton(
+                            stringResource(if (series) R.string.hero_episodes else R.string.hero_play),
+                            { if (series) actions.onOpenSeries(item.id) else actions.onPlayChannel(item.id) },
+                            icon = Icons.Filled.PlayArrow,
+                            style = PillStyle.Primary,
+                        )
+                        PillButton(
+                            stringResource(R.string.hero_info),
+                            { if (series) actions.onOpenSeries(item.id) else actions.onOpenMovie(item.id) },
+                            icon = Icons.Filled.Info,
+                        )
+                    }
                 }
             }
         }
@@ -919,7 +991,8 @@ internal fun BillboardFade(background: Color) {
 internal fun shortTime(millis: Long): String = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(millis))
 
 /** Bannière pleine : la première rangée tient en entier dessous, au-dessus de la marge de sécurité du bas des TV. */
-private val STREAMING_BILLBOARD_HEIGHT = 184.dp
+private val STREAMING_BILLBOARD_HEIGHT = 200.dp
+private val STREAMING_HERO_HEIGHT = 260.dp
 private val COMPACT_BILLBOARD_HEIGHT = 104.dp
 private val SLIM_BILLBOARD_HEIGHT = 72.dp
 private val SEE_ALL_MIN_WIDTH = 104.dp
@@ -929,3 +1002,9 @@ private const val PLACEHOLDERS = 6
 
 /** Rangées de chaînes relues toutes les 5 minutes (programmes en cours). */
 private const val ROW_REFRESH_MILLIS = 5 * 60_000L
+
+/** Tendances nécessaires pour un Top 10 (sinon une rangée ordinaire). */
+private const val TOP10_MIN = 5
+
+/** Place du rang à gauche de chaque affiche du Top 10. */
+private val TOP10_NUMBER_WIDTH = 84.dp

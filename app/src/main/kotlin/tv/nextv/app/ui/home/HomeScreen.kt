@@ -472,7 +472,9 @@ fun HomeContent(
         favoriteKeys = favoriteKeys,
         now = now,
     )
-    // Volet des catégories des interfaces à rangées : toutes les catégories de la section, à un appui sur ←.
+    // Volet des catégories des interfaces à rangées : toutes les catégories de la section, à un appui sur ←
+    // (Streaming : bouton « Catégories » du menu de gauche).
+    val drawerOpen = rememberSaveable(section) { mutableStateOf(false) }
     val drawerRail: @Composable (Modifier) -> Unit = { railModifier ->
         CategoryRail(
             section = section,
@@ -526,12 +528,15 @@ fun HomeContent(
                 }
                 return@CompositionLocalProvider
             }
-            Column(Modifier.fillMaxSize().padding(padding)) {
-                topBar()
+            // Streaming sur la télé : menu de gauche (façon Netflix) au lieu des onglets du haut.
+            val streamingNav = layout == HomeLayout.STREAMING && window.isWide && onMenu == null
+            Box(Modifier.fillMaxSize().padding(padding)) {
+            Column(Modifier.fillMaxSize().padding(start = if (streamingNav) STREAMING_NAV_WIDTH else 0.dp)) {
+                if (!streamingNav) topBar()
                 when {
                     section == HomeSection.GUIDE -> guide(Modifier.weight(1f))
                     section == HomeSection.FOOTBALL -> football(Modifier.weight(1f))
-                    layout == HomeLayout.STREAMING && category == Category.All -> CategoryDrawer(drawerRail, Modifier.weight(1f)) {
+                    layout == HomeLayout.STREAMING && category == Category.All -> CategoryDrawer(drawerRail, Modifier.weight(1f), drawerOpen, initialFocus = streamingNav && window.isTv) {
                         StreamingHome(
                         content = shelfContent,
                         window = window,
@@ -576,6 +581,19 @@ fun HomeContent(
                         modifier = Modifier.weight(1f),
                     )
                 }
+            }
+            if (streamingNav) {
+                StreamingNav(
+                    section = section,
+                    window = window,
+                    onSection = actions.onSection,
+                    onSearch = onSearch,
+                    onCategories = if (catalog && category == Category.All) ({ drawerOpen.value = true }) else null,
+                    onSettings = actions.onSettings,
+                    onFocusChange = { tabsFocused.value = it },
+                    modifier = Modifier.align(Alignment.CenterStart),
+                )
+            }
             }
         }
     }

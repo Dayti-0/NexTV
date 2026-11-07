@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,9 +46,13 @@ import androidx.compose.ui.unit.dp
 internal fun CategoryDrawer(
     rail: @Composable (Modifier) -> Unit,
     modifier: Modifier = Modifier,
+    /** Ouverture du volet, partagée avec un bouton « Catégories » (menu de gauche de Streaming). */
+    openState: MutableState<Boolean> = rememberSaveable { mutableStateOf(false) },
+    /** Focus de départ dans le contenu (premier affichage sur la télé), au lieu du menu. */
+    initialFocus: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    var open by rememberSaveable { mutableStateOf(false) }
+    var open by openState
     val focusManager = LocalFocusManager.current
     val contentFocus = remember { FocusRequester() }
     val railFocus = remember { FocusRequester() }
@@ -58,6 +63,13 @@ internal fun CategoryDrawer(
     BackHandler(enabled = open) { close() }
     LaunchedEffect(open) {
         if (open) runCatching { railFocus.requestFocus() }
+    }
+    var initialFocusDone by rememberSaveable { mutableStateOf(false) }
+    if (initialFocus && !initialFocusDone) {
+        LaunchedEffect(Unit) {
+            runCatching { contentFocus.requestFocus() }
+            initialFocusDone = true
+        }
     }
     Box(modifier.fillMaxSize()) {
         Box(
