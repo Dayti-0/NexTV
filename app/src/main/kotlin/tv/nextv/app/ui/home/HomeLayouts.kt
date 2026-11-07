@@ -162,6 +162,8 @@ internal fun StreamingHome(
     lastOpened: MutableState<OpenedItem?>,
     actions: HomeActions,
     modifier: Modifier = Modifier,
+    /** Bande-annonce en fond de la grande affiche (réglages). */
+    trailers: Boolean = false,
 ) {
     val section = content.section
     val padding = if (window.isWide) 28.dp else window.horizontalPadding
@@ -185,7 +187,7 @@ internal fun StreamingHome(
                     ChannelBillboard(preview, previewPlayer, content.now, padding, compact = scrolled)
                 } else {
                     // Avant toute sélection : la première tendance de la semaine.
-                    SpotlightBillboard(section, spotlight ?: content.discover.trending.firstOrNull()?.let { Spotlight(it) }, padding, compact = scrolled, actions = actions)
+                    SpotlightBillboard(section, spotlight ?: content.discover.trending.firstOrNull()?.let { Spotlight(it) }, padding, compact = scrolled, actions = actions, trailer = trailers)
                 }
             }
         }
@@ -890,6 +892,8 @@ internal fun SpotlightBillboard(
     compact: Boolean = false,
     /** Boutons « Lecture » (film) ou « Épisodes » (série) et « Plus d'infos », sous le résumé. */
     actions: HomeActions? = null,
+    /** Bande-annonce en fond après quelques secondes (réglages), quand TMDB en a une. */
+    trailer: Boolean = false,
 ) {
     val background = MaterialTheme.colorScheme.background
     Box(Modifier.fillMaxSize()) {
@@ -901,6 +905,13 @@ internal fun SpotlightBillboard(
                 } else {
                     Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color.Transparent, MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)))))
                 }
+                BillboardFade(background)
+            }
+        }
+        val trailerKey = spotlight?.details?.trailerYoutubeKey
+        if (trailer && !compact && trailerKey != null) {
+            Box(Modifier.align(Alignment.CenterEnd).fillMaxHeight().fillMaxWidth(0.66f)) {
+                TrailerBackdrop(trailerKey, Modifier.fillMaxSize())
                 BillboardFade(background)
             }
         }

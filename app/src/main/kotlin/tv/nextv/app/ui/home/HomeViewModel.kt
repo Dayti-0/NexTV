@@ -197,6 +197,10 @@ class HomeViewModel(
     val sourceId: StateFlow<Long?> = container.settings.activePlaylistId
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
+    /** Bande-annonce en fond de la grande affiche de Streaming (réglages). */
+    val trailers: StateFlow<Boolean> = container.settings.trailerAutoplay
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
     val section = MutableStateFlow(HomeSection.TV)
 
     private val categories = MutableStateFlow<Map<HomeSection, Category>>(emptyMap())

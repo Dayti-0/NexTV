@@ -237,6 +237,7 @@ fun SettingsScreen(
         },
         onCycleDecoder = viewModel::cycleDecoder,
         onChannelPreview = viewModel::setChannelPreview,
+        onTrailerAutoplay = viewModel::setTrailerAutoplay,
         onStartOnLastChannel = viewModel::setStartOnLastChannel,
         onLowerAdVolume = viewModel::setLowerAdVolume,
         onAppearance = onAppearance,
@@ -280,6 +281,7 @@ fun SettingsContent(
     onGroups: (ContentKind) -> Unit = {},
     onCycleDecoder: (String) -> Unit = {},
     onChannelPreview: (Boolean) -> Unit = {},
+    onTrailerAutoplay: (Boolean) -> Unit = {},
     onStartOnLastChannel: (Boolean) -> Unit = {},
     onLowerAdVolume: (Boolean) -> Unit = {},
     onAppearance: () -> Unit = {},
@@ -470,6 +472,12 @@ fun SettingsContent(
                                     onClick = onCyclePreviewVolume,
                                 )
                             }
+                            ToggleRow(
+                                title = stringResource(R.string.settings_trailer_autoplay),
+                                description = stringResource(R.string.settings_trailer_autoplay_help),
+                                checked = state.trailerAutoplay,
+                                onChange = onTrailerAutoplay,
+                            )
                             if (state.playlist != null) {
                                 // Catégories masquables : chaînes, films, séries.
                                 listOf(

@@ -73,6 +73,8 @@ data class SettingsUiState(
     val hiddenGroups: Map<ContentKind, Int> = emptyMap(),
     /** Aperçu vidéo de la chaîne sélectionnée à l'accueil. */
     val channelPreview: Boolean = true,
+    /** Bande-annonce en fond de la grande affiche (Streaming). */
+    val trailerAutoplay: Boolean = true,
     /** Lecture directe de la dernière chaîne regardée à l'ouverture. */
     val startOnLastChannel: Boolean = false,
     /** Son baissé pendant les publicités. */
@@ -198,15 +200,16 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         val audioPassthrough: Boolean,
         val france3Region: String?,
         val france3Regions: List<FranceRegions.Region>,
+        val trailerAutoplay: Boolean,
     )
 
     /** Réglages ajoutés depuis : son de l'aperçu, fréquence de mise à jour, dernier plantage, filtres des chaînes. */
     private val extras = combine(
         combine(settings.previewVolume, settings.playlistRefresh, lastCrash, ::Triple),
-        combine(settings.hideUhd, settings.audioPassthrough, ::Pair),
+        combine(settings.hideUhd, settings.audioPassthrough, settings.trailerAutoplay, ::Triple),
         combine(settings.france3Region, france3Regions, ::Pair),
-    ) { (volume, refresh, crash), (hideUhd, passthrough), (region, regions) ->
-        Extras(volume, refresh, crash, hideUhd, passthrough, region, regions)
+    ) { (volume, refresh, crash), (hideUhd, passthrough, trailers), (region, regions) ->
+        Extras(volume, refresh, crash, hideUhd, passthrough, region, regions, trailers)
     }
 
     val state: StateFlow<SettingsUiState> = combine(
@@ -249,6 +252,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             audioPassthrough = extra.audioPassthrough,
             france3Region = extra.france3Region,
             france3Regions = extra.france3Regions,
+            trailerAutoplay = extra.trailerAutoplay,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
@@ -367,6 +371,10 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     fun setChannelPreview(enabled: Boolean) {
         viewModelScope.launch { settings.setChannelPreview(enabled) }
+    }
+
+    fun setTrailerAutoplay(enabled: Boolean) {
+        viewModelScope.launch { settings.setTrailerAutoplay(enabled) }
     }
 
 

@@ -263,6 +263,13 @@ class SettingsRepository(
         dataStore.edit { it[CHANNEL_PREVIEW] = enabled }
     }
 
+    /** Bande-annonce en fond de la grande affiche (Streaming) : plus de connexion, peut ralentir l'appareil. */
+    val trailerAutoplay: Flow<Boolean> = dataStore.data.map { it[TRAILER_AUTOPLAY] ?: true }.distinctUntilChanged()
+
+    suspend fun setTrailerAutoplay(enabled: Boolean) {
+        dataStore.edit { it[TRAILER_AUTOPLAY] = enabled }
+    }
+
     /** Chaînes regardées récemment dans une playlist (clés des chaînes, la plus récente en premier). */
     fun recentChannels(sourceId: Long): Flow<List<String>> = dataStore.data
         .map { prefs -> prefs[recentKey(sourceId)]?.split('\n')?.filter { it.isNotEmpty() }.orEmpty() }
@@ -412,6 +419,7 @@ class SettingsRepository(
         val TILES_PER_ROW = intPreferencesKey("tiles_per_row")
         val DNS_PROVIDER = stringPreferencesKey("dns_provider")
         val CHANNEL_PREVIEW = booleanPreferencesKey("channel_preview")
+        val TRAILER_AUTOPLAY = booleanPreferencesKey("trailer_autoplay")
         val ASPECT_MODE = stringPreferencesKey("aspect_mode")
         val AUDIO_LANGUAGE = stringPreferencesKey("audio_language")
         val SUBTITLE_LANGUAGE = stringPreferencesKey("subtitle_language")

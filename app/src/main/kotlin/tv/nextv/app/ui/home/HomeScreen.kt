@@ -174,6 +174,7 @@ fun HomeScreen(
     val layout by viewModel.layout.collectAsStateWithLifecycle()
     val channelCount by viewModel.channelCount.collectAsStateWithLifecycle()
     val menuCounts by viewModel.menuCounts.collectAsStateWithLifecycle()
+    val trailers by viewModel.trailers.collectAsStateWithLifecycle()
     val recentChannels by viewModel.recentChannels.collectAsStateWithLifecycle()
     val previewEnabled by viewModel.previewEnabled.collectAsStateWithLifecycle()
     val preview by viewModel.preview.collectAsStateWithLifecycle()
@@ -335,6 +336,7 @@ fun HomeScreen(
         snackbarHostState = snackbar,
         actions = actions,
         onSearch = openSearch,
+        trailers = trailers,
         guide = { modifier ->
             sourceId?.let {
                 GuideScreen(it, playChannel, modifier, onReplay = { channelId, start, stop ->
@@ -443,6 +445,8 @@ fun HomeContent(
     onMenu: (() -> Unit)? = null,
     /** Recherche de partout (chaînes, films et séries), bouton de la barre du haut. */
     onSearch: (() -> Unit)? = null,
+    /** Bande-annonce en fond de la grande affiche de Streaming (réglages). */
+    trailers: Boolean = false,
 ) {
     val window = rememberWindowInfo()
     // Dernier élément ouvert : sa liste revient à sa place et il reprend le focus au retour sur l'accueil.
@@ -549,6 +553,7 @@ fun HomeContent(
                         spotlight = spotlight,
                         lastOpened = lastOpened,
                         actions = actions,
+                        trailers = trailers,
                         )
                     }
                     else -> CatalogBody(
