@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.44
+- Ajout d'une playlist : textes d'aide raccourcis sous l'adresse
+
 ## 0.2.43
 - Adresse du serveur Xtream et lien M3U : le début se choisit sous le champ (http://www., https://www., http://, https:// ou aucun)
 - Mots de passe (playlist, compte Xtream, proxy) toujours affichés en clair, sans bouton « Afficher / Masquer »

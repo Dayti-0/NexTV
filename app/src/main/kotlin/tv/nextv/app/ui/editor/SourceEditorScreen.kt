@@ -357,7 +357,6 @@ private fun AddressField(value: String, onValueChange: (String) -> Unit, label: 
         addressPrefix = prefix,
     )
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), itemVerticalAlignment = Alignment.CenterVertically) {
-        Text(stringResource(R.string.editor_address_start), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         AddressPrefix.CHOICES.forEach { choice ->
             ChoiceChip(choice.ifEmpty { stringResource(R.string.editor_address_start_none) }, selected = choice == prefix) {
                 // Ce qui est déjà tapé reste, avec le nouveau début.
