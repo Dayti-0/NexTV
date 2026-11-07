@@ -105,6 +105,7 @@ import tv.nextv.app.data.db.ChannelListRow
 import tv.nextv.app.data.db.GroupRow
 import tv.nextv.app.data.settings.AspectMode
 import tv.nextv.app.ui.common.appViewModel
+import tv.nextv.app.ui.components.edgeFade
 import tv.nextv.app.ui.components.Badge
 import tv.nextv.app.ui.components.ChannelLogo
 import tv.nextv.app.ui.components.FocusSurface
@@ -533,10 +534,6 @@ fun PlayerScreen(onBack: () -> Unit) {
             onCategory = viewModel::selectMenuCategory,
             onPlay = viewModel::playFromMenu,
             onProgramme = viewModel::showProgramme,
-            onInfo = {
-                viewModel.closeMenu()
-                infoVisible = true
-            },
             programme = menuProgramme,
             onFocusChannel = viewModel::focusMenuChannel,
         )
@@ -915,7 +912,6 @@ fun ChannelMenu(
     onPlay: (Long) -> Unit,
     /** Appui long sur OK : fiche du programme de la chaîne. */
     onProgramme: (ChannelListRow) -> Unit = {},
-    onInfo: () -> Unit = {},
     /** Programme de la chaîne sélectionnée, montré en grand à côté de la liste (écran large). */
     programme: MenuProgramme? = null,
     onFocusChannel: (ChannelListRow) -> Unit = {},
@@ -1000,29 +996,32 @@ fun ChannelMenu(
                     .statusBarsPadding()
                     .padding(top = if (window.isTv) window.topPadding else 20.dp),
             ) {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(stringResource(R.string.player_channel_list), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                    IconAction(Icons.Filled.Info, stringResource(R.string.player_info_title), onInfo, modifier = Modifier.focusProperties { canFocus = false })
-                    // Heure actuelle.
-                    Text(timeOf(now), style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 8.dp))
-                }
-                // Catégories : gauche/droite depuis la liste (pas de focus ici), toucher sur écran tactile.
-                LazyRow(
-                    state = chipsState,
-                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    item { MenuChip(stringResource(R.string.home_favorites), favoritesMode, star = true) { onCategory(Category.Favorites) } }
-                    item { MenuChip(stringResource(R.string.channels_all_short), menu.category == Category.All) { onCategory(Category.All) } }
-                    items(groups, key = { it.title ?: "\u0000" }) { group ->
-                        val title = group.title.orEmpty()
-                        MenuChip(group.title ?: stringResource(R.string.channels_no_group), menu.category == Category.Group(title)) {
-                            onCategory(Category.Group(title))
+                // Catégories et heure sur une seule ligne. Catégories : gauche/droite depuis la liste (pas
+                // de focus ici), toucher sur écran tactile ; elles s'estompent sur les bords où il en reste.
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    LazyRow(
+                        state = chipsState,
+                        contentPadding = PaddingValues(start = 24.dp, end = CHIPS_FADE, top = 12.dp, bottom = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .edgeFade(
+                                start = { if (chipsState.canScrollBackward) 1f else 0f },
+                                end = { if (chipsState.canScrollForward) 1f else 0f },
+                                length = CHIPS_FADE,
+                            ),
+                    ) {
+                        item { MenuChip(stringResource(R.string.home_favorites), favoritesMode, star = true) { onCategory(Category.Favorites) } }
+                        item { MenuChip(stringResource(R.string.channels_all_short), menu.category == Category.All) { onCategory(Category.All) } }
+                        items(groups, key = { it.title ?: "\u0000" }) { group ->
+                            val title = group.title.orEmpty()
+                            MenuChip(group.title ?: stringResource(R.string.channels_no_group), menu.category == Category.Group(title)) {
+                                onCategory(Category.Group(title))
+                            }
                         }
                     }
+                    // Heure actuelle.
+                    Text(timeOf(now), style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(end = 24.dp))
                 }
                 val rowFor: @Composable (Int, ChannelListRow) -> Unit = { index, channel ->
                     val current = channel.id == menu.currentChannelId || channel.itemKey == menu.currentItemKey
@@ -1151,6 +1150,9 @@ private const val MENU_DESCRIPTION_LINES = 6
 
 /** Largeur de l'image du programme dans le volet du menu des chaînes. */
 private val MENU_ART_WIDTH = 176.dp
+
+/** Fondu sur les bords de la rangée des catégories du menu des chaînes. */
+private val CHIPS_FADE = 28.dp
 
 @Composable
 private fun MenuChip(name: String, selected: Boolean, star: Boolean = false, onClick: () -> Unit) {
