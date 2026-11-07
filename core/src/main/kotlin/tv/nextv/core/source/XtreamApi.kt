@@ -6,6 +6,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
 import okhttp3.Response
+import okio.ByteString.Companion.decodeBase64
 import org.json.JSONException
 import org.json.JSONObject
 import tv.nextv.core.log.Logger
@@ -35,6 +36,9 @@ data class XtreamAccountInfo(
     val active: Boolean get() = authenticated && (status == null || status.equals("Active", ignoreCase = true))
 }
 
+/** Programme d'une chaîne d'après le guide du compte Xtream (`get_short_epg`). */
+data class XtreamProgramme(val title: String, val description: String?, val startMillis: Long, val stopMillis: Long)
+
 /**
  * Interface `player_api.php` des serveurs Xtream Codes, interrogée sur le serveur de la playlist
  * puis sur ses serveurs de secours. Les identifiants font partie de l'adresse appelée : elle n'est
@@ -59,7 +63,23 @@ class XtreamApi(
     suspend fun archiveDays(source: PlaylistSource): Map<String, Int>? =
         call(source, action = "get_live_streams", listTimeoutMillis) { response -> response.body.charStream().use(::readArchiveDays) }
 
-    private suspend fun <T : Any> call(source: PlaylistSource, action: String?, timeoutMillis: Long, read: (Response) -> T?): T? {
+    /**
+     * Prochains programmes ([limit]) d'une chaîne d'après le guide du fournisseur, par l'identifiant de
+     * son flux : celui des chaînes « événement » (« FR| DAZN LALIGA 2 (LIVE MATCH ONLY) ») peut annoncer le
+     * match qu'elles diffusent. `null` si ce n'est pas un compte Xtream ou si aucun serveur ne répond.
+     */
+    suspend fun shortEpg(source: PlaylistSource, streamId: String, limit: Int = 8): List<XtreamProgramme>? =
+        call(source, action = "get_short_epg", callTimeoutMillis, mapOf("stream_id" to streamId, "limit" to limit.toString())) {
+            parseShortEpg(it.body.string())
+        }
+
+    private suspend fun <T : Any> call(
+        source: PlaylistSource,
+        action: String?,
+        timeoutMillis: Long,
+        parameters: Map<String, String> = emptyMap(),
+        read: (Response) -> T?,
+    ): T? {
         val account = (source.location as? SourceLocation.Remote)?.url?.let(XtreamAccount::parse) ?: return null
         for (root in (listOf(account.server) + source.mirrors).distinct()) {
             val url = root.toHttpUrlOrNull()?.newBuilder()
@@ -67,6 +87,7 @@ class XtreamApi(
                 ?.addQueryParameter("username", account.username)
                 ?.addQueryParameter("password", account.password)
                 ?.apply { if (action != null) addQueryParameter("action", action) }
+                ?.apply { parameters.forEach { (name, value) -> addQueryParameter(name, value) } }
                 ?.build() ?: continue
             val request = Request.Builder().url(url)
                 .header("Accept", "application/json")
@@ -110,6 +131,39 @@ class XtreamApi(
         }
 
         private fun JSONObject.text(name: String): String? = if (isNull(name)) null else optString(name).trim().takeIf { it.isNotEmpty() }
+
+        /**
+         * Réponse de `get_short_epg` : `{"epg_listings":[{"title":"…","start_timestamp":"…",…}]}`, titres et
+         * descriptions en base64 (ou en clair selon les serveurs). `null` si la réponse est illisible.
+         */
+        fun parseShortEpg(body: String): List<XtreamProgramme>? = try {
+            val listings = JSONObject(body).optJSONArray("epg_listings")
+            if (listings == null) {
+                emptyList()
+            } else {
+                (0 until listings.length()).mapNotNull { index ->
+                    val listing = listings.optJSONObject(index) ?: return@mapNotNull null
+                    val title = listing.text("title")?.let(::plainText) ?: return@mapNotNull null
+                    val start = listing.number("start_timestamp")?.times(1000) ?: return@mapNotNull null
+                    val stop = listing.number("stop_timestamp")?.times(1000) ?: return@mapNotNull null
+                    if (stop <= start) return@mapNotNull null
+                    XtreamProgramme(title, listing.text("description")?.let(::plainText), start, stop)
+                }
+            }
+        } catch (e: JSONException) {
+            null
+        }
+
+        private val BASE64 = Regex("^[A-Za-z0-9+/]+={0,2}$")
+
+        /** Texte en base64 décodé ; tel quel s'il n'en est pas (serveurs qui l'envoient en clair). */
+        fun plainText(value: String): String? {
+            val decoded = value.takeIf { it.length % 4 == 0 && BASE64.matches(it) }
+                ?.decodeBase64()
+                ?.utf8()
+                ?.takeIf { text -> '\uFFFD' !in text && text.none { it.isISOControl() && it != '\n' && it != '\r' && it != '\t' } }
+            return (decoded ?: value).trim().takeIf { it.isNotEmpty() }
+        }
 
         /** Nombre donné tel quel ou entre guillemets (« "1" »), selon les serveurs. */
         private fun JSONObject.number(name: String): Long? = text(name)?.toLongOrNull()

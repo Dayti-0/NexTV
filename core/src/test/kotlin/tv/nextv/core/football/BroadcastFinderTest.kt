@@ -192,4 +192,26 @@ class BroadcastFinderTest {
         )
         assertEquals(emptyMap<ScheduledMatch, List<String>>(), result)
     }
+
+    /** Titres du guide du fournisseur sur ses chaînes « LIVE MATCH » (images d'attente du 7 novembre 2026), noms d'ESPN. */
+    @Test
+    fun `provider titles of event channels find their matches`() {
+        fun team(name: String, short: String = name) = Team(name, short, null, null)
+        val fixtures = listOf(
+            "Málaga vs. Racing de Santander" to (team("Málaga") to team("Racing Santander", "Racing")),
+            "Espanyol vs. Deportivo de La Coruña" to (team("Espanyol") to team("Deportivo")),
+            "Osasuna vs. Athletic Club" to (team("Osasuna") to team("Athletic Club", "Athletic")),
+            "Valencia vs. Real Madrid" to (team("Valencia") to team("Real Madrid")),
+            "Elche vs. Real Betis" to (team("Elche") to team("Real Betis", "Betis")),
+        )
+        val matches = fixtures.mapIndexed { index, (_, teams) ->
+            match(index.toLong(), Competition.LA_LIGA, teams.first, teams.second, kickoff + index * 135 * minute)
+        }
+        val broadcasts = fixtures.mapIndexed { index, (title, _) ->
+            val start = kickoff + index * 135 * minute
+            broadcast("LALIGA ${index + 1}", title, category = null, start = start, stop = start + 120 * minute)
+        }
+        val found = BroadcastFinder.assign(matches, broadcasts)
+        matches.forEachIndexed { index, match -> assertEquals(fixtures[index].first, listOf("LALIGA ${index + 1}"), found[match]) }
+    }
 }

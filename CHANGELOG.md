@@ -4,6 +4,11 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.39
+- Foot : les chaînes « LIVE MATCH » sont d'abord lues dans le guide de votre fournisseur (compte Xtream) ; quand il annonce le match, la chaîne n'est plus marquée « chaîne probable »
+- Foot : sinon, les matchs sont numérotés depuis le début de la journée : un match garde sa chaîne quand le précédent est terminé (Espanyol – Deportivo sur LALIGA 2)
+- Foot : Deportivo La Coruña est reconnu dans le guide
+
 ## 0.2.38
 - Compte Xtream et lien M3U : « http://www. » reste affiché devant ce que vous tapez, même quand le clavier de la Fire TV remplace le texte du champ ; une adresse tapée en entier (http://…, https://…) le remplace
 

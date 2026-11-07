@@ -11,6 +11,7 @@ import tv.nextv.core.football.EventChannels
 import tv.nextv.core.football.MatchStatus
 import tv.nextv.core.football.ScheduledMatch
 import tv.nextv.core.football.Team
+import tv.nextv.core.source.XtreamProgramme
 
 class FootballScheduleTest {
 
@@ -168,5 +169,33 @@ class FootballScheduleTest {
         assertEquals(listOf("FR| DAZN PPV 2", "FR| DAZN LALIGA 4 (LIVE MATCH)"), classico.channels.map { it.name })
         assertTrue(!classico.probable)
         assertEquals(1, classico.otherChannels)
+    }
+
+    @Test
+    fun `the provider guide of an event channel is the sure source`() {
+        // Guide du compte Xtream : LALIGA 3 annonce Espanyol – Deportivo (contre la numérotation devinée).
+        val day = fridayNoon + 24 * hour - 11 * hour - 18 * 60_000L // samedi, minuit passé
+        val malaga = match(21, Competition.LA_LIGA, "Málaga", "Racing Santander", day + 14 * hour)
+        val espanyol = match(22, Competition.LA_LIGA, "Espanyol", "Deportivo", day + 16 * hour + 15 * 60_000L)
+        val osasuna = match(23, Competition.LA_LIGA, "Osasuna", "Athletic Club", day + 18 * hour + 30 * 60_000L)
+        val events = (1..5).map { number ->
+            val name = "FR| DAZN LALIGA $number (LIVE MATCH ONLY)"
+            EventChannelRow(100L + number, name, name, null, hasGuide = false, streamUrl = "http://serveur/u/p/${500 + number}") to
+                checkNotNull(EventChannels.parse(name))
+        }
+        val announced = providerRow(
+            events[2].first,
+            XtreamProgramme("Espanyol vs. Deportivo de La Coruña", null, espanyol.kickoffMillis, espanyol.kickoffMillis + 2 * hour),
+        )
+        val shown = scheduledMatches(listOf(malaga, espanyol, osasuna), listOf(announced), day + 9 * hour, events)
+            .associateBy { it.label }
+        val sure = shown.getValue("Espanyol – Deportivo")
+        assertEquals("FR| DAZN LALIGA 3 (LIVE MATCH ONLY)", sure.channel?.name)
+        assertTrue(!sure.probable)
+        // Les autres restent devinés, sans la chaîne dont le fournisseur a donné le match.
+        val first = shown.getValue("Málaga – Racing Santander")
+        assertEquals("FR| DAZN LALIGA 1 (LIVE MATCH ONLY)", first.channel?.name)
+        assertTrue(first.probable)
+        assertEquals(null, shown.getValue("Osasuna – Athletic Club").channel)
     }
 }

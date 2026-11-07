@@ -246,5 +246,8 @@ object BroadcastFinder {
         "paris saint germain fc" to listOf("psg", "paris sg"),
         "paris saint germain" to listOf("psg", "paris sg"),
         "as roma" to listOf("as rome"),
+        // « Deportivo » seul (calendrier d'ESPN) est un mot trop courant : la ville le désigne.
+        "deportivo" to listOf("deportivo la coruna", "deportivo de la coruna", "la coruna", "coruna"),
+        "deportivo la coruna" to listOf("deportivo de la coruna", "la coruna", "coruna"),
     )
 }

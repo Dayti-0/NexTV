@@ -110,6 +110,44 @@ class XtreamApiTest {
         assertEquals("get_live_streams", primary.takeRequest().url.queryParameter("action"))
     }
 
+    /** « Espanyol vs. Deportivo de La Coruña » en base64, comme le renvoient les serveurs. */
+    private val espanyol = java.util.Base64.getEncoder().encodeToString("Espanyol vs. Deportivo de La Coruña".toByteArray())
+
+    @Test
+    fun `the provider guide of a channel is read with its titles decoded`() = runBlocking {
+        primary.enqueue(
+            MockResponse.Builder().code(200).body(
+                """{"epg_listings":[
+                  {"id":"1","title":"$espanyol","description":"","start":"2026-11-07 16:15:00","end":"2026-11-07 18:15:00",
+                   "start_timestamp":"1762528500","stop_timestamp":"1762535700"},
+                  {"id":"2","title":"Valencia vs. Real Madrid","start_timestamp":1762545600,"stop_timestamp":1762552800},
+                  {"id":"3","title":"","start_timestamp":"1762560000","stop_timestamp":"1762567200"}
+                ]}""",
+            ).build(),
+        )
+        val source = PlaylistSource(
+            name = "Test",
+            location = SourceLocation.Remote(primary.url("/get.php?username=u&password=p&type=m3u_plus").toString()),
+        )
+        val programmes = api.shortEpg(source, "4321")!!
+        assertEquals(listOf("Espanyol vs. Deportivo de La Coruña", "Valencia vs. Real Madrid"), programmes.map { it.title })
+        assertEquals(1762528500_000L, programmes[0].startMillis)
+        assertEquals(1762535700_000L, programmes[0].stopMillis)
+        val request = primary.takeRequest().url
+        assertEquals("get_short_epg", request.queryParameter("action"))
+        assertEquals("4321", request.queryParameter("stream_id"))
+    }
+
+    @Test
+    fun `titles sent in clear stay as they are`() {
+        assertEquals("Valencia vs. Real Madrid", XtreamApi.plainText("Valencia vs. Real Madrid"))
+        assertEquals("Live", XtreamApi.plainText("TGl2ZQ=="))
+        // Mot qui ressemble à du base64 sans en être (texte illisible une fois décodé).
+        assertEquals("DAZN", XtreamApi.plainText("DAZN"))
+        assertNull(XtreamApi.parseShortEpg("<html>"))
+        assertEquals(emptyList<XtreamProgramme>(), XtreamApi.parseShortEpg("""{"epg_listings":[]}"""))
+    }
+
     @Test
     fun `playlists that are not Xtream accounts have no account details`() = runBlocking {
         assertNull(api.accountInfo(PlaylistSource(name = "M3U", location = SourceLocation.Remote(primary.url("/liste.m3u").toString()))))

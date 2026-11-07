@@ -9,10 +9,11 @@ data class EventChannel(val competition: Competition, val number: Int, val famil
 
 /**
  * Chaînes « événement » des playlists, sans programme dans le guide : « FR| DAZN LALIGA 2 (LIVE MATCH ONLY) »
- * diffuse le 2e prochain match de Liga, dans l'ordre des coups d'envoi. Leur image d'attente le montre
- * (samedi 7 novembre 2026 au matin : LALIGA 1 à 4 pour les quatre matchs du samedi, LALIGA 5 pour
- * Elche – Betis le dimanche à 14:00 ; DAZN 1 et 2 SERIE A pour les deux matchs de 15:00, DAZN 3 SERIE A
- * pour celui de 18:00). Le guide ne le dit pas : la chaîne n'est que probable.
+ * diffuse le 2e match de Liga de la journée, dans l'ordre des coups d'envoi. Leurs images d'attente le
+ * montrent (samedi 7 novembre 2026 au matin : LALIGA 1 à 4 pour les quatre matchs du samedi, LALIGA 5 pour
+ * Elche – Betis le dimanche à 14:00 ; DAZN 1 et 2 SERIE A pour les deux matchs de 15:00, DAZN 3 SERIE A pour
+ * celui de 18:00), et un match garde sa chaîne quand le précédent est terminé (Espanyol – Deportivo toujours
+ * sur LALIGA 2 après Málaga – Racing). Le guide ne le dit pas : la chaîne n'est que probable.
  */
 object EventChannels {
 
@@ -53,26 +54,31 @@ object EventChannels {
     }
 
     /**
-     * Chaînes probables de chaque match : le fournisseur met les prochains matchs d'une compétition sur
-     * ses chaînes, dans l'ordre des coups d'envoi et sans s'arrêter au jour (le match de vendredi,
-     * terminé, n'avait plus de chaîne samedi matin). Le n-ième match pas encore terminé (à venir ou en
-     * cours) passe donc sur la chaîne n. Deux matchs au même coup d'envoi se partagent leurs deux
-     * chaînes, celle de leur rang en premier.
-     * [channels] : la meilleure d'abord ; seule la famille de la première compte pour chaque compétition
-     * (une autre a sa propre numérotation), et la première chaîne de chaque numéro.
+     * Chaînes à retenir, la meilleure d'abord dans [channels] : pour chaque compétition, la famille de la
+     * première (une autre a sa propre numérotation) et la première chaîne de chaque numéro.
      */
-    fun <T> assign(matches: List<ScheduledMatch>, channels: List<Pair<T, EventChannel>>): Map<ScheduledMatch, List<T>> {
-        val result = LinkedHashMap<ScheduledMatch, List<T>>()
-        for ((competition, numbered) in channels.groupBy { it.second.competition }) {
+    fun <T> primaries(channels: List<Pair<T, EventChannel>>): List<Pair<T, EventChannel>> =
+        channels.groupBy { it.second.competition }.values.flatMap { numbered ->
             val family = numbered.first().second.family
-            val byNumber = HashMap<Int, T>()
-            numbered.filter { it.second.family == family }.forEach { (item, event) -> byNumber.putIfAbsent(event.number, item) }
-            val upcoming = matches
-                .filter { it.competition == competition && (it.status == MatchStatus.SCHEDULED || it.status == MatchStatus.LIVE) }
+            numbered.filter { it.second.family == family }.distinctBy { it.second.number }
+        }
+
+    /**
+     * Chaînes probables de chaque match : le fournisseur numérote les matchs d'une compétition depuis le
+     * début de la journée ([dayStart], minuit), dans l'ordre des coups d'envoi, matchs terminés compris,
+     * et continue avec ceux des jours suivants sur les chaînes qui restent. Deux matchs au même coup
+     * d'envoi se partagent leurs deux chaînes, celle de leur rang en premier.
+     */
+    fun <T> assign(matches: List<ScheduledMatch>, channels: List<Pair<T, EventChannel>>, dayStart: Long): Map<ScheduledMatch, List<T>> {
+        val result = LinkedHashMap<ScheduledMatch, List<T>>()
+        for ((competition, numbered) in primaries(channels).groupBy { it.second.competition }) {
+            val byNumber = numbered.associate { (item, event) -> event.number to item }
+            val day = matches
+                .filter { it.competition == competition && it.kickoffMillis >= dayStart && it.status in NUMBERED }
                 .sortedWith(compareBy({ it.kickoffMillis }, { it.id }))
                 .groupBy { it.kickoffMillis }
             var rank = 1
-            for (group in upcoming.values) {
+            for (group in day.values) {
                 val ranks = rank until rank + group.size
                 if (group.size <= MAX_TIED) {
                     group.forEachIndexed { index, match ->
@@ -86,4 +92,7 @@ object EventChannels {
         }
         return result
     }
+
+    /** Matchs numérotés : joués ou à jouer (pas ceux reportés ou annulés). */
+    private val NUMBERED = setOf(MatchStatus.SCHEDULED, MatchStatus.LIVE, MatchStatus.FINISHED)
 }
