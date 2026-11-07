@@ -3,6 +3,7 @@ package tv.nextv.app.ui.components
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -13,6 +14,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
+import androidx.compose.foundation.gestures.ScrollableState
 import androidx.compose.foundation.interaction.FocusInteraction
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -87,6 +89,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -699,6 +702,84 @@ private class BottomMarginBringIntoViewSpec(private val parent: BringIntoViewSpe
         return if (trailing > usable) trailing - usable else 0f
     }
 }
+
+/** Largeur des fondus sur les côtés des rangées qui défilent. */
+val EdgeFadeLength: Dp = 120.dp
+
+/**
+ * Rangée qui défile de gauche à droite avec un fondu sur ses bords, du côté où il reste des éléments
+ * à voir : [content] reçoit le modificateur du fondu (après celui qui fait déborder la rangée jusqu'aux
+ * bords de l'écran). Le fondu apparaît et disparaît en douceur ; l'élément choisi ne s'arrête jamais
+ * dedans.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun FadingRow(state: ScrollableState, content: @Composable (fade: Modifier) -> Unit) {
+    val start by animateFloatAsState(if (state.canScrollBackward) 1f else 0f, tween(EDGE_FADE_MILLIS), label = "row-fade-start")
+    val end by animateFloatAsState(if (state.canScrollForward) 1f else 0f, tween(EDGE_FADE_MILLIS), label = "row-fade-end")
+    val parent = LocalBringIntoViewSpec.current
+    val margin = with(LocalDensity.current) { EdgeFadeLength.toPx() }
+    val spec = remember(parent, margin) { EdgeMarginBringIntoViewSpec(parent, margin) }
+    CompositionLocalProvider(LocalBringIntoViewSpec provides spec) {
+        content(Modifier.edgeFade(start = { start }, end = { end }))
+    }
+}
+
+/**
+ * Fondus sur les bords d'une rangée : le contenu s'estompe vers la transparence (quel que soit le
+ * fond), avec une courbe douce. [start] et [end] : intensité de chaque fondu (0 : aucun, 1 : entier).
+ */
+fun Modifier.edgeFade(start: () -> Float, end: () -> Float, length: Dp = EdgeFadeLength): Modifier = this
+    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+    .drawWithContent {
+        drawContent()
+        val fade = length.toPx().coerceAtMost(size.width / 2)
+        if (fade <= 0f) return@drawWithContent
+        val rtl = layoutDirection == LayoutDirection.Rtl
+        val left = (if (rtl) end() else start()).coerceIn(0f, 1f)
+        val right = (if (rtl) start() else end()).coerceIn(0f, 1f)
+        // Opacité du contenu de l'intérieur (1) vers le bord : estompé surtout tout près du bord.
+        fun stops(strength: Float) = arrayOf(
+            0f to Color.Black,
+            0.45f to Color.Black.copy(alpha = 1f - 0.3f * strength),
+            0.8f to Color.Black.copy(alpha = 1f - 0.75f * strength),
+            1f to Color.Black.copy(alpha = 1f - strength),
+        )
+        if (left > 0f) {
+            drawRect(
+                brush = Brush.horizontalGradient(*stops(left), startX = fade, endX = 0f),
+                size = Size(fade, size.height),
+                blendMode = BlendMode.DstIn,
+            )
+        }
+        if (right > 0f) {
+            drawRect(
+                brush = Brush.horizontalGradient(*stops(right), startX = size.width - fade, endX = size.width),
+                topLeft = Offset(size.width - fade, 0f),
+                size = Size(fade, size.height),
+                blendMode = BlendMode.DstIn,
+            )
+        }
+    }
+
+/** Élément amené à l'écran hors des fondus des bords ([margin]) ; sinon comme d'habitude. */
+@OptIn(ExperimentalFoundationApi::class)
+private class EdgeMarginBringIntoViewSpec(private val parent: BringIntoViewSpec, private val margin: Float) : BringIntoViewSpec {
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+        val distance = parent.calculateScrollDistance(offset, size, containerSize)
+        if (size > containerSize - 2 * margin) return distance
+        // Place de l'élément une fois la rangée défilée.
+        val leading = offset - distance
+        val trailing = leading + size
+        return when {
+            leading < margin -> distance - (margin - leading)
+            trailing > containerSize - margin -> distance + (trailing - (containerSize - margin))
+            else -> distance
+        }
+    }
+}
+
+private const val EDGE_FADE_MILLIS = 250
 
 /** Heure actuelle (« 20:47 »), mise à jour à chaque changement de minute. */
 @Composable

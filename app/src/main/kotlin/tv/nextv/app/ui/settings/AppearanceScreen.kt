@@ -67,6 +67,7 @@ import kotlinx.coroutines.launch
 import tv.nextv.app.AppContainer
 import tv.nextv.app.R
 import tv.nextv.app.ui.common.appViewModel
+import tv.nextv.app.ui.components.FadingRow
 import tv.nextv.app.ui.components.FocusSurface
 import tv.nextv.app.ui.components.IconAction
 import tv.nextv.app.data.settings.GridColumns
@@ -254,28 +255,32 @@ fun AppearanceContent(
                 // Toutes les palettes sur une seule ligne, qui défile de gauche à droite jusqu'aux bords de
                 // l'écran ; le nom de chaque catégorie au-dessus de sa première palette. Ouverte sur la palette choisie.
                 val palettes = remember { PaletteCategory.entries.flatMap { category -> ThemeStyle.entries.filter { it.category == category } } }
+                // Fondu sur les bords où il reste des palettes : la ligne se devine au-delà de l'écran.
                 val paletteRow = rememberLazyListState(initialFirstVisibleItemIndex = (palettes.indexOf(theme) - 1).coerceAtLeast(0))
-                LazyRow(
-                    Modifier.bleed(window.horizontalPadding),
-                    state = paletteRow,
-                    contentPadding = PaddingValues(horizontal = window.horizontalPadding, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                ) {
-                    itemsIndexed(palettes, key = { _, style -> style.name }) { index, style ->
-                        val first = index == 0 || palettes[index - 1].category != style.category
-                        Column(
-                            Modifier.padding(start = if (first && index > 0) CATEGORY_GAP else 0.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            Text(
-                                if (first) categoryLabel(style.category).uppercase() else "",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 1.2.sp,
-                                maxLines = 1,
-                            )
-                            PaletteCard(style, current = style == theme, onClick = { onTheme(style) })
+                FadingRow(paletteRow) { fade ->
+                    LazyRow(
+                        // Place en haut et en bas pour l'ombre et le zoom de la palette choisie (le fondu ne les coupe pas).
+                        Modifier.bleed(window.horizontalPadding, vertical = SHADOW_ROOM).then(fade),
+                        state = paletteRow,
+                        contentPadding = PaddingValues(horizontal = window.horizontalPadding, vertical = 8.dp + SHADOW_ROOM),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        itemsIndexed(palettes, key = { _, style -> style.name }) { index, style ->
+                            val first = index == 0 || palettes[index - 1].category != style.category
+                            Column(
+                                Modifier.padding(start = if (first && index > 0) CATEGORY_GAP else 0.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Text(
+                                    if (first) categoryLabel(style.category).uppercase() else "",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.2.sp,
+                                    maxLines = 1,
+                                )
+                                PaletteCard(style, current = style == theme, onClick = { onTheme(style) })
+                            }
                         }
                     }
                 }
@@ -286,13 +291,23 @@ fun AppearanceContent(
     }
 }
 
-/** Déborde de [edge] de chaque côté : une rangée qui défile va jusqu'aux bords de l'écran, malgré la marge de la page. */
-private fun Modifier.bleed(edge: Dp): Modifier = layout { measurable, constraints ->
+/**
+ * Déborde de [edge] de chaque côté : une rangée qui défile va jusqu'aux bords de l'écran, malgré la
+ * marge de la page ; et de [vertical] en haut et en bas, sans changer la place qu'elle occupe.
+ */
+private fun Modifier.bleed(edge: Dp, vertical: Dp = 0.dp): Modifier = layout { measurable, constraints ->
     if (!constraints.hasBoundedWidth) return@layout measurable.measure(constraints).let { layout(it.width, it.height) { it.place(0, 0) } }
     val side = edge.roundToPx()
-    val placeable = measurable.measure(constraints.copy(minWidth = constraints.maxWidth + 2 * side, maxWidth = constraints.maxWidth + 2 * side))
-    layout(constraints.maxWidth, placeable.height) { placeable.place(-side, 0) }
+    val extra = vertical.roundToPx()
+    val maxHeight = if (constraints.hasBoundedHeight) constraints.maxHeight + 2 * extra else constraints.maxHeight
+    val placeable = measurable.measure(
+        constraints.copy(minWidth = constraints.maxWidth + 2 * side, maxWidth = constraints.maxWidth + 2 * side, maxHeight = maxHeight),
+    )
+    layout(constraints.maxWidth, (placeable.height - 2 * extra).coerceAtLeast(0)) { placeable.place(-side, -extra) }
 }
+
+/** Place laissée autour de la rangée des palettes pour l'ombre de la palette choisie. */
+private val SHADOW_ROOM = 12.dp
 
 /** Écart supplémentaire entre deux catégories de palettes sur la ligne. */
 private val CATEGORY_GAP = 18.dp
