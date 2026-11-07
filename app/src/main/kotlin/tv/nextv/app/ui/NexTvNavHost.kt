@@ -25,6 +25,7 @@ import tv.nextv.app.ui.player.PlayerScreen
 import tv.nextv.app.ui.player.PlayerViewModel
 import tv.nextv.app.ui.settings.ChannelGroupsScreen
 import tv.nextv.app.ui.settings.ProxySettingsScreen
+import tv.nextv.app.ui.settings.QuickSetupScreen
 import tv.nextv.app.ui.settings.SettingsScreen
 import tv.nextv.app.ui.sources.SourcesScreen
 import tv.nextv.app.ui.settings.AppearanceScreen
@@ -46,6 +47,7 @@ private object Routes {
     const val SERIES = "series/{$ARG_ITEM}"
     const val SETTINGS = "settings"
     const val APPEARANCE = "appearance"
+    const val SETUP = "setup"
     const val PROXY = "proxy"
     const val GROUPS = "groups/{$ARG_KIND}"
 
@@ -106,10 +108,21 @@ private fun AppNavHost(navController: NavHostController) {
             StartupScreen(
                 onHome = {
                     navController.restartAt(Routes.HOME)
-                    // Réglage « Démarrer sur la dernière chaîne » : lecture directe, l'accueil reste derrière.
-                    scope.launch { container.lastChannelToResume()?.let { navController.navigate(Routes.player(it)) } }
+                    scope.launch {
+                        // Configuration rapide pas encore proposée : par-dessus l'accueil, une seule fois.
+                        if (!container.settings.quickSetupDone.first()) {
+                            navController.navigate(Routes.SETUP)
+                        } else {
+                            // Réglage « Démarrer sur la dernière chaîne » : lecture directe, l'accueil reste derrière.
+                            container.lastChannelToResume()?.let { navController.navigate(Routes.player(it)) }
+                        }
+                    }
                 },
-                onWelcome = { navController.restartAt(Routes.WELCOME) },
+                onWelcome = {
+                    navController.restartAt(Routes.WELCOME)
+                    // Première ouverture : la configuration rapide, puis l'ajout d'une playlist.
+                    scope.launch { if (!container.settings.quickSetupDone.first()) navController.navigate(Routes.SETUP) }
+                },
                 onChoosePlaylist = { navController.navigate(Routes.PLAYLISTS) },
             )
         }
@@ -181,7 +194,11 @@ private fun AppNavHost(navController: NavHostController) {
                 onGroups = { navController.navigate(Routes.groups(it)) },
                 onRestored = { navController.restartAt(Routes.startup(reload = true)) },
                 onAppearance = { navController.navigate(Routes.APPEARANCE) },
+                onQuickSetup = { navController.navigate(Routes.SETUP) },
             )
+        }
+        composable(Routes.SETUP) {
+            QuickSetupScreen(onDone = { navController.popBackStack() })
         }
         composable(Routes.APPEARANCE) {
             AppearanceScreen(onBack = { navController.popBackStack() })

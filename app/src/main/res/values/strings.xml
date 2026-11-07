@@ -334,6 +334,59 @@
 
     <!-- Réglages : proxy -->
     <string name="settings_title">Réglages</string>
+    <!-- Réglages : pages -->
+    <string name="settings_page_display">Affichage</string>
+    <string name="settings_page_services">Films, séries et foot</string>
+    <string name="settings_page_no_playlist">Aucune playlist</string>
+    <string name="settings_page_version">Version %1$s</string>
+    <string name="settings_page_update_available">Nouvelle version %1$s</string>
+    <string name="settings_page_playlist_help">La playlist affichée à l’accueil et sa mise à jour</string>
+    <string name="settings_page_playback_help">Qualité de l’image, son et ouverture des chaînes</string>
+    <string name="settings_page_display_help">Interface de l’accueil, couleurs, aperçus et catégories</string>
+    <string name="settings_page_guide_help">Les programmes des chaînes, mis à jour chaque jour</string>
+    <string name="settings_page_services_help">Les fiches des films et séries, et les matchs de la section Foot</string>
+    <string name="settings_page_network_help">Adresse des serveurs et passage par un proxy</string>
+    <string name="settings_page_backup_help">Vos playlists et réglages dans un fichier</string>
+    <string name="settings_page_update_help">Version installée et nouveautés</string>
+    <string name="settings_group_active_playlist">Playlist active</string>
+    <string name="settings_group_quality">Qualité</string>
+    <string name="settings_group_channels">Chaînes</string>
+    <string name="settings_group_sound">Son</string>
+    <string name="settings_group_decoders">Décodeurs vidéo</string>
+    <string name="settings_group_interface">Interface et couleurs</string>
+    <string name="settings_group_preview">Aperçu et bande-annonce</string>
+    <string name="settings_group_categories">Catégories affichées</string>
+    <string name="settings_group_guide_source">Guide commun</string>
+    <string name="settings_group_dns">DNS</string>
+    <string name="settings_group_proxy">Proxy</string>
+    <string name="settings_group_backup_file">Fichier de sauvegarde</string>
+    <!-- Configuration rapide -->
+    <string name="quick_setup_title">Configuration rapide</string>
+    <string name="quick_setup_entry_help">Interface, couleurs et lecture en quelques étapes</string>
+    <string name="quick_setup_step_welcome">Bienvenue</string>
+    <string name="quick_setup_step_interface">Interface</string>
+    <string name="quick_setup_step_colors">Couleurs</string>
+    <string name="quick_setup_step_playback">Lecture</string>
+    <string name="quick_setup_step_done">C’est prêt</string>
+    <string name="quick_setup_welcome_title">Bienvenue sur NixTV</string>
+    <string name="quick_setup_welcome_text">Quelques choix pour adapter l’application à vos goûts : l’interface de l’accueil, les couleurs et la lecture. Tout se change plus tard dans Réglages › Configuration rapide.</string>
+    <string name="quick_setup_interface_title">Choisissez votre interface</string>
+    <string name="quick_setup_interface_text">L’accueil de l’application : les chaînes d’abord, ou les films et séries.</string>
+    <string name="quick_setup_colors_title">Choisissez vos couleurs</string>
+    <string name="quick_setup_colors_text">Passer sur une palette l’essaie sur tout l’écran ; OK la choisit.</string>
+    <string name="quick_setup_playback_title">Lecture</string>
+    <string name="quick_setup_playback_text">La qualité des chaînes et ce qui se lance tout seul.</string>
+    <string name="quick_setup_done_title">Tout est prêt</string>
+    <string name="quick_setup_done_text">Vous retrouverez la configuration rapide et tous les autres réglages dans Réglages.</string>
+    <string name="quick_setup_start">Commencer</string>
+    <string name="quick_setup_skip">Passer</string>
+    <string name="quick_setup_next">Suivant</string>
+    <string name="quick_setup_previous">Précédent</string>
+    <string name="quick_setup_finish">Terminer</string>
+    <string name="quick_setup_summary_interface">Interface : %1$s</string>
+    <string name="quick_setup_summary_colors">Couleurs : %1$s</string>
+    <string name="quick_setup_summary_quality">Qualité : %1$s</string>
+    <string name="quick_setup_step_count">Étape %1$d sur %2$d</string>
     <string name="settings_saved">Réglages enregistrés</string>
     <string name="settings_playlist">Playlist</string>
     <string name="settings_no_playlist">Aucune playlist active.</string>
@@ -373,7 +426,6 @@
     <string name="settings_crash_clear">Effacer</string>
     <string name="settings_playlist_updated">Playlist actualisée : %1$d entrées</string>
     <string name="settings_playback">Lecture</string>
-    <string name="settings_display">Affichage de l’accueil</string>
     <string name="settings_lower_ads">Baisser le son des pubs</string>
     <string name="settings_lower_ads_help">Quand le son devient nettement plus fort que le programme pendant quelques secondes (publicités), il est baissé presque au minimum, puis remis au niveau normal à la reprise. Le son Dolby envoyé tel quel à l’ampli n’est pas concerné.</string>
     <string name="settings_start_last_channel">Démarrer sur la dernière chaîne</string>

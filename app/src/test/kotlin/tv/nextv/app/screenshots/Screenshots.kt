@@ -38,6 +38,7 @@ import tv.nextv.app.ui.home.Category
 import tv.nextv.app.ui.home.HomeActions
 import tv.nextv.app.ui.home.HomeContent
 import tv.nextv.app.ui.home.HomeLayout
+import tv.nextv.core.stream.QualityTarget
 import tv.nextv.app.ui.player.NextEpisode
 import tv.nextv.app.ui.player.VodInfo
 import tv.nextv.app.ui.player.UpNextCard
@@ -62,6 +63,9 @@ import tv.nextv.core.football.Competition
 import tv.nextv.app.ui.settings.ChannelGroupsContent
 import tv.nextv.app.ui.settings.ProxySettingsContent
 import tv.nextv.app.ui.settings.SettingsContent
+import tv.nextv.app.ui.settings.SettingsPage
+import tv.nextv.app.ui.settings.QuickSetupContent
+import tv.nextv.app.ui.settings.QuickSetupStep
 import tv.nextv.app.ui.sources.SourcesContent
 import tv.nextv.app.ui.startup.StartupContent
 import tv.nextv.app.ui.startup.StartupStep
@@ -625,6 +629,54 @@ abstract class ScreenshotSuite(private val device: String) {
             onClearTmdbKey = {},
             onProxy = {},
             now = SampleData.NOW,
+            initialPage = SettingsPage.INCIDENT,
+        )
+    }
+
+    @Test
+    fun settingsPlayback() = capture("16g_reglages_lecture") {
+        SettingsContent(
+            state = SampleData.settings,
+            snackbarHostState = remember { SnackbarHostState() },
+            onBack = {},
+            onPlaylists = {},
+            onRefreshPlaylist = {},
+            onRefreshGuide = {},
+            onAutoQuality = {},
+            onSaveTmdbKey = {},
+            onClearTmdbKey = {},
+            onProxy = {},
+            now = SampleData.NOW,
+            initialPage = SettingsPage.PLAYBACK,
+        )
+    }
+
+    @Test
+    fun quickSetupInterface() = quickSetup("16h_configuration_interface", QuickSetupStep.INTERFACE)
+
+    @Test
+    fun quickSetupColors() = quickSetup("16i_configuration_couleurs", QuickSetupStep.COLORS)
+
+    @Test
+    fun quickSetupPlayback() = quickSetup("16j_configuration_lecture", QuickSetupStep.PLAYBACK)
+
+    private fun quickSetup(name: String, step: QuickSetupStep) = capture(name) {
+        QuickSetupContent(
+            step = step,
+            onStep = {},
+            onDone = {},
+            layout = HomeLayout.STREAMING,
+            onLayout = {},
+            theme = ThemeStyle.NIGHT,
+            onTheme = {},
+            quality = QualityTarget.BEST,
+            onQuality = {},
+            preview = true,
+            onPreview = {},
+            trailer = true,
+            onTrailer = {},
+            lastChannel = false,
+            onLastChannel = {},
         )
     }
 

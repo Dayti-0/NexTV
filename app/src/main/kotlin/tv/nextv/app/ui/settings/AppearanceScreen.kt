@@ -325,7 +325,7 @@ private fun Heading(text: String) {
  * des autres) : fond, panneau, carte sélectionnée, bouton principal, bouton secondaire et textes.
  */
 @Composable
-private fun PaletteCard(style: ThemeStyle, current: Boolean, onClick: () -> Unit) {
+internal fun PaletteCard(style: ThemeStyle, current: Boolean, onClick: () -> Unit) {
     val palette = remember(style) { style.palette() }
     FocusSurface(
         onClick = onClick,
@@ -416,7 +416,7 @@ private fun Pill(background: Color, content: Color, text: String) {
 
 /** Interface de l'accueil : schéma, nom et description. */
 @Composable
-private fun LayoutCard(layout: HomeLayout, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+internal fun LayoutCard(layout: HomeLayout, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, lines: Int = 4) {
     FocusSurface(
         onClick = onClick,
         modifier = modifier.resetPreviewOnFocus(),
@@ -435,8 +435,8 @@ private fun LayoutCard(layout: HomeLayout, selected: Boolean, onClick: () -> Uni
                 homeLayoutHelp(layout),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                minLines = 4,
-                maxLines = 4,
+                minLines = lines,
+                maxLines = lines,
             )
         }
     }
@@ -547,7 +547,7 @@ fun themeLabel(style: ThemeStyle): String = stringResource(
 )
 
 @Composable
-private fun categoryLabel(category: PaletteCategory): String = stringResource(
+internal fun categoryLabel(category: PaletteCategory): String = stringResource(
     when (category) {
         PaletteCategory.CLASSIC -> R.string.palette_classic
         PaletteCategory.PASTEL -> R.string.palette_pastel

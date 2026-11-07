@@ -270,6 +270,16 @@ class SettingsRepository(
         dataStore.edit { it[TRAILER_AUTOPLAY] = enabled }
     }
 
+    /**
+     * Configuration rapide déjà proposée : une seule fois, à la première ouverture (y compris pour qui
+     * avait l'application avant qu'elle existe), puis seulement depuis les réglages.
+     */
+    val quickSetupDone: Flow<Boolean> = dataStore.data.map { it[QUICK_SETUP_DONE] ?: false }.distinctUntilChanged()
+
+    suspend fun setQuickSetupDone() {
+        dataStore.edit { it[QUICK_SETUP_DONE] = true }
+    }
+
     /** Chaînes regardées récemment dans une playlist (clés des chaînes, la plus récente en premier). */
     fun recentChannels(sourceId: Long): Flow<List<String>> = dataStore.data
         .map { prefs -> prefs[recentKey(sourceId)]?.split('\n')?.filter { it.isNotEmpty() }.orEmpty() }
@@ -420,6 +430,7 @@ class SettingsRepository(
         val DNS_PROVIDER = stringPreferencesKey("dns_provider")
         val CHANNEL_PREVIEW = booleanPreferencesKey("channel_preview")
         val TRAILER_AUTOPLAY = booleanPreferencesKey("trailer_autoplay")
+        val QUICK_SETUP_DONE = booleanPreferencesKey("quick_setup_done")
         val ASPECT_MODE = stringPreferencesKey("aspect_mode")
         val AUDIO_LANGUAGE = stringPreferencesKey("audio_language")
         val SUBTITLE_LANGUAGE = stringPreferencesKey("subtitle_language")
