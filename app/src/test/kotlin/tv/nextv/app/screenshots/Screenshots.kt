@@ -25,6 +25,9 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import tv.nextv.app.data.settings.AspectMode
+import tv.nextv.app.ui.player.PlayerTracks
+import tv.nextv.app.ui.player.PlayerOptionsPanel
 import tv.nextv.app.CrashLog
 import tv.nextv.app.data.db.GroupVisibilityRow
 import tv.nextv.app.data.settings.GridColumns
@@ -526,6 +529,30 @@ abstract class ScreenshotSuite(private val device: String) {
         PlayerOverlay(state = state, now = SampleData.NOW, visible = false, showTouchControls = false, onBack = {}, onZap = {}, onRetry = {})
         Box(Modifier.fillMaxSize()) {
             PlaybackInfoPanel(state = state, visible = true, modifier = Modifier.align(Alignment.TopEnd))
+        }
+    }
+
+    @Test
+    fun playerOptions() = capture("13l_lecteur_options") {
+        FakeVideo()
+        Box(Modifier.fillMaxSize()) {
+            PlayerOptionsPanel(
+                visible = true,
+                tracks = PlayerTracks(),
+                aspect = AspectMode.FIT,
+                isLive = true,
+                infoVisible = false,
+                onAudio = {},
+                onSubtitles = {},
+                onAspect = {},
+                onPreviousChannel = {},
+                onToggleInfo = {},
+                onDismiss = {},
+                modifier = Modifier.align(Alignment.TopEnd),
+                qualityTarget = QualityTarget.HD,
+                playingQuality = "HD",
+                onQualityTarget = {},
+            )
         }
     }
 

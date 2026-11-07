@@ -47,6 +47,7 @@ import tv.nextv.core.model.StreamQuality
 import tv.nextv.core.model.StreamSupport
 import tv.nextv.core.net.RequestPurpose
 import tv.nextv.core.source.Mirrors
+import tv.nextv.core.stream.QualityTarget
 
 @OptIn(UnstableApi::class)
 @kotlin.OptIn(ExperimentalCoroutinesApi::class)
@@ -83,6 +84,10 @@ class PlayerViewModel(
     private var resumeOnStart = true
     private var multicastLock: WifiManager.MulticastLock? = null
     private var loadJob: Job? = null
+
+    /** Qualité visée (réglage commun à toutes les chaînes), modifiable depuis les options. */
+    val qualityTarget: StateFlow<QualityTarget> = container.settings.qualityTarget
+        .stateIn(viewModelScope, SharingStarted.Eagerly, QualityTarget.BEST)
 
     /** Format de l'image (réglage commun à toutes les lectures). */
     val aspectMode: StateFlow<AspectMode> = container.settings.aspectMode
@@ -196,6 +201,19 @@ class PlayerViewModel(
 
     fun setAspectMode(mode: AspectMode) {
         viewModelScope.launch { container.settings.setAspectMode(mode) }
+    }
+
+    /**
+     * Qualité visée choisie dans les options : enregistrée pour toutes les chaînes, et appliquée tout
+     * de suite à celle-ci quand elle existe dans une autre version (sauf en pause, différé ou replay).
+     */
+    fun setQualityTarget(target: QualityTarget) {
+        viewModelScope.launch {
+            container.settings.setQualityTarget(target)
+            if (delayed.recording || delayed.replay != null || state.value.paused || state.value.liveDelayMs > 0) return@launch
+            val primary = session.channel ?: return@launch
+            if (quality.changesVersion(target, session.playing?.id)) load(primary.id)
+        }
     }
 
     /** Chaîne regardée juste avant celle-ci (touche « chaîne précédente », ⏪). */

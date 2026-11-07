@@ -120,8 +120,10 @@ import tv.nextv.app.ui.guide.ProgrammeSheet
 import tv.nextv.app.ui.guide.formatDuration
 import tv.nextv.app.ui.home.Category
 import tv.nextv.app.ui.home.qualityLabel
+import tv.nextv.app.ui.settings.qualityTargetLabel
 import tv.nextv.app.ui.theme.NexTvColors
 import tv.nextv.app.ui.theme.NexTvIcons
+import tv.nextv.core.stream.QualityTarget
 import java.text.DateFormat
 import java.text.NumberFormat
 import java.util.Date
@@ -146,6 +148,7 @@ fun PlayerScreen(onBack: () -> Unit) {
     var infoVisible by rememberSaveable { mutableStateOf(false) }
     var optionsVisible by rememberSaveable { mutableStateOf(false) }
     val aspect by viewModel.aspectMode.collectAsStateWithLifecycle()
+    val qualityTarget by viewModel.qualityTarget.collectAsStateWithLifecycle()
     val rootFocus = remember { FocusRequester() }
     // Pendant une pause du direct, chaque seconde (retard sur le direct affiché) ; sinon toutes les 5 s.
     val now by produceState(System.currentTimeMillis(), state.paused) {
@@ -480,6 +483,9 @@ fun PlayerScreen(onBack: () -> Unit) {
             modifier = Modifier.align(Alignment.TopEnd),
             lowerAdVolume = state.lowerAdVolume,
             onLowerAdVolume = viewModel::setLowerAdVolume,
+            qualityTarget = qualityTarget,
+            playingQuality = state.quality,
+            onQualityTarget = viewModel::setQualityTarget,
             onBackToLive = if (canGoLive) {
                 {
                     optionsVisible = false
@@ -554,8 +560,8 @@ fun PlayerScreen(onBack: () -> Unit) {
 }
 
 /**
- * Options de lecture (touche Menu) : piste audio, sous-titres, format de l'image, chaîne
- * précédente et infos de lecture.
+ * Options de lecture (touche Menu) : piste audio, sous-titres, format de l'image, qualité visée
+ * (chaînes en direct), chaîne précédente et infos de lecture.
  */
 @Composable
 fun PlayerOptionsPanel(
@@ -574,6 +580,9 @@ fun PlayerOptionsPanel(
     lowerAdVolume: Boolean = false,
     onLowerAdVolume: (Boolean) -> Unit = {},
     onBackToLive: (() -> Unit)? = null,
+    qualityTarget: QualityTarget = QualityTarget.BEST,
+    playingQuality: String? = null,
+    onQualityTarget: ((QualityTarget) -> Unit)? = null,
 ) {
     AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = modifier) {
         val firstFocus = remember { FocusRequester() }
@@ -650,6 +659,17 @@ fun PlayerOptionsPanel(
                         selected = mode == aspect,
                         modifier = if (first) Modifier.focusRequester(firstFocus) else Modifier,
                     ) { onAspect(mode) }
+                }
+
+                // Qualité visée (réglage commun à toutes les chaînes) : appliquée tout de suite à la chaîne en cours.
+                if (isLive && onQualityTarget != null) {
+                    OptionsSection(
+                        playingQuality?.let { stringResource(R.string.player_quality_target_playing, it) }
+                            ?: stringResource(R.string.settings_quality_target),
+                    )
+                    QualityTarget.entries.forEach { target ->
+                        OptionRow(qualityTargetLabel(target), selected = target == qualityTarget) { onQualityTarget(target) }
+                    }
                 }
 
                 OptionsSection(stringResource(R.string.player_more))

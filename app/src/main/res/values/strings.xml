@@ -274,6 +274,7 @@
     <string name="player_subtitles_off">Désactivés</string>
     <string name="player_no_subtitles">Aucun sous-titre</string>
     <string name="player_aspect">Format de l’image</string>
+    <string name="player_quality_target_playing">Qualité visée · %1$s en cours</string>
     <string name="player_aspect_fit">Adapté à l’écran</string>
     <string name="player_aspect_fill">Étiré (plein écran)</string>
     <string name="player_aspect_zoom">Agrandi (bords coupés)</string>

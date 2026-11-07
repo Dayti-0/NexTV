@@ -15,6 +15,7 @@ import tv.nextv.core.model.StreamQuality
 import tv.nextv.core.model.StreamSupport
 import tv.nextv.core.stream.QualityOption
 import tv.nextv.core.stream.QualitySwitcher
+import tv.nextv.core.stream.QualityTarget
 
 /**
  * Qualité automatique d'une chaîne proposée en plusieurs versions (SD, HD, FHD, 4K) : version de
@@ -46,6 +47,12 @@ internal class AutoQualityController(
 
     private var workingQualityJob: Job? = null
 
+    /** Versions de la chaîne en cours (vide : une seule version). */
+    private var options: List<QualityOption> = emptyList()
+
+    /** Prochaine ouverture sans la qualité retenue : la qualité visée vient d'être changée. */
+    private var skipRemembered = false
+
     init {
         scope.launch { container.settings.autoQuality.collect { autoQuality = it } }
         scope.launch { container.settings.hideUhd.collect { hideUhd = it } }
@@ -69,7 +76,7 @@ internal class AutoQualityController(
             .map { QualityOption(it.id, StreamQuality.entries.firstOrNull { q -> q.name == it.quality }) }
             .let { all -> if (uhdAllowed) all else all.filter { it.quality != StreamQuality.UHD }.ifEmpty { all } }
         // Chaîne ouverte sur sa meilleure version : départ par la qualité qui a fonctionné la dernière fois.
-        val remembered = if (autoQuality && requested.isPrimary && options.size > 1) {
+        val remembered = if (autoQuality && requested.isPrimary && options.size > 1 && !skipRemembered) {
             container.settings.workingQuality(primary.sourceId, primary.variantKey)?.let { name -> StreamQuality.entries.firstOrNull { it.name == name } }
         } else {
             null
@@ -81,6 +88,8 @@ internal class AutoQualityController(
         val preferredId = rememberedStart
             ?: if (options.any { it.channelId == requested.id }) requested.id else options.firstOrNull()?.channelId ?: requested.id
         // Qualité visée (réglages) : au plus HD, ou SD pour économiser la connexion.
+        skipRemembered = false
+        this.options = if (options.size > 1) options else emptyList()
         val qualityTarget = container.settings.qualityTarget.first()
         val startId = if (options.size > 1) qualityTarget.start(options, preferredId) else preferredId
         switcher = if (options.size > 1) {
@@ -101,6 +110,20 @@ internal class AutoQualityController(
     /** Lecture sans choix de version (replay) : pas de qualité automatique. */
     fun reset() {
         switcher = null
+        options = emptyList()
+    }
+
+    /**
+     * Qualité visée changée pendant la lecture (menu Options) : vrai si la chaîne en cours a une
+     * version qui y correspond mieux que [playingId]. Sa prochaine ouverture part alors de la
+     * qualité visée, sans la dernière qualité qui a fonctionné.
+     */
+    fun changesVersion(target: QualityTarget, playingId: Long?): Boolean {
+        if (options.size <= 1) return false
+        val best = options.maxBy { StreamQuality.rankOf(it.quality) }.channelId
+        if (target.start(options, best) == playingId) return false
+        skipRemembered = true
+        return true
     }
 
     /** Version qui joue sans erreur une minute durant : la chaîne commencera par elle la prochaine fois. */
