@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.48
+- Cinéma Premium : menu d'accueil à grandes tuiles (TV, Guide TV, Films, Séries, Foot), avec Favoris, Reprendre la lecture, Réglages et la fin de l'abonnement ; « Retour » ou « Menu » y ramène depuis une section
+
 ## 0.2.47
 - Lecteur : le score des matchs des chaînes « LIVE MATCH » s'affiche bien dans le bandeau (il manquait faute de programme dans le guide)
 

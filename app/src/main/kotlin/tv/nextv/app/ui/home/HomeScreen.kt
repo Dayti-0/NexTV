@@ -1,5 +1,11 @@
 package tv.nextv.app.ui.home
 
+import tv.nextv.app.ui.components.PillStyle
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import tv.nextv.app.ui.common.appContainer
+import java.util.Date
+import java.text.DateFormat
+import androidx.compose.runtime.produceState
 import tv.nextv.app.ui.components.FadingBottom
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
@@ -193,6 +199,10 @@ fun HomeScreen(
     // maladresse). Déclaré en premier : les autres usages de « Retour » à l'accueil passent avant.
     var confirmExit by remember { mutableStateOf(false) }
     BackHandler { confirmExit = true }
+    // Cinéma Premium : menu d'accueil (grandes tuiles) au lieu des onglets ; « Retour » depuis une section y ramène.
+    var premiumMenu by rememberSaveable { mutableStateOf(true) }
+    val showMenu = layout == HomeLayout.PREMIUM && premiumMenu
+    BackHandler(enabled = layout == HomeLayout.PREMIUM && !premiumMenu) { premiumMenu = true }
     // Interfaces à rangées : « Retour » ramène d'une catégorie ou d'une recherche aux rangées.
     BackHandler(enabled = layout != HomeLayout.LIVE_CENTER && section.kind() != null && (category != Category.All || query.isNotEmpty())) {
         viewModel.showRows()
@@ -211,7 +221,38 @@ fun HomeScreen(
         onPlay(it)
     }
 
+    if (showMenu) {
+        val container = appContainer()
+        val subscription by produceState<String?>(null, sourceId) {
+            val source = sourceId?.let { container.playlistStore.getSource(it) } ?: return@produceState
+            value = container.xtreamApi.accountInfo(source)?.expiresAtMillis?.let { end ->
+                resources.getString(R.string.menu_subscription, DateFormat.getDateInstance(DateFormat.LONG).format(Date(end)))
+            }
+        }
+        PremiumMenu(
+            current = section,
+            onSection = { target ->
+                viewModel.selectSection(target)
+                premiumMenu = false
+            },
+            onFavorites = {
+                viewModel.selectSection(HomeSection.TV)
+                viewModel.selectCategory(Category.Favorites)
+                premiumMenu = false
+            },
+            onContinue = {
+                viewModel.selectSection(HomeSection.MOVIES)
+                viewModel.selectCategory(Category.ContinueWatching)
+                premiumMenu = false
+            },
+            onSettings = onSettings,
+            subscription = subscription,
+        )
+        return
+    }
+
     HomeContent(
+        onMenu = if (layout == HomeLayout.PREMIUM) ({ premiumMenu = true }) else null,
         section = section,
         groups = groups,
         category = category,
@@ -348,6 +389,8 @@ fun HomeContent(
     discover: Discover = Discover(),
     /** Film ou série sélectionné, avec sa fiche TMDB. */
     spotlight: Spotlight? = null,
+    /** Cinéma Premium : retour au menu d'accueil ; pas d'onglets des sections, un bouton « Menu » à la place. */
+    onMenu: (() -> Unit)? = null,
 ) {
     val window = rememberWindowInfo()
     // Dernier élément ouvert : sa liste revient à sa place et il reprend le focus au retour sur l'accueil.
@@ -379,7 +422,11 @@ fun HomeContent(
     )
     // Barre des onglets de l'interface choisie, la même dans toutes les sections (Guide TV et Foot compris).
     val topBar: @Composable () -> Unit = {
-        HomeTopBar(section, window, actions, onTabsFocused = { tabsFocused.value = it }, style = layout)
+        if (onMenu != null) {
+            MenuTopBar(section, window, onMenu, actions.onSettings)
+        } else {
+            HomeTopBar(section, window, actions, onTabsFocused = { tabsFocused.value = it }, style = layout)
+        }
     }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -672,6 +719,36 @@ private fun HomeTopBar(
     }
 }
 
+/**
+ * Barre du haut d'une section ouverte depuis le menu d'accueil de Cinéma Premium : « Menu » (comme
+ * « Retour »), le nom de la section et les réglages. « Menu » a le focus à l'ouverture de la section.
+ */
+@Composable
+private fun MenuTopBar(section: HomeSection, window: WindowInfo, onMenu: () -> Unit, onSettings: () -> Unit) {
+    val menuFocus = remember { FocusRequester() }
+    var focusDone by rememberSaveable(section) { mutableStateOf(false) }
+    if (window.isTv && !focusDone) {
+        LaunchedEffect(section) {
+            runCatching { menuFocus.requestFocus() }
+            focusDone = true
+        }
+    }
+    Row(
+        Modifier.fillMaxWidth().padding(start = window.horizontalPadding, end = window.horizontalPadding, top = window.topPadding, bottom = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Box(Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.surface.copy(alpha = PREMIUM_BAR_ALPHA))) {
+            PillButton(stringResource(R.string.menu_back), onMenu, Modifier.focusRequester(menuFocus), icon = Icons.AutoMirrored.Filled.ArrowBack, style = PillStyle.Ghost)
+        }
+        Icon(sectionIcon(section), contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+        Text(sectionLabel(section), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+        Box(Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.surface.copy(alpha = PREMIUM_BAR_ALPHA))) {
+            IconAction(Icons.Filled.Settings, stringResource(R.string.settings_title), onSettings)
+        }
+    }
+}
+
 /** Fond des onglets et du bouton des réglages de Cinéma Premium, lisible sur une image claire. */
 private const val PREMIUM_BAR_ALPHA = 0.72f
 
@@ -746,7 +823,7 @@ internal fun sectionLabel(section: HomeSection) = stringResource(
     },
 )
 
-private fun sectionIcon(section: HomeSection): ImageVector = when (section) {
+internal fun sectionIcon(section: HomeSection): ImageVector = when (section) {
     HomeSection.TV -> NexTvIcons.Tv
     HomeSection.MOVIES -> NexTvIcons.Movie
     HomeSection.SERIES -> NexTvIcons.Series

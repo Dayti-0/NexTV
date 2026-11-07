@@ -156,6 +156,13 @@
     <string name="recent_empty_message">Aucune chaîne regardée récemment.</string>
     <string name="preview_next">À suivre · %1$s  %2$s</string>
     <string name="home_football">Foot</string>
+    <string name="menu_tv_hint">Chaînes en direct</string>
+    <string name="menu_guide_hint">Programmes TV</string>
+    <string name="menu_movies_hint">Tous les films</string>
+    <string name="menu_series_hint">Toutes les séries</string>
+    <string name="menu_football_hint">Matchs et scores</string>
+    <string name="menu_subscription">Abonnement jusqu’au %1$s</string>
+    <string name="menu_back">Menu</string>
     <string name="football_all">Tous les matchs</string>
     <string name="football_today">Aujourd’hui</string>
     <string name="football_tomorrow">Demain</string>

@@ -44,6 +44,7 @@ import tv.nextv.app.ui.player.UpNextCard
 import tv.nextv.app.ui.player.FilmControls
 import tv.nextv.app.ui.settings.AppearanceContent
 import tv.nextv.app.ui.home.HomeSection
+import tv.nextv.app.ui.home.PremiumMenu
 import tv.nextv.app.ui.home.ReorderState
 import tv.nextv.app.ui.player.MenuChannel
 import tv.nextv.app.ui.player.ChannelMenu
@@ -171,6 +172,18 @@ abstract class ScreenshotSuite(private val device: String) {
     @Test
     fun homeViolet() = capture("05f_accueil_violet", ThemeStyle.VIOLET) {
         Home(HomeSection.MOVIES, Category.All)
+    }
+
+    @Test
+    fun premiumMenu() = capture("05p_menu_premium") {
+        PremiumMenu(
+            current = HomeSection.MOVIES,
+            onSection = {},
+            onFavorites = {},
+            onContinue = {},
+            onSettings = {},
+            subscription = "Abonnement jusqu’au 10 novembre 2026",
+        )
     }
 
     @Test
@@ -721,6 +734,8 @@ abstract class ScreenshotSuite(private val device: String) {
         val movies = remember { flowOf(PagingData.from(SampleData.movies)) }.collectAsLazyPagingItems()
         val series = remember { flowOf(PagingData.from(SampleData.series)) }.collectAsLazyPagingItems()
         HomeContent(
+            // Cinéma Premium : sections ouvertes depuis le menu d'accueil, bouton « Menu » au lieu des onglets.
+            onMenu = if (layout == HomeLayout.PREMIUM) ({}) else null,
             section = section,
             groups = when (section) {
                 HomeSection.MOVIES -> SampleData.movieGroups
