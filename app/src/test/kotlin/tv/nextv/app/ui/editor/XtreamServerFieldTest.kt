@@ -8,6 +8,8 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
@@ -35,7 +37,7 @@ class XtreamServerFieldTest {
 
     @Test
     fun `the start of the address is added to what is typed`() {
-        assertEquals("http://www.", AddressPrefix.shown(""))
+        assertEquals("http://www.", AddressPrefix.shown("", AddressPrefix.DEFAULT))
         assertEquals("http://www.exemple.com:8080", AddressPrefix.full("exemple.com:8080"))
         // « www. » tapé : seul « http:// » est ajouté ; adresse entière : rien.
         assertEquals("http://www.site.org", AddressPrefix.full("www.site.org"))
@@ -45,6 +47,36 @@ class XtreamServerFieldTest {
         // Adresse enregistrée : le début d'office n'est pas à retaper.
         assertEquals("exemple.com", AddressPrefix.typed("http://www.exemple.com"))
         assertEquals("http://ligne.exemple.com", AddressPrefix.typed("http://ligne.exemple.com"))
+        // Autre début choisi : https, sans « www. », ou aucun.
+        assertEquals("https://www.exemple.com", AddressPrefix.full("exemple.com", "https://www."))
+        assertEquals("https://exemple.com", AddressPrefix.full("exemple.com", "https://"))
+        assertEquals("exemple.com", AddressPrefix.full("exemple.com", ""))
+        assertEquals("https://www.", AddressPrefix.of("https://www.exemple.com"))
+        assertEquals("http://", AddressPrefix.of("http://ligne.exemple.com:8080"))
+        assertEquals(null, AddressPrefix.of("exemple.com"))
+    }
+
+    @Test
+    fun `another start can be chosen under the field`() {
+        var value by mutableStateOf("http://www.exemple.com")
+        compose.setContent {
+            NexTvTheme(ThemeStyle.NIGHT) {
+                SourceEditorContent(
+                    state = EditorState(name = "Test", mode = LocationMode.URL, url = value),
+                    snackbarHostState = androidx.compose.runtime.remember { androidx.compose.material3.SnackbarHostState() },
+                    onEdit = { edit -> value = edit(EditorState(name = "Test", mode = LocationMode.URL, url = value)).url },
+                    onPick = {},
+                    onSave = {},
+                    onBack = {},
+                )
+            }
+        }
+        compose.onNodeWithText("https://www.").performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitForIdle()
+        assertEquals("https://www.exemple.com", value)
+        compose.onNodeWithText("Aucun").performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitForIdle()
+        assertEquals("exemple.com", value)
     }
 
     @Test
@@ -65,7 +97,7 @@ class XtreamServerFieldTest {
         var value by mutableStateOf("")
         compose.setContent {
             NexTvTheme(ThemeStyle.NIGHT) {
-                NexTvTextField(value = value, onValueChange = { value = it }, label = "Adresse du serveur", addressPrefix = true)
+                NexTvTextField(value = value, onValueChange = { value = it }, label = "Adresse du serveur", addressPrefix = AddressPrefix.DEFAULT)
             }
         }
         val field = hasSetTextAction()
@@ -97,7 +129,7 @@ class XtreamServerFieldTest {
         // Lien importé sans « http:// » : pas de début affiché qui n'y serait pas.
         compose.setContent {
             NexTvTheme(ThemeStyle.NIGHT) {
-                NexTvTextField(value = "exemple.com/liste.m3u", onValueChange = {}, label = "URL de la playlist", addressPrefix = true)
+                NexTvTextField(value = "exemple.com/liste.m3u", onValueChange = {}, label = "URL de la playlist", addressPrefix = AddressPrefix.DEFAULT)
             }
         }
         compose.onNodeWithText("exemple.com/liste.m3u").assertIsDisplayed()
@@ -108,7 +140,7 @@ class XtreamServerFieldTest {
         var value by mutableStateOf("http://www.exemple.com")
         compose.setContent {
             NexTvTheme(ThemeStyle.NIGHT) {
-                NexTvTextField(value = value, onValueChange = { value = it }, label = "URL de la playlist", addressPrefix = true)
+                NexTvTextField(value = value, onValueChange = { value = it }, label = "URL de la playlist", addressPrefix = AddressPrefix.DEFAULT)
             }
         }
         compose.onNodeWithText("http://www.exemple.com").assertIsDisplayed()

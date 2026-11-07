@@ -30,7 +30,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import tv.nextv.app.R
@@ -153,9 +152,8 @@ fun ProxySettingsContent(
                                 NexTvTextField(
                                     value = state.password,
                                     onValueChange = { value -> onEdit { it.copy(password = value) } },
+                                    // Toujours en clair : on voit ce qu'on tape à la télécommande.
                                     label = stringResource(R.string.proxy_password),
-                                    keyboardType = KeyboardType.Password,
-                                    visualTransformation = PasswordVisualTransformation(),
                                 )
                             } else {
                                 Text(stringResource(R.string.proxy_socks_no_auth), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

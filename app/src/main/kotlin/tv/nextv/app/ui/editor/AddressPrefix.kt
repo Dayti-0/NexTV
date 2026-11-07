@@ -9,32 +9,38 @@ import androidx.compose.ui.text.input.VisualTransformation
  * Début d'adresse écrit d'office (« http://www. ») : affiché dans le champ devant ce qui est tapé, sans
  * faire partie du texte que modifie le clavier. Celui de la Fire TV remplace tout le texte du champ par
  * ce qu'on y tape : un début écrit dans le texte même disparaissait dès la première lettre.
- * Une adresse tapée en entier (« http://… », « https://… ») le remplace ; devant « www. », seul
- * « http:// » est ajouté.
+ * Il se choisit sous le champ ([CHOICES] : « https:// », sans « www. », aucun). Une adresse tapée en
+ * entier (« http://… », « https://… ») le remplace ; devant « www. », le « www. » du début n'est pas doublé.
  */
 object AddressPrefix {
     const val DEFAULT = "http://www."
-    private const val SCHEME = "http://"
 
-    /** Début affiché devant le texte tapé [typed]. */
-    fun shown(typed: String): String {
+    /** Débuts proposés ; « » : aucun, l'adresse est tapée en entier. */
+    val CHOICES = listOf("http://www.", "https://www.", "http://", "https://", "")
+
+    /** Début d'une adresse complète parmi [CHOICES] (le plus long), `null` sans aucun. */
+    fun of(full: String): String? =
+        CHOICES.filter { it.isNotEmpty() && full.length > it.length && full.startsWith(it, ignoreCase = true) }.maxByOrNull { it.length }
+
+    /** Début affiché devant le texte tapé [typed], avec le début choisi [prefix]. */
+    fun shown(typed: String, prefix: String): String {
         val text = typed.trimStart().lowercase()
         return when {
-            text.startsWith("http") || "://" in text -> ""
-            text.startsWith("www.") -> SCHEME
-            else -> DEFAULT
+            prefix.isEmpty() || text.startsWith("http") || "://" in text -> ""
+            text.startsWith("www.") && prefix.endsWith("www.") -> prefix.removeSuffix("www.")
+            else -> prefix
         }
     }
 
     /** Adresse complète d'après le texte tapé ; vide s'il n'y a rien. */
-    fun full(typed: String): String {
+    fun full(typed: String, prefix: String = DEFAULT): String {
         val text = typed.trim()
-        return if (text.isEmpty()) "" else shown(text) + text
+        return if (text.isEmpty()) "" else shown(text, prefix) + text
     }
 
-    /** Texte à taper pour une adresse complète : sans le début écrit d'office. */
-    fun typed(full: String): String =
-        if (full.startsWith(DEFAULT, ignoreCase = true)) full.substring(DEFAULT.length) else full
+    /** Texte à taper pour une adresse complète : sans le début choisi. */
+    fun typed(full: String, prefix: String = DEFAULT): String =
+        if (prefix.isNotEmpty() && full.startsWith(prefix, ignoreCase = true)) full.substring(prefix.length) else full
 }
 
 /** Affiche [prefix] devant le texte du champ ; le curseur reste dans le texte tapé. */

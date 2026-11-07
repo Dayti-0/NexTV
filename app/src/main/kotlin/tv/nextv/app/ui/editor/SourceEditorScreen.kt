@@ -38,7 +38,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextFieldColors
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -58,7 +57,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -203,14 +201,12 @@ fun SourceEditorContent(
                                 )
                             }
                             when (state.mode) {
-                                LocationMode.URL -> NexTvTextField(
+                                LocationMode.URL -> AddressField(
                                     value = state.url,
                                     onValueChange = { value -> onEdit { it.copy(url = value) } },
                                     label = stringResource(R.string.editor_url),
                                     error = errorText(SourceInputField.LOCATION),
                                     help = stringResource(R.string.editor_url_help),
-                                    keyboardType = KeyboardType.Uri,
-                                    addressPrefix = true,
                                 )
                                 LocationMode.XTREAM -> XtreamFields(
                                     state = state,
@@ -343,6 +339,36 @@ private fun ChoiceChip(label: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
+/**
+ * Adresse avec son début écrit d'office (« http://www. ») et, dessous, le choix de ce début : « https:// »,
+ * sans « www. », ou aucun (adresse tapée en entier).
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AddressField(value: String, onValueChange: (String) -> Unit, label: String, error: String?, help: String) {
+    var prefix by rememberSaveable { mutableStateOf(AddressPrefix.of(value) ?: if (value.isBlank()) AddressPrefix.DEFAULT else "") }
+    NexTvTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = label,
+        error = error,
+        help = help,
+        keyboardType = KeyboardType.Uri,
+        addressPrefix = prefix,
+    )
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), itemVerticalAlignment = Alignment.CenterVertically) {
+        Text(stringResource(R.string.editor_address_start), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        AddressPrefix.CHOICES.forEach { choice ->
+            ChoiceChip(choice.ifEmpty { stringResource(R.string.editor_address_start_none) }, selected = choice == prefix) {
+                // Ce qui est déjà tapé reste, avec le nouveau début.
+                val typed = AddressPrefix.typed(value, prefix)
+                prefix = choice
+                onValueChange(AddressPrefix.full(typed, choice))
+            }
+        }
+    }
+}
+
 /** Compte Xtream Codes : adresse du serveur, identifiant et mot de passe. */
 @Composable
 private fun XtreamFields(
@@ -351,15 +377,12 @@ private fun XtreamFields(
     serverError: String?,
     usernameMissing: Boolean,
 ) {
-    var showPassword by rememberSaveable { mutableStateOf(false) }
-    NexTvTextField(
+    AddressField(
         value = state.server,
         onValueChange = { value -> onEdit { it.copy(server = value) } },
         label = stringResource(R.string.editor_xtream_server),
         error = serverError,
         help = stringResource(R.string.editor_xtream_server_help),
-        keyboardType = KeyboardType.Uri,
-        addressPrefix = true,
     )
     NexTvTextField(
         value = state.xtreamUsername,
@@ -370,20 +393,13 @@ private fun XtreamFields(
     NexTvTextField(
         value = state.xtreamPassword,
         onValueChange = { value -> onEdit { it.copy(xtreamPassword = value) } },
+        // Toujours en clair : on voit ce qu'on tape à la télécommande.
         label = stringResource(R.string.editor_password),
-        keyboardType = KeyboardType.Password,
-        visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
-        trailing = {
-            TextButton(onClick = { showPassword = !showPassword }) {
-                Text(stringResource(if (showPassword) R.string.action_hide else R.string.action_show))
-            }
-        },
     )
 }
 
 @Composable
 private fun CredentialsFields(state: EditorState, onEdit: ((EditorState) -> EditorState) -> Unit, usernameError: String?) {
-    var showPassword by rememberSaveable { mutableStateOf(false) }
     NexTvTextField(
         value = state.username,
         onValueChange = { value -> onEdit { it.copy(username = value) } },
@@ -393,14 +409,8 @@ private fun CredentialsFields(state: EditorState, onEdit: ((EditorState) -> Edit
     NexTvTextField(
         value = state.password,
         onValueChange = { value -> onEdit { it.copy(password = value) } },
+        // Toujours en clair : on voit ce qu'on tape à la télécommande.
         label = stringResource(R.string.editor_password),
-        keyboardType = KeyboardType.Password,
-        visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
-        trailing = {
-            TextButton(onClick = { showPassword = !showPassword }) {
-                Text(stringResource(if (showPassword) R.string.action_hide else R.string.action_show))
-            }
-        },
     )
     if (state.hasStoredCredentials) {
         CheckRow(stringResource(R.string.editor_credentials_remove), state.removeStoredCredentials) { checked ->
@@ -513,13 +523,13 @@ fun NexTvTextField(
     visualTransformation: VisualTransformation = VisualTransformation.None,
     trailing: (@Composable () -> Unit)? = null,
     /**
-     * Adresse : « http://www. » est affiché d'office devant le texte tapé, sans en faire partie (voir
-     * [AddressPrefix]) ; [value] et [onValueChange] portent l'adresse complète.
+     * Adresse : ce début (« http://www. ») est affiché d'office devant le texte tapé, sans en faire partie
+     * (voir [AddressPrefix]) ; [value] et [onValueChange] portent l'adresse complète. `null` : champ ordinaire.
      */
-    addressPrefix: Boolean = false,
+    addressPrefix: String? = null,
 ) {
-    val typedOf: (String) -> String = if (addressPrefix) AddressPrefix::typed else { text -> text }
-    val fullOf: (String) -> String = if (addressPrefix) AddressPrefix::full else { text -> text }
+    val typedOf: (String) -> String = if (addressPrefix != null) { full -> AddressPrefix.typed(full, addressPrefix) } else { text -> text }
+    val fullOf: (String) -> String = if (addressPrefix != null) { typed -> AddressPrefix.full(typed, addressPrefix) } else { text -> text }
     // Texte tapé et curseur. Une valeur donnée de l'extérieur (adresse d'une playlist existante) met le
     // curseur à la fin : la saisie la complète au lieu de s'écrire devant.
     var field by remember { mutableStateOf(typedOf(value).let { TextFieldValue(it, TextRange(it.length)) }) }
@@ -539,10 +549,10 @@ fun NexTvTextField(
             supportingText = (error ?: help)?.let { text -> @Composable { Text(text) } },
             keyboardOptions = fieldKeyboardOptions(keyboardType),
             visualTransformation = when {
-                !addressPrefix -> visualTransformation
-                // Adresse venue d'ailleurs sans « http:// » (import) : affichée telle quelle, comme elle sera lue.
+                addressPrefix == null -> visualTransformation
+                // Adresse venue d'ailleurs, sans ce début (import) : affichée telle quelle, comme elle sera lue.
                 fullOf(shown.text) != value -> VisualTransformation.None
-                else -> PrefixTransformation(AddressPrefix.shown(shown.text))
+                else -> PrefixTransformation(AddressPrefix.shown(shown.text, addressPrefix))
             },
             trailingIcon = trailing,
             shape = MaterialTheme.shapes.medium,
