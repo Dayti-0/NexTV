@@ -304,9 +304,10 @@ class HomeFocusTest {
     }
 
     /**
-     * L'élément choisi s'agrandit un peu (onglet ×1,06, catégorie ×1,02, affiche ×1,07) : sa liste lui
-     * laisse cette place, sinon elle le coupe à son bord (cadre de sélection rogné). [vertical] : une
-     * rangée qui défile de gauche à droite ne coupe pas en hauteur (Compose y garde une marge).
+     * L'élément choisi s'agrandit un peu (onglet ×1,06, affiche ×1,07 ; une catégorie garde sa taille,
+     * son texte reste net, mais son ombre déborde de [RAIL_FOCUS_ROOM]) : sa liste lui laisse cette place,
+     * sinon elle le coupe à son bord (cadre de sélection rogné). [vertical] : une rangée qui défile de
+     * gauche à droite ne coupe pas en hauteur (Compose y garde une marge).
      */
     private fun assertRoomToGrow(scale: Float, what: String, vertical: Boolean = true) {
         val item = focusedRect()
@@ -338,7 +339,13 @@ class HomeFocusTest {
         repeat(HomeSection.entries.size - 1) { press(Key.DirectionLeft) }
         press(Key.DirectionDown)
         press(Key.DirectionDown)
-        assertRoomToGrow(1.02f, "Catégorie")
+        // Ombre de la catégorie : RAIL_FOCUS_ROOM tout autour.
+        val item = focusedRect()
+        val list = focusedListRect()
+        val room = with(compose.density) { RAIL_FOCUS_ROOM.toPx() }
+        assertTrue("Ombre de la catégorie coupée à gauche", item.left - room >= list.left - 0.5f)
+        assertTrue("Ombre de la catégorie coupée à droite", item.right + room <= list.right + 0.5f)
+        assertTrue("Ombre de la catégorie coupée en haut", item.top - room >= list.top - 0.5f)
     }
 
     @Test

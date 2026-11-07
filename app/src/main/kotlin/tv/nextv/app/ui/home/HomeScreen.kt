@@ -832,7 +832,7 @@ internal fun CategoryRail(
 ) {
     // Appui long sur une catégorie pour la masquer.
     val hide: (String) -> (() -> Unit)? = { title -> if (section.kind() != null) ({ actions.onHideCategory(title) }) else null }
-    // La catégorie choisie s'agrandit un peu : la liste (coupée à ses bords par le fondu du bas) lui laisse
+    // L'ombre de la catégorie choisie déborde un peu : la liste (coupée à ses bords par les fondus) lui laisse
     // RAIL_FOCUS_ROOM de chaque côté, retirés des marges autour pour que rien ne bouge.
     Column(
         modifier
@@ -1359,7 +1359,7 @@ internal fun gridPadding(window: WindowInfo, end: Dp = window.horizontalPadding)
     bottom = 32.dp,
 )
 
-/** Place laissée autour d'une catégorie agrandie au focus (×1,02) dans la colonne des catégories. */
+/** Place laissée autour de la catégorie choisie (son ombre) dans la colonne des catégories. */
 internal val RAIL_FOCUS_ROOM = 6.dp
 
 @Composable
@@ -1378,7 +1378,8 @@ internal fun CategoryItem(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.small,
         color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-        focusScale = 1.02f,
+        // Pas d'agrandissement : le texte de la catégorie choisie resterait légèrement flou.
+        focusScale = 1f,
     ) {
         Row(Modifier.padding(horizontal = 14.dp, vertical = if (dense) 7.dp else 11.dp), verticalAlignment = Alignment.CenterVertically) {
             if (star) {

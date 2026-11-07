@@ -1,5 +1,6 @@
 package tv.nextv.app.ui.guide
 
+import tv.nextv.app.ui.common.frenchText
 import tv.nextv.app.ui.components.FadingBottom
 import android.widget.Toast
 import androidx.compose.material.icons.filled.Add
@@ -773,7 +774,8 @@ fun ProgrammeSheetContent(
                     }
                     programme.description?.let {
                         Text(
-                            it,
+                            // Description dans une autre langue (chaîne étrangère) : en français.
+                            frenchText(it),
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

@@ -4,6 +4,12 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.37
+- Listes : fondu en haut quand on peut remonter, comme en bas (Guide TV, « Ce soir », accueil, Foot)
+- Réglages : la liste défile jusqu'en haut (titre de la première carte) et jusqu'en bas (mentions)
+- Fiches des matchs et des programmes : les descriptions en langue étrangère (néerlandais, anglais…) sont traduites en français
+- Catégories (TV, Films, Séries, Foot) : la catégorie choisie n'est plus agrandie, son texte reste net, et son ombre est centrée autour d'elle
+
 ## 0.2.36
 - Foot : les matchs absents du guide TV sont proposés sur les chaînes « LIVE MATCH » de la playlist (DAZN LALIGA, DAZN SERIE A), avec la mention « chaîne probable »
 - Foot : tous les matchs sont affichés, même ceux dont la chaîne n'a pas été trouvée

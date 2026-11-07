@@ -9,9 +9,11 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.material3.Surface
 import tv.nextv.app.ui.NexTvNavHost
+import tv.nextv.app.ui.common.LocalTranslator
 import tv.nextv.app.ui.theme.NexTvTheme
 import tv.nextv.app.ui.update.LaunchUpdatePrompt
 import tv.nextv.app.ui.theme.ThemeStyle
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 
@@ -26,14 +28,19 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         if (savedInstanceState == null) readPlaylistImport(intent)
-        val settings = (application as NexTvApplication).container.settings
+        val container = (application as NexTvApplication).container
+        val settings = container.settings
+        val translate: suspend (String) -> String? = container.translator::toFrench
         setContent {
             val theme by settings.themeStyle.collectAsState(initial = ThemeStyle.NIGHT)
             NexTvTheme(theme) {
-                Surface {
-                    NexTvNavHost()
-                    // Nouvelle version publiée : proposée au lancement.
-                    LaunchUpdatePrompt()
+                // Descriptions du guide dans une autre langue : traduites en français.
+                CompositionLocalProvider(LocalTranslator provides translate) {
+                    Surface {
+                        NexTvNavHost()
+                        // Nouvelle version publiée : proposée au lancement.
+                        LaunchUpdatePrompt()
+                    }
                 }
             }
         }

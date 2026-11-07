@@ -140,6 +140,9 @@ class AppContainer(context: Context) {
     private val tmdbKey: StateFlow<String?> = settings.tmdbApiKey
         .stateIn(applicationScope, SharingStarted.Eagerly, null)
 
+    /** Traduction des résumés TMDB en anglais et des descriptions du guide dans une autre langue. */
+    val translator = Translator(httpClients, logger)
+
     val metadata = MetadataRepository(
         database = database,
         client = TmdbClient(
@@ -147,7 +150,7 @@ class AppContainer(context: Context) {
             apiKey = { tmdbKey.value ?: BuildConfig.TMDB_API_KEY.takeIf { it.isNotBlank() } },
             logger = logger,
             fallbackApiKey = { BuildConfig.TMDB_API_KEY.takeIf { it.isNotBlank() } },
-            translator = Translator(httpClients, logger),
+            translator = translator,
         ),
     )
 

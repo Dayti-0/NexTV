@@ -62,7 +62,8 @@ Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3, enti�
   la recherche et le zapping n'en gardent qu'une ligne par chaîne, sa meilleure version visible.
 - **Guide TV** : grille chaînes × horaires depuis la veille, avec repère de l'heure actuelle et programme en cours
   mis en valeur ; haut / bas changent de chaîne en restant à la même heure, gauche / droite changent d'heure ; OK
-  ouvre la fiche du programme (horaires, durée, description) avec « Regarder ».
+  ouvre la fiche du programme (horaires, durée, description) avec « Regarder ». Une description dans une autre
+  langue (chaînes belges, anglaises…) y est traduite en français, comme dans la fiche d'un match.
   Un créneau sans donnée reste vide.
   « Ce soir » : le programme du soir comme dans un magazine télé, une ligne par chaîne avec le programme principal
   (vers 21 h, sans la météo ni les programmes courts) et la deuxième partie de soirée ; les chaînes de la TNT d'abord,

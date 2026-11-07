@@ -33,6 +33,41 @@ class Translator(
         return google(source, from, to) ?: myMemory(source, from, to)
     }
 
+    /** Traductions déjà faites par [toFrench] (les fiches se rouvrent souvent). */
+    private val french = object : LinkedHashMap<String, String>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?) = size > FRENCH_CACHE_SIZE
+    }
+
+    /**
+     * Texte du guide (description d'un programme) en français quand il est dans une autre langue :
+     * néerlandais des chaînes flamandes, anglais… `null` s'il est déjà en français, si sa langue ne se
+     * devine pas (trop court) ou si aucun service ne répond : le texte d'origine reste affiché.
+     */
+    suspend fun toFrench(text: String): String? {
+        val source = text.trim().take(MAX_LENGTH)
+        val language = Languages.guess(source)
+        if (language == null || language == FRENCH) return null
+        synchronized(french) { french[source] }?.let { return it }
+        val translated = googleToFrench(source) ?: myMemory(source, language, FRENCH) ?: return null
+        if (translated.equals(source, ignoreCase = true)) return null
+        synchronized(french) { french[source] = translated }
+        return translated
+    }
+
+    /** Google Traduction en devinant la langue : rien si elle trouve du français. */
+    private suspend fun googleToFrench(text: String): String? {
+        val url = googleUrl.newBuilder()
+            .addQueryParameter("client", "gtx")
+            .addQueryParameter("sl", "auto")
+            .addQueryParameter("tl", FRENCH)
+            .addQueryParameter("dt", "t")
+            .addQueryParameter("q", text)
+            .build()
+        val body = fetch(url) ?: return null
+        if (detectedLanguage(body) == FRENCH) return null
+        return parseGoogle(body)
+    }
+
     private suspend fun google(text: String, from: String, to: String): String? {
         val url = googleUrl.newBuilder()
             .addQueryParameter("client", "gtx")
@@ -74,6 +109,15 @@ class Translator(
         private const val TAG = "Translator"
         private const val MAX_LENGTH = 3_000
         private const val MY_MEMORY_BYTES = 450
+        private const val FRENCH = "fr"
+        private const val FRENCH_CACHE_SIZE = 100
+
+        /** Langue trouvée par Google Traduction (« nl »), troisième élément de sa réponse. */
+        fun detectedLanguage(body: String): String? = try {
+            JSONArray(body).optString(2).takeIf { it.isNotBlank() }
+        } catch (e: JSONException) {
+            null
+        }
 
         /** Réponse de Google Traduction : `[[["traduit","original",…],…],…]`. */
         fun parseGoogle(body: String): String? = try {

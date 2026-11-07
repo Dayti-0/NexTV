@@ -56,7 +56,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
@@ -70,6 +70,7 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.input.key.Key
@@ -275,7 +276,8 @@ fun FocusSurface(
             // Agrandissement au dessin seulement : la taille vue par les listes ne change pas, elles ne
             // le suivent donc pas en défilant (sinon la rangée tremble à chaque gauche / droite).
             .drawWithContent { if (scale == 1f) drawContent() else scale(scale) { this@drawWithContent.drawContent() } }
-            .shadow(if (focused) 8.dp else 0.dp, shape, clip = false)
+            // Ombre douce tout autour (et non portée vers le bas comme l'élévation), agrandie avec l'élément.
+            .then(if (focused) Modifier.dropShadow(shape, FocusShadow) else Modifier)
             .clip(shape)
             .background(if (focused) focusedColor else color)
             .then(if (border != null) Modifier.border(border, shape) else Modifier)
@@ -303,6 +305,9 @@ fun FocusSurface(
         CompositionLocalProvider(LocalContentColor provides contentColor) { content() }
     }
 }
+
+/** Ombre de l'élément choisi : courte, pour tenir dans la place laissée autour des listes. */
+private val FocusShadow = Shadow(radius = 6.dp, color = Color.Black, alpha = 0.45f)
 
 /**
  * Touche OK de la télécommande tenue. Un appui long agit sans attendre le relâchement ([armed]) :

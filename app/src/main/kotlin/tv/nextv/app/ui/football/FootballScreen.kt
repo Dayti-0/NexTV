@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import tv.nextv.app.ui.common.frenchText
 import coil3.compose.AsyncImage
 import tv.nextv.app.R
 import tv.nextv.app.ui.common.appViewModel
@@ -226,7 +227,7 @@ fun FootballContent(
                         .width(290.dp)
                         .fillMaxHeight()
                         .background(MaterialTheme.colorScheme.surfaceContainerLow)
-                        // Compétition choisie agrandie (×1,02) : place gardée dans la liste, que le fondu coupe à ses bords.
+                        // Ombre de la compétition choisie : place gardée dans la liste, que les fondus coupent à ses bords.
                         .padding(start = (window.horizontalPadding - 16.dp - RAIL_FOCUS_ROOM).coerceAtLeast(0.dp), end = 12.dp - RAIL_FOCUS_ROOM)
                         .then(fade),
                     contentPadding = PaddingValues(start = RAIL_FOCUS_ROOM, end = RAIL_FOCUS_ROOM, top = 12.dp, bottom = 24.dp),
@@ -583,7 +584,8 @@ private fun MatchSheet(
                 }
                 match.programme?.description?.let {
                     Text(
-                        it,
+                        // Description d'une chaîne étrangère (néerlandais de VTM…) : en français.
+                        frenchText(it),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.heightIn(max = if (channels.size > 1) 96.dp else 160.dp).verticalScroll(rememberScrollState()),
@@ -869,7 +871,8 @@ private fun CompetitionItem(name: String, count: Int, competition: Competition?,
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.small,
         color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-        focusScale = 1.02f,
+        // Pas d'agrandissement : le texte de la compétition choisie resterait légèrement flou.
+        focusScale = 1f,
     ) {
         Row(
             Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
