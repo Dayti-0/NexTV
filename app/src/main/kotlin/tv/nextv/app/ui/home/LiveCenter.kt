@@ -159,8 +159,9 @@ internal fun LivePane(preview: ChannelPreview?, player: Player?, now: Long, modi
                 val left = ((current.stopMillis - now) / 60_000L).coerceAtLeast(0)
                 Text(stringResource(R.string.live_remaining, left), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            // Description entière : le volet défile (haut / bas une fois dedans).
             current.description?.let {
-                Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 4, overflow = TextOverflow.Ellipsis)
+                Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         preview.next?.let { next ->
@@ -263,8 +264,9 @@ internal fun SpotlightPane(spotlight: Spotlight?, modifier: Modifier) {
         spotlight.details?.tagline?.let {
             Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.secondary, maxLines = 2)
         }
+        // Résumé entier : le volet défile (haut / bas une fois dedans).
         spotlight.overview?.let {
-            Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 7, overflow = TextOverflow.Ellipsis)
+            Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
