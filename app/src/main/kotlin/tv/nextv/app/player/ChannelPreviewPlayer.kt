@@ -64,13 +64,13 @@ class ChannelPreviewPlayer(
             credentialsOrigin = (source?.location as? SourceLocation.Remote)?.url,
         )
         channelId = channel.id
-        mutablePlayer.value = factory.create(request, preview = true).apply {
+        mutablePlayer.value = factory.create(preview = true).apply {
             volume = this@ChannelPreviewPlayer.volume
             addListener(object : Player.Listener {
                 // Flux en erreur : l'aperçu s'efface (le logo reste affiché).
                 override fun onPlayerError(error: PlaybackException) = stop()
             })
-            setMediaItem(factory.mediaItem(stream))
+            setMediaSource(factory.mediaSource(request))
             playWhenReady = true
             prepare()
         }

@@ -147,6 +147,7 @@ dependencies {
     testImplementation(libs.roborazzi)
     testImplementation(libs.roborazzi.compose)
     testImplementation(libs.androidx.compose.ui.test.junit4)
+    testImplementation(libs.okhttp.mockwebserver)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
 
