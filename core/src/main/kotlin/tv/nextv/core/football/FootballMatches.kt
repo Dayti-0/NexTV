@@ -76,8 +76,8 @@ internal object FootballText {
 
     val FOOTBALL = Regex("""\b(foot|football|soccer)\b""")
 
-    /** Genres possibles d'une retransmission (« Sport, Football », « Inconnu »…). */
-    val SPORT_GENRE = Regex("""\b(sport|sports|sportif|sportive|foot|football|soccer|inconnu|autre|unknown|other)\b""")
+    /** Genres possibles d'une retransmission (« Sport, Football », « Inconnu », « Inédit » seul…). */
+    val SPORT_GENRE = Regex("""\b(sport|sports|sportif|sportive|foot|football|soccer|inconnu|autre|unknown|other|inedit)\b""")
 
     /** Mots d'un nom de compétition : un titre qui en contient sans être reconnu parle d'une autre compétition. */
     val COMPETITION_WORDS = Regex(

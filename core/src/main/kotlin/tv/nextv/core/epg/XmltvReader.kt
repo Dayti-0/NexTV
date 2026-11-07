@@ -128,15 +128,16 @@ class XmltvReader(
         var icon: String? = null
         forEachChild { name ->
             when (name) {
-                "title" -> readText().let { if (title.isNullOrEmpty()) title = it }
+                // Textes sans mise en forme HTML (« <span style="color:#FF2F79">Inédit</span> », « <p> », « &#039; »).
+                "title" -> guideText().let { if (title.isNullOrEmpty()) title = it }
                 "icon" -> {
                     icon = icon ?: parser.getAttributeValue(null, "src")?.trim()?.takeIf { it.startsWith("http") }
                     skipElement()
                 }
-                "sub-title" -> readText().let { if (subtitle.isNullOrEmpty()) subtitle = it }
-                "desc" -> readText().let { if (description.isNullOrEmpty()) description = it }
+                "sub-title" -> guideText().let { if (subtitle.isNullOrEmpty()) subtitle = it }
+                "desc" -> guideText().let { if (description.isNullOrEmpty()) description = it }
                 // « Inconnu », « Unknown » : genre vide, rien à afficher.
-                "category" -> readText().takeIf { it.isNotEmpty() && it.lowercase() !in UNKNOWN_CATEGORIES }?.let { text ->
+                "category" -> guideText().takeIf { it.isNotEmpty() && it.lowercase() !in UNKNOWN_CATEGORIES }?.let { text ->
                     if (categories.none { it.equals(text, ignoreCase = true) }) categories += text
                 }
                 // « 2019 », « 20190314 »… : seule une année plausible est retenue.
@@ -170,6 +171,9 @@ class XmltvReader(
             if (event == XmlPullParser.START_TAG) block(parser.name)
         }
     }
+
+    /** Texte d'un programme (titre, résumé, genre…), sans balises HTML ni entités échappées deux fois. */
+    private fun guideText(): String = GuideText.clean(readText())
 
     /** Texte de l'élément courant (éléments imbriqués ignorés), puis positionne sur sa balise fermante. */
     private fun readText(): String {
