@@ -14,9 +14,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.material3.MaterialTheme
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
 import kotlinx.coroutines.delay
 import tv.nextv.app.data.catalog.MetadataState
 import tv.nextv.app.data.db.ItemKeys
@@ -75,18 +78,33 @@ private val NO_SHEET_TITLE = Regex("""^(le |la |les )?(journal|jt|météo|meteo|
 
 private const val LOOKUP_DELAY_MILLIS = 400L
 
-/** Visuel du programme en fondu, ou rien : une image introuvable ne laisse pas de cadre vide. */
+/**
+ * Visuel du programme en fondu, ou rien : une image introuvable ne laisse pas de cadre vide. L'image
+ * est montrée en entier, quel que soit son format ; autour, la même image floue remplit le cadre.
+ */
 @Composable
 fun ProgrammeArt(programme: GuideProgramme?, modifier: Modifier) {
     val image = rememberProgrammeImage(programme)
     var failed by remember(image) { mutableStateOf(false) }
     if (image == null || failed) return
+    val context = LocalContext.current
     Crossfade(image, animationSpec = tween(300), label = "programme-art", modifier = modifier.clip(MaterialTheme.shapes.medium)) { url ->
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
+            // Fond flou sur tous les appareils : l'image lue en très petit, puis agrandie en douceur et assombrie.
+            val ambient = remember(url) { ImageRequest.Builder(context).data(url).size(AMBIENT_SIZE_PX).build() }
+            AsyncImage(
+                model = ambient,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                filterQuality = FilterQuality.Low,
+                alpha = 0.7f,
+                modifier = Modifier.fillMaxSize(),
+            )
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)))
             AsyncImage(
                 model = url,
                 contentDescription = null,
-                contentScale = ContentScale.Crop,
+                contentScale = ContentScale.Fit,
                 alignment = Alignment.Center,
                 onError = { failed = true },
                 modifier = Modifier.fillMaxSize(),
@@ -94,3 +112,6 @@ fun ProgrammeArt(programme: GuideProgramme?, modifier: Modifier) {
         }
     }
 }
+
+/** Taille de lecture de l'image du fond flou (pixels) : assez petite pour que l'agrandir la floute. */
+private const val AMBIENT_SIZE_PX = 24
