@@ -845,6 +845,8 @@ private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Mo
                 )
             }
         }
+        // Chaîne « événement » (DAZN LALIGA… LIVE MATCH) : pas de programme dans le guide, le match seul.
+        if (state.now == null) state.match?.let { MatchScore(it) }
         state.next?.let { programme ->
             Text(
                 stringResource(R.string.player_next, timeOf(programme.startMillis), programme.title),
