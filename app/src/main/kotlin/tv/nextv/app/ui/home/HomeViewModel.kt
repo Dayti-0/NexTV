@@ -320,6 +320,14 @@ class HomeViewModel(
     val layout: StateFlow<HomeLayout> = container.settings.homeLayout
         .stateIn(viewModelScope, SharingStarted.Eagerly, HomeLayout.DEFAULT)
 
+    init {
+        // Interfaces à rangées (Streaming, Cinéma Premium) : aucune catégorie ne s'y choisit. Celle laissée
+        // ouverte dans le Live Center (« Français ») les afficherait en catégories et grille, sans leurs rangées.
+        viewModelScope.launch {
+            layout.collect { if (it != HomeLayout.LIVE_CENTER) categories.value = emptyMap() }
+        }
+    }
+
     /** Premiers éléments de chaque catégorie, lus d'avance et gardés pendant que l'accueil existe. */
     val rows = HomeRows(
         channels = { group, limit -> sourceId.value?.let { dao.channelRow(it, group, System.currentTimeMillis(), limit) }.orEmpty() },
