@@ -10,6 +10,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -86,8 +88,6 @@ internal fun LiveCenterSection(
     query: String,
     favoritesCount: Int,
     resumeCount: Int?,
-    title: String,
-    count: String,
     actions: HomeActions,
     modifier: Modifier = Modifier,
     action: (@Composable () -> Unit)? = null,
@@ -108,12 +108,13 @@ internal fun LiveCenterSection(
     ) {
         CategoryRail(section, window, groups, recentCount, allCount, category, query, favoritesCount, resumeCount, actions, Modifier.width(230.dp), dense = true)
         Column(Modifier.weight(1f).fillMaxHeight()) {
-            Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(count, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // Pas de titre au-dessus de la liste : la catégorie et son nombre sont déjà dans la colonne de gauche.
+            if (action != null) {
+                Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, top = 6.dp, bottom = 6.dp), horizontalArrangement = Arrangement.End) {
+                    action()
                 }
-                action?.invoke()
+            } else {
+                Spacer(Modifier.height(8.dp))
             }
             hint?.invoke()
             // Retour depuis le volet (gauche) : sur l'élément choisi, pas sur le plus proche.

@@ -619,13 +619,6 @@ private fun CatalogBody(
         null
     }
     if (layout == HomeLayout.LIVE_CENTER && window.isWide) {
-        val count = when (category) {
-            Category.Favorites -> favoritesCount
-            Category.Recent -> recentChannels.size
-            Category.ContinueWatching -> resumeItems?.size ?: 0
-            is Category.Group -> groups.firstOrNull { it.title.orEmpty() == category.title }?.count ?: 0
-            else -> allCount
-        }
         LiveCenterSection(
             section = section,
             window = window,
@@ -636,8 +629,6 @@ private fun CatalogBody(
             query = query,
             favoritesCount = favoritesCount,
             resumeCount = resumeItems?.size,
-            title = categoryTitle(section, category),
-            count = itemCount(section, count),
             actions = actions,
             modifier = modifier,
             action = reorderButton,
