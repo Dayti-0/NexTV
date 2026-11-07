@@ -33,8 +33,8 @@ object BroadcastLanguage {
 
     /**
      * Chaîne d'un diffuseur de la compétition en France, choisie en premier (Ligue 1 : Ligue 1+ ;
-     * Bundesliga, Liga, Serie A : beIN Sports ; Premier League et coupes d'Europe : Canal+ ;
-     * sélections : TF1, M6…).
+     * Bundesliga : beIN Sports ; Liga, Serie A : DAZN et beIN Sports ; Premier League et coupes
+     * d'Europe : Canal+ ; sélections : TF1, M6…).
      */
     fun isOfficial(competition: Competition, channelName: String): Boolean {
         val official = OFFICIAL[competition] ?: return false
@@ -54,14 +54,16 @@ object BroadcastLanguage {
     }
 
     private val BEIN = """\bbein\b"""
+    private val DAZN = """\bdazn\b"""
     private val CANAL_PLUS = """\bcanal\s*(\+|plus\b)"""
 
     /** « LIGUE 1+| MATCH 3 », « FR| BEIN SPORTS 3 », « FR| CANAL+ FOOT ». */
     private val OFFICIAL = mapOf(
         Competition.LIGUE_1 to Regex("""\bligue\s*1\s*\+|\bl1\s*\+|$BEIN"""),
         Competition.PREMIER_LEAGUE to Regex(CANAL_PLUS),
-        Competition.LA_LIGA to Regex(BEIN),
-        Competition.SERIE_A to Regex(BEIN),
+        // Liga et Serie A : quelques matchs par journée sur DAZN, les autres ne passent pas en France.
+        Competition.LA_LIGA to Regex("$BEIN|$DAZN"),
+        Competition.SERIE_A to Regex("$BEIN|$DAZN"),
         Competition.BUNDESLIGA to Regex(BEIN),
         Competition.CHAMPIONS_LEAGUE to Regex(CANAL_PLUS),
         Competition.EUROPA_LEAGUE to Regex(CANAL_PLUS),

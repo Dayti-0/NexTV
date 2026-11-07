@@ -92,6 +92,94 @@ class BroadcastFinderTest {
         assertEquals(listOf("beIN Sports 1"), result[milanMatch])
     }
 
+    // Cas réels du guide xmltvfr.fr (week-end du 7 novembre 2026).
+    private val sevilla = Team("Sevilla", null, "SEV", null)
+    private val alaves = Team("Alavés", null, "ALA", null)
+    private val atletico = Team("Atlético Madrid", "Atlético", "ATM", null)
+    private val valencia = Team("Valencia", null, "VAL", null)
+    private val realMadrid = Team("Real Madrid", null, "RMA", null)
+    private val napoli = Team("Napoli", null, "NAP", null)
+    private val lazio = Team("Lazio", null, "LAZ", null)
+    private val roma = Team("AS Roma", null, "ROM", null)
+    private val sassuolo = Team("Sassuolo", null, "SAS", null)
+    private val torino = Team("Torino", null, "TOR", null)
+    private val lecce = Team("Lecce", null, "LEC", null)
+    private val juventus = Team("Juventus", null, "JUV", null)
+    private val atalanta = Team("Atalanta", null, "ATA", null)
+    private val italy = Team("Italy", null, "ITA", null)
+    private val france = Team("France", null, "FRA", null)
+
+    private val serieA = "Retransmission d'un match du championnat d'Italie de football, appelé Serie A."
+
+    /** Programme de DAZN : genre « Émission sportive », compétition en sous-titre. */
+    private fun dazn(title: String, subtitle: String, description: String? = null, start: Long = kickoff - 10 * minute) =
+        Broadcast("DAZN", title, subtitle, "Football, Emission sportive", description, start, start + 140 * minute)
+
+    @Test
+    fun `dazn live matches keep their competition`() {
+        val valenceReal = match(1, Competition.LA_LIGA, valencia, realMadrid)
+        val result = BroadcastFinder.assign(listOf(valenceReal), listOf(dazn("Valence / Real Madrid", "Football. Liga 12e journée.")))
+        assertEquals(listOf("DAZN"), result[valenceReal])
+        assertTrue("valence" in BroadcastFinder.aliases(valencia))
+    }
+
+    @Test
+    fun `a programme naming another fixture does not show a match sharing one team`() {
+        val sevillaAlaves = match(1, Competition.LA_LIGA, sevilla, alaves)
+        // Barcelone joue aussi dans la fenêtre du calendrier : « FC Barcelone » est un autre club.
+        val atleticoBarca = match(2, Competition.LA_LIGA, atletico, barcelona, at = kickoff + 48 * 60 * minute)
+        val result = BroadcastFinder.assign(
+            listOf(sevillaAlaves, atleticoBarca),
+            listOf(
+                dazn("FC Barcelone / Deportivo Alavés", "Football. Liga 11e journée."),
+                Broadcast("Eleven Sports 1", "FC Barcelone / Deportivo Alavés", null, "Football", "Diffusion d'un match de LaLiga EA Sports.", kickoff - 15 * minute, kickoff + 2 * 60 * minute),
+                broadcast("Canal+ Sport 4", "FC Séville / Deportivo Alavés", "Liga - 12e journée", "Sport, Football"),
+            ),
+        )
+        assertEquals(listOf("Canal+ Sport 4"), result[sevillaAlaves])
+    }
+
+    @Test
+    fun `an unknown name in the fixture does not hide the match`() {
+        val interComo = match(1, Competition.SERIE_A, inter, Team("Como", null, "COM", null))
+        val result = BroadcastFinder.assign(listOf(interComo), listOf(dazn("Inter Milan / Côme", "Football. Serie A 11e journée.", serieA)))
+        assertEquals(listOf("DAZN"), result[interComo])
+    }
+
+    @Test
+    fun `a country named in a club match description is not a national team broadcast`() {
+        val italyFrance = match(1, Competition.NATIONAL_TEAMS, italy, france)
+        val result = BroadcastFinder.assign(
+            listOf(italyFrance),
+            listOf(
+                dazn("Naples / Lazio Rome", "Football. Serie A 11e journée.", serieA),
+                Broadcast("Sport 24", "Football", null, "Football", "Un match en direct d'Italie.", kickoff - 15 * minute, kickoff + 2 * 60 * minute),
+                broadcast("TF1", "Italie / France", category = "Football"),
+            ),
+        )
+        assertEquals(listOf("TF1"), result[italyFrance])
+    }
+
+    @Test
+    fun `rome and turin alone do not name a club`() {
+        val romaSassuolo = match(1, Competition.SERIE_A, roma, sassuolo)
+        val torinoLecce = match(2, Competition.SERIE_A, torino, lecce)
+        // La Lazio et la Juventus jouent aussi pendant la semaine du calendrier.
+        val later = kickoff + 24 * 60 * minute
+        val result = BroadcastFinder.assign(
+            listOf(romaSassuolo, torinoLecce, match(3, Competition.SERIE_A, napoli, lazio, at = later), match(4, Competition.SERIE_A, juventus, atalanta, at = later)),
+            listOf(
+                Broadcast("Eleven Sports 1", "Lazio Rome / Sassuolo", null, "Football", serieA, kickoff - 15 * minute, kickoff + 2 * 60 * minute),
+                Broadcast("Eleven Sports 2", "Juventus Turin / Lecce", null, "Football", serieA, kickoff - 15 * minute, kickoff + 2 * 60 * minute),
+                broadcast("DAZN 2", "AS Rome / Sassuolo", "Serie A - 11e journée", "Sport, Football"),
+            ),
+        )
+        assertEquals(listOf("DAZN 2"), result[romaSassuolo])
+        assertEquals(null, result[torinoLecce])
+        assertTrue("turin" !in BroadcastFinder.aliases(torino))
+        assertTrue("juve" in BroadcastFinder.aliases(juventus))
+    }
+
     @Test
     fun `other sports and magazines are ignored`() {
         val classico = match(1, Competition.LIGUE_1, psg, om)

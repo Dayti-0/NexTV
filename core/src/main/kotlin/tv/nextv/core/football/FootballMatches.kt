@@ -62,6 +62,15 @@ internal object FootballText {
             """best of|le meilleur|tirage|plateau|emission|talk|quotidien|actu|multiplex|rediffusion)\b""",
     )
 
+    /**
+     * « Émission sportive » : genre des matchs en direct de DAZN comme de magazines. Le mot seul ne
+     * dit pas si le programme est un match.
+     */
+    private val EMISSION = Regex("""\bemissions?\b""")
+
+    /** Genre d'un programme autour du football qui n'est pas un match (« Magazine sportif »). */
+    fun notAMatchGenre(genre: String): Boolean = NOT_A_MATCH.containsMatchIn(EMISSION.replace(genre, " "))
+
     /** Diffusion qui n'est pas en direct, annoncée dans le titre ou le sous-titre. */
     val REPLAY = Regex("""\b(rediffusion|rediff|redif|en differe|differe|replay)\b|\((r|rediff?)\)""")
 
@@ -143,7 +152,7 @@ object FootballMatches {
     fun teamsOf(title: String, subtitle: String?, category: String?): Pair<String, String>? {
         val heading = FootballText.fold(listOfNotNull(title, subtitle).joinToString(" "))
         val genre = FootballText.fold(category.orEmpty())
-        if (FootballText.NOT_A_MATCH.containsMatchIn(FootballText.fold(title)) || FootballText.NOT_A_MATCH.containsMatchIn(genre)) return null
+        if (FootballText.NOT_A_MATCH.containsMatchIn(FootballText.fold(title)) || FootballText.notAMatchGenre(genre)) return null
         if (FootballText.OTHER_SPORTS.containsMatchIn(heading) || FootballText.OTHER_SPORTS.containsMatchIn(genre)) return null
         if (FootballText.WOMEN.containsMatchIn(heading) || FootballText.WOMEN.containsMatchIn(genre)) return null
         if (FootballText.REPLAY.containsMatchIn(heading)) return null
@@ -156,7 +165,7 @@ object FootballMatches {
         // Titre, sous-titre et genre d'abord (courts) : la plupart des programmes s'arrêtent là.
         val heading = FootballText.fold(listOfNotNull(title, subtitle).joinToString(" "))
         val genre = FootballText.fold(category.orEmpty())
-        if (FootballText.NOT_A_MATCH.containsMatchIn(FootballText.fold(title)) || FootballText.NOT_A_MATCH.containsMatchIn(genre)) return null
+        if (FootballText.NOT_A_MATCH.containsMatchIn(FootballText.fold(title)) || FootballText.notAMatchGenre(genre)) return null
         if (FootballText.OTHER_SPORTS.containsMatchIn(heading) || FootballText.OTHER_SPORTS.containsMatchIn(genre)) return null
         if (FootballText.WOMEN.containsMatchIn(heading) || FootballText.WOMEN.containsMatchIn(genre)) return null
         if (FootballText.REPLAY.containsMatchIn(heading)) return null

@@ -71,6 +71,13 @@ class FootballMatchesTest {
             Fixture(Competition.SERIE_A, "AC Milan", "Bologne"),
             of("AC Milan / Bologne", category = "Football", description = "Retransmission d'un match du championnat d'Italie de football, appelé Serie A."),
         )
+        // DAZN : compétition en sous-titre, genre « Émission sportive » (celui des matchs en direct).
+        assertEquals(
+            Fixture(Competition.LA_LIGA, "Valence", "Real Madrid"),
+            of("Valence / Real Madrid", "Football. Liga 12e journée.", "Football, Emission sportive"),
+        )
+        assertEquals("Naples" to "Lazio Rome", FootballMatches.teamsOf("Naples / Lazio Rome", "Football. Serie A 11e journée.", "Football, Emission sportive"))
+        assertNull(of("Ligue 1 Show", category = "Football, Magazine sportif"))
         assertNull(of("Paris FC / Paris-SG", "Arkema Première Ligue - 7e journée", "Sport, Football"))
         assertNull(of("Football : Liga F", "Real Madrid / Tenerife", "Football"))
         assertNull(of("Charlton Athletic LFC / Chelsea", category = "Football", description = "Women's Super League action as Charlton Athletic face Chelsea."))

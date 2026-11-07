@@ -27,6 +27,8 @@ object BroadcastFinder {
 
     fun <T> assign(matches: List<ScheduledMatch>, broadcasts: List<Broadcast<T>>): Map<ScheduledMatch, List<T>> {
         val teams = matches.associateWith { aliases(it.home) to aliases(it.away) }
+        // Noms de tous les clubs du calendrier : une affiche qui en nomme un autre est celle d'un autre match.
+        val clubs = teams.values.flatMapTo(HashSet()) { (home, away) -> home + away }
         val result = LinkedHashMap<ScheduledMatch, MutableList<T>>()
         for (broadcast in broadcasts) {
             // Seuls les matchs dont le coup d'envoi tombe pendant le programme sont comparés.
@@ -36,6 +38,7 @@ object BroadcastFinder {
             val genre = FootballText.fold(broadcast.category.orEmpty())
             if (excluded(broadcast, heading, genre)) continue
             val text = textOf(broadcast)
+            val headline = " " + normalize(listOfNotNull(broadcast.title, broadcast.subtitle).joinToString(" ")) + " "
             val competition = FootballMatches.competitionOf(broadcast.title, broadcast.subtitle, broadcast.category, broadcast.description)
             // Affiche nommée par le programme (« Monaco / Lens ») : il ne diffuse pas un match d'autres équipes.
             val named = FootballMatches.fixtureOf(broadcast.title, broadcast.subtitle, broadcast.category, broadcast.description)
@@ -45,10 +48,13 @@ object BroadcastFinder {
             var tie = false
             for (match in candidates) {
                 val (home, away) = teams.getValue(match)
-                if (named != null && !names(named.home, home, away) && !names(named.away, home, away)) continue
-                val cited = listOf(home, away).count { names -> names.any { " $it " in text } }
+                if (named != null && !shows(named, home, away, clubs)) continue
+                val cited = citations(home, away, text)
                 val score = when {
                     cited == 2 -> 3
+                    // Sélections : un seul pays cité doit l'être dans le titre, pas seulement dans la description
+                    // (celle d'un match de club parle du « championnat d'Italie »).
+                    match.competition == Competition.NATIONAL_TEAMS && citations(home, away, headline) == 0 -> 0
                     // Une seule équipe citée : seulement si le programme ne parle pas d'une autre compétition
                     // (« Championnat de France » ne désigne pas l'équipe de France).
                     cited == 1 && competition != null && !compatible(competition, match.competition) -> 0
@@ -69,10 +75,32 @@ object BroadcastFinder {
         return result
     }
 
+    /** Nombre d'équipes ([home], [away] : leurs noms) citées dans [text] (normalisé, entouré d'espaces). */
+    private fun citations(home: Set<String>, away: Set<String>, text: String): Int =
+        listOf(home, away).count { names -> names.any { " $it " in text } }
+
     /** Le nom d'équipe [name] du guide désigne l'une des deux équipes ([home], [away] : leurs noms). */
     private fun names(name: String, home: Set<String>, away: Set<String>): Boolean {
         val text = " " + normalize(name) + " "
         return (home + away).any { " $it " in text }
+    }
+
+    /**
+     * L'affiche nommée par le programme ([named]) peut être celle du match ([home], [away] : noms de ses
+     * équipes) : l'une de ses équipes au moins est reconnue, et l'autre n'est pas un autre club du
+     * calendrier ([clubs] : leurs noms). « FC Barcelone / Deportivo Alavés » ne diffuse pas
+     * Séville – Alavés ; « Inter Milan / Côme » diffuse bien Inter – Como (« Côme » : nom inconnu).
+     */
+    private fun shows(named: Fixture, home: Set<String>, away: Set<String>, clubs: Set<String>): Boolean {
+        val first = names(named.home, home, away)
+        val second = names(named.away, home, away)
+        return (first || second) && (first || !designates(named.home, clubs)) && (second || !designates(named.away, clubs))
+    }
+
+    /** Le nom [name] du guide contient l'un des noms de club [clubs] (mots entiers). */
+    private fun designates(name: String, clubs: Set<String>): Boolean {
+        val words = normalize(name).split(' ').filter { it.isNotEmpty() }
+        return words.indices.any { from -> (from + 1..words.size).any { to -> words.subList(from, to).joinToString(" ") in clubs } }
     }
 
     /** Même compétition, ou deux coupes d'Europe (le guide annonce parfois l'une pour l'autre). */
@@ -186,9 +214,9 @@ object BroadcastFinder {
         "barcelona" to listOf("barcelone", "barca"),
         "sevilla" to listOf("seville"),
         "napoli" to listOf("naples"),
-        "roma" to listOf("rome"),
-        "torino" to listOf("turin"),
+        // « Rome » et « Turin » seuls ne sont pas traduits : le guide écrit « Lazio Rome » et « Juventus Turin ».
         "bologna" to listOf("bologne"),
+        "valencia" to listOf("valence"),
         "genoa" to listOf("genes"),
         "koln" to listOf("cologne"),
         "frankfurt" to listOf("francfort"),
@@ -217,5 +245,6 @@ object BroadcastFinder {
         "athletic club" to listOf("athletic bilbao", "bilbao"),
         "paris saint germain fc" to listOf("psg", "paris sg"),
         "paris saint germain" to listOf("psg", "paris sg"),
+        "as roma" to listOf("as rome"),
     )
 }
