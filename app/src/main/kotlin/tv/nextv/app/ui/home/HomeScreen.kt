@@ -472,6 +472,27 @@ fun HomeContent(
         favoriteKeys = favoriteKeys,
         now = now,
     )
+    // Volet des catégories des interfaces à rangées : toutes les catégories de la section, à un appui sur ←.
+    val drawerRail: @Composable (Modifier) -> Unit = { railModifier ->
+        CategoryRail(
+            section = section,
+            window = window,
+            groups = groups,
+            recentCount = recentChannels.size.takeIf { section == HomeSection.TV },
+            allCount = channelCount?.takeIf { section == HomeSection.TV } ?: groups.sumOf { it.count },
+            category = category,
+            query = query,
+            favoritesCount = when (section) {
+                HomeSection.TV -> favoriteChannels.size
+                HomeSection.MOVIES -> favoriteMovies.size
+                else -> favoriteSeries.size
+            },
+            resumeCount = resumeItems?.size,
+            actions = actions,
+            modifier = railModifier,
+            dense = true,
+        )
+    }
     // Barre des onglets de l'interface choisie, la même dans toutes les sections (Guide TV et Foot compris).
     val topBar: @Composable () -> Unit = {
         if (onMenu != null) {
@@ -487,6 +508,7 @@ fun HomeContent(
         CompositionLocalProvider(LocalTabsFocused provides { tabsFocused.value }) {
             // Cinéma Premium : la sélection occupe tout l'écran, onglets compris.
             if (catalog && layout == HomeLayout.PREMIUM && category == Category.All) {
+                CategoryDrawer(drawerRail, Modifier.padding(padding)) {
                 PremiumHome(
                     content = shelfContent,
                     window = window,
@@ -500,8 +522,8 @@ fun HomeContent(
                     lastOpened = lastOpened,
                     actions = actions,
                     topBar = topBar,
-                    modifier = Modifier.padding(padding),
                 )
+                }
                 return@CompositionLocalProvider
             }
             Column(Modifier.fillMaxSize().padding(padding)) {
@@ -509,7 +531,8 @@ fun HomeContent(
                 when {
                     section == HomeSection.GUIDE -> guide(Modifier.weight(1f))
                     section == HomeSection.FOOTBALL -> football(Modifier.weight(1f))
-                    layout == HomeLayout.STREAMING && category == Category.All -> StreamingHome(
+                    layout == HomeLayout.STREAMING && category == Category.All -> CategoryDrawer(drawerRail, Modifier.weight(1f)) {
+                        StreamingHome(
                         content = shelfContent,
                         window = window,
                         query = query,
@@ -521,8 +544,8 @@ fun HomeContent(
                         spotlight = spotlight,
                         lastOpened = lastOpened,
                         actions = actions,
-                        modifier = Modifier.weight(1f),
-                    )
+                        )
+                    }
                     else -> CatalogBody(
                         section = section,
                         window = window,

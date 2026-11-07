@@ -103,6 +103,28 @@ class HomeFocusTest {
         assertTrue("Focus : $last", last != null && last.removePrefix("Groupe ").toInt() >= 8)
     }
 
+    /** Streaming et Cinéma Premium : ← au bord gauche des rangées ouvre le volet de toutes les catégories. */
+    @Test
+    fun streamingCategoriesOpenWithLeft() = assertDrawerOpensWithLeft(HomeLayout.STREAMING)
+
+    @Test
+    fun premiumCategoriesOpenWithLeft() = assertDrawerOpensWithLeft(HomeLayout.PREMIUM)
+
+    private fun assertDrawerOpensWithLeft(layout: HomeLayout) {
+        val categories = mutableListOf<Category>()
+        compose.setContent { Home(layout, HomeActions(onCategory = { categories += it })) }
+        compose.waitForIdle()
+        // Dans les rangées (première vignette), puis ← : volet ouvert, focus sur ses catégories.
+        repeat(3) { press(Key.DirectionDown) }
+        repeat(2) { press(Key.DirectionLeft) }
+        compose.onNodeWithText("Groupe 1").assertExists()
+        // Descente jusqu'à une catégorie, OK : elle s'ouvre.
+        repeat(6) { press(Key.DirectionDown) }
+        press(Key.DirectionCenter)
+        println("$layout, catégorie choisie : $categories")
+        assertTrue("Catégorie : $categories", categories.lastOrNull() != null)
+    }
+
     @Test
     fun liveCenterCategoriesCanBeReachedWithDown() {
         val categories = mutableListOf<Category>()
