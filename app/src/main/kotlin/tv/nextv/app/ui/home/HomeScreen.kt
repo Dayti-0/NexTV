@@ -209,9 +209,23 @@ fun HomeScreen(
     }
     // Déclaré après : pendant la réorganisation des favoris, « Retour » la termine d'abord.
     BackHandler(enabled = reorder.active) { viewModel.toggleReorder() }
+    // Recherche de partout (menu Premium, barre du haut) : « Retour » la ferme d'abord.
+    var searching by rememberSaveable { mutableStateOf(false) }
+    var searchText by rememberSaveable { mutableStateOf("") }
+    val openSearch = {
+        searchText = ""
+        viewModel.searchEverywhere("")
+        searching = true
+    }
+    val closeSearch = {
+        searching = false
+        viewModel.closeSearchEverywhere()
+    }
+    BackHandler(enabled = searching) { closeSearch() }
     // Aperçu seulement quand l'accueil est affiché (arrêté en arrière-plan et à l'ouverture d'un autre écran).
-    LifecycleStartEffect(viewModel) {
-        viewModel.setPreviewActive(true)
+    // Menu d'accueil de Cinéma Premium et recherche de partout : pas d'aperçu en direct (stream arrêté).
+    LifecycleStartEffect(viewModel, showMenu, searching) {
+        viewModel.setPreviewActive(!showMenu && !searching)
         onStopOrDispose { viewModel.setPreviewActive(false) }
     }
 
@@ -219,6 +233,55 @@ fun HomeScreen(
     val playChannel: (Long) -> Unit = {
         viewModel.setPreviewActive(false)
         onPlay(it)
+    }
+
+    val actions = HomeActions(
+        onSection = viewModel::selectSection,
+        onCategory = viewModel::selectCategory,
+        onQuery = viewModel::setQuery,
+        onPlayChannel = playChannel,
+        onOpenMovie = onMovie,
+        onOpenSeries = onSeries,
+        onToggleFavorite = viewModel::toggleFavorite,
+        onToggleReorder = viewModel::toggleReorder,
+        onPick = viewModel::pick,
+        onMove = viewModel::moveFavorite,
+        onSettings = onSettings,
+        onResume = onResume,
+        onClearProgress = viewModel::clearProgress,
+        onHideCategory = { pendingHide = it },
+        onChannelFocus = viewModel::onChannelFocused,
+        onPosterFocus = viewModel::onPosterFocused,
+    )
+
+    if (searching) {
+        GlobalSearch(
+            query = searchText,
+            onQuery = {
+                searchText = it
+                viewModel.searchEverywhere(it)
+            },
+            onClose = closeSearch,
+            channels = channels,
+            movies = movies,
+            series = series,
+            content = ShelfContent(
+                section = HomeSection.TV,
+                groups = emptyList(),
+                rows = viewModel.rows,
+                favoriteChannels = favoriteChannels,
+                recentChannels = recentChannels,
+                favoriteMovies = favoriteMovies,
+                favoriteSeries = favoriteSeries,
+                continueItems = emptyList(),
+                discover = Discover(),
+                favoriteKeys = favoriteKeys,
+                now = now,
+            ),
+            lastOpened = rememberLastOpened(),
+            actions = actions,
+        )
+        return
     }
 
     if (showMenu) {
@@ -246,6 +309,7 @@ fun HomeScreen(
                 premiumMenu = false
             },
             onSettings = onSettings,
+            onSearch = openSearch,
             subscription = subscription,
         )
         return
@@ -267,24 +331,8 @@ fun HomeScreen(
         reorder = reorder,
         now = now,
         snackbarHostState = snackbar,
-        actions = HomeActions(
-            onSection = viewModel::selectSection,
-            onCategory = viewModel::selectCategory,
-            onQuery = viewModel::setQuery,
-            onPlayChannel = playChannel,
-            onOpenMovie = onMovie,
-            onOpenSeries = onSeries,
-            onToggleFavorite = viewModel::toggleFavorite,
-            onToggleReorder = viewModel::toggleReorder,
-            onPick = viewModel::pick,
-            onMove = viewModel::moveFavorite,
-            onSettings = onSettings,
-            onResume = onResume,
-            onClearProgress = viewModel::clearProgress,
-            onHideCategory = { pendingHide = it },
-            onChannelFocus = viewModel::onChannelFocused,
-            onPosterFocus = viewModel::onPosterFocused,
-        ),
+        actions = actions,
+        onSearch = openSearch,
         guide = { modifier ->
             sourceId?.let {
                 GuideScreen(it, playChannel, modifier, onReplay = { channelId, start, stop ->
@@ -391,6 +439,8 @@ fun HomeContent(
     spotlight: Spotlight? = null,
     /** Cinéma Premium : retour au menu d'accueil ; pas d'onglets des sections, un bouton « Menu » à la place. */
     onMenu: (() -> Unit)? = null,
+    /** Recherche de partout (chaînes, films et séries), bouton de la barre du haut. */
+    onSearch: (() -> Unit)? = null,
 ) {
     val window = rememberWindowInfo()
     // Dernier élément ouvert : sa liste revient à sa place et il reprend le focus au retour sur l'accueil.
@@ -425,7 +475,7 @@ fun HomeContent(
         if (onMenu != null) {
             MenuTopBar(section, window, onMenu, actions.onSettings)
         } else {
-            HomeTopBar(section, window, actions, onTabsFocused = { tabsFocused.value = it }, style = layout)
+            HomeTopBar(section, window, actions, onTabsFocused = { tabsFocused.value = it }, style = layout, onSearch = onSearch)
         }
     }
     Scaffold(
@@ -653,6 +703,7 @@ private fun HomeTopBar(
      * (sélection) ; Cinéma Premium, onglets discrets sans icône dans une capsule translucide.
      */
     style: HomeLayout = HomeLayout.LIVE_CENTER,
+    onSearch: (() -> Unit)? = null,
 ) {
     val minimal = style == HomeLayout.PREMIUM
     val underlined = style == HomeLayout.STREAMING
@@ -714,6 +765,7 @@ private fun HomeTopBar(
                 IconAction(Icons.Filled.Settings, stringResource(R.string.settings_title), actions.onSettings)
             }
         } else {
+            onSearch?.let { IconAction(Icons.Filled.Search, stringResource(R.string.search_everywhere), it) }
             IconAction(Icons.Filled.Settings, stringResource(R.string.settings_title), actions.onSettings)
         }
     }

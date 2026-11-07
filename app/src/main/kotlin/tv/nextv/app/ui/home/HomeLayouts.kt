@@ -221,6 +221,9 @@ internal fun SearchResults(
     lastOpened: MutableState<OpenedItem?>,
     actions: HomeActions,
     style: ShelfStyle = ShelfStyle.STREAMING,
+    /** Titre de la rangée (« Résultats » ; « Chaînes », « Films »… dans la recherche de partout). */
+    title: String = stringResource(R.string.home_rows_results),
+    rowKey: String = "results",
 ) {
     val count = when (section) {
         HomeSection.TV -> channels.itemCount
@@ -229,26 +232,26 @@ internal fun SearchResults(
     }
     val tv = section == HomeSection.TV
     Shelf(
-        title = stringResource(R.string.home_rows_results),
+        title = title,
         count = itemCount(section, count),
         padding = padding,
         onMore = null,
         itemWidth = if (tv) sizes.channel else sizes.poster,
         imageRatio = if (tv) CHANNEL_RATIO else POSTER_RATIO,
-        rowKey = "results",
+        rowKey = rowKey,
         itemCount = count,
         lastOpened = lastOpened,
         style = style,
     ) {
         when (section) {
             HomeSection.TV -> items(channels.itemCount, key = channels.itemKey { it.id }) { index ->
-                channels[index]?.let { ShelfChannel(it, index, "results", sizes.channel, content, lastOpened, actions, style) }
+                channels[index]?.let { ShelfChannel(it, index, rowKey, sizes.channel, content, lastOpened, actions, style) }
             }
             HomeSection.MOVIES -> items(movies.itemCount, key = movies.itemKey { it.id }) { index ->
-                movies[index]?.let { ShelfPoster(it.toPoster(), index, "results", sizes.poster, content.favoriteKeys, lastOpened, actions, style) }
+                movies[index]?.let { ShelfPoster(it.toPoster(), index, rowKey, sizes.poster, content.favoriteKeys, lastOpened, actions, style) }
             }
             else -> items(series.itemCount, key = series.itemKey { it.itemKey }) { index ->
-                series[index]?.let { ShelfPoster(it.toPoster(), index, "results", sizes.poster, content.favoriteKeys, lastOpened, actions, style) }
+                series[index]?.let { ShelfPoster(it.toPoster(), index, rowKey, sizes.poster, content.favoriteKeys, lastOpened, actions, style) }
             }
         }
     }

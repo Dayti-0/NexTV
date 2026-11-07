@@ -4,6 +4,10 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.50
+- Recherche de partout (chaînes, films et séries d'un coup) : bouton dans le menu de Cinéma Premium et loupe en haut des interfaces Live Center et Streaming
+- Cinéma Premium : l'aperçu en direct s'arrête au retour sur le menu d'accueil
+
 ## 0.2.49
 - Scores en direct mis à jour plus vite : toutes les 15 à 20 s dans le bandeau du lecteur et dans Foot (au lieu d'une minute)
 

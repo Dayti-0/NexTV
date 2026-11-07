@@ -412,6 +412,24 @@ class HomeViewModel(
     }
 
     /** Retour aux rangées (interface « Streaming ») : catégorie « Toutes » et recherche vidée. */
+    /** Catégories et recherches des sections avant la recherche de partout, rendues à sa fermeture. */
+    private var beforeSearch: Pair<Map<HomeSection, Category>, Map<HomeSection, String>>? = null
+
+    /** Recherche de partout : le même texte dans les chaînes, les films et les séries (toutes catégories). */
+    fun searchEverywhere(text: String) {
+        if (beforeSearch == null) beforeSearch = categories.value to queries.value
+        val searched = listOf(HomeSection.TV, HomeSection.MOVIES, HomeSection.SERIES)
+        categories.update { it + searched.associateWith { Category.All } }
+        queries.update { it + searched.associateWith { text } }
+    }
+
+    fun closeSearchEverywhere() {
+        val (savedCategories, savedQueries) = beforeSearch ?: return
+        beforeSearch = null
+        categories.value = savedCategories
+        queries.value = savedQueries
+    }
+
     fun showRows() {
         categories.update { it + (section.value to Category.All) }
         queries.update { it + (section.value to "") }

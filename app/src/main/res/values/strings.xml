@@ -163,6 +163,11 @@
     <string name="menu_football_hint">Matchs et scores</string>
     <string name="menu_subscription">Abonnement jusqu’au %1$s</string>
     <string name="menu_back">Menu</string>
+    <string name="search_everywhere">Rechercher partout</string>
+    <string name="search_everywhere_channels">Chaînes</string>
+    <string name="search_everywhere_hint">Chaîne, film ou série…</string>
+    <string name="search_everywhere_empty">Tapez un nom : les chaînes, les films et les séries qui correspondent s’affichent ici.</string>
+    <string name="search_everywhere_none">Rien ne correspond à « %1$s ».</string>
     <string name="football_all">Tous les matchs</string>
     <string name="football_today">Aujourd’hui</string>
     <string name="football_tomorrow">Demain</string>

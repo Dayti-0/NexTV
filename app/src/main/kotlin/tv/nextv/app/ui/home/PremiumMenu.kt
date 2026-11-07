@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
@@ -43,7 +44,7 @@ import tv.nextv.app.ui.components.rememberWindowInfo
 
 /**
  * Menu d'accueil de Cinéma Premium : une grande tuile par section (TV, Guide TV, Films, Séries, Foot),
- * puis les raccourcis (favoris, reprise, réglages) et la fin de l'abonnement. Une tuile ouvre sa
+ * puis les raccourcis (recherche de partout, favoris, reprise, réglages) et la fin de l'abonnement. Une tuile ouvre sa
  * section, « Retour » y ramène.
  */
 @Composable
@@ -54,6 +55,8 @@ fun PremiumMenu(
     onFavorites: () -> Unit,
     onContinue: () -> Unit,
     onSettings: () -> Unit,
+    /** Recherche de partout : chaînes, films et séries. */
+    onSearch: () -> Unit = {},
     /** « Abonnement jusqu'au 10 novembre 2026 » (compte Xtream), `null` si inconnu. */
     subscription: String? = null,
     modifier: Modifier = Modifier,
@@ -92,6 +95,7 @@ fun PremiumMenu(
                 }
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                PillButton(stringResource(R.string.search_everywhere), onSearch, icon = Icons.Filled.Search)
                 PillButton(stringResource(R.string.home_favorites), onFavorites, icon = Icons.Filled.Star)
                 PillButton(stringResource(R.string.home_continue), onContinue, icon = Icons.Filled.PlayArrow)
                 PillButton(stringResource(R.string.settings_title), onSettings, icon = Icons.Filled.Settings)
