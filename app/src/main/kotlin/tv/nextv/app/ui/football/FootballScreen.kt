@@ -219,7 +219,7 @@ fun FootballContent(
     if (window.isWide) {
         Row(modifier.fillMaxSize()) {
             val railState = rememberLazyListState()
-            FadingBottom({ railState.canScrollForward }) { fade ->
+            FadingBottom({ railState.canScrollForward }, { railState.canScrollBackward }) { fade ->
                 LazyColumn(
                     state = railState,
                     modifier = Modifier
@@ -315,7 +315,7 @@ private fun MatchList(
         }
     }
     val listState = rememberLazyListState()
-    FadingBottom({ listState.canScrollForward }) { fade ->
+    FadingBottom({ listState.canScrollForward }, { listState.canScrollBackward }) { fade ->
         LazyColumn(
             state = listState,
             modifier = modifier.fillMaxSize().then(fade),
@@ -669,7 +669,7 @@ private fun StandingsTable(
             )
         } else {
             val tableState = rememberLazyListState()
-            FadingBottom({ tableState.canScrollForward }) { fade ->
+            FadingBottom({ tableState.canScrollForward }, { tableState.canScrollBackward }) { fade ->
                 LazyColumn(
                     state = tableState,
                     modifier = modifier.fillMaxSize().then(fade),

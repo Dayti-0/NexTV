@@ -309,7 +309,7 @@ fun SettingsContent(
                 navigation = { IconAction(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back), onBack) },
             )
             val settingsScroll = rememberScrollState()
-            FadingBottom({ settingsScroll.canScrollForward }) { fade ->
+            FadingBottom({ settingsScroll.canScrollForward }, { settingsScroll.canScrollBackward }, ends = settingsScroll) { fade ->
                 Box(Modifier.fillMaxSize().imePadding().then(fade).verticalScroll(settingsScroll), contentAlignment = Alignment.TopCenter) {
                     Column(
                         Modifier.widthIn(max = 760.dp).fillMaxWidth().padding(horizontal = window.horizontalPadding, vertical = 8.dp),

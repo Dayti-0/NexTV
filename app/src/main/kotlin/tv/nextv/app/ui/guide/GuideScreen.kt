@@ -343,7 +343,7 @@ private fun GuideGrid(
             channelColumnWidth = channelColumnWidth,
             modifier = Modifier.padding(start = horizontalPadding),
         )
-        FadingBottom({ listState.canScrollForward }) { fade ->
+        FadingBottom({ listState.canScrollForward }, { listState.canScrollBackward }) { fade ->
             LazyColumn(
                 state = listState,
                 contentPadding = PaddingValues(start = horizontalPadding, bottom = 24.dp, top = 4.dp),

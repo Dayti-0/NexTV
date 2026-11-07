@@ -156,7 +156,7 @@ internal fun TonightView(
                 ColumnTitle(stringResource(R.string.tonight_second_part), Modifier.weight(1f))
             }
         }
-        FadingBottom({ listState.canScrollForward }) { fade ->
+        FadingBottom({ listState.canScrollForward }, { listState.canScrollBackward }) { fade ->
             LazyColumn(
                 state = listState,
                 contentPadding = PaddingValues(start = window.horizontalPadding, end = window.horizontalPadding, bottom = 32.dp),

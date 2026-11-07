@@ -8,6 +8,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
@@ -656,50 +657,106 @@ val LocalTabsFocused = compositionLocalOf<() -> Boolean> { { false } }
 /** Hauteur du fondu en bas des listes. */
 val BottomFadeLength: Dp = 56.dp
 
+/** Hauteur du fondu en haut des listes, quand on peut remonter. */
+val TopFadeLength: Dp = 48.dp
+
 /**
  * Fondu en bas d'une zone qui défile, tant qu'il reste du contenu plus bas : le contenu s'estompe
  * vers la transparence (quel que soit le fond : image, dégradé) et le fondu disparaît en fin de liste.
  * [maxPx] : hauteur à ne pas dépasser (place libre sous l'élément choisi, qui ne s'estompe jamais).
+ * [top] : intensité du même fondu en haut (0 : aucun, 1 : entier), quand on peut remonter.
  */
-fun Modifier.bottomFade(canScrollDown: () -> Boolean, length: Dp = BottomFadeLength, maxPx: (() -> Float)? = null): Modifier = this
+fun Modifier.bottomFade(
+    canScrollDown: () -> Boolean,
+    length: Dp = BottomFadeLength,
+    maxPx: (() -> Float)? = null,
+    top: () -> Float = { 0f },
+    topLength: Dp = TopFadeLength,
+): Modifier = this
     .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
     .drawWithContent {
         drawContent()
+        val topStrength = top().coerceIn(0f, 1f)
+        val topFade = topLength.toPx().coerceAtMost(size.height / 2)
+        if (topStrength > 0f && topFade > 0f) {
+            drawRect(
+                brush = Brush.verticalGradient(0f to Color.Black.copy(alpha = 1f - topStrength), 1f to Color.Black, startY = 0f, endY = topFade),
+                size = Size(size.width, topFade),
+                blendMode = BlendMode.DstIn,
+            )
+        }
         if (!canScrollDown()) return@drawWithContent
         val fade = minOf(length.toPx(), maxPx?.invoke() ?: Float.MAX_VALUE).coerceAtMost(size.height)
         if (fade <= 0f) return@drawWithContent
-        val top = size.height - fade
+        val bottom = size.height - fade
         drawRect(
-            brush = Brush.verticalGradient(0f to Color.Black, 1f to Color.Transparent, startY = top, endY = size.height),
-            topLeft = Offset(0f, top),
+            brush = Brush.verticalGradient(0f to Color.Black, 1f to Color.Transparent, startY = bottom, endY = size.height),
+            topLeft = Offset(0f, bottom),
             size = Size(size.width, fade),
             blendMode = BlendMode.DstIn,
         )
     }
 
 /**
- * Liste parcourue à la télécommande avec le fondu du bas : [content] reçoit le modificateur du
- * fondu, et l'élément choisi ne s'arrête jamais dedans (la liste défile un peu plus).
+ * Liste parcourue à la télécommande avec le fondu du bas, et celui du haut si [canScrollUp] est donné :
+ * [content] reçoit le modificateur des fondus, et l'élément choisi ne s'arrête jamais dedans (la liste
+ * défile un peu plus). [ends] : zone qui défile dont les deux bouts ne se choisissent pas (titre d'une
+ * carte en haut, mentions en bas) ; un élément qui tient à l'écran tout en haut ou tout en bas y amène
+ * la liste jusqu'au bout.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun FadingBottom(canScrollDown: () -> Boolean, content: @Composable (fade: Modifier) -> Unit) {
+fun FadingBottom(
+    canScrollDown: () -> Boolean,
+    canScrollUp: (() -> Boolean)? = null,
+    ends: ScrollState? = null,
+    content: @Composable (fade: Modifier) -> Unit,
+) {
     val parent = LocalBringIntoViewSpec.current
-    val margin = with(LocalDensity.current) { BottomFadeLength.toPx() }
-    val spec = remember(parent, margin) { BottomMarginBringIntoViewSpec(parent, margin) }
+    val density = LocalDensity.current
+    val bottom = with(density) { BottomFadeLength.toPx() }
+    val top = if (canScrollUp != null) with(density) { TopFadeLength.toPx() } else 0f
+    // Le fondu du haut apparaît et disparaît en douceur.
+    val topStrength = animateFloatAsState(if (canScrollUp?.invoke() == true) 1f else 0f, tween(EDGE_FADE_MILLIS), label = "top-fade")
+    val spec = remember(parent, top, bottom, ends) { FadeMarginsBringIntoViewSpec(parent, top, bottom, ends) }
+    val fade = remember(canScrollDown, topStrength) { Modifier.bottomFade(canScrollDown, top = { topStrength.value }) }
     CompositionLocalProvider(LocalBringIntoViewSpec provides spec) {
-        content(Modifier.bottomFade(canScrollDown))
+        content(fade)
     }
 }
 
-/** Élément amené à l'écran au-dessus du fondu du bas ([margin]) ; sinon comme d'habitude. */
+/**
+ * Élément amené à l'écran entre les fondus du haut ([top]) et du bas ([bottom]) ; en remontant, comme
+ * d'habitude (télé : vers le tiers de l'écran). Avec [ends], jusqu'au bout de la liste quand l'élément y
+ * tient entier.
+ */
 @OptIn(ExperimentalFoundationApi::class)
-private class BottomMarginBringIntoViewSpec(private val parent: BringIntoViewSpec, private val margin: Float) : BringIntoViewSpec {
+private class FadeMarginsBringIntoViewSpec(
+    private val parent: BringIntoViewSpec,
+    private val top: Float,
+    private val bottom: Float,
+    private val ends: ScrollState?,
+) : BringIntoViewSpec {
     override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
-        val usable = containerSize - margin
-        if (size > usable || offset < 0f) return parent.calculateScrollDistance(offset, size, containerSize)
-        val trailing = offset + size
-        return if (trailing > usable) trailing - usable else 0f
+        val end = containerSize - bottom
+        val distance = when {
+            size > end - top -> parent.calculateScrollDistance(offset, size, containerSize)
+            offset < top -> minOf(parent.calculateScrollDistance(offset, size, containerSize), offset - top)
+            offset + size > end -> offset + size - end
+            else -> 0f
+        }
+        val scroll = ends ?: return distance
+        // Une autre zone qui défile (rangée dans la liste) : rien de plus.
+        if (scroll.viewportSize.toFloat() != containerSize || scroll.maxValue == Int.MAX_VALUE) return distance
+        val position = scroll.value.toFloat()
+        val max = scroll.maxValue.toFloat()
+        // Place de l'élément dans tout le contenu.
+        val leading = position + offset
+        return when {
+            leading + size <= end -> -position
+            leading - max >= top -> max - position
+            else -> distance
+        }
     }
 }
 

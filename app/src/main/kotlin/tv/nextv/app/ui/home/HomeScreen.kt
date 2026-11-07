@@ -843,7 +843,7 @@ internal fun CategoryRail(
     ) {
         SearchField(query, searchHint(section), actions.onQuery, Modifier.padding(horizontal = RAIL_FOCUS_ROOM))
         val railState = rememberLazyListState()
-        FadingBottom({ railState.canScrollForward }) { fade ->
+        FadingBottom({ railState.canScrollForward }, { railState.canScrollBackward }) { fade ->
             LazyColumn(
                 state = railState,
                 contentPadding = PaddingValues(start = RAIL_FOCUS_ROOM, end = RAIL_FOCUS_ROOM, top = RAIL_FOCUS_ROOM, bottom = 24.dp),
@@ -1103,7 +1103,7 @@ internal fun TvBody(
         else -> channels.itemCount
     }
     RestoreScroll(state, lastOpened, count)
-    FadingBottom({ state.canScrollForward }) { fade ->
+    FadingBottom({ state.canScrollForward }, { state.canScrollBackward }) { fade ->
         LazyVerticalGrid(
             columns = GridCells.Fixed(grid.columns),
             state = state,
@@ -1176,7 +1176,7 @@ private fun MoviesBody(
     }
     val state = rememberSaveable(category, saver = LazyGridState.Saver) { LazyGridState() }
     RestoreScroll(state, lastOpened, if (favoritesMode) favorites.size else movies.itemCount)
-    FadingBottom({ state.canScrollForward }) { fade ->
+    FadingBottom({ state.canScrollForward }, { state.canScrollBackward }) { fade ->
         LazyVerticalGrid(
             columns = GridCells.Fixed(grid.columns),
             state = state,
@@ -1248,7 +1248,7 @@ private fun SeriesBody(
     }
     val state = rememberSaveable(category, saver = LazyGridState.Saver) { LazyGridState() }
     RestoreScroll(state, lastOpened, if (favoritesMode) favorites.size else series.itemCount)
-    FadingBottom({ state.canScrollForward }) { fade ->
+    FadingBottom({ state.canScrollForward }, { state.canScrollBackward }) { fade ->
         LazyVerticalGrid(
             columns = GridCells.Fixed(grid.columns),
             state = state,
@@ -1284,7 +1284,7 @@ private fun ContinueBody(
     }
     val state = rememberSaveable(saver = LazyGridState.Saver) { LazyGridState() }
     RestoreScroll(state, lastOpened, items.size)
-    FadingBottom({ state.canScrollForward }) { fade ->
+    FadingBottom({ state.canScrollForward }, { state.canScrollBackward }) { fade ->
         LazyVerticalGrid(
             columns = GridCells.Fixed(grid.columns),
             state = state,
