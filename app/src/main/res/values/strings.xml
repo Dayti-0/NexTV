@@ -302,7 +302,8 @@
     <string name="player_info_decoder">Décodeur vidéo</string>
     <string name="player_info_audio">Audio</string>
     <string name="player_info_audio_decoder">Décodeur audio</string>
-    <string name="player_info_bitrate">Débit mesuré</string>
+    <string name="player_info_bitrate">Vitesse réseau</string>
+    <string name="player_info_received">Débit reçu</string>
     <string name="player_info_dropped">Images perdues</string>
     <string name="player_info_version">Version</string>
     <string name="player_info_unknown">—</string>

@@ -522,7 +522,7 @@ abstract class ScreenshotSuite(private val device: String) {
     @Test
     fun playerInfo() = capture("13b_lecteur_infos") {
         FakeVideo()
-        val state = SampleData.player.copy(bandwidthMbps = 21.6, quality = "4K", info = SampleData.playbackInfo)
+        val state = SampleData.player.copy(bandwidthMbps = 21.6, receivedMbps = 14.2, quality = "4K", info = SampleData.playbackInfo)
         PlayerOverlay(state = state, now = SampleData.NOW, visible = false, showTouchControls = false, onBack = {}, onZap = {}, onRetry = {})
         Box(Modifier.fillMaxSize()) {
             PlaybackInfoPanel(state = state, visible = true, modifier = Modifier.align(Alignment.TopEnd))

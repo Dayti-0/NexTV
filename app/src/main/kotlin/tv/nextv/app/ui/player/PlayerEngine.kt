@@ -10,6 +10,9 @@ import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.TransferListener
 import androidx.media3.exoplayer.DecoderCounters
 import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.ExoPlayer
@@ -27,6 +30,7 @@ import tv.nextv.app.AppContainer
 import tv.nextv.app.R
 import tv.nextv.app.player.AdVolumeControl
 import tv.nextv.app.player.PlaybackRequest
+import tv.nextv.app.player.ReceivedRate
 import tv.nextv.app.player.TimeshiftBuffer
 import tv.nextv.app.player.VideoDecoders
 
@@ -125,6 +129,18 @@ internal class PlayerEngine(
         }
     }
 
+    /** Débit reçu du flux, mesuré à part : ExoPlayer n'en donne pas pour un flux continu (MPEG-TS). */
+    private val receivedRate = ReceivedRate()
+    private val received = object : TransferListener {
+        override fun onTransferInitializing(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean) = Unit
+        override fun onTransferStart(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean) = Unit
+        override fun onTransferEnd(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean) = Unit
+        override fun onBytesTransferred(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean, bytesTransferred: Int) {
+            if (!isNetwork) return
+            receivedRate.add(bytesTransferred, SystemClock.elapsedRealtime())?.let { mbps -> state.update { it.copy(receivedMbps = mbps) } }
+        }
+    }
+
     private val analytics = object : AnalyticsListener {
         override fun onBandwidthEstimate(
             eventTime: AnalyticsListener.EventTime,
@@ -184,7 +200,7 @@ internal class PlayerEngine(
      * @param startPositionMs position de départ d'une reprise (0 : un direct démarre au plus près du direct).
      */
     fun play(request: PlaybackRequest, forceHls: Boolean, startPositionMs: Long) {
-        open(container.playerFactory.mediaSource(request, forceHls), startPositionMs)
+        open(container.playerFactory.mediaSource(request, forceHls, received), startPositionMs)
     }
 
     /** Lit l'enregistrement du différé [buffer]. */
@@ -199,7 +215,8 @@ internal class PlayerEngine(
         // État propre au flux précédent : erreur, infos, son coupé (avance rapide), pistes choisies, vitesse.
         generation++
         adVolume.newStream()
-        state.update { it.copy(error = null, info = PlaybackInfo(), audioProblem = null) }
+        receivedRate.reset()
+        state.update { it.copy(error = null, info = PlaybackInfo(), audioProblem = null, receivedMbps = null) }
         player.setPlaybackSpeed(1f)
         player.resetTrackSelection()
         // Position de départ seulement pour ce flux (reprise) ; sinon position par défaut.

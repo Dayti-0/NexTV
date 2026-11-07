@@ -51,6 +51,11 @@ data class PlayerUiState(
     val qualityNotice: String? = null,
     /** Débit réellement mesuré sur les téléchargements du flux, en Mbit/s (absent avant la première mesure). */
     val bandwidthMbps: Double? = null,
+    /**
+     * Débit reçu du réseau pour ce flux, en Mbit/s : seule mesure d'un flux continu (MPEG-TS), pour lequel
+     * ExoPlayer n'en donne pas. Proche du débit de la chaîne une fois la mémoire tampon remplie.
+     */
+    val receivedMbps: Double? = null,
     /** Incrémenté à chaque changement de chaîne : le bandeau se réaffiche. */
     val channelVersion: Int = 0,
     /** Détails techniques de la lecture en cours (panneau « Infos de lecture »). */
@@ -156,3 +161,6 @@ data class ChannelMenuState(
     /** Rang de la chaîne en cours dans la liste affichée (focus initial). */
     val initialIndex: Int = 0,
 )
+
+/** Débit affiché : celui mesuré par ExoPlayer (HLS), sinon celui reçu du flux. */
+val PlayerUiState.shownMbps: Double? get() = bandwidthMbps ?: receivedMbps

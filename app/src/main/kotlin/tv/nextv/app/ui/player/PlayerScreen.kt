@@ -824,7 +824,7 @@ private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Mo
             }
             if (state.replay != null) StatusPill(stringResource(R.string.player_replay), NexTvColors.Primary, Modifier.align(Alignment.CenterVertically))
             state.quality?.let { Badge(it, Modifier.align(Alignment.CenterVertically), color = NexTvColors.Primary) }
-            state.bandwidthMbps?.let { SpeedLabel(it, Modifier.align(Alignment.CenterVertically)) }
+            state.shownMbps?.let { SpeedLabel(it, Modifier.align(Alignment.CenterVertically)) }
         }
         state.replay?.let {
             Text(it, style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.85f), maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -1287,10 +1287,13 @@ fun PlaybackInfoPanel(state: PlayerUiState, visible: Boolean, modifier: Modifier
                 InfoLine(stringResource(R.string.player_info_decoder), decoder)
                 InfoLine(stringResource(R.string.player_info_audio), audio)
                 info.audioDecoder?.let { InfoLine(stringResource(R.string.player_info_audio_decoder), it) }
+                // Reçu : ce qui arrive du réseau pour ce flux (toujours mesuré, même en flux continu).
                 InfoLine(
-                    stringResource(R.string.player_info_bitrate),
-                    state.bandwidthMbps?.let { stringResource(R.string.player_speed, formatDecimal(it)) } ?: unknown,
+                    stringResource(R.string.player_info_received),
+                    state.receivedMbps?.let { stringResource(R.string.player_speed, formatDecimal(it)) } ?: unknown,
                 )
+                // Connexion : vitesse des téléchargements des morceaux du flux, seulement en HLS.
+                state.bandwidthMbps?.let { InfoLine(stringResource(R.string.player_info_bitrate), stringResource(R.string.player_speed, formatDecimal(it))) }
                 InfoLine(stringResource(R.string.player_info_dropped), info.droppedFrames.toString(), warning = info.droppedFrames > 0)
                 InfoLine(stringResource(R.string.player_info_version), state.quality ?: unknown)
             }

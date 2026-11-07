@@ -10,6 +10,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.TransferListener
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.decoder.ffmpeg.FfmpegLibrary
 import androidx.media3.exoplayer.DefaultLoadControl
@@ -163,10 +164,11 @@ class PlayerFactory(
      *
      * @param forceHls traiter le flux comme du HLS (seconde tentative pour une URL sans extension).
      */
-    fun mediaSource(request: PlaybackRequest, forceHls: Boolean = false): MediaSource {
+    fun mediaSource(request: PlaybackRequest, forceHls: Boolean = false, transferListener: TransferListener? = null): MediaSource {
         val httpFactory = OkHttpDataSource.Factory(httpClient(request))
             .setUserAgent(userAgent(request))
             .setDefaultRequestProperties(request.stream.headers - "User-Agent")
+            .setTransferListener(transferListener)
         val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
         return DefaultMediaSourceFactory(dataSourceFactory).createMediaSource(mediaItem(request.stream, forceHls))
     }

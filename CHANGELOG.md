@@ -7,6 +7,7 @@ d'installer la mise à jour (Réglages › Mise à jour), avec celles des versio
 ## 0.2.55
 - Réglages refaits : la liste des pages à gauche (Playlist, Lecture, Affichage, Guide TV, Films, séries et foot, Réseau, Sauvegarde, Mise à jour), avec un résumé sous chacune ; la page choisie s'affiche à droite, rangée en petites cartes. → ou OK entre dans la page, ← ou Retour revient à la liste
 - Configuration rapide en 5 étapes (interface, couleurs, qualité et lecture) : proposée une seule fois, à l'ouverture qui suit cette mise à jour ou après l'installation, puis toujours disponible en haut des réglages
+- Lecteur, infos de lecture : « Débit reçu » s'affiche aussi pour les chaînes en flux continu (il restait sur « — ») ; « Vitesse réseau » en plus pour les chaînes en HLS
 
 ## 0.2.54
 - Interface Streaming façon Netflix : menu à gauche en icônes (Rechercher, sections, Catégories, Réglages) qui s'ouvre avec ←, à la place des onglets du haut
