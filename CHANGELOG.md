@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.46
+- Lecteur : score et minute de jeu dans le bandeau aussi sur les chaînes « LIVE MATCH » (DAZN LALIGA, DAZN SERIE A), qui n'ont pas de programme dans le guide
+
 ## 0.2.45
 - Réglages, mise à jour : les nouveautés se lisent version par version, chacune entière à l'écran (plus de texte coupé)
 

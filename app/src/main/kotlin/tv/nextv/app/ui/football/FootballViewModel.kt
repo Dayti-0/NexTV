@@ -421,6 +421,44 @@ internal fun localDayStart(millis: Long): Long = Calendar.getInstance().apply {
     set(Calendar.MILLISECOND, 0)
 }.timeInMillis
 
+/**
+ * Match probablement diffusé en ce moment sur une chaîne « événement » (« FR| DAZN LALIGA 2 (LIVE MATCH ONLY) »),
+ * pour le score du bandeau du lecteur : ces chaînes n'ont pas de programme dans le guide. Même règle que
+ * la section Foot (tour de rôle, retenu d'un jour à l'autre) ; `null` pour une autre chaîne.
+ */
+internal suspend fun eventMatchOnAir(container: AppContainer, sourceId: Long, channelName: String, now: Long): ScheduledMatch? {
+    val target = EventChannels.parse(channelName) ?: return null
+    val turns = container.eventTurns.read().filterValues { it.kickoffMillis >= now - EVENT_TURN_MEMORY_MILLIS }
+    val from = (turns.values.map { it.kickoffMillis } + localDayStart(now) + (now - EVENT_LIVE_WINDOW_MILLIS)).min()
+    val matches = container.liveScores.schedule(from, now + EVENT_LIVE_WINDOW_MILLIS) ?: return null
+    val events = container.channelDao.eventChannelCandidates(sourceId, now - EVENT_LIVE_WINDOW_MILLIS, now + EVENT_LIVE_WINDOW_MILLIS)
+        .filterNot { it.hasGuide }
+        .mapNotNull { channel -> EventChannels.parse(channel.name)?.let { channel to it } }
+        .sortedBy { (channel, _) -> BroadcastLanguage.rank(channel.name) }
+    val numbers = events.associate { (channel, event) -> channel.id to event }
+    val playable = matches.filter { it.status == MatchStatus.SCHEDULED || it.status == MatchStatus.LIVE || it.status == MatchStatus.FINISHED }
+    val byId = playable.associateBy { it.id }
+    val anchors = turns.mapNotNull { (competition, turn) ->
+        byId[turn.matchId]?.takeIf { it.competition == competition }?.let { it to turn.number }
+    }.toMap()
+    return EventChannels.assign(playable, events, localDayStart(now), anchors).entries
+        .filter { (match, channels) ->
+            val first = channels.firstOrNull()?.let { numbers[it.id] }
+            first?.competition == target.competition && first.number == target.number &&
+                match.kickoffMillis - EVENT_EARLY_MILLIS <= now &&
+                (match.status == MatchStatus.LIVE || now < match.kickoffMillis + EVENT_MATCH_MILLIS)
+        }
+        .minByOrNull { (match, _) -> kotlin.math.abs(now - match.kickoffMillis) }
+        ?.key
+}
+
+private const val EVENT_TURN_MEMORY_MILLIS = 4 * 24 * 60 * 60_000L
+private const val EVENT_LIVE_WINDOW_MILLIS = 3 * 60 * 60_000L
+
+/** Le match s'affiche un peu avant le coup d'envoi, et jusqu'à la fin de sa diffusion (score final). */
+private const val EVENT_EARLY_MILLIS = 15 * 60_000L
+private const val EVENT_MATCH_MILLIS = 135 * 60_000L
+
 /** Programme du guide du fournisseur sur une chaîne « événement » (« Espanyol vs. Deportivo de La Coruña »). */
 internal fun providerRow(channel: EventChannelRow, programme: XtreamProgramme): BroadcastRow {
     val key = "provider:${channel.id}"

@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import tv.nextv.app.AppContainer
+import tv.nextv.app.ui.football.eventMatchOnAir
 import tv.nextv.app.R
 import tv.nextv.app.data.db.ChannelEntity
 import tv.nextv.app.data.db.ChannelListRow
@@ -38,6 +39,7 @@ import tv.nextv.core.football.BroadcastFinder
 import tv.nextv.core.football.FootballDataResult
 import tv.nextv.core.football.FootballMatches
 import tv.nextv.core.football.MatchStatus
+import tv.nextv.core.football.ScheduledMatch
 import tv.nextv.core.model.ContentKind
 import tv.nextv.core.model.SourceLocation
 import tv.nextv.core.model.StreamFormat
@@ -354,7 +356,9 @@ class PlayerViewModel(
             .map { PlayerProgramme(it.title, it.startMillis, it.stopMillis) }
         val live = upcoming.firstOrNull()?.takeIf { it.startMillis <= now }
         mutableState.update { it.copy(now = live, next = upcoming.firstOrNull { p -> p != live }) }
-        val match = if (live != null) matchOnAir(current.id, now) else null
+        // Chaîne « événement » (LALIGA 2 LIVE MATCH…) sans programme du guide : le match qu'elle diffuse.
+        val match = (if (live != null) matchOnAir(current.id, now) else null)
+            ?: eventMatchOnAir(container, current.sourceId, current.name, now)?.let(::playerMatchOf)
         if (session.channel?.id == current.id) mutableState.update { it.copy(match = match) }
     }
 
@@ -401,6 +405,25 @@ class PlayerViewModel(
             live = score?.inPlay == true,
             clock = score?.clock,
             halfTime = score?.halfTime == true,
+        )
+    }
+
+    /** Match du calendrier (ESPN) pour le bandeau : équipes, écussons et score en direct. */
+    private fun playerMatchOf(match: ScheduledMatch): PlayerMatch {
+        val live = match.status == MatchStatus.LIVE
+        return PlayerMatch(
+            home = match.home.displayName,
+            away = match.away.displayName,
+            homeCrest = match.home.crestUrl,
+            awayCrest = match.away.crestUrl,
+            score = if (match.homeScore != null && match.awayScore != null && (live || match.status == MatchStatus.FINISHED)) {
+                "${match.homeScore} – ${match.awayScore}"
+            } else {
+                null
+            },
+            live = live,
+            clock = match.clock.takeIf { live },
+            halfTime = live && match.halfTime,
         )
     }
 
