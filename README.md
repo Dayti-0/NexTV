@@ -26,7 +26,11 @@ Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3, enti�
   classement des championnats, « Mes équipes » pour les équipes suivies. OK pour regarder, appui long pour la fiche
   du match (suivre chaque équipe). La liste vient du calendrier public d'ESPN (sans clé : vrais coups d'envoi, jamais
   de rediffusion), le guide TV donne seulement la chaîne ; les matchs de sélections ne sont listés que s'ils sont
-  diffusés. Classements et fiches des clubs : [football-data.org](https://www.football-data.org) (clé gratuite,
+  diffusés. Un match de club qu'aucune chaîne ne diffuse d'après le guide (la plupart des matchs de Liga et de
+  Serie A : DAZN n'en montre que quelques-uns par journée) n'a pas de carte : il est cité en fin de journée
+  (« Pas diffusés en France : … »), sauf pour les équipes suivies. Les jours que le guide n'annonce pas encore
+  (il couvre une semaine environ), le match garde sa carte (« Pas encore dans le guide »).
+  Classements et fiches des clubs : [football-data.org](https://www.football-data.org) (clé gratuite,
   Réglages › Matchs de foot, ou secret CI `NEXTV_FOOTBALL_API_KEY`), qui donne aussi la liste quand ESPN ne répond pas.
 - **Films et séries** : fiche enrichie par TMDB (synopsis, note, genres, affiche, bande-annonce), saisons et épisodes.
   Une clé d'API TMDB se saisit dans les réglages (ou s'intègre à la compilation, voir plus bas).

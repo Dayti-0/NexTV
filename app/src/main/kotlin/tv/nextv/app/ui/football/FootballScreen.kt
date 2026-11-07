@@ -53,6 +53,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -149,8 +150,19 @@ fun FootballContent(
 ) {
     val window = rememberWindowInfo()
     var details by remember { mutableStateOf<FootballMatch?>(null) }
-    val shown = state.matches.filter { if (myTeams) it.involves(favoriteTeams) else competition == null || it.competition == competition }
-    fun count(choice: Competition?) = state.matches.count { choice == null || it.competition == choice }
+    val shown = remember(state.matches, state.guideUntilMillis, favoriteTeams, competition, myTeams) {
+        selectMatches(
+            state.matches.filter { if (myTeams) it.involves(favoriteTeams) else competition == null || it.competition == competition },
+            state.guideUntilMillis,
+            favoriteTeams,
+            all = myTeams,
+        )
+    }
+    // Compteurs : matchs en carte (ceux qui ne sont pas diffusés en France ne comptent pas).
+    val cards = remember(state.matches, state.guideUntilMillis, favoriteTeams) {
+        selectMatches(state.matches, state.guideUntilMillis, favoriteTeams).cards
+    }
+    fun count(choice: Competition?) = cards.count { choice == null || it.competition == choice }
     // Classement : championnats et coupes suivis par football-data.org.
     val withTable = !myTeams && competition?.apiId != null
 
@@ -189,7 +201,7 @@ fun FootballContent(
                         modifier = Modifier.padding(top = 16.dp),
                     )
                 }
-                shown.isEmpty() -> EmptyState(
+                shown.isEmpty -> EmptyState(
                     icon = NexTvIcons.Football,
                     title = stringResource(if (myTeams) R.string.football_my_teams_empty_title else R.string.football_empty_title),
                     message = if (myTeams) {
@@ -200,9 +212,13 @@ fun FootballContent(
                     modifier = body,
                 )
                 else -> MatchList(
-                    matches = shown,
+                    matches = shown.cards,
+                    others = shown.others,
                     now = state.now,
                     notice = state.notice,
+                    guideUntilMillis = state.guideUntilMillis,
+                    // Toutes les compétitions : chaque match cité en fin de journée dit la sienne.
+                    withCompetition = competition == null,
                     favoriteTeams = favoriteTeams,
                     horizontalPadding = window.horizontalPadding,
                     compact = !window.isWide,
@@ -261,6 +277,7 @@ fun FootballContent(
         MatchSheet(
             match = match,
             now = state.now,
+            guideUntilMillis = state.guideUntilMillis,
             favoriteTeams = favoriteTeams,
             onWatch = { channelId ->
                 details = null
@@ -285,8 +302,12 @@ fun FootballContent(
 @Composable
 private fun MatchList(
     matches: List<FootballMatch>,
+    /** Matchs sans diffusion en France, cités en fin de journée. */
+    others: List<FootballMatch>,
     now: Long,
     notice: FootballNotice?,
+    guideUntilMillis: Long,
+    withCompetition: Boolean,
     favoriteTeams: Set<String>,
     horizontalPadding: Dp,
     compact: Boolean,
@@ -295,6 +316,8 @@ private fun MatchList(
     modifier: Modifier = Modifier,
 ) {
     val days = remember(matches) { matches.groupBy { dayStart(it.kickoffMillis) } }
+    val othersByDay = remember(others) { others.groupBy { dayStart(it.kickoffMillis) } }
+    val allDays = remember(days, othersByDay) { (days.keys + othersByDay.keys).sorted() }
     // Match ouvert (lecture) : il reprend le focus au retour sur l'accueil.
     var opened by rememberSaveable { mutableStateOf<List<String>?>(null) }
     val visit = HomeVisit.current
@@ -330,7 +353,7 @@ private fun MatchList(
                     )
                 }
             }
-            days.forEach { (day, dayMatches) ->
+            allDays.forEach { day ->
                 item(key = "day-$day") {
                     Text(
                         dayLabel(day, now),
@@ -339,11 +362,12 @@ private fun MatchList(
                         modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
                     )
                 }
-                items(dayMatches, key = { it.key }) { match ->
+                items(days[day].orEmpty(), key = { it.key }) { match ->
                     val channel = match.channel
                     MatchRow(
                         match = match,
                         now = now,
+                        guideUntilMillis = guideUntilMillis,
                         compact = compact,
                         followed = match.involves(favoriteTeams),
                         onClick = {
@@ -358,15 +382,37 @@ private fun MatchList(
                         modifier = if (match.key == backKey) Modifier.focusRequester(backFocus) else Modifier,
                     )
                 }
+                othersByDay[day]?.let { dayOthers ->
+                    item(key = "others-$day") { NotBroadcast(dayOthers, withCompetition, compact) }
+                }
             }
         }
     }
+}
+
+/**
+ * Matchs du jour qu'aucune chaîne ne diffuse d'après le guide : une ligne discrète après les cartes
+ * (« Pas diffusés en France : 15:00 Cagliari – Frosinone (Serie A) · … »).
+ */
+@Composable
+private fun NotBroadcast(matches: List<FootballMatch>, withCompetition: Boolean, compact: Boolean) {
+    val list = matches.joinToString(" · ") { match ->
+        val label = "${timeOf(match.kickoffMillis)} ${match.label}"
+        if (withCompetition) "$label (${match.competition.label})" else label
+    }
+    Text(
+        pluralStringResource(R.plurals.football_not_broadcast_list, matches.size, list),
+        style = if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 4.dp, top = 2.dp, bottom = 4.dp),
+    )
 }
 
 @Composable
 private fun MatchRow(
     match: FootballMatch,
     now: Long,
+    guideUntilMillis: Long,
     compact: Boolean,
     followed: Boolean,
     onClick: () -> Unit,
@@ -381,7 +427,7 @@ private fun MatchRow(
         color = MaterialTheme.colorScheme.surfaceContainer,
         focusScale = 1.01f,
     ) {
-        if (compact) CompactMatch(match, now, followed) else WideMatch(match, now, followed)
+        if (compact) CompactMatch(match, now, followed, guideUntilMillis) else WideMatch(match, now, followed, guideUntilMillis)
     }
 }
 
@@ -390,7 +436,7 @@ private fun MatchRow(
  * la largeur (noms d'équipes en entier), puis la chaîne.
  */
 @Composable
-private fun WideMatch(match: FootballMatch, now: Long, followed: Boolean) {
+private fun WideMatch(match: FootballMatch, now: Long, followed: Boolean, guideUntilMillis: Long) {
     val live = match.isLive(now)
     Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         Column(Modifier.width(104.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -407,7 +453,7 @@ private fun WideMatch(match: FootballMatch, now: Long, followed: Boolean) {
             Teams(match, large = true)
             if (live) LiveProgress(match.kickoffMillis, match.endMillis, now, Modifier.widthIn(max = 480.dp))
             Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                ChannelInfo(match, logoWidth = 44.dp, inline = true)
+                ChannelInfo(match, guideUntilMillis, logoWidth = 44.dp, inline = true)
             }
         }
     }
@@ -415,7 +461,7 @@ private fun WideMatch(match: FootballMatch, now: Long, followed: Boolean) {
 
 /** Écran étroit (téléphone) : heure et compétition, affiche, puis chaîne, les uns sous les autres. */
 @Composable
-private fun CompactMatch(match: FootballMatch, now: Long, followed: Boolean) {
+private fun CompactMatch(match: FootballMatch, now: Long, followed: Boolean, guideUntilMillis: Long) {
     val live = match.isLive(now)
     Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -431,7 +477,7 @@ private fun CompactMatch(match: FootballMatch, now: Long, followed: Boolean) {
         Teams(match, large = false)
         if (live) LiveProgress(match.kickoffMillis, match.endMillis, now)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ChannelInfo(match, logoWidth = 40.dp)
+            ChannelInfo(match, guideUntilMillis, logoWidth = 40.dp)
         }
     }
 }
@@ -464,11 +510,12 @@ private fun Teams(match: FootballMatch, large: Boolean) {
 }
 
 /**
- * Chaîne de la playlist qui diffuse le match (et combien d'autres), ou son absence du guide.
- * [inline] : nom et autres chaînes sur une seule ligne.
+ * Chaîne de la playlist qui diffuse le match (et combien d'autres), ou son absence du guide : pas
+ * diffusé en France quand le guide couvre déjà son jour ([guideUntilMillis]), sinon pas encore dans le
+ * guide. [inline] : nom et autres chaînes sur une seule ligne.
  */
 @Composable
-private fun RowScope.ChannelInfo(match: FootballMatch, logoWidth: Dp, inline: Boolean = false) {
+private fun RowScope.ChannelInfo(match: FootballMatch, guideUntilMillis: Long, logoWidth: Dp, inline: Boolean = false) {
     val channel = match.channel
     if (channel == null) {
         // Chaîne connue du guide mais pas reliée à la playlist : son nom, pour la retrouver soi-même.
@@ -481,7 +528,12 @@ private fun RowScope.ChannelInfo(match: FootballMatch, logoWidth: Dp, inline: Bo
                 maxLines = 2,
             )
         } else {
-            Text(stringResource(R.string.football_no_channel), style = MaterialTheme.typography.labelLarge, color = NexTvColors.TextMuted, maxLines = 2)
+            Text(
+                stringResource(if (match.notBroadcast(guideUntilMillis)) R.string.football_not_broadcast else R.string.football_no_channel),
+                style = MaterialTheme.typography.labelLarge,
+                color = NexTvColors.TextMuted,
+                maxLines = 2,
+            )
         }
         return
     }
@@ -537,6 +589,7 @@ private fun ChannelChoice(channel: GuideChannel, preferred: Boolean, onClick: ()
 private fun MatchSheet(
     match: FootballMatch,
     now: Long,
+    guideUntilMillis: Long,
     favoriteTeams: Set<String>,
     onWatch: (Long) -> Unit,
     onToggleTeam: (String) -> Unit,
@@ -566,7 +619,7 @@ private fun MatchSheet(
                 match.score?.let { Text(it, style = MaterialTheme.typography.headlineMedium, color = NexTvColors.Live) }
                 if (channels.size <= 1) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        ChannelInfo(match, logoWidth = 56.dp)
+                        ChannelInfo(match, guideUntilMillis, logoWidth = 56.dp)
                     }
                 }
                 match.programme?.description?.let {

@@ -88,6 +88,15 @@ data class FootballMatch(
 
     /** Match d'une équipe suivie (noms de football-data.org, calendrier d'ESPN : comparés club par club). */
     fun involves(teams: Set<String>): Boolean = teams.any { BroadcastFinder.sameClub(it, homeTeam) || BroadcastFinder.sameClub(it, awayTeam) }
+
+    /** Une chaîne le diffuse d'après le guide (de la playlist, ou seulement du guide). */
+    val inGuide: Boolean get() = channel != null || guideChannel != null
+
+    /**
+     * Aucune chaîne ne le diffuse alors que le guide annonce déjà les matchs de son jour
+     * ([guideUntilMillis], voir [FootballUiState]) : il n'est pas diffusé en France.
+     */
+    fun notBroadcast(guideUntilMillis: Long): Boolean = !inGuide && kickoffMillis < guideUntilMillis
 }
 
 /** Fiche d'un club du classement : ses derniers et prochains matchs. */
@@ -121,7 +130,30 @@ data class FootballUiState(
     val now: Long = 0,
     val matches: List<FootballMatch> = emptyList(),
     val notice: FootballNotice? = null,
+    /**
+     * Le guide annonce les matchs jusque-là : un match qu'il ne trouve sur aucune chaîne avant cette
+     * heure n'est pas diffusé en France. 0 : guide pas encore chargé.
+     */
+    val guideUntilMillis: Long = 0,
 )
+
+/** Matchs d'une vue de la section Foot : en carte ([cards]), ou seulement cités en fin de journée ([others]). */
+@Immutable
+data class MatchSelection(val cards: List<FootballMatch>, val others: List<FootballMatch>) {
+    val isEmpty: Boolean get() = cards.isEmpty() && others.isEmpty()
+}
+
+/**
+ * Seuls les matchs diffusés ont leur carte : ceux que le guide ne trouve sur aucune chaîne alors qu'il
+ * couvre déjà leur jour ([guideUntilMillis] ; aucune chaîne française ne les diffuse, comme la plupart
+ * des matchs de Liga et de Serie A) sont seulement cités en fin de journée, sauf ceux des équipes
+ * suivies ([favoriteTeams]) et dans « Mes équipes » ([all]).
+ */
+fun selectMatches(matches: List<FootballMatch>, guideUntilMillis: Long, favoriteTeams: Set<String>, all: Boolean = false): MatchSelection {
+    if (all) return MatchSelection(matches, emptyList())
+    val (others, cards) = matches.partition { it.notBroadcast(guideUntilMillis) && !it.involves(favoriteTeams) }
+    return MatchSelection(cards, others)
+}
 
 /**
  * Matchs à venir et en cours : la liste vient du calendrier d'ESPN (toutes les compétitions, vrais
@@ -252,8 +284,14 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
     }
 
     val state: StateFlow<FootballUiState> =
-        combine(combine(guide, schedule, ::assemble), clock) { (matches, notice), now ->
-            FootballUiState(loading = false, now = now, matches = matches.filter { it.endMillis > now }, notice = notice)
+        combine(combine(guide, schedule, ::assemble), clock) { assembled, now ->
+            FootballUiState(
+                loading = false,
+                now = now,
+                matches = assembled.matches.filter { it.endMillis > now },
+                notice = assembled.notice,
+                guideUntilMillis = assembled.guideUntilMillis,
+            )
         }
             .flowOn(Dispatchers.Default)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FootballUiState())
@@ -274,9 +312,16 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
         }
     }
 
-    private fun assemble(rows: List<BroadcastRow>, schedule: Schedule): Pair<List<FootballMatch>, FootballNotice?> {
+    /** Matchs prêts à afficher, et heure jusqu'à laquelle le guide les annonce (voir [FootballUiState.guideUntilMillis]). */
+    private class Assembled(val matches: List<FootballMatch>, val notice: FootballNotice?, val guideUntilMillis: Long)
+
+    private fun assemble(rows: List<BroadcastRow>, schedule: Schedule): Assembled {
         val matches = scheduledMatches(schedule.matches, rows, System.currentTimeMillis())
-        return matches.sortedWith(compareBy({ it.kickoffMillis }, { it.competition.ordinal })) to schedule.notice
+        return Assembled(
+            matches.sortedWith(compareBy({ it.kickoffMillis }, { it.competition.ordinal })),
+            schedule.notice,
+            guideUntil(rows),
+        )
     }
 
     private fun noticeOf(error: FootballDataError): FootballNotice = when (error) {
@@ -320,6 +365,15 @@ internal class BroadcastRow(channel: EpgChannelRow?, guideName: String?, program
 }
 
 private const val MATCH_MILLIS = 2 * 60 * 60_000L
+
+/**
+ * Le guide ne couvre pas autant de jours sur toutes les chaînes (Ligue 1+ : une semaine, beIN Sports :
+ * neuf jours) : il annonce tous les matchs jusqu'à deux jours avant son dernier programme de football.
+ */
+private const val GUIDE_MARGIN_MILLIS = 2 * 24 * 60 * 60_000L
+
+/** Heure jusqu'à laquelle le guide annonce les matchs ([rows] : ses programmes de football) ; 0 sans guide. */
+internal fun guideUntil(rows: List<BroadcastRow>): Long = rows.maxOfOrNull { it.stopMillis }?.minus(GUIDE_MARGIN_MILLIS) ?: 0L
 
 /** Un match en cours reste affiché au moins jusque-là, prolongations comprises. */
 private const val LIVE_GRACE_MILLIS = 15 * 60_000L

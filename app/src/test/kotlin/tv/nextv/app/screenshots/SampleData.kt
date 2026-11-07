@@ -486,7 +486,10 @@ object SampleData {
         matches = listOf(
             Triple(Competition.LIGUE_1, "Canal+ Sport", "PSG / Marseille") to (NOW - 40 * MINUTE),
             Triple(Competition.PREMIER_LEAGUE, "FR| CANAL+ HDR (Résolution Exclusive)", "Chelsea / Man United") to (NOW + 75 * MINUTE),
-            Triple(Competition.PREMIER_LEAGUE, null, "Coventry City / Sunderland") to (NOW + 75 * MINUTE),
+            // Aucune chaîne française : cités en fin de journée.
+            Triple(Competition.SERIE_A, null, "Cagliari / Frosinone") to (NOW + 75 * MINUTE),
+            Triple(Competition.SERIE_A, null, "Torino / Lecce") to (NOW + 75 * MINUTE),
+            Triple(Competition.LA_LIGA, null, "Málaga / Racing") to (NOW + 90 * MINUTE),
             Triple(Competition.LA_LIGA, null, "Real Madrid / Barça") to (NOW + 3 * 60 * MINUTE),
             Triple(Competition.CHAMPIONS_LEAGUE, "beIN Sports 1", "Bayern / Inter") to (NOW + 26 * 60 * MINUTE),
             Triple(Competition.EUROPA_LEAGUE, "Canal+ Live 2", "Lyon / AS Rome") to (NOW + 27 * 60 * MINUTE),
@@ -505,13 +508,15 @@ object SampleData {
                     GuideProgramme("Football : ${competition.label}", start, start + 115 * MINUTE, teams, "Match de ${competition.label}.", "Football")
                 },
                 // Chaîne connue du guide mais absente de la playlist.
-                guideChannel = if (channel == null && competition == Competition.LA_LIGA) "DAZN 1" else null,
+                guideChannel = if (teams == "Real Madrid / Barça") "DAZN 1" else null,
                 otherChannels = if (index == 0) 2 else 0,
                 homeScore = if (index == 0) 1 else null,
                 clock = if (index == 0) "67'" else null,
                 awayScore = if (index == 0) 0 else null,
             )
         },
+        // Le guide annonce les matchs de la semaine.
+        guideUntilMillis = NOW + 6 * 24 * 60 * MINUTE,
     )
 
     /** Fiche du PSG : trois derniers matchs et deux prochains. */
