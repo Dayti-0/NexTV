@@ -486,7 +486,7 @@ object SampleData {
         matches = listOf(
             Triple(Competition.LIGUE_1, "Canal+ Sport", "PSG / Marseille") to (NOW - 40 * MINUTE),
             Triple(Competition.PREMIER_LEAGUE, "FR| CANAL+ HDR (Résolution Exclusive)", "Chelsea / Man United") to (NOW + 75 * MINUTE),
-            // Aucune chaîne française : cités en fin de journée.
+            // Absents du guide.
             Triple(Competition.SERIE_A, null, "Cagliari / Frosinone") to (NOW + 75 * MINUTE),
             Triple(Competition.SERIE_A, null, "Torino / Lecce") to (NOW + 75 * MINUTE),
             Triple(Competition.LA_LIGA, null, "Málaga / Racing") to (NOW + 90 * MINUTE),
@@ -515,8 +515,6 @@ object SampleData {
                 awayScore = if (index == 0) 0 else null,
             )
         },
-        // Le guide annonce les matchs de la semaine.
-        guideUntilMillis = NOW + 6 * 24 * 60 * MINUTE,
     )
 
     /** Fiche du PSG : trois derniers matchs et deux prochains. */

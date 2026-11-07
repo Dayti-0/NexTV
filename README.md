@@ -28,10 +28,8 @@ Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3, enti�
   de rediffusion), le guide TV donne seulement la chaîne ; les matchs de sélections ne sont listés que s'ils sont
   diffusés. Chaînes « événement » de la playlist, sans programmes dans le guide (« FR| DAZN LALIGA 2 (LIVE
   MATCH) ») : le n-ième match du jour de la compétition y est proposé, marqué « chaîne probable » (numérotation
-  du fournisseur, visible sur l'image d'attente de la chaîne). Un match de club que le guide ne trouve sur aucune
-  chaîne n'a pas de carte : il est cité en fin de journée (« Pas dans le guide TV : … »), sauf pour les équipes
-  suivies. Les jours que le guide n'annonce pas encore (il couvre une semaine environ), le match garde sa carte
-  (« Pas encore dans le guide »).
+  du fournisseur, visible sur l'image d'attente de la chaîne). Tous les matchs sont affichés, même ceux dont la
+  chaîne n'a pas été trouvée (« Pas trouvé dans le guide »).
   Classements et fiches des clubs : [football-data.org](https://www.football-data.org) (clé gratuite,
   Réglages › Matchs de foot, ou secret CI `NEXTV_FOOTBALL_API_KEY`), qui donne aussi la liste quand ESPN ne répond pas.
 - **Films et séries** : fiche enrichie par TMDB (synopsis, note, genres, affiche, bande-annonce), saisons et épisodes.
