@@ -12,9 +12,11 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import tv.nextv.app.AppContainer
 import tv.nextv.app.ui.common.describe
+import tv.nextv.core.catalog.QualityParser
 import tv.nextv.core.io.LoadProgress
 import tv.nextv.core.io.LoadStep
 import tv.nextv.core.io.ProgressListener
+import tv.nextv.core.epg.EpgImporter
 import tv.nextv.core.model.ContentKind
 import tv.nextv.core.repository.RefreshResult
 
@@ -37,8 +39,9 @@ data class ContentSummary(val channels: Int, val movies: Int, val series: Int)
 enum class StartupDestination { HOME, WELCOME }
 
 /**
- * Démarrage : charge la dernière playlist utilisée (actualisée si nécessaire) et le guide,
- * en publiant l'avancement réel de chaque étape.
+ * Démarrage : ouvre la dernière playlist utilisée. Si elle est déjà enregistrée, l'accueil s'ouvre
+ * aussitôt et l'actualisation se fait en arrière-plan ; sinon (premier chargement, adresse modifiée),
+ * la playlist puis le guide sont chargés en publiant l'avancement réel de chaque étape.
  *
  * @param forceRefresh recharger la playlist même si elle est récente (adresse modifiée…).
  */
@@ -93,20 +96,27 @@ class StartupViewModel(
 
         val listener = ProgressListener { onProgress(it) }
         val lastSuccess = source.status.lastSuccessAtMillis
-        val stale = forceRefresh || lastSuccess == null || source.status.channelCount == 0 ||
-            System.currentTimeMillis() - lastSuccess > PLAYLIST_MAX_AGE_MILLIS
-        if (stale) {
-            // Playlist puis guide (réassocié aux nouvelles chaînes), en une seule actualisation.
-            val result = container.sourceRepository.refresh(source.id, includeEpg = true, progress = listener)
-            if (result is RefreshResult.Failure) {
-                val message = resources.describe(result.error)
-                mutableState.update { it.copy(error = StartupError(message, canContinue = source.status.channelCount > 0)) }
-                return
-            }
-        } else {
-            report(StartupStep.EPG_DOWNLOAD, 0f)
-            // Le guide n'est retéléchargé que s'il a plus de 12 h ; une erreur n'empêche pas l'accès.
-            container.sourceRepository.refreshEpg(source.id, progress = listener)
+        val hasData = lastSuccess != null && source.status.channelCount > 0
+        // Fréquence choisie dans les réglages (« à chaque démarrage », 12 h… 7 jours).
+        // Mise à jour qui change le regroupement des chaînes (« TF1 (Résolution 4K) » avec TF1) : playlist relue tout de suite.
+        val regroup = container.settings.catalogImportVersion.first() < QualityParser.VERSION
+        if (regroup) container.settings.setCatalogImportVersion(QualityParser.VERSION)
+        val stale = regroup || container.settings.playlistRefresh.first().dueAtStart(lastSuccess, System.currentTimeMillis())
+        // Mise à jour qui change les règles d'import du guide (chaînes des matchs…) : réimport tout de suite.
+        val reimportGuide = container.settings.epgImportVersion.first() < EpgImporter.VERSION
+        if (reimportGuide) container.settings.setEpgImportVersion(EpgImporter.VERSION)
+        if (hasData && !forceRefresh) {
+            // Données déjà enregistrées : accueil immédiat, actualisation (playlist ou guide) en arrière-plan.
+            if (stale) container.refreshController.refresh(source.id) else container.refreshController.refreshEpg(source.id, force = reimportGuide)
+            finish(source.id)
+            return
+        }
+        // Premier chargement, ou adresse modifiée : playlist puis guide, avec la progression à l'écran.
+        val result = container.sourceRepository.refresh(source.id, includeEpg = true, progress = listener)
+        if (result is RefreshResult.Failure) {
+            val message = resources.describe(result.error)
+            mutableState.update { it.copy(error = StartupError(message, canContinue = hasData)) }
+            return
         }
         finish(source.id)
     }
@@ -116,7 +126,7 @@ class StartupViewModel(
         val summary = ContentSummary(
             channels = dao.count(sourceId, ContentKind.LIVE.name),
             movies = dao.count(sourceId, ContentKind.MOVIE.name),
-            series = dao.seriesCount(sourceId),
+            series = dao.count(sourceId, ContentKind.SERIES.name),
         )
         mutableState.update { it.copy(summary = summary) }
         report(StartupStep.READY, 1f)
@@ -149,8 +159,6 @@ class StartupViewModel(
 
     companion object {
         const val ARG_RELOAD = "reload"
-
-        private const val PLAYLIST_MAX_AGE_MILLIS = 12 * 60 * 60_000L
 
         private val RANGES = mapOf(
             StartupStep.PREPARING to (0 to 2),

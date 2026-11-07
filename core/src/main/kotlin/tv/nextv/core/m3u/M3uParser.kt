@@ -20,8 +20,22 @@ class M3uParser(
 
     /** @throws LineTooLongException si une ligne dépasse [maxLineLength] (contenu non textuel). */
     fun parse(reader: Reader, checkCancelled: () -> Unit = {}): M3uPlaylist {
-        val lines = LineReader(reader, maxLineLength)
         val entries = ArrayList<M3uEntry>()
+        val playlist = parse(reader, checkCancelled) { entry, _ -> entries += entry }
+        return playlist.copy(entries = entries)
+    }
+
+    /**
+     * Lecture en flux : chaque entrée est transmise à [onEntry] dès qu'elle est lue, sans être
+     * conservée (les grosses playlists ne sont jamais entièrement en mémoire). La playlist
+     * renvoyée n'a donc pas d'entrées.
+     *
+     * @param onEntry reçoit l'entrée et vrai si l'en-tête `#EXTM3U` a déjà été lu.
+     * @throws LineTooLongException si une ligne dépasse [maxLineLength] (contenu non textuel).
+     */
+    fun parse(reader: Reader, checkCancelled: () -> Unit = {}, onEntry: (M3uEntry, Boolean) -> Unit): M3uPlaylist {
+        val lines = LineReader(reader, maxLineLength)
+        var entryCount = 0
         var header: Map<String, String> = emptyMap()
         var headerSeen = false
         var pending: ExtInf? = null
@@ -59,19 +73,20 @@ class M3uParser(
                                 pendingHeaders.putAll(HttpHeaderValues.parseKodi(value))
                         }
                     }
-                    entries.isEmpty() && HLS_TAGS.any { line.startsWith(it, ignoreCase = true) } ->
+                    entryCount == 0 && HLS_TAGS.any { line.startsWith(it, ignoreCase = true) } ->
                         return M3uPlaylist(header, emptyList(), hasHeader = headerSeen, isHlsMedia = true)
                     // Autres commentaires (#EXTREM, #PLAYLIST, #EXT-X-VERSION…) : ignorés.
                 }
                 continue
             }
 
-            if (entries.size >= maxEntries) {
+            if (entryCount >= maxEntries) {
                 truncated = true
                 break
             }
             val info = pending
-            entries += M3uEntry(
+            entryCount++
+            val entry = M3uEntry(
                 title = info?.title,
                 url = line,
                 duration = info?.duration,
@@ -81,12 +96,13 @@ class M3uParser(
                 drmProtected = pendingDrm,
                 hasExtInf = info != null,
             )
+            onEntry(entry, headerSeen)
             pending = null
             pendingGroup = null
             pendingHeaders.clear()
             pendingDrm = false
         }
-        return M3uPlaylist(header, entries, hasHeader = headerSeen, truncated = truncated)
+        return M3uPlaylist(header, emptyList(), hasHeader = headerSeen, truncated = truncated)
     }
 
     private fun parseVlcOption(option: String): Pair<String, String>? {

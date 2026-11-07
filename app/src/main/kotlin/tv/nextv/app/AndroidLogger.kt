@@ -25,7 +25,7 @@ class AndroidLogger(private val verbose: Boolean) : Logger {
         Log.e(prefix(tag), message, throwable)
     }
 
-    private fun prefix(tag: String) = "NexTV/$tag".take(MAX_TAG_LENGTH)
+    private fun prefix(tag: String) = "NixTV/$tag".take(MAX_TAG_LENGTH)
 
     private companion object {
         const val MAX_TAG_LENGTH = 23

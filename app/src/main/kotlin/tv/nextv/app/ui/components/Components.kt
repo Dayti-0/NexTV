@@ -1,13 +1,21 @@
 package tv.nextv.app.ui.components
 
+import android.content.pm.PackageManager
 import android.content.res.Configuration
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
+import androidx.compose.foundation.gestures.ScrollableState
+import androidx.compose.foundation.interaction.FocusInteraction
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -17,6 +25,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -25,6 +34,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -33,32 +43,66 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.InputMode
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalInputModeManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.launch
+import tv.nextv.app.R
 import tv.nextv.app.ui.theme.NexTvColors
 import tv.nextv.app.ui.theme.NexTvIcons
+import tv.nextv.core.catalog.ContentClassifier
+import androidx.compose.runtime.produceState
+import kotlinx.coroutines.delay
 
 // --- Disposition adaptative -------------------------------------------------------------------
 
@@ -70,6 +114,12 @@ data class WindowInfo(val isTv: Boolean, val widthDp: Int) {
 
     /** Marges latérales : zone de sécurité « overscan » sur TV. */
     val horizontalPadding: Dp get() = if (isTv) 48.dp else if (widthDp >= 600) 24.dp else 16.dp
+
+    /**
+     * Marge du haut des écrans. Sur TV, zone de sécurité « overscan » (27 dp) : beaucoup de
+     * téléviseurs rognent les bords de l'image, et une Fire TV ne le compense pas.
+     */
+    val topPadding: Dp get() = if (isTv) 27.dp else 12.dp
 }
 
 @Composable
@@ -79,13 +129,109 @@ fun rememberWindowInfo(): WindowInfo {
     return remember(isTv, configuration.screenWidthDp) { WindowInfo(isTv, configuration.screenWidthDp) }
 }
 
+// --- Champs de saisie à la télécommande -------------------------------------------------------------
+
+/**
+ * Navigation à la télécommande : TV, appareil sans écran tactile, ou dernière action faite avec des
+ * touches (une box qui se déclare tactile, comme un Raspberry Pi, pilotée à la télécommande). Le
+ * clavier ne s'ouvre alors qu'avec OK, jamais en passant simplement sur un champ.
+ */
+@Composable
+fun rememberKeyboardOnOkOnly(): Boolean {
+    val context = LocalContext.current
+    val isTv = rememberWindowInfo().isTv
+    val noTouch = remember(isTv) { isTv || !context.packageManager.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN) }
+    return noTouch || LocalInputModeManager.current.inputMode == InputMode.Keyboard
+}
+
+/**
+ * Champ de saisie à la télécommande : en naviguant, le focus s'arrête sur le champ sans l'activer
+ * (il s'affiche sélectionné, le clavier reste fermé) ; OK l'active et ouvre le clavier. Au toucher,
+ * le champ se comporte normalement.
+ *
+ * [field] reçoit le modificateur et la source d'interactions à donner au champ.
+ */
+@Composable
+fun RemoteTextField(
+    modifier: Modifier = Modifier,
+    field: @Composable (fieldModifier: Modifier, interactionSource: MutableInteractionSource) -> Unit,
+) {
+    val remote = rememberKeyboardOnOkOnly()
+    val interactionSource = remember { MutableInteractionSource() }
+    val fieldFocus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    var editing by remember { mutableStateOf(false) }
+    var frameFocused by remember { mutableStateOf(false) }
+    var fieldFocused by remember { mutableStateOf(false) }
+
+    // Cadre sélectionné : le champ prend l'apparence sélectionnée, sans recevoir le focus.
+    LaunchedEffect(frameFocused) {
+        if (!frameFocused) return@LaunchedEffect
+        val focus = FocusInteraction.Focus()
+        interactionSource.emit(focus)
+        try {
+            awaitCancellation()
+        } finally {
+            interactionSource.tryEmit(FocusInteraction.Unfocus(focus))
+        }
+    }
+    LaunchedEffect(editing) {
+        if (!editing) return@LaunchedEffect
+        runCatching { fieldFocus.requestFocus() }
+        keyboard?.show()
+    }
+    Box(
+        modifier
+            .onFocusChanged { frameFocused = it.isFocused }
+            .onPreviewKeyEvent { event ->
+                val isOk = event.key == Key.DirectionCenter || event.key == Key.Enter || event.key == Key.NumPadEnter
+                if (!frameFocused || !isOk) return@onPreviewKeyEvent false
+                if (event.type == KeyEventType.KeyUp) editing = true
+                true
+            }
+            .focusable(enabled = remote),
+    ) {
+        field(
+            Modifier
+                .onFocusChanged { state ->
+                    // Le champ quitté (navigation vers un autre élément) redevient inactif.
+                    if (fieldFocused && !state.isFocused) editing = false
+                    fieldFocused = state.isFocused
+                }
+                .focusRequester(fieldFocus)
+                .focusProperties { canFocus = !remote || editing },
+            interactionSource,
+        )
+    }
+}
+
+/** Options de clavier d'un champ : à la télécommande, pas d'ouverture automatique quand il reçoit le focus. */
+@Composable
+fun fieldKeyboardOptions(keyboardType: KeyboardType = KeyboardType.Text): KeyboardOptions =
+    KeyboardOptions(keyboardType = keyboardType, showKeyboardOnFocus = !rememberKeyboardOnOkOnly())
+
+/** À la télécommande, OK (centre de la croix ou Entrée) ouvre le clavier du champ qui a le focus. */
+@Composable
+fun Modifier.openKeyboardOnOk(): Modifier {
+    if (!rememberKeyboardOnOkOnly()) return this
+    val keyboard = LocalSoftwareKeyboardController.current
+    return onPreviewKeyEvent { event ->
+        val isOk = event.key == Key.DirectionCenter || event.key == Key.Enter || event.key == Key.NumPadEnter
+        if (isOk && event.type == KeyEventType.KeyUp) keyboard?.show()
+        isOk
+    }
+}
+
 // --- Surfaces sensibles au focus (télécommande) ---------------------------------------------------
 
 /**
  * Surface cliquable dont le focus est bien visible : agrandissement, contour et fond plus clair.
  * Indispensable à la navigation à la télécommande ; sans effet gênant au toucher.
  *
- * [onLongClick] répond à l'appui long au toucher comme à l'appui long sur OK de la télécommande.
+ * [onLongClick] répond à l'appui long au toucher comme à l'appui long sur OK de la télécommande ;
+ * avec la télécommande, il est appelé au relâchement de la touche. Sinon la fenêtre qu'il ouvre
+ * (fiche, confirmation) recevrait ce relâchement, et la surface, qui ne le verrait pas, ignorerait
+ * le clic suivant.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -108,6 +254,14 @@ fun FocusSurface(
     if (onFocusChange != null) {
         LaunchedEffect(focused) { onFocusChange(focused) }
     }
+    val currentOnLongClick by rememberUpdatedState(onLongClick)
+    // Appui long : action dès qu'il est reconnu, OK encore tenu ; le menu qu'elle ouvre ignore la fin de l'appui.
+    val longClick: (() -> Unit)? = onLongClick?.let {
+        {
+            if (HeldOk.held) HeldOk.armed = true
+            currentOnLongClick?.invoke()
+        }
+    }
     val scale by animateFloatAsState(if (focused) focusScale else 1f, label = "focusScale")
     val border = when {
         focused -> BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
@@ -117,24 +271,80 @@ fun FocusSurface(
     Box(
         modifier = modifier
             .zIndex(if (focused) 1f else 0f)
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
+            // Agrandissement au dessin seulement : la taille vue par les listes ne change pas, elles ne
+            // le suivent donc pas en défilant (sinon la rangée tremble à chaque gauche / droite).
+            .drawWithContent { if (scale == 1f) drawContent() else scale(scale) { this@drawWithContent.drawContent() } }
             .shadow(if (focused) 8.dp else 0.dp, shape, clip = false)
             .clip(shape)
             .background(if (focused) focusedColor else color)
             .then(if (border != null) Modifier.border(border, shape) else Modifier)
+            .onPreviewKeyEvent { event ->
+                if (event.key in OK_KEYS) {
+                    when (event.type) {
+                        KeyEventType.KeyDown -> HeldOk.held = true
+                        KeyEventType.KeyUp -> {
+                            HeldOk.held = false
+                            HeldOk.armed = false
+                        }
+                    }
+                }
+                false
+            }
             .combinedClickable(
                 interactionSource = interactionSource,
                 indication = LocalIndication.current,
                 enabled = enabled,
-                onLongClick = onLongClick,
+                onLongClick = longClick,
                 onClick = onClick,
             ),
         propagateMinConstraints = true,
     ) {
         CompositionLocalProvider(LocalContentColor provides contentColor) { content() }
+    }
+}
+
+/**
+ * Touche OK de la télécommande tenue. Un appui long agit sans attendre le relâchement ([armed]) :
+ * le menu qu'il ouvre ignore la suite de cet appui (répétitions, relâchement), sans quoi elle
+ * activerait son premier bouton.
+ */
+private object HeldOk {
+    var held = false
+    var armed = false
+}
+
+private val OK_KEYS = setOf(Key.DirectionCenter, Key.Enter, Key.NumPadEnter)
+
+/**
+ * À placer sur le contenu d'une boîte de dialogue ou d'un menu : la touche OK n'y agit qu'après un
+ * nouvel appui. La suite de l'appui long qui l'a ouvert (répétitions, relâchement) est ignorée, quel
+ * que soit l'ordre dans lequel le système la distribue : il faut relâcher OK, puis appuyer de nouveau.
+ */
+fun Modifier.ignoreHeldOk(): Modifier = composed {
+    // Appui commencé dans ce menu (première pression, sans répétition) : le relâchement qui suit agit.
+    val pressedHere = remember { BooleanArray(1) }
+    onPreviewKeyEvent { event ->
+        if (event.key !in OK_KEYS) return@onPreviewKeyEvent false
+        val native = event.nativeKeyEvent
+        when (event.type) {
+            KeyEventType.KeyDown -> {
+                if (native.repeatCount == 0) {
+                    pressedHere[0] = true
+                    HeldOk.armed = false
+                }
+                !pressedHere[0]
+            }
+            KeyEventType.KeyUp -> {
+                val ignore = !pressedHere[0]
+                pressedHere[0] = false
+                if (ignore) {
+                    HeldOk.armed = false
+                    HeldOk.held = false
+                }
+                ignore
+            }
+            else -> false
+        }
     }
 }
 
@@ -230,11 +440,13 @@ fun ChannelLogo(
         contentAlignment = Alignment.Center,
     ) {
         if (!loaded) {
+            val letters = remember(name) { monogram(name) }
             Text(
-                monogram(name),
+                letters,
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
-                fontSize = monogramSize.value.sp,
+                // Sigles de 3 ou 4 caractères (« BFM », « TV78 ») un peu plus petits pour tenir dans la pastille.
+                fontSize = (monogramSize.value * if (letters.length <= 2) 1f else if (letters.length == 3) 0.85f else 0.7f).sp,
                 textAlign = TextAlign.Center,
                 maxLines = 1,
             )
@@ -251,15 +463,26 @@ fun ChannelLogo(
     }
 }
 
-/** Initiales d'un nom de chaîne : « France 2 » → « F2 », « TF1 HD » → « TH ». */
+/**
+ * Pastille d'une chaîne sans logo, d'après son nom sans préfixe de pays ni mention de qualité
+ * (« FR| BFM NICE FHD » → « BFM ») : sigle court gardé tel quel (« TF1 », « M6 », « TV78 »),
+ * sinon initiales (« Télé Nantes » → « TN », « France 2 » → « F2 »).
+ */
 fun monogram(name: String): String {
-    val words = name.trim().split(Regex("[\\s\\-_.|:]+")).filter { it.isNotEmpty() }
-    return when {
-        words.isEmpty() -> "?"
-        words.size == 1 -> words[0].take(2)
-        else -> "${words[0].first()}${words[1].first()}"
-    }.uppercase()
+    val words = ContentClassifier.cleanTitle(name).split(MONOGRAM_SEPARATORS).filter { it.isNotEmpty() }
+    if (words.isEmpty()) return "?"
+    val first = words[0]
+    val second = words.getOrNull(1)
+    val letters = when {
+        first.length <= 3 -> first + second?.takeIf { it.all(Char::isDigit) && first.length + it.length <= 4 }.orEmpty()
+        second == null -> if (first.length <= 4) first else first.take(2)
+        second.all(Char::isDigit) -> first.take(1) + second.take(2)
+        else -> "${first.first()}${second.first()}"
+    }
+    return letters.uppercase()
 }
+
+private val MONOGRAM_SEPARATORS = Regex("[\\s\\-_.|:]+")
 
 /** Pastille d'état : point coloré + libellé. */
 @Composable
@@ -284,10 +507,11 @@ fun Badge(text: String, modifier: Modifier = Modifier, color: Color = MaterialTh
         text,
         modifier = modifier
             .clip(MaterialTheme.shapes.extraSmall)
-            .background(Color.Black.copy(alpha = 0.45f))
+            // Palette claire : fond teinté de la couleur du texte (le gris foncé la rendrait illisible).
+            .background(if (NexTvColors.isLight) color.copy(alpha = 0.14f) else Color.Black.copy(alpha = 0.45f))
             .padding(horizontal = 6.dp, vertical = 2.dp),
         style = MaterialTheme.typography.labelSmall,
-        color = color,
+        color = if (NexTvColors.isLight) NexTvColors.readable(color) else color,
         maxLines = 1,
     )
 }
@@ -313,29 +537,33 @@ fun LiveProgress(startMillis: Long, stopMillis: Long, now: Long, modifier: Modif
     }
 }
 
-/** Marque NexTV : pictogramme dégradé + nom. */
+/**
+ * Logo NixTV, dans ses proportions d'origine : lettres blanches sur une palette sombre, graphite sur
+ * une palette claire (le « TV » garde son dégradé). [compact] : hauteur de barre d'onglets.
+ * [showName] faux : écran étroit, logo réduit.
+ */
 @Composable
 fun BrandMark(modifier: Modifier = Modifier, compact: Boolean = false, showName: Boolean = true) {
-    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Box(
-            Modifier
-                .size(if (compact) 30.dp else 36.dp)
-                .clip(MaterialTheme.shapes.small)
-                .background(Brush.linearGradient(listOf(NexTvColors.Primary, NexTvColors.Accent))),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(NexTvIcons.Tv, contentDescription = null, tint = Color.White, modifier = Modifier.size(if (compact) 18.dp else 20.dp))
-        }
-        if (showName) {
-            Text(
-                "NexTV",
-                style = if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground,
-            )
-        }
-    }
+    NixTvLogo(modifier, height = when {
+        !showName -> 18.dp
+        compact -> 24.dp
+        else -> 32.dp
+    })
 }
+
+/** Logo NixTV à la hauteur [height] (largeur selon ses proportions). */
+@Composable
+fun NixTvLogo(modifier: Modifier = Modifier, height: Dp = 32.dp) {
+    Image(
+        painter = painterResource(if (NexTvColors.isLight) R.drawable.logo_nixtv_dark else R.drawable.logo_nixtv),
+        contentDescription = stringResource(R.string.app_name),
+        contentScale = ContentScale.Fit,
+        modifier = modifier.height(height).aspectRatio(LOGO_RATIO),
+    )
+}
+
+/** Largeur / hauteur du logo (image recadrée). */
+private const val LOGO_RATIO = 1078f / 228f
 
 /**
  * En-tête d'écran : navigation, titre (et sous-titre), actions alignées à droite.
@@ -418,3 +646,157 @@ fun EmptyState(
 /** Marges de contenu standard d'un écran. */
 fun WindowInfo.contentPadding(top: Dp = 8.dp, bottom: Dp = 24.dp) =
     PaddingValues(start = horizontalPadding, end = horizontalPadding, top = top, bottom = bottom)
+
+/**
+ * Le focus est sur les onglets du haut de l'accueil (on y passe d'une section à l'autre) : une
+ * section qui s'ouvre ne doit pas leur prendre le focus.
+ */
+val LocalTabsFocused = compositionLocalOf<() -> Boolean> { { false } }
+
+/** Hauteur du fondu en bas des listes. */
+val BottomFadeLength: Dp = 56.dp
+
+/**
+ * Fondu en bas d'une zone qui défile, tant qu'il reste du contenu plus bas : le contenu s'estompe
+ * vers la transparence (quel que soit le fond : image, dégradé) et le fondu disparaît en fin de liste.
+ * [maxPx] : hauteur à ne pas dépasser (place libre sous l'élément choisi, qui ne s'estompe jamais).
+ */
+fun Modifier.bottomFade(canScrollDown: () -> Boolean, length: Dp = BottomFadeLength, maxPx: (() -> Float)? = null): Modifier = this
+    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+    .drawWithContent {
+        drawContent()
+        if (!canScrollDown()) return@drawWithContent
+        val fade = minOf(length.toPx(), maxPx?.invoke() ?: Float.MAX_VALUE).coerceAtMost(size.height)
+        if (fade <= 0f) return@drawWithContent
+        val top = size.height - fade
+        drawRect(
+            brush = Brush.verticalGradient(0f to Color.Black, 1f to Color.Transparent, startY = top, endY = size.height),
+            topLeft = Offset(0f, top),
+            size = Size(size.width, fade),
+            blendMode = BlendMode.DstIn,
+        )
+    }
+
+/**
+ * Liste parcourue à la télécommande avec le fondu du bas : [content] reçoit le modificateur du
+ * fondu, et l'élément choisi ne s'arrête jamais dedans (la liste défile un peu plus).
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun FadingBottom(canScrollDown: () -> Boolean, content: @Composable (fade: Modifier) -> Unit) {
+    val parent = LocalBringIntoViewSpec.current
+    val margin = with(LocalDensity.current) { BottomFadeLength.toPx() }
+    val spec = remember(parent, margin) { BottomMarginBringIntoViewSpec(parent, margin) }
+    CompositionLocalProvider(LocalBringIntoViewSpec provides spec) {
+        content(Modifier.bottomFade(canScrollDown))
+    }
+}
+
+/** Élément amené à l'écran au-dessus du fondu du bas ([margin]) ; sinon comme d'habitude. */
+@OptIn(ExperimentalFoundationApi::class)
+private class BottomMarginBringIntoViewSpec(private val parent: BringIntoViewSpec, private val margin: Float) : BringIntoViewSpec {
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+        val usable = containerSize - margin
+        if (size > usable || offset < 0f) return parent.calculateScrollDistance(offset, size, containerSize)
+        val trailing = offset + size
+        return if (trailing > usable) trailing - usable else 0f
+    }
+}
+
+/** Largeur des fondus sur les côtés des rangées qui défilent. */
+val EdgeFadeLength: Dp = 120.dp
+
+/**
+ * Rangée qui défile de gauche à droite avec un fondu sur ses bords, du côté où il reste des éléments
+ * à voir : [content] reçoit le modificateur du fondu (après celui qui fait déborder la rangée jusqu'aux
+ * bords de l'écran). Le fondu apparaît et disparaît en douceur ; l'élément choisi ne s'arrête jamais
+ * dedans.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun FadingRow(state: ScrollableState, content: @Composable (fade: Modifier) -> Unit) {
+    val start by animateFloatAsState(if (state.canScrollBackward) 1f else 0f, tween(EDGE_FADE_MILLIS), label = "row-fade-start")
+    val end by animateFloatAsState(if (state.canScrollForward) 1f else 0f, tween(EDGE_FADE_MILLIS), label = "row-fade-end")
+    val parent = LocalBringIntoViewSpec.current
+    val margin = with(LocalDensity.current) { EdgeFadeLength.toPx() }
+    val spec = remember(parent, margin) { EdgeMarginBringIntoViewSpec(parent, margin) }
+    CompositionLocalProvider(LocalBringIntoViewSpec provides spec) {
+        content(Modifier.edgeFade(start = { start }, end = { end }))
+    }
+}
+
+/**
+ * Fondus sur les bords d'une rangée : le contenu s'estompe vers la transparence (quel que soit le
+ * fond), avec une courbe douce. [start] et [end] : intensité de chaque fondu (0 : aucun, 1 : entier).
+ */
+fun Modifier.edgeFade(start: () -> Float, end: () -> Float, length: Dp = EdgeFadeLength): Modifier = this
+    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+    .drawWithContent {
+        drawContent()
+        val fade = length.toPx().coerceAtMost(size.width / 2)
+        if (fade <= 0f) return@drawWithContent
+        val rtl = layoutDirection == LayoutDirection.Rtl
+        val left = (if (rtl) end() else start()).coerceIn(0f, 1f)
+        val right = (if (rtl) start() else end()).coerceIn(0f, 1f)
+        // Opacité du contenu de l'intérieur (1) vers le bord : estompé surtout tout près du bord.
+        fun stops(strength: Float) = arrayOf(
+            0f to Color.Black,
+            0.45f to Color.Black.copy(alpha = 1f - 0.3f * strength),
+            0.8f to Color.Black.copy(alpha = 1f - 0.75f * strength),
+            1f to Color.Black.copy(alpha = 1f - strength),
+        )
+        if (left > 0f) {
+            drawRect(
+                brush = Brush.horizontalGradient(*stops(left), startX = fade, endX = 0f),
+                size = Size(fade, size.height),
+                blendMode = BlendMode.DstIn,
+            )
+        }
+        if (right > 0f) {
+            drawRect(
+                brush = Brush.horizontalGradient(*stops(right), startX = size.width - fade, endX = size.width),
+                topLeft = Offset(size.width - fade, 0f),
+                size = Size(fade, size.height),
+                blendMode = BlendMode.DstIn,
+            )
+        }
+    }
+
+/** Élément amené à l'écran hors des fondus des bords ([margin]) ; sinon comme d'habitude. */
+@OptIn(ExperimentalFoundationApi::class)
+private class EdgeMarginBringIntoViewSpec(private val parent: BringIntoViewSpec, private val margin: Float) : BringIntoViewSpec {
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+        val distance = parent.calculateScrollDistance(offset, size, containerSize)
+        if (size > containerSize - 2 * margin) return distance
+        // Place de l'élément une fois la rangée défilée.
+        val leading = offset - distance
+        val trailing = leading + size
+        return when {
+            leading < margin -> distance - (margin - leading)
+            trailing > containerSize - margin -> distance + (trailing - (containerSize - margin))
+            else -> distance
+        }
+    }
+}
+
+private const val EDGE_FADE_MILLIS = 250
+
+/** Heure actuelle (« 20:47 »), mise à jour à chaque changement de minute. */
+@Composable
+fun CurrentTime(modifier: Modifier = Modifier) {
+    val now by produceState(System.currentTimeMillis()) {
+        while (true) {
+            value = System.currentTimeMillis()
+            delay(MINUTE_MILLIS - value % MINUTE_MILLIS)
+        }
+    }
+    Text(
+        java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date(now)),
+        style = MaterialTheme.typography.titleLarge,
+        color = MaterialTheme.colorScheme.onBackground,
+        maxLines = 1,
+        modifier = modifier,
+    )
+}
+
+private const val MINUTE_MILLIS = 60_000L

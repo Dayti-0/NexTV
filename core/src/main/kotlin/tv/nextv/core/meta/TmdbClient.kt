@@ -1,6 +1,8 @@
 package tv.nextv.core.meta
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
@@ -42,6 +44,17 @@ data class MediaDetails(
     val stars: Double? get() = rating?.takeIf { voteCount > 0 }?.let { it / 2 }
 }
 
+/** Film ou série de la semaine sur TMDB (« Tendances »), à retrouver dans la playlist. */
+data class TrendingTitle(
+    val title: String,
+    val originalTitle: String?,
+    val year: Int?,
+    val overview: String?,
+    val rating: Double?,
+    val posterUrl: String?,
+    val backdropUrl: String?,
+)
+
 enum class TmdbError { MISSING_KEY, INVALID_KEY, RATE_LIMITED, NETWORK, SERVER }
 
 sealed interface TmdbResult {
@@ -62,17 +75,81 @@ class TmdbClient(
     private val baseUrl: HttpUrl = "https://api.themoviedb.org/3/".toHttpUrl(),
     private val imageBaseUrl: String = "https://image.tmdb.org/t/p/",
     private val logger: Logger = Logger.None,
+    /** Clé de secours (fournie avec l'application), essayée si [apiKey] est refusée. */
+    private val fallbackApiKey: () -> String? = { null },
+    /** Traduction des résumés que TMDB n'a pas dans la langue demandée. */
+    private val translator: Translator? = null,
 ) {
 
     private class TmdbException(val error: TmdbError) : Exception(error.name)
     private class NotFoundException : Exception()
 
     /** Recherche un film ou une série par titre (et année si connue), puis en lit la fiche. */
-    suspend fun lookup(type: MediaType, title: String, year: Int?): TmdbResult {
-        val key = apiKey()?.trim()?.takeIf { it.isNotEmpty() } ?: return TmdbResult.Failed(TmdbError.MISSING_KEY)
+    /**
+     * Fiche du film ou de la série [title]. [exact] : seulement un résultat portant exactement ce titre
+     * (programmes du guide hors films et séries : pas de fiche approchante, donc pas de fausse image).
+     */
+    suspend fun lookup(type: MediaType, title: String, year: Int?, exact: Boolean = false): TmdbResult {
+        val fallback = fallbackApiKey()?.trim()?.takeIf { it.isNotEmpty() }
+        val key = apiKey()?.trim()?.takeIf { it.isNotEmpty() } ?: fallback ?: return TmdbResult.Failed(TmdbError.MISSING_KEY)
+        val result = lookupWith(key, type, title, year, exact)
+        // Clé des réglages refusée (ancienne, mal recopiée…) : celle fournie avec l'application.
+        if (result == TmdbResult.Failed(TmdbError.INVALID_KEY) && fallback != null && fallback != key) {
+            logger.warn(TAG, "Clé TMDB des réglages refusée : clé fournie avec l'application")
+            return lookupWith(fallback, type, title, year, exact)
+        }
+        return result
+    }
+
+    /**
+     * Films ou séries les plus regardés de la semaine (deux pages, une quarantaine de titres) ;
+     * liste vide sans clé ou en cas d'échec.
+     */
+    suspend fun trending(type: MediaType, pages: Int = 2): List<TrendingTitle> {
+        val key = apiKey()?.trim()?.takeIf { it.isNotEmpty() } ?: fallbackApiKey()?.trim()?.takeIf { it.isNotEmpty() } ?: return emptyList()
+        val path = if (type == MediaType.MOVIE) "trending/movie/week" else "trending/tv/week"
+        val titles = mutableListOf<TrendingTitle>()
+        for (page in 1..pages) {
+            val url = baseUrl.newBuilder().addPathSegments(path)
+                .addQueryParameter("language", language)
+                .addQueryParameter("page", page.toString())
+                .build()
+            val json = try {
+                get(key, url)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.warn(TAG, "Tendances TMDB indisponibles", e)
+                break
+            }
+            json.optJSONArray("results").objects().mapNotNullTo(titles) { item ->
+                val title = item.optStringOrNull(if (type == MediaType.MOVIE) "title" else "name") ?: return@mapNotNullTo null
+                TrendingTitle(
+                    title = title,
+                    originalTitle = item.optStringOrNull(if (type == MediaType.MOVIE) "original_title" else "original_name"),
+                    year = item.optStringOrNull(if (type == MediaType.MOVIE) "release_date" else "first_air_date")?.take(4)?.toIntOrNull(),
+                    overview = item.optStringOrNull("overview"),
+                    rating = item.optDouble("vote_average").takeIf { !it.isNaN() && it > 0 },
+                    posterUrl = item.optStringOrNull("poster_path")?.let { "${imageBaseUrl}w500$it" },
+                    backdropUrl = item.optStringOrNull("backdrop_path")?.let { "${imageBaseUrl}w1280$it" },
+                )
+            }
+        }
+        return titles
+    }
+
+    private suspend fun lookupWith(key: String, type: MediaType, title: String, year: Int?, exact: Boolean = false): TmdbResult {
         return try {
-            val id = search(key, type, title, year) ?: year?.let { search(key, type, title, null) }
-                ?: return TmdbResult.NotFound
+            // Titre tel quel, puis sans ses parties entre parenthèses ou crochets ; avec l'année, puis sans.
+            val queries = listOf(title, title.replace(BRACKETED, " ").replace(SPACES, " ").trim())
+                .filter { it.isNotBlank() }
+                .distinct()
+            var id: Long? = null
+            for (query in queries) {
+                id = search(key, type, query, year, exact) ?: year?.let { search(key, type, query, null, exact) }
+                if (id != null) break
+            }
+            if (id == null) return TmdbResult.NotFound
             TmdbResult.Found(details(key, type, id))
         } catch (e: CancellationException) {
             throw e
@@ -89,7 +166,7 @@ class TmdbClient(
         }
     }
 
-    private suspend fun search(key: String, type: MediaType, title: String, year: Int?): Long? {
+    private suspend fun search(key: String, type: MediaType, title: String, year: Int?, exact: Boolean = false): Long? {
         val path = if (type == MediaType.MOVIE) "search/movie" else "search/tv"
         val url = baseUrl.newBuilder().addPathSegments(path)
             .addQueryParameter("query", title)
@@ -102,7 +179,7 @@ class TmdbClient(
         val results = get(key, url).optJSONArray("results") ?: return null
         if (results.length() == 0) return null
         val wanted = normalize(title)
-        var best: JSONObject = results.getJSONObject(0)
+        var best: JSONObject? = if (exact) null else results.getJSONObject(0)
         for (i in 0 until results.length()) {
             val candidate = results.getJSONObject(i)
             val names = listOf("title", "original_title", "name", "original_name").map { normalize(candidate.optString(it)) }
@@ -111,7 +188,7 @@ class TmdbClient(
                 break
             }
         }
-        return best.optLong("id").takeIf { it > 0 }
+        return best?.optLong("id")?.takeIf { it > 0 }
     }
 
     private suspend fun details(key: String, type: MediaType, id: Long): MediaDetails {
@@ -124,9 +201,10 @@ class TmdbClient(
         val json = get(key, url)
         var overview = json.optStringOrNull("overview")
         if (overview == null && !language.startsWith("en")) {
-            // Pas de résumé traduit : résumé original anglais plutôt que rien.
+            // Pas de résumé traduit : résumé anglais, traduit automatiquement (l'anglais s'il n'y a pas de traduction).
             val english = baseUrl.newBuilder().addPathSegments(path).addQueryParameter("language", "en-US").build()
             overview = runCatching { get(key, english).optStringOrNull("overview") }.getOrNull()
+                ?.let { text -> translator?.translate(text, from = "en", to = language.substringBefore('-')) ?: text }
         }
         val date = json.optStringOrNull(if (type == MediaType.MOVIE) "release_date" else "first_air_date")
         return MediaDetails(
@@ -171,14 +249,17 @@ class TmdbClient(
             .header("Accept", "application/json")
             .apply { if (bearer) header("Authorization", "Bearer $key") }
             .build()
-        clients.client(RequestPurpose.METADATA).newCall(request).await().use { response ->
-            when {
-                response.code == 401 -> throw TmdbException(TmdbError.INVALID_KEY)
-                response.code == 404 -> throw NotFoundException()
-                response.code == 429 -> throw TmdbException(TmdbError.RATE_LIMITED)
-                !response.isSuccessful -> throw TmdbException(TmdbError.SERVER)
+        // Réponse lue hors du fil principal (le corps se lit sur le réseau, interdit sur le fil principal).
+        return withContext(Dispatchers.IO) {
+            clients.client(RequestPurpose.METADATA).newCall(request).await().use { response ->
+                when {
+                    response.code == 401 -> throw TmdbException(TmdbError.INVALID_KEY)
+                    response.code == 404 -> throw NotFoundException()
+                    response.code == 429 -> throw TmdbException(TmdbError.RATE_LIMITED)
+                    !response.isSuccessful -> throw TmdbException(TmdbError.SERVER)
+                }
+                JSONObject(response.body.string())
             }
-            return JSONObject(response.body.string())
         }
     }
 
@@ -190,10 +271,14 @@ class TmdbClient(
 
     private fun normalize(text: String): String =
         Normalizer.normalize(text.lowercase(), Normalizer.Form.NFD)
-            .replace(Regex("\\p{Mn}+"), "")
-            .replace(Regex("[^a-z0-9]+"), "")
+            .replace(MARKS, "")
+            .replace(NON_ALPHANUMERIC, "")
 
     private companion object {
         const val TAG = "Tmdb"
+        val BRACKETED = Regex("""\s*[(\[][^)\]]*[)\]]?""")
+        val SPACES = Regex("""\s{2,}""")
+        val MARKS = Regex("\\p{Mn}+")
+        val NON_ALPHANUMERIC = Regex("[^a-z0-9]+")
     }
 }

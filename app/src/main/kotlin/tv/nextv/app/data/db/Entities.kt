@@ -38,6 +38,8 @@ data class SourceEntity(
     val epgErrorDetail: String? = null,
     /** Génération de programmes actuellement visible (voir [ProgrammeEntity.generation]). */
     val epgGeneration: Long = 0,
+    /** Serveurs de secours (« http://hôte:port ») séparés par des retours à la ligne. */
+    val mirrors: String = "",
 )
 
 @Entity(
@@ -49,7 +51,7 @@ data class SourceEntity(
         Index(value = ["sourceId", "position"]),
         Index(value = ["sourceId", "kind", "groupTitle"]),
         Index(value = ["sourceId", "variantKey"]),
-        Index(value = ["sourceId", "kind", "seriesName"]),
+        Index(value = ["sourceId", "kind", "itemKey", "position"]),
     ],
 )
 data class ChannelEntity(
@@ -84,12 +86,14 @@ data class ChannelEntity(
     val episode: Int? = null,
     /** Rang de qualité ([tv.nextv.core.model.StreamQuality.rankOf]) pour choisir la meilleure version. */
     val qualityRank: Int = 2,
-    /** Version affichée dans les listes (la meilleure de sa chaîne). */
+    /** Version affichée dans les listes (la meilleure de sa chaîne ; pour une série, son premier épisode). */
     val isPrimary: Boolean = true,
-    /** Nombre de versions (qualités) de la chaîne. */
+    /** Nombre de versions (qualités) de la chaîne ; pour le premier épisode d'une série, nombre d'épisodes. */
     val variantCount: Int = 1,
     /** Clé stable (favoris, cache TMDB) : ne change pas d'une actualisation à l'autre. */
     val itemKey: String = "",
+    /** Jours de programmes passés gardés par le serveur pour le replay (0 : pas de replay). */
+    val catchupDays: Int = 0,
 )
 
 /**
@@ -111,6 +115,40 @@ data class FavoriteEntity(
     val title: String,
     val logoUrl: String?,
     val position: Int,
+)
+
+/**
+ * Chaîne du guide sans chaîne de la playlist associée, dont des matchs ont été importés (version 8
+ * du schéma) : la section Foot indique sur quelle chaîne passe un match, même absente de la playlist.
+ */
+@Entity(
+    tableName = "guide_only_channels",
+    primaryKeys = ["sourceId", "epgChannelId"],
+    foreignKeys = [
+        ForeignKey(entity = SourceEntity::class, parentColumns = ["id"], childColumns = ["sourceId"], onDelete = ForeignKey.CASCADE),
+    ],
+)
+data class GuideOnlyChannelEntity(
+    val sourceId: Long,
+    val epgChannelId: String,
+    val name: String,
+)
+
+/**
+ * Catégorie masquée (version 4 du schéma). [title] : nom du groupe, `''` pour les éléments sans
+ * groupe ; il ne dépend pas des identifiants de ligne et reste valable après une actualisation.
+ */
+@Entity(
+    tableName = "hidden_groups",
+    primaryKeys = ["sourceId", "kind", "title"],
+    foreignKeys = [
+        ForeignKey(entity = SourceEntity::class, parentColumns = ["id"], childColumns = ["sourceId"], onDelete = ForeignKey.CASCADE),
+    ],
+)
+data class HiddenGroupEntity(
+    val sourceId: Long,
+    val kind: String,
+    val title: String,
 )
 
 /** Fiche TMDB en cache (ou absence de résultat, [found] faux). */
@@ -158,6 +196,10 @@ data class ProgrammeEntity(
     val subtitle: String?,
     val description: String?,
     val category: String?,
+    /** Année de production (version 3 du schéma). */
+    val year: Int? = null,
+    /** Image du programme donnée par le guide (version 9 du schéma). */
+    val imageUrl: String? = null,
 )
 
 /** Identifiants chiffrés (AES-GCM, clé dans l'Android Keystore). */

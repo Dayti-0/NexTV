@@ -47,6 +47,37 @@ class QualityParserTest {
     }
 
     @Test
+    fun `hdr and exclusive versions are grouped with the channel`() {
+        val tf1 = QualityParser.parse("FR| TF1").variantKey
+        val hdr = QualityParser.parse("FR| TF1 HDR (EXCLUS)")
+        assertEquals(tf1, hdr.variantKey)
+        assertEquals(StreamQuality.UHD, hdr.quality)
+        assertEquals("FR| TF1", hdr.baseName)
+        assertEquals(QualityParser.parse("FR| M6").variantKey, QualityParser.parse("FR| M6 HDR (EXCLUS)").variantKey)
+        assertEquals(QualityParser.parse("FR| M6").variantKey, QualityParser.parse("FR| M6 UHD").variantKey)
+        assertEquals(QualityParser.parse("DE| RTL").variantKey, QualityParser.parse("DE| RTL HD+").variantKey)
+        // Chaînes différentes : jamais mélangées.
+        assertNotEquals(tf1, QualityParser.parse("FR| TF1 Séries Films HDR").variantKey)
+        assertNotEquals(QualityParser.parse("FR| France 2").variantKey, QualityParser.parse("FR| France 3 HDR").variantKey)
+    }
+
+    @Test
+    fun `resolution wording around the quality is grouped with the channel`() {
+        val tf1 = QualityParser.parse("FR| TF1 FHD")
+        val uhd = QualityParser.parse("FR| TF1 (Résolution 4K)")
+        assertEquals(tf1.variantKey, uhd.variantKey)
+        assertEquals(StreamQuality.UHD, uhd.quality)
+        assertEquals("FR| TF1", uhd.baseName)
+        assertEquals("FR| TF1", QualityParser.parse("FR| TF1 (Resolution: UHD)").baseName)
+        assertEquals(tf1.variantKey, QualityParser.parse("FR| TF1 HDR (Résolution Exclusive)").variantKey)
+        assertEquals("FR| TF1", QualityParser.parse("FR| TF1 HDR (Résolution Exclusive)").baseName)
+        assertEquals(tf1.variantKey, QualityParser.parse("FR| TF1 [Qualité réelle 4K]").variantKey)
+        // Sans mention de qualité, le mot fait partie du nom.
+        assertNotEquals(QualityParser.parse("Résolution TV").variantKey, QualityParser.parse("TV").variantKey)
+        assertEquals("Résolution TV", QualityParser.parse("Résolution TV").baseName)
+    }
+
+    @Test
     fun `codec tags are ignored for grouping`() {
         assertEquals(QualityParser.parse("Canal+ HEVC FHD").variantKey, QualityParser.parse("Canal+ SD").variantKey)
         assertEquals(StreamQuality.FHD, QualityParser.parse("Canal+ HEVC FHD").quality)
@@ -60,6 +91,9 @@ class ContentClassifierTest {
         assertEquals(ContentKind.LIVE, ContentClassifier.classify("TF1", "http://h:8080/live/u/p/1.ts", "FR").kind)
         assertEquals(ContentKind.MOVIE, ContentClassifier.classify("Avatar (2009)", "http://h:8080/movie/u/p/2.mkv", "VOD").kind)
         assertEquals(ContentKind.SERIES, ContentClassifier.classify("Dark S01 E01", "http://h:8080/series/u/p/3.mp4", null).kind)
+        // Chaînes 24h/24 d'un groupe « Séries » : flux en direct Xtream, sans « /live/ ».
+        assertEquals(ContentKind.LIVE, ContentClassifier.classify("FR| Friends 24/7", "http://h:8080/u/p/4", "FR| SÉRIES 24/7").kind)
+        assertEquals(ContentKind.LIVE, ContentClassifier.classify("Kaamelott S01E01", "http://h:8080/u/p/5.ts", "SERIES TV").kind)
     }
 
     @Test
@@ -109,5 +143,54 @@ class ContentClassifierTest {
 
         assertEquals("FR| TF1 FHD", live.title)
         assertNull(live.episode)
+    }
+
+    @Test
+    fun `version tags in brackets are removed without breaking the title`() {
+        val series = ContentClassifier.classify(
+            "Celui qui s'appelait Matthew Perry (MULTI) S01 E01",
+            "http://p.example/series/u/p/1.mkv",
+            "SERIES | DOCUMENTAIRES",
+        )
+        assertEquals("Celui qui s'appelait Matthew Perry", series.title)
+        assertEquals(1, series.episode?.season)
+        assertEquals(1, series.episode?.episode)
+
+        val movie = ContentClassifier.classify("Le Grand Voyage [VOSTFR] (2019)", "http://p.example/movie/u/p/2.mkv", "VOD | DRAME")
+        assertEquals("Le Grand Voyage", movie.title)
+        assertEquals(2019, movie.year)
+
+        val unclosed = ContentClassifier.classify("Un Titre (MULTI", "http://p.example/movie/u/p/3.mkv", "VOD | DRAME")
+        assertEquals("Un Titre", unclosed.title)
+    }
+
+    @Test
+    fun `parentheses that belong to the title are kept`() {
+        val series = ContentClassifier.classify("Rick and Morty (US) S01E02", "http://p.example/series/u/p/4.mkv", "SERIES | ANIMATION")
+        assertEquals("Rick and Morty (US)", series.title)
+    }
+}
+
+class FranceRegionsTest {
+
+    @Test
+    fun `regional editions are recognised`() {
+        assertEquals("alpes", FranceRegions.regionOf("FR| FRANCE 3 ALPES")?.key)
+        assertEquals("Alpes", FranceRegions.regionOf("FR| FRANCE 3 ALPES")?.label)
+        assertEquals("paris ile de france", FranceRegions.regionOf("FR| France 3 Paris Île-de-France FHD")?.key)
+        assertEquals("cote d azur", FranceRegions.regionOf("France3 Côte d'Azur HD")?.key)
+        assertEquals("bretagne", FranceRegions.regionOf("FR: F3 Bretagne")?.key)
+        assertEquals("Corse ViaStella", FranceRegions.regionOf("FR| France 3 Corse ViaStella")?.label)
+    }
+
+    @Test
+    fun `national channel and other channels are not regions`() {
+        assertNull(FranceRegions.regionOf("FR| FRANCE 3"))
+        assertNull(FranceRegions.regionOf("FR| FRANCE 3 HD"))
+        assertNull(FranceRegions.regionOf("FR| FRANCE 3 HDR (EXCLUS)"))
+        assertNull(FranceRegions.regionOf("FR| France 3 +1"))
+        assertNull(FranceRegions.regionOf("FR| France 2"))
+        assertNull(FranceRegions.regionOf("FR| France 5"))
+        assertNull(FranceRegions.regionOf("FR| France 3 Backup"))
     }
 }

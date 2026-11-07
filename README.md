@@ -1,4 +1,4 @@
-# NexTV
+# NixTV
 
 Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3, entièrement utilisable à la télécommande.
 
@@ -7,25 +7,96 @@ Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3, enti�
 - **Démarrage** : la dernière playlist utilisée est rechargée (si elle a plus de 12 h) avec son guide, avec une
   progression réelle (octets reçus, chaînes enregistrées, guide téléchargé puis importé), puis l'accueil s'ouvre.
   En cas d'échec : réessayer, continuer avec les données enregistrées ou choisir une autre playlist.
-- **Accueil** : sections TV, Films, Séries et Guide TV, avec catégories (groupes de la playlist), recherche et favoris.
+- **Accueil** : sections TV, Films, Séries, Guide TV et Foot, avec catégories (groupes de la playlist), recherche et favoris.
   Appui long sur OK : ajouter / retirer des favoris ; « Réorganiser » puis OK et flèches pour les déplacer.
+  Section TV sur TV et tablette : panneau du haut avec l'aperçu vidéo (sans le son) de la chaîne sélectionnée, son
+  programme en cours (horaires, progression, description) et le suivant ; désactivable dans Réglages › Affichage.
+  Catégorie « Récentes » : les 30 dernières chaînes regardées.
+  Catégories masquables, pour les chaînes comme pour les films et les séries (appui long sur une catégorie, ou
+  Réglages › Affichage) : leur contenu disparaît des listes et de la recherche (et du zapping et du guide pour les
+  chaînes) ; les favoris restent visibles.
+  Interface et couleurs (Réglages › Apparence) : « Live Center » (catégories, liste des chaînes et volet du direct
+  avec le programme en cours et les suivants), « Streaming » (grande bannière, rangées reprises, tendances,
+  nouveautés, recommandations et catégories) ou « Cinéma Premium » (visuel plein écran, grandes affiches) ;
+  19 palettes (classiques, pastel, sombres, colorées), avec aperçu en direct.
+- **Foot** : matchs des 8 prochains jours par compétition (Ligue 1, Premier League, Liga, Serie A, Bundesliga, Ligue
+  des champions, Ligue Europa, Ligue Conférence, équipes nationales), par jour, avec les écussons et la chaîne de la
+  playlist qui les diffuse (quand la chaîne du guide — « Ligue 1+ 5 », « DAZN 1 »… — n'est reliée à aucune chaîne
+  de la playlist, son nom est quand même indiqué) ; score et minute de jeu en direct (actualisés chaque minute),
+  classement des championnats, « Mes équipes » pour les équipes suivies. OK pour regarder, appui long pour la fiche
+  du match (suivre chaque équipe). La liste vient du calendrier public d'ESPN (sans clé : vrais coups d'envoi, jamais
+  de rediffusion), le guide TV donne seulement la chaîne ; les matchs de sélections ne sont listés que s'ils sont
+  diffusés. Classements et fiches des clubs : [football-data.org](https://www.football-data.org) (clé gratuite,
+  Réglages › Matchs de foot, ou secret CI `NEXTV_FOOTBALL_API_KEY`), qui donne aussi la liste quand ESPN ne répond pas.
 - **Films et séries** : fiche enrichie par TMDB (synopsis, note, genres, affiche, bande-annonce), saisons et épisodes.
   Une clé d'API TMDB se saisit dans les réglages (ou s'intègre à la compilation, voir plus bas).
 - **Lecture en direct** : bandeau de 5 s au changement de chaîne ou sur OK (programme en cours avec horaires et
   progression, programme suivant, qualité, débit mesuré en Mbit/s) ; haut / bas pour zapper ; Retour ouvre la liste
   des chaînes à gauche sans couper la lecture (catégories avec gauche / droite, chaînes avec haut / bas, OK pour
-  lancer), un second Retour la ferme.
+  lancer, appui long sur OK pour la fiche du programme avec sa description), un second Retour la ferme.
+  Touche Menu : piste audio, sous-titres, format de l'image (adapté, étiré, agrandi) ; ⏪ ou « chaîne précédente »
+  de la télécommande : retour à la dernière chaîne regardée. Option « Démarrer sur la dernière chaîne » (Réglages ›
+  Lecture). Chaque chaîne démarre sur la qualité qui a fonctionné la dernière fois. Pendant un match connu de
+  football-data.org, le bandeau affiche les écussons et le score.
+  Option « Baisser le son des pubs » (Réglages › Lecture ou touche Menu) : les flux IPTV ne signalent pas les
+  publicités, elles sont repérées à leur niveau sonore (nettement plus fort que le programme pendant quelques
+  secondes) ; le son est alors baissé presque au minimum, puis rétabli au retour du programme.
+- **Serveurs de secours** (éditeur de playlist, lien ou compte Xtream) : autres adresses du même fournisseur ; si le
+  serveur principal ne répond pas, la playlist et les flux passent par elles avec les mêmes identifiants. Les
+  comptes Xtream affichent leur abonnement dans les réglages (actif, date de fin, connexions simultanées).
 - **Qualité automatique** : quand une chaîne existe en plusieurs versions dans la playlist (« FHD », « HD », « SD »,
   « LOW » dans le nom), la lecture descend d'un cran en cas d'erreur ou de mise en mémoire tampon persistante, puis
-  remonte quand le débit mesuré le permet. Jamais de bascule vers une autre chaîne ; désactivable dans les réglages.
-- **Guide TV** : grille chaînes × horaires avec repère de l'heure actuelle et programme en cours mis en valeur ;
-  OK ouvre la fiche du programme (horaires, durée, description) avec « Regarder ». Un créneau sans donnée reste vide.
+  remonte d'un cran : dès que le débit mesuré le justifie, sinon à l'essai après 1 min 30 de lecture stable (le débit
+  d'un direct MPEG-TS ne dépasse jamais celui de la vidéo). Un essai qui ne démarre pas en 5 s revient à la version
+  qui fonctionnait, et le suivant attend plus longtemps (5 min, puis 10, 20… jusqu'à 1 h). Jamais de bascule vers une
+  autre chaîne ; désactivable dans les réglages.
+  **Qualité visée** (Réglages › Lecture) : « Meilleure qualité » (4K, FHD…), « HD maximum » (jamais au-dessus de la
+  HD quand une version HD ou inférieure existe) ou « Économie » (SD ou LOW si la chaîne en a une version, sinon HD) ;
+  la qualité automatique ne remonte jamais au-dessus de la qualité visée.
+  Chaque catégorie affiche toutes ses chaînes dans l'ordre de la playlist (TF1 SD dans « FR TV SD »…) ; « Toutes »,
+  la recherche et le zapping n'en gardent qu'une ligne par chaîne, sa meilleure version visible.
+- **Guide TV** : grille chaînes × horaires depuis la veille, avec repère de l'heure actuelle et programme en cours
+  mis en valeur ; haut / bas changent de chaîne en restant à la même heure, gauche / droite changent d'heure ; OK
+  ouvre la fiche du programme (horaires, durée, description) avec « Regarder ».
+  Un créneau sans donnée reste vide.
+  « Ce soir » : le programme du soir comme dans un magazine télé, une ligne par chaîne avec le programme principal
+  (vers 21 h, sans la météo ni les programmes courts) et la deuxième partie de soirée ; les chaînes de la TNT d'abord,
+  avec leur numéro, puis les autres ; soirs suivants sur une semaine. « L'essentiel » : la grille réduite aux
+  chaînes que vous choisissez (appui long sur une chaîne du guide, ou « Ajouter à L'essentiel » dans la fiche d'un
+  programme), une seule ligne par chaîne quelle que soit sa qualité, TNT d'abord ; « Ce soir » se limite alors à ces
+  chaînes. La dernière de ces catégories choisie est reprise à l'ouverture du guide.
+- **Replay** (comptes Xtream dont le serveur enregistre les chaînes) : les programmes passés disponibles portent
+  l'icône ↺ dans le guide ; « Revoir » les lit depuis l'enregistrement du serveur (avance / retour comme un film),
+  « Depuis le début » relance le programme en cours en différé, comme le direct : bandeau avec le retard
+  (« Différé −25:12 »), appui long sur → pour rattraper le direct, liste des chaînes sur « Retour », zapping et
+  options. En replay comme en « Depuis le début », ← → reculent ou avancent (appuis cumulés, touche maintenue pour
+  aller plus loin) : de quoi passer la pub diffusée avant le programme. Le replay est demandé en HLS, où l'on se
+  déplace de 30 s en 30 s ; si le serveur ne le propose pas (et en « Depuis le début »), l'enregistrement est relu
+  à la minute près.
+- **Sauvegarde** (Réglages › Sauvegarde) : playlists avec leurs identifiants, favoris, catégories masquées et
+  réglages dans un fichier JSON, à restaurer après une réinstallation ou sur un autre appareil (sans sélecteur de
+  fichiers, comme sur Fire TV, le fichier va dans le dossier de l'application).
+- **Affichage** : nombre de chaînes (3 à 9) et d'affiches (4 à 10) par ligne réglable sur TV et tablette.
+- **Retour à l'accueil** : double appui rapide sur Retour, depuis n'importe quel écran. Depuis l'accueil, Retour
+  demande confirmation avant de quitter l'application (« Non » sélectionné d'office) : pas de sortie par maladresse.
+- **Ajout d'une playlist depuis un ordinateur** (adb), pour éviter la saisie à la télécommande : l'éditeur s'ouvre
+  prérempli, il reste à confirmer avec OK.
+
+  ```
+  adb shell "am start -n tv.nextv.app/.MainActivity --es url 'http://exemple.com/playlist.m3u' --es name 'Ma playlist'"
+  ```
+
+  Paramètres facultatifs : `--es user '…' --es password '…'` pour les identifiants.
+- **Mise à jour depuis l'application** (Réglages › Mise à jour) : dernière version publiée sur GitHub, téléchargée,
+  vérifiée (SHA-256) puis installée par l'installateur du système, playlists et réglages conservés. Les versions
+  doivent être publiques : dépôt public, ou dépôt public séparé pour les APK (voir Publication).
 
 ## Sources prises en charge
 
 | Source | Détails |
 | --- | --- |
 | Playlist M3U/M3U8 distante | URL HTTP ou HTTPS, redirections suivies (10 au maximum), compression gzip détectée sur le contenu. |
+| Compte Xtream Codes | Adresse du serveur, identifiant et mot de passe : le lien de la playlist (`get.php?…&type=m3u_plus`) est construit par l'application. |
 | Playlist M3U/M3U8 locale | Fichier choisi avec le sélecteur de fichiers Android (Storage Access Framework), autorisation persistante, relu à chaque actualisation. |
 | Playlist protégée | Authentification HTTP Basic en réponse au défi `401` du serveur ; identifiants chiffrés (Android Keystore), jamais présentés à un autre hôte, masqués dans les journaux. Les identifiants saisis dans l'URL (`http://user:pass@…`) sont extraits et stockés de la même façon. |
 | URL de flux directe | Si l'URL d'une « playlist » renvoie un manifeste HLS ou un flux vidéo (`video/*`, MPEG-TS, MP4), la source devient une chaîne unique. |
@@ -96,8 +167,9 @@ Points d'extension :
 ## Compilation et tests
 
 ```bash
-./gradlew -p core test          # tests du cœur (JVM, sans SDK Android)
-./gradlew :app:assembleDebug    # application (SDK Android requis)
+./gradlew -p core test               # tests du cœur (JVM, sans SDK Android)
+./gradlew :app:testDebugUnitTest     # requêtes de la base et interface (Robolectric, SDK Android requis)
+./gradlew :app:assembleDebug         # application (SDK Android requis)
 ```
 
 La CI GitHub Actions exécute les tests du cœur, la compilation de l'application (debug et release), le lint Android
@@ -108,10 +180,29 @@ et génère des captures d'écran (Roborazzi, téléphone et TV) publiées sur l
 Le workflow `Release` se déclenche en poussant un tag `v*` (ex. `git tag v0.1.0 && git push origin v0.1.0`),
 une branche `release/vX.Y.Z`, ou manuellement depuis l'onglet Actions avec la version voulue.
 Il exécute les tests, construit l'APK release (R8) puis publie une release GitHub avec l'APK et son
-empreinte SHA-256, en créant le tag s'il n'existe pas (versions `v0.*` ou `*-…` publiées en pré-version).
+empreinte SHA-256, en créant le tag s'il n'existe pas (versions `*-…` publiées en pré-version). Chaque version
+contient aussi `NexTV.apk` : lien permanent vers la dernière version,
+`https://github.com/Dayti-0/NexTV/releases/latest/download/NexTV.apk` (dépôt public), utilisable avec un code
+de l'application Downloader (Fire TV) créé sur go.aftvnews.com.
 
 Clé TMDB : le secret facultatif `NEXTV_TMDB_API_KEY` l'intègre à l'APK (une clé saisie dans les réglages reste prioritaire).
+Clé football-data.org (section Foot) : le secret facultatif `NEXTV_FOOTBALL_API_KEY`, de la même façon.
 
-Signature : définir dans les secrets du dépôt `NEXTV_KEYSTORE_BASE64` (keystore encodé en base64),
-`NEXTV_KEYSTORE_PASSWORD`, `NEXTV_KEY_ALIAS` et `NEXTV_KEY_PASSWORD`. En leur absence, l'APK est signé avec
-une clé de test temporaire : il s'installe, mais chaque nouvelle version impose de désinstaller la précédente.
+Mises à jour depuis l'application : elles lisent les versions publiées du dépôt (lecture anonyme, dépôt public).
+Pour garder le code privé, créer un dépôt public `NexTV-releases` (avec un README) et le secret
+`NEXTV_RELEASES_TOKEN` (jeton d'accès en écriture au contenu de ce dépôt) : chaque version y est aussi publiée et
+l'application y cherche ses mises à jour (autre nom de dépôt : variable `NEXTV_RELEASES_REPO`).
+
+Signature des versions publiées : clé privée générée une fois par le workflow `Signing key` (secret
+`NEXTV_KEY_PASSPHRASE`, puis pousser une branche `signing-key/…`), stockée chiffrée dans le dépôt
+(`app/nextv-release.keystore.enc`, AES-256) et déchiffrée à chaque publication. Chaque version s'installe
+par-dessus la précédente en gardant playlists et réglages. Autre possibilité : les secrets `NEXTV_KEYSTORE_BASE64`,
+`NEXTV_KEYSTORE_PASSWORD`, `NEXTV_KEY_ALIAS` et `NEXTV_KEY_PASSWORD`. Sans clé privée, l'APK est signé avec la clé
+de test du dépôt (`app/nextv-test.keystore`, publique, aussi utilisée en debug).
+
+## Licence
+
+NixTV est un logiciel libre distribué sous licence [GNU GPL version 3](LICENSE), sans aucune garantie.
+L'APK intègre le décodeur [FFmpeg](https://ffmpeg.org) (extension Media3 compilée par
+[Jellyfin](https://github.com/jellyfin/jellyfin-androidx-media), licence GPL v3) : il décode le son que l'appareil
+ne sait pas lire (AC3, E-AC3, DTS…).

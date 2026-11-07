@@ -1,16 +1,33 @@
 package tv.nextv.app.player
 
 import android.content.Context
+import android.hardware.display.DisplayManager
+import android.view.Display
 import androidx.annotation.OptIn
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.decoder.ffmpeg.FfmpegLibrary
+import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.common.audio.AudioProcessor
+import androidx.media3.exoplayer.audio.AudioCapabilities
+import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
+import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.MediaSource
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
+import okhttp3.Call
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import tv.nextv.core.model.Credentials
 import tv.nextv.core.model.StreamDescriptor
 import tv.nextv.core.model.StreamFormat
@@ -32,11 +49,13 @@ data class PlaybackRequest(
 )
 
 /**
- * Crée les lecteurs Media3.
+ * Crée les lecteurs Media3 et les sources de leurs flux.
  *
- * Les requêtes HTTP(S) des flux — manifestes et segments HLS/DASH compris — passent par le client
- * OkHttp « flux » : proxy (si activé pour les flux), délais, redirections et en-têtes de la playlist
- * s'y appliquent. RTSP et UDP sont lus directement par Media3, sans proxy.
+ * Un lecteur sert à plusieurs flux : chacun lui est donné par [mediaSource], avec sa propre source
+ * réseau. Les requêtes HTTP(S) des flux — manifestes et segments HLS/DASH compris — passent par le
+ * client OkHttp « flux » : proxy (si activé pour les flux), délais, redirections, User-Agent, en-têtes
+ * et identifiants de la playlist du flux s'y appliquent. RTSP et UDP sont lus directement par Media3,
+ * sans proxy.
  */
 @OptIn(UnstableApi::class)
 class PlayerFactory(
@@ -44,36 +63,166 @@ class PlayerFactory(
     private val clients: HttpClientProvider,
 ) {
 
-    /** Mesure du débit réel des téléchargements du flux (voir [create]). */
+    /** Mesure du débit réel des téléchargements des flux (voir [create]). */
     fun newBandwidthMeter(): DefaultBandwidthMeter = DefaultBandwidthMeter.Builder(context).build()
 
-    fun create(request: PlaybackRequest, bandwidthMeter: DefaultBandwidthMeter? = null): ExoPlayer {
+    /**
+     * Lecteur sans flux : chaque flux lui est donné par `setMediaSource(mediaSource(…))`.
+     *
+     * @param preferredDecoders décodeur choisi par type de flux (réglages), essayé en premier.
+     * @param adVolume option « baisser le son des pubs », appliquée au son décodé.
+     * @param preview aperçu de l'accueil : petite mémoire tampon (il cède vite la place au plein écran).
+     * @param passthrough son Dolby / DTS envoyé tel quel à l'ampli.
+     */
+    fun create(
+        bandwidthMeter: DefaultBandwidthMeter? = null,
+        preferredDecoders: Map<String, String> = emptyMap(),
+        adVolume: AdVolumeControl? = null,
+        preview: Boolean = false,
+        passthrough: Boolean = false,
+    ): ExoPlayer {
+        // Repli automatique sur un autre décodeur si le premier ne démarre pas (box aux décodeurs capricieux).
+        val renderers = object : DefaultRenderersFactory(context) {
+            override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): AudioSink =
+                (if (passthrough) DefaultAudioSink.Builder(context) else DefaultAudioSink.Builder().setAudioCapabilities(decodedAudio(context)))
+                    .setEnableFloatOutput(enableFloatOutput)
+                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                    .setAudioProcessors(listOfNotNull<AudioProcessor>(adVolume?.let(::AdVolumeAudioProcessor)).toTypedArray())
+                    .build()
+        }
+            .setEnableDecoderFallback(true)
+            .setMediaCodecSelector(VideoDecoders.selector(preferredDecoders))
+            // Son : décodeurs de l'appareil d'abord, FFmpeg pour les formats qu'il ne sait pas lire.
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+        val builder = ExoPlayer.Builder(context, renderers)
+            // Flux donné sans sa source (setMediaItem) : client « flux » quand même (proxy), sans identifiants.
+            .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(context, OkHttpDataSource.Factory(clients.client(RequestPurpose.STREAM)))))
+            .setLoadControl(if (preview) previewLoadControl() else loadControl())
+        if (bandwidthMeter != null) builder.setBandwidthMeter(bandwidthMeter)
+        return builder.build()
+    }
+
+    /** Formats de son compressés (Dolby, DTS) et leur type, pour savoir si l'appareil les décode. */
+    private val encodedAudio = mapOf(
+        C.ENCODING_AC3 to MimeTypes.AUDIO_AC3,
+        C.ENCODING_E_AC3 to MimeTypes.AUDIO_E_AC3,
+        C.ENCODING_E_AC3_JOC to MimeTypes.AUDIO_E_AC3_JOC,
+        C.ENCODING_AC4 to MimeTypes.AUDIO_AC4,
+        C.ENCODING_DTS to MimeTypes.AUDIO_DTS,
+        C.ENCODING_DTS_HD to MimeTypes.AUDIO_DTS_HD,
+        C.ENCODING_DOLBY_TRUEHD to MimeTypes.AUDIO_TRUEHD,
+    )
+
+    /**
+     * Sortie du son décodé par l'appareil (ou par FFmpeg) : le Dolby (AC3, E-AC3) et le DTS ne sont
+     * envoyés tels quels à l'écran que si aucun des deux ne sait les décoder. Envoyés à un écran ou
+     * un moniteur qui annonce à tort savoir les lire (Fire TV), ils donneraient une image sans son.
+     */
+    private fun decodedAudio(context: Context): AudioCapabilities {
+        val device = AudioCapabilities.getCapabilities(context)
+        val encoded = encodedAudio.filter { (encoding, mimeType) -> device.supportsEncoding(encoding) && !hasDecoder(mimeType) }.keys
+        return AudioCapabilities(intArrayOf(C.ENCODING_PCM_16BIT) + encoded.toIntArray(), device.maxChannelCount)
+    }
+
+    /** L'appareil, ou à défaut FFmpeg, sait décoder ce format de son. */
+    private fun hasDecoder(mimeType: String): Boolean = ffmpegDecodes(mimeType) || try {
+        MediaCodecUtil.getDecoderInfos(mimeType, false, false).isNotEmpty()
+    } catch (e: MediaCodecUtil.DecoderQueryException) {
+        false
+    }
+
+    private fun ffmpegDecodes(mimeType: String): Boolean = try {
+        FfmpegLibrary.isAvailable() && FfmpegLibrary.supportsFormat(mimeType)
+    } catch (e: UnsatisfiedLinkError) {
+        // Bibliothèque native absente pour ce processeur : décodeurs de l'appareil seulement.
+        false
+    }
+
+    /**
+     * L'appareil affiche et décode la 4K : sinon (écran ou moniteur Full HD, petite box), une version
+     * 4K serait réduite à l'affichage et saccadée, faute d'un décodeur assez rapide.
+     */
+    val supportsUhd: Boolean by lazy {
+        val display = (context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager)?.getDisplay(Display.DEFAULT_DISPLAY)
+        val screen = display?.supportedModes?.maxOfOrNull { maxOf(it.physicalWidth, it.physicalHeight) } ?: 0
+        val decoder = listOf(MimeTypes.VIDEO_H265, MimeTypes.VIDEO_H264).any { mimeType ->
+            try {
+                MediaCodecUtil.getDecoderInfos(mimeType, false, false).any { info ->
+                    info.hardwareAccelerated && info.capabilities?.videoCapabilities?.areSizeAndRateSupported(3840, 2160, 50.0) == true
+                }
+            } catch (e: MediaCodecUtil.DecoderQueryException) {
+                false
+            }
+        }
+        screen >= 3840 && decoder
+    }
+
+    /**
+     * Source du flux de [request] : connexion propre à ce flux (client, User-Agent, en-têtes et
+     * identifiants de sa playlist).
+     *
+     * @param forceHls traiter le flux comme du HLS (seconde tentative pour une URL sans extension).
+     */
+    fun mediaSource(request: PlaybackRequest, forceHls: Boolean = false): MediaSource {
+        val httpFactory = OkHttpDataSource.Factory(httpClient(request))
+            .setUserAgent(userAgent(request))
+            .setDefaultRequestProperties(request.stream.headers - "User-Agent")
+        val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
+        return DefaultMediaSourceFactory(dataSourceFactory).createMediaSource(mediaItem(request.stream, forceHls))
+    }
+
+    /** Requête du direct pour l'enregistrement du différé : mêmes client, en-têtes et identifiants que la lecture. */
+    fun liveCall(request: PlaybackRequest): Call {
+        val builder = Request.Builder().url(request.stream.url).header("User-Agent", userAgent(request))
+        (request.stream.headers - "User-Agent").forEach { (name, value) -> builder.header(name, value) }
+        return httpClient(request).newCall(builder.build())
+    }
+
+    /** Source du lecteur pour l'enregistrement du différé. */
+    fun timeshiftSource(buffer: TimeshiftBuffer): MediaSource =
+        ProgressiveMediaSource.Factory(DataSource.Factory { TimeshiftDataSource(buffer) })
+            .createMediaSource(MediaItem.fromUri("timeshift://live"))
+
+    private fun httpClient(request: PlaybackRequest): OkHttpClient {
         val baseClient = clients.client(RequestPurpose.STREAM)
         val origin = request.credentialsOrigin?.toHttpUrlOrNull()
-        val client = if (request.credentials != null && origin != null) {
+        return if (request.credentials != null && origin != null) {
             baseClient.newBuilder()
                 .authenticator(ScopedCredentialsAuthenticator(AuthScope.forUrl(origin, request.credentials)))
                 .build()
         } else {
             baseClient
         }
-
-        val headers = request.stream.headers
-        val userAgent = headers["User-Agent"]
-            ?: request.userAgent?.takeIf { it.isNotBlank() }
-            ?: clients.networkSettings.defaultUserAgent
-        val httpFactory = OkHttpDataSource.Factory(client)
-            .setUserAgent(userAgent)
-            .setDefaultRequestProperties(headers - "User-Agent")
-        val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
-
-        val builder = ExoPlayer.Builder(context).setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
-        if (bandwidthMeter != null) builder.setBandwidthMeter(bandwidthMeter)
-        return builder.build()
     }
 
-    /** @param forceHls traiter le flux comme du HLS (seconde tentative pour une URL sans extension). */
-    fun mediaItem(stream: StreamDescriptor, forceHls: Boolean = false): MediaItem {
+    /**
+     * Démarrage et reprise plus rapides que par défaut (2,5 s et 5 s de mémoire tampon) : une chaîne,
+     * ou la version de repli après un blocage, se lance dès 1,5 s de flux reçu.
+     */
+    private fun loadControl(): DefaultLoadControl = DefaultLoadControl.Builder()
+        .setBufferDurationsMs(
+            DefaultLoadControl.DEFAULT_MIN_BUFFER_MS,
+            DefaultLoadControl.DEFAULT_MAX_BUFFER_MS,
+            START_BUFFER_MILLIS,
+            RESUME_BUFFER_MILLIS,
+        )
+        // Mémoire des petites box (Fire TV) : au plus ~48 Mo de flux d'avance, même en très haut débit
+        // (sinon jusqu'à 130 Mo pour 50 s de 4K, de quoi faire fermer l'application faute de mémoire).
+        .setTargetBufferBytes(MAX_BUFFER_BYTES)
+        .build()
+
+    /** Aperçu : quelques secondes d'avance seulement. */
+    private fun previewLoadControl(): DefaultLoadControl = DefaultLoadControl.Builder()
+        .setBufferDurationsMs(PREVIEW_MIN_BUFFER_MILLIS, PREVIEW_MAX_BUFFER_MILLIS, START_BUFFER_MILLIS, RESUME_BUFFER_MILLIS)
+        .setTargetBufferBytes(PREVIEW_BUFFER_BYTES)
+        .build()
+
+    private fun userAgent(request: PlaybackRequest): String =
+        request.stream.headers["User-Agent"]
+            ?: request.userAgent?.takeIf { it.isNotBlank() }
+            ?: clients.networkSettings.defaultUserAgent
+
+    private fun mediaItem(stream: StreamDescriptor, forceHls: Boolean = false): MediaItem {
         val mimeType = when {
             forceHls -> MimeTypes.APPLICATION_M3U8
             else -> when (stream.format) {
@@ -90,3 +239,10 @@ class PlayerFactory(
             .build()
     }
 }
+
+private const val START_BUFFER_MILLIS = 1_500
+private const val RESUME_BUFFER_MILLIS = 3_000
+private const val MAX_BUFFER_BYTES = 48 * 1024 * 1024
+private const val PREVIEW_MIN_BUFFER_MILLIS = 4_000
+private const val PREVIEW_MAX_BUFFER_MILLIS = 8_000
+private const val PREVIEW_BUFFER_BYTES = 12 * 1024 * 1024

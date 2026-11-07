@@ -1,21 +1,49 @@
 package tv.nextv.app.ui.settings
 
+import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.launch
 import tv.nextv.app.AppContainer
 import tv.nextv.app.BuildConfig
+import tv.nextv.app.CrashLog
 import tv.nextv.app.RefreshController
+import tv.nextv.app.data.backup.RestoreResult
+import tv.nextv.app.data.settings.GridColumns
+import tv.nextv.app.data.settings.PlaylistRefresh
+import tv.nextv.app.data.settings.PreviewVolume
+import tv.nextv.app.data.update.UpdateState
+import tv.nextv.app.ui.home.HomeLayout
+import tv.nextv.app.ui.theme.ThemeStyle
+import tv.nextv.core.stream.QualityTarget
+import tv.nextv.core.catalog.FranceRegions
+import tv.nextv.app.player.DecoderOption
+import tv.nextv.app.player.VideoDecoders
+import tv.nextv.core.model.ContentKind
 import tv.nextv.core.model.PlaylistSource
+import tv.nextv.core.model.SourceLocation
+import tv.nextv.core.net.DnsProvider
+import tv.nextv.core.net.ProxySettings
+import tv.nextv.core.source.XtreamAccount
+import tv.nextv.core.source.XtreamAccountInfo
+import tv.nextv.core.update.AppRelease
 
 data class SettingsUiState(
     val loaded: Boolean = false,
@@ -28,22 +56,87 @@ data class SettingsUiState(
     val tmdbKeySaved: Boolean = false,
     /** Clé TMDB fournie à la compilation, utilisée à défaut de clé saisie. */
     val tmdbBuiltIn: Boolean = false,
+    /** Clé football-data.org saisie dans les réglages (jamais affichée), ou fournie à la compilation. */
+    val footballKeySaved: Boolean = false,
+    val footballBuiltIn: Boolean = false,
     /** Dernier téléchargement du guide commun (xmltvfr.fr). */
     val guideDownloadedAt: Long? = null,
     val proxyEnabled: Boolean = false,
     val proxyAddress: String? = null,
     val version: String = "",
+    /** Décodeurs vidéo proposés par l'appareil et choix de l'utilisateur, par codec. */
+    val decoders: List<DecoderChoice> = emptyList(),
+    /** Chaînes et affiches par ligne à l'accueil. */
+    val gridColumns: GridColumns = GridColumns(),
+    val dns: DnsProvider = DnsProvider.SYSTEM,
+    /** Catégories masquées dans la playlist active, par type de contenu. */
+    val hiddenGroups: Map<ContentKind, Int> = emptyMap(),
+    /** Aperçu vidéo de la chaîne sélectionnée à l'accueil. */
+    val channelPreview: Boolean = true,
+    /** Lecture directe de la dernière chaîne regardée à l'ouverture. */
+    val startOnLastChannel: Boolean = false,
+    /** Son baissé pendant les publicités. */
+    val lowerAdVolume: Boolean = false,
+    /** Thème de l'interface. */
+    val theme: ThemeStyle = ThemeStyle.NIGHT,
+    /** Interface de l'accueil. */
+    val homeLayout: HomeLayout = HomeLayout.DEFAULT,
+    /** Qualité visée à l'ouverture d'une chaîne. */
+    val qualityTarget: QualityTarget = QualityTarget.BEST,
+    /** Son de l'aperçu vidéo de l'accueil. */
+    val previewVolume: PreviewVolume = PreviewVolume.LOW,
+    /** Fréquence de mise à jour automatique de la playlist. */
+    val playlistRefresh: PlaylistRefresh = PlaylistRefresh.HOURS_12,
+    /** Dernier plantage de l'application, à signaler. */
+    val lastCrash: CrashLog.Entry? = null,
+    /** Chaînes 4K masquées. */
+    val hideUhd: Boolean = false,
+    /** Son Dolby / DTS envoyé tel quel à l'ampli (sinon décodé par l'appareil). */
+    val audioPassthrough: Boolean = false,
+    /** Région de France 3 gardée (clé), `null` : toutes. */
+    val france3Region: String? = null,
+    /** Éditions régionales de France 3 de la playlist active. */
+    val france3Regions: List<FranceRegions.Region> = emptyList(),
 )
 
+/** Abonnement Xtream de la playlist active. */
+sealed interface AccountState {
+    data object Loading : AccountState
+
+    data class Loaded(val info: XtreamAccountInfo) : AccountState
+
+    /** Le serveur n'a pas répondu. */
+    data object Unavailable : AccountState
+}
+
+/** @property selected décodeur choisi, `null` : automatique. */
+data class DecoderChoice(val mimeType: String, val options: List<DecoderOption>, val selected: String?)
+
 /** Réglages : playlist active, lecture, guide TV, fiches TMDB et réseau. */
+@OptIn(ExperimentalCoroutinesApi::class)
 class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     private val settings = container.settings
     private val repository = container.sourceRepository
 
-    private val activePlaylist: Flow<Pair<PlaylistSource?, Int>> =
-        combine(repository.sources, settings.activePlaylistId) { sources, id ->
-            sources.firstOrNull { it.id == id } to sources.size
+    /** Catégories masquées de la playlist active, par type de contenu. */
+    private val hiddenGroups: Flow<Map<ContentKind, Int>> = settings.activePlaylistId.flatMapLatest { id ->
+        if (id == null) {
+            flowOf(emptyMap())
+        } else {
+            val dao = container.hiddenGroupDao
+            combine(
+                dao.observeCount(id, ContentKind.LIVE.name),
+                dao.observeCount(id, ContentKind.MOVIE.name),
+                dao.observeCount(id, ContentKind.SERIES.name),
+            ) { live, movies, series -> mapOf(ContentKind.LIVE to live, ContentKind.MOVIE to movies, ContentKind.SERIES to series) }
+        }
+    }
+
+    /** Playlist active, nombre de playlists et catégories masquées. */
+    private val activePlaylist: Flow<Triple<PlaylistSource?, Int, Map<ContentKind, Int>>> =
+        combine(repository.sources, settings.activePlaylistId, hiddenGroups) { sources, id, hidden ->
+            Triple(sources.firstOrNull { it.id == id }, sources.size, hidden)
         }
 
     /** Relu à chaque fin d'actualisation : le fichier du guide a pu être retéléchargé. */
@@ -51,32 +144,136 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         .map { container.epgFeed.cached()?.fetchedAtMillis }
         .flowOn(Dispatchers.IO)
 
+    /** Liste des décodeurs (interroge le système une fois, hors du fil principal). */
+    private val availableDecoders: Flow<Map<String, List<DecoderOption>>> =
+        flow { emit(VideoDecoders.CHOOSABLE.associateWith { VideoDecoders.list(it) }) }.flowOn(Dispatchers.IO)
+
+    private val decoderChoices: Flow<List<DecoderChoice>> =
+        combine(availableDecoders, settings.preferredDecoders) { available, preferred ->
+            VideoDecoders.CHOOSABLE.map { mime -> DecoderChoice(mime, available[mime].orEmpty(), preferred[mime]) }
+        }
+
+    private data class Preferences(
+        val autoQuality: Boolean,
+        val channelPreview: Boolean,
+        val startOnLastChannel: Boolean,
+        val tmdbKeySaved: Boolean,
+        val footballKeySaved: Boolean,
+        val proxy: ProxySettings,
+        val grid: GridColumns,
+        val dns: DnsProvider,
+        val lowerAdVolume: Boolean,
+        val theme: ThemeStyle,
+        val homeLayout: HomeLayout,
+        val qualityTarget: QualityTarget,
+    )
+
     private val preferences = combine(
-        settings.autoQuality,
-        settings.tmdbApiKey,
+        combine(settings.autoQuality, settings.channelPreview, settings.startOnLastChannel, settings.qualityTarget) { autoQuality, preview, startLast, target ->
+            Triple(autoQuality, preview, startLast) to target
+        },
+        combine(settings.tmdbApiKey, settings.footballApiKey, settings.lowerAdVolume) { tmdb, football, ads -> Triple(tmdb != null, football != null, ads) },
         settings.proxySettings,
-    ) { autoQuality, tmdbKey, proxy -> Triple(autoQuality, tmdbKey != null, proxy) }
+        settings.gridColumns,
+        combine(settings.dnsProvider, settings.themeStyle, settings.homeLayout, ::Triple),
+    ) { (playback, target), (tmdbKey, footballKey, ads), proxy, grid, (dns, theme, layout) ->
+        val (autoQuality, preview, startLast) = playback
+        Preferences(autoQuality, preview, startLast, tmdbKey, footballKey, proxy, grid, dns, ads, theme, layout, target)
+    }
+
+    private val lastCrash = MutableStateFlow(container.crashLog?.last())
+
+    /** Éditions régionales de France 3 de la playlist active, relues après chaque mise à jour. */
+    private val france3Regions: Flow<List<FranceRegions.Region>> = combine(
+        settings.activePlaylistId,
+        repository.sources.map { sources -> sources.map { it.id to it.status?.lastSuccessAtMillis } }.distinctUntilChanged(),
+        ::Pair,
+    ).mapLatest { (id, _) -> id?.let { container.channelFilters.france3Regions(it) }.orEmpty() }
+
+    private data class Extras(
+        val previewVolume: PreviewVolume,
+        val playlistRefresh: PlaylistRefresh,
+        val crash: CrashLog.Entry?,
+        val hideUhd: Boolean,
+        val audioPassthrough: Boolean,
+        val france3Region: String?,
+        val france3Regions: List<FranceRegions.Region>,
+    )
+
+    /** Réglages ajoutés depuis : son de l'aperçu, fréquence de mise à jour, dernier plantage, filtres des chaînes. */
+    private val extras = combine(
+        combine(settings.previewVolume, settings.playlistRefresh, lastCrash, ::Triple),
+        combine(settings.hideUhd, settings.audioPassthrough, ::Pair),
+        combine(settings.france3Region, france3Regions, ::Pair),
+    ) { (volume, refresh, crash), (hideUhd, passthrough), (region, regions) ->
+        Extras(volume, refresh, crash, hideUhd, passthrough, region, regions)
+    }
 
     val state: StateFlow<SettingsUiState> = combine(
-        activePlaylist,
+        combine(activePlaylist, extras, ::Pair),
         repository.refreshing,
         guideDownloadedAt,
         preferences,
-    ) { (playlist, count), refreshing, downloadedAt, (autoQuality, tmdbKeySaved, proxy) ->
+        decoderChoices,
+    ) { (active, extra), refreshing, downloadedAt, prefs, decoders ->
+        val (playlist, count, hidden) = active
+        val proxy = prefs.proxy
         SettingsUiState(
             loaded = true,
             playlist = playlist,
             playlistCount = count,
             refreshing = playlist != null && playlist.id in refreshing,
-            autoQuality = autoQuality,
-            tmdbKeySaved = tmdbKeySaved,
+            autoQuality = prefs.autoQuality,
+            tmdbKeySaved = prefs.tmdbKeySaved,
             tmdbBuiltIn = BuildConfig.TMDB_API_KEY.isNotBlank(),
+            footballKeySaved = prefs.footballKeySaved,
+            footballBuiltIn = BuildConfig.FOOTBALL_API_KEY.isNotBlank(),
             guideDownloadedAt = downloadedAt,
             proxyEnabled = proxy.enabled,
             proxyAddress = proxy.host.takeIf { proxy.enabled && it.isNotBlank() }?.let { "$it:${proxy.port}" },
             version = BuildConfig.VERSION_NAME,
+            decoders = decoders,
+            gridColumns = prefs.grid,
+            dns = prefs.dns,
+            hiddenGroups = hidden,
+            channelPreview = prefs.channelPreview,
+            startOnLastChannel = prefs.startOnLastChannel,
+            lowerAdVolume = prefs.lowerAdVolume,
+            theme = prefs.theme,
+            homeLayout = prefs.homeLayout,
+            qualityTarget = prefs.qualityTarget,
+            previewVolume = extra.previewVolume,
+            playlistRefresh = extra.playlistRefresh,
+            lastCrash = extra.crash,
+            hideUhd = extra.hideUhd,
+            audioPassthrough = extra.audioPassthrough,
+            france3Region = extra.france3Region,
+            france3Regions = extra.france3Regions,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
+
+    /** Abonnement de la playlist active si c'est un compte Xtream, demandé au serveur à l'ouverture des réglages. */
+    val account: StateFlow<AccountState?> = activePlaylist
+        .map { (playlist, _, _) -> playlist?.takeIf { (it.location as? SourceLocation.Remote)?.url?.let(XtreamAccount::parse) != null } }
+        .distinctUntilChanged { old, new -> old?.id == new?.id && old?.location == new?.location && old?.mirrors == new?.mirrors }
+        .transformLatest { playlist ->
+            if (playlist == null) {
+                emit(null)
+            } else {
+                emit(AccountState.Loading)
+                emit(container.xtreamApi.accountInfo(playlist)?.let(AccountState::Loaded) ?: AccountState.Unavailable)
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** Mise à jour de l'application. */
+    val update: StateFlow<UpdateState> = container.updater.state
+
+    fun checkUpdate() = container.updater.check()
+
+    fun installUpdate(release: AppRelease) = container.updater.install(release)
+
+    fun installPermissionIntent(): Intent? = container.updater.permissionIntent()
 
     /** Résultats des actualisations de la playlist active. */
     val refreshEvents: Flow<RefreshController.Event> = container.refreshController.events
@@ -91,8 +288,94 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         state.value.playlist?.let { container.refreshController.refreshEpg(it.id, force = true) }
     }
 
+    fun setHideUhd(enabled: Boolean) {
+        viewModelScope.launch { settings.setHideUhd(enabled) }
+    }
+
+    fun setAudioPassthrough(enabled: Boolean) {
+        viewModelScope.launch { settings.setAudioPassthrough(enabled) }
+    }
+
+    fun setFrance3Region(region: String?) {
+        viewModelScope.launch { settings.setFrance3Region(region) }
+    }
+
     fun setAutoQuality(enabled: Boolean) {
         viewModelScope.launch { settings.setAutoQuality(enabled) }
+    }
+
+    /** Passe au décodeur suivant pour ce codec : automatique, puis chaque décodeur proposé. */
+    fun cycleDecoder(mimeType: String) {
+        val choice = state.value.decoders.firstOrNull { it.mimeType == mimeType } ?: return
+        val values = listOf<String?>(null) + choice.options.map { it.name }
+        val next = values[(values.indexOf(choice.selected).coerceAtLeast(0) + 1) % values.size]
+        viewModelScope.launch { settings.setPreferredDecoder(mimeType, next) }
+    }
+
+    /** Passe au résolveur suivant : système, Quad9, Cloudflare, Google. */
+    fun cycleDns() {
+        val values = DnsProvider.entries
+        val next = values[(values.indexOf(state.value.dns) + 1) % values.size]
+        viewModelScope.launch { settings.setDnsProvider(next) }
+    }
+
+    /** Contenu du fichier de sauvegarde. */
+    suspend fun exportBackup(): String = container.backup.export()
+
+    /** @throws tv.nextv.core.backup.BackupFormatException si ce n'est pas une sauvegarde NexTV. */
+    suspend fun restoreBackup(text: String): RestoreResult = container.backup.restore(text)
+
+    /** Qualité visée suivante : meilleure, HD maximum, économie. */
+    /** Son de l'aperçu suivant : coupé, faible, moyen. */
+    fun cyclePreviewVolume() {
+        val values = PreviewVolume.entries
+        val next = values[(values.indexOf(state.value.previewVolume) + 1) % values.size]
+        viewModelScope.launch { settings.setPreviewVolume(next) }
+    }
+
+    /** Fréquence de mise à jour suivante : à chaque démarrage, 12 h, 24 h, 2 à 7 jours. */
+    fun cyclePlaylistRefresh() {
+        val values = PlaylistRefresh.entries
+        val next = values[(values.indexOf(state.value.playlistRefresh) + 1) % values.size]
+        viewModelScope.launch { settings.setPlaylistRefresh(next) }
+    }
+
+    fun clearCrash() {
+        container.crashLog?.clear()
+        lastCrash.value = null
+    }
+
+    fun cycleQualityTarget() {
+        val values = QualityTarget.entries
+        val next = values[(values.indexOf(state.value.qualityTarget) + 1) % values.size]
+        viewModelScope.launch { settings.setQualityTarget(next) }
+    }
+
+    /** Chaînes de l'accueil en mosaïque ou en liste. */
+    fun toggleChannelList() {
+        val grid = state.value.gridColumns
+        viewModelScope.launch { settings.setGridColumns(grid.copy(channelList = !grid.channelList)) }
+    }
+
+    fun setLowerAdVolume(enabled: Boolean) {
+        viewModelScope.launch { settings.setLowerAdVolume(enabled) }
+    }
+
+    fun setStartOnLastChannel(enabled: Boolean) {
+        viewModelScope.launch { settings.setStartOnLastChannel(enabled) }
+    }
+
+    fun setChannelPreview(enabled: Boolean) {
+        viewModelScope.launch { settings.setChannelPreview(enabled) }
+    }
+
+
+    fun saveFootballKey(key: String) {
+        viewModelScope.launch { settings.setFootballApiKey(key) }
+    }
+
+    fun clearFootballKey() {
+        viewModelScope.launch { settings.setFootballApiKey(null) }
     }
 
     fun saveTmdbKey(key: String) {

@@ -5,6 +5,7 @@ import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import mockwebserver3.RecordedRequest
+import mockwebserver3.SocketEffect
 import okhttp3.OkHttpClient
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -207,8 +208,63 @@ class RemoteContentOpenerTest {
         open(server.url("/").toString())
         open(server.url("/").toString(), OpenRequest(RequestPurpose.PLAYLIST, userAgent = "VLC/3.0.18"))
 
-        assertEquals("NexTV/1.0", server.takeRequest().headers["User-Agent"])
+        assertEquals("NixTV/1.0", server.takeRequest().headers["User-Agent"])
         assertEquals("VLC/3.0.18", server.takeRequest().headers["User-Agent"])
+    }
+
+    @Test
+    fun `a refusal is retried as a common player and the accepted user agent is reported`() {
+        server.enqueue(MockResponse.Builder().code(403).build())
+        server.enqueue(ok())
+
+        val content = runBlocking { opener.open(SourceLocation.Remote(server.url("/").toString()), OpenRequest(RequestPurpose.PLAYLIST)) }
+        content.use { assertEquals("#EXTM3U\n", it.stream.bufferedReader().readText()) }
+
+        assertEquals(RemoteContentOpener.FALLBACK_USER_AGENTS[0], content.userAgent)
+        assertEquals("NixTV/1.0", server.takeRequest().headers["User-Agent"])
+        assertEquals(RemoteContentOpener.FALLBACK_USER_AGENTS[0], server.takeRequest().headers["User-Agent"])
+    }
+
+    @Test
+    fun `a connection closed without response is retried as a common player`() {
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse =
+                if (request.headers["User-Agent"].orEmpty().startsWith("VLC/")) ok()
+                else MockResponse.Builder().onResponseStart(SocketEffect.CloseSocket()).build()
+        }
+
+        val content = runBlocking { opener.open(SourceLocation.Remote(server.url("/").toString()), OpenRequest(RequestPurpose.PLAYLIST)) }
+        val text = content.use { it.stream.bufferedReader().readText() }
+        assertEquals("#EXTM3U\n", text)
+        assertEquals("NixTV/1.0", server.takeRequest().headers["User-Agent"])
+        assertEquals(RemoteContentOpener.FALLBACK_USER_AGENTS[0], content.userAgent)
+    }
+
+    @Test
+    fun `every fallback is tried before reporting the refusal`() {
+        repeat(1 + RemoteContentOpener.FALLBACK_USER_AGENTS.size) { server.enqueue(MockResponse.Builder().code(403).build()) }
+
+        val error = errorOf { open(server.url("/").toString()) }
+
+        assertEquals(1 + RemoteContentOpener.FALLBACK_USER_AGENTS.size, server.requestCount)
+        assertTrue(error.code, error !is SourceError.HttpStatus || error.status == 403)
+    }
+
+    @Test
+    fun `a user agent chosen for the source is never replaced`() {
+        server.enqueue(MockResponse.Builder().code(403).build())
+
+        errorOf { open(server.url("/").toString(), OpenRequest(RequestPurpose.PLAYLIST, userAgent = "Mon lecteur/1.0")) }
+
+        assertEquals(1, server.requestCount)
+    }
+
+    @Test
+    fun `the default user agent is not reported when it is accepted`() {
+        server.enqueue(ok())
+        val content = runBlocking { opener.open(SourceLocation.Remote(server.url("/").toString()), OpenRequest(RequestPurpose.PLAYLIST)) }
+        content.close()
+        assertNull(content.userAgent)
     }
 
     @Test

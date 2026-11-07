@@ -27,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -62,6 +63,7 @@ import tv.nextv.app.R
 import tv.nextv.app.data.catalog.MetadataState
 import tv.nextv.app.data.db.EpisodeRow
 import tv.nextv.app.ui.common.appViewModel
+import tv.nextv.app.ui.player.formatClock
 import tv.nextv.app.ui.components.FocusSurface
 import tv.nextv.app.ui.components.IconAction
 import tv.nextv.app.ui.components.PillButton
@@ -77,7 +79,14 @@ import tv.nextv.core.model.ContentKind
 import java.text.NumberFormat
 
 @Composable
-fun DetailScreen(channelId: Long, kind: ContentKind, onPlay: (Long) -> Unit, onBack: () -> Unit) {
+fun DetailScreen(
+    channelId: Long,
+    kind: ContentKind,
+    onPlay: (Long) -> Unit,
+    onBack: () -> Unit,
+    onResume: (Long) -> Unit = onPlay,
+    onRestart: (Long) -> Unit = onPlay,
+) {
     val viewModel = appViewModel(key = "detail-$kind-$channelId") { container, _ -> DetailViewModel(container, channelId, kind) }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -89,6 +98,8 @@ fun DetailScreen(channelId: Long, kind: ContentKind, onPlay: (Long) -> Unit, onB
         kind = kind,
         snackbarHostState = snackbar,
         onPlay = onPlay,
+        onResume = onResume,
+        onRestart = onRestart,
         onTrailer = { key -> if (!openTrailer(context, key)) scope.launch { snackbar.showSnackbar(noTrailerApp) } },
         onToggleFavorite = viewModel::toggleFavorite,
         onSelectSeason = viewModel::selectSeason,
@@ -96,12 +107,15 @@ fun DetailScreen(channelId: Long, kind: ContentKind, onPlay: (Long) -> Unit, onB
     )
 }
 
-/** Ouvre la bande-annonce dans l'application YouTube (ou le navigateur). */
+/**
+ * Ouvre la bande-annonce dans une application YouTube : d'abord celles des TV (Fire TV, Android TV,
+ * SmartTube), pour que le navigateur ne s'en empare pas, puis toute application qui comprend le lien,
+ * enfin le navigateur. Le lien web d'abord : certaines (SmartTube) refusent `vnd.youtube:`.
+ */
 private fun openTrailer(context: Context, key: String): Boolean {
-    val intents = listOf(
-        Intent(Intent.ACTION_VIEW, Uri.parse("vnd.youtube:$key")),
-        Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=$key")),
-    )
+    val links = listOf(Uri.parse("https://www.youtube.com/watch?v=$key"), Uri.parse("vnd.youtube:$key"))
+    val intents = YOUTUBE_APPS.flatMap { app -> links.map { Intent(Intent.ACTION_VIEW, it).setPackage(app) } } +
+        links.map { Intent(Intent.ACTION_VIEW, it) }
     for (intent in intents) {
         try {
             context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -112,6 +126,15 @@ private fun openTrailer(context: Context, key: String): Boolean {
     }
     return false
 }
+
+/** Applications YouTube des TV et des téléphones, par ordre de préférence. */
+private val YOUTUBE_APPS = listOf(
+    "com.amazon.firetv.youtube",
+    "com.google.android.youtube.tv",
+    "com.liskovsoft.smarttubetv.beta",
+    "com.liskovsoft.smarttubetv",
+    "com.google.android.youtube",
+)
 
 /** Fiche d'un film ou d'une série. Sans dépendance au ViewModel (captures d'écran). */
 @OptIn(ExperimentalLayoutApi::class)
@@ -125,21 +148,26 @@ fun DetailContent(
     onToggleFavorite: () -> Unit,
     onSelectSeason: (Int) -> Unit,
     onBack: () -> Unit,
+    /** Reprendre le film ou l'épisode en cours, sans question. */
+    onResume: (Long) -> Unit = onPlay,
+    /** Film recommencé depuis le début, sans question. */
+    onRestart: (Long) -> Unit = onPlay,
 ) {
     val window = rememberWindowInfo()
     val item = state.item
     val details = (state.metadata as? MetadataState.Available)?.details
     val title = details?.title?.takeIf { it.isNotBlank() } ?: item?.title.orEmpty()
     val playFocus = remember { FocusRequester() }
-    LaunchedEffect(item != null) { if (item != null && window.isTv) runCatching { playFocus.requestFocus() } }
+    // Focus sur « Reprendre » s'il existe (la reprise est connue juste après la fiche), sinon sur « Lecture ».
+    LaunchedEffect(item != null, state.progress != null) { if (item != null && window.isTv) runCatching { playFocus.requestFocus() } }
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background, snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             Backdrop(details?.backdropUrl ?: details?.posterUrl ?: item?.logoUrl)
             LazyColumn(Modifier.fillMaxSize()) {
                 item {
-                    Row(Modifier.padding(start = window.horizontalPadding - 12.dp, top = 12.dp)) {
-                        IconAction(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back), onBack, tint = Color.White)
+                    Row(Modifier.padding(start = window.horizontalPadding - 12.dp, top = window.topPadding)) {
+                        IconAction(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back), onBack, tint = MaterialTheme.colorScheme.onBackground)
                     }
                 }
                 item {
@@ -159,14 +187,14 @@ fun DetailContent(
                             Text(
                                 title,
                                 style = if (window.isWide) MaterialTheme.typography.displaySmall else MaterialTheme.typography.headlineSmall,
-                                color = Color.White,
+                                color = MaterialTheme.colorScheme.onBackground,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                             )
                             MetaLine(details, item, kind)
                             details?.stars?.let { Rating(it, details) }
                             details?.tagline?.let {
-                                Text(it, style = MaterialTheme.typography.titleMedium, fontStyle = FontStyle.Italic, color = Color.White.copy(alpha = 0.8f))
+                                Text(it, style = MaterialTheme.typography.titleMedium, fontStyle = FontStyle.Italic, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f))
                             }
                             when (val metadata = state.metadata) {
                                 MetadataState.Loading -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -174,7 +202,7 @@ fun DetailContent(
                                     Text(stringResource(R.string.detail_loading), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 is MetadataState.Available -> metadata.details.overview?.let {
-                                    Text(it, style = MaterialTheme.typography.bodyLarge, color = Color.White.copy(alpha = 0.9f), maxLines = 8, overflow = TextOverflow.Ellipsis)
+                                    Text(it, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.9f), maxLines = 8, overflow = TextOverflow.Ellipsis)
                                 }
                                 MetadataState.NotFound -> MetadataNotice(stringResource(R.string.detail_tmdb_not_found))
                                 is MetadataState.Unavailable -> MetadataNotice(
@@ -195,13 +223,37 @@ fun DetailContent(
                                 } else {
                                     item?.firstId
                                 }
+                                val progress = state.progress
+                                if (progress != null) {
+                                    PillButton(
+                                        when {
+                                            progress.episodeLabel == null -> stringResource(R.string.player_resume_at, formatClock(progress.positionMs))
+                                            progress.positionMs > 0 ->
+                                                stringResource(R.string.player_resume_episode_at, progress.episodeLabel, formatClock(progress.positionMs))
+                                            else -> stringResource(R.string.player_resume_next_episode, progress.episodeLabel)
+                                        },
+                                        { onResume(progress.channelId) },
+                                        icon = Icons.Filled.PlayArrow,
+                                        style = PillStyle.Primary,
+                                        modifier = Modifier.focusRequester(playFocus),
+                                    )
+                                }
+                                // Film déjà commencé : « Depuis le début » (sans question). Série : premier épisode,
+                                // le lecteur propose alors de reprendre l'épisode en cours.
+                                val restartMovie = progress != null && kind == ContentKind.MOVIE
                                 PillButton(
-                                    stringResource(if (kind == ContentKind.SERIES) R.string.detail_play_episode else R.string.detail_play),
-                                    { playTarget?.let(onPlay) },
-                                    icon = Icons.Filled.PlayArrow,
-                                    style = PillStyle.Primary,
+                                    stringResource(
+                                        when {
+                                            restartMovie -> R.string.player_restart
+                                            kind == ContentKind.SERIES -> R.string.detail_play_episode
+                                            else -> R.string.detail_play
+                                        },
+                                    ),
+                                    { playTarget?.let(if (restartMovie) onRestart else onPlay) },
+                                    icon = if (restartMovie) Icons.Filled.Refresh else Icons.Filled.PlayArrow,
+                                    style = if (progress == null) PillStyle.Primary else PillStyle.Secondary,
                                     enabled = playTarget != null,
-                                    modifier = Modifier.focusRequester(playFocus),
+                                    modifier = if (progress == null) Modifier.focusRequester(playFocus) else Modifier,
                                 )
                                 details?.trailerYoutubeKey?.let { key ->
                                     PillButton(stringResource(R.string.detail_trailer), { onTrailer(key) }, icon = NexTvIcons.Movie)

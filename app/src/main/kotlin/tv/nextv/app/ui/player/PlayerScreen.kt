@@ -9,6 +9,10 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,18 +26,22 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.PlayArrow
@@ -46,19 +54,24 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
@@ -76,17 +89,23 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.math.abs
 import tv.nextv.app.R
 import tv.nextv.app.data.db.ChannelListRow
 import tv.nextv.app.data.db.GroupRow
+import tv.nextv.app.data.settings.AspectMode
 import tv.nextv.app.ui.common.appViewModel
+import tv.nextv.app.ui.components.edgeFade
 import tv.nextv.app.ui.components.Badge
 import tv.nextv.app.ui.components.ChannelLogo
 import tv.nextv.app.ui.components.FocusSurface
@@ -96,6 +115,8 @@ import tv.nextv.app.ui.components.PillButton
 import tv.nextv.app.ui.components.PillStyle
 import tv.nextv.app.ui.components.StatusPill
 import tv.nextv.app.ui.components.rememberWindowInfo
+import tv.nextv.app.ui.guide.ProgrammeArt
+import tv.nextv.app.ui.guide.ProgrammeSheet
 import tv.nextv.app.ui.guide.formatDuration
 import tv.nextv.app.ui.home.Category
 import tv.nextv.app.ui.home.qualityLabel
@@ -117,20 +138,69 @@ fun PlayerScreen(onBack: () -> Unit) {
     val menuGroups by viewModel.menuGroups.collectAsStateWithLifecycle()
     val menuFavorites by viewModel.menuFavorites.collectAsStateWithLifecycle()
     val menuChannels = viewModel.menuChannels.collectAsLazyPagingItems()
+    val programmeSheet by viewModel.programmeSheet.collectAsStateWithLifecycle()
+    val menuProgramme by viewModel.menuProgramme.collectAsStateWithLifecycle()
     val window = rememberWindowInfo()
     var bannerTrigger by remember { mutableIntStateOf(0) }
     var bannerVisible by remember { mutableStateOf(true) }
+    var infoVisible by rememberSaveable { mutableStateOf(false) }
+    var optionsVisible by rememberSaveable { mutableStateOf(false) }
+    val aspect by viewModel.aspectMode.collectAsStateWithLifecycle()
     val rootFocus = remember { FocusRequester() }
-    val now by produceState(System.currentTimeMillis()) {
+    // Pendant une pause du direct, chaque seconde (retard sur le direct affiché) ; sinon toutes les 5 s.
+    val now by produceState(System.currentTimeMillis(), state.paused) {
         while (true) {
-            delay(5_000)
             value = System.currentTimeMillis()
+            delay(if (state.paused) 1_000 else 5_000)
         }
     }
+
+    // Bandeau et touches du lecteur : direct, et replay (programme lu depuis l'enregistrement du serveur).
+    val bannerMode = state.isLive || state.replay != null
+
+    // Lecture en pause (direct, replay, film…) : icône au centre de l'écran.
+    var playWhenReady by remember(player) { mutableStateOf(player?.playWhenReady ?: true) }
+    DisposableEffect(player) {
+        val current = player
+        val listener = object : Player.Listener {
+            override fun onPlayWhenReadyChanged(ready: Boolean, reason: Int) {
+                playWhenReady = ready
+            }
+        }
+        current?.addListener(listener)
+        onDispose { current?.removeListener(listener) }
+    }
+    // Film ou épisode : commandes NixTV (titre, progression, boutons), affichées au départ puis masquées.
+    val film = !bannerMode && !state.isLive
+    var filmControls by remember { mutableStateOf(true) }
+    var filmTouch by remember { mutableIntStateOf(0) }
+    // Saut de quelques secondes avec ← → (commandes masquées), affiché au centre.
+    var filmJump by remember { mutableIntStateOf(0) }
+    LaunchedEffect(filmJump) {
+        if (filmJump != 0) {
+            delay(FILM_JUMP_DISPLAY_MILLIS)
+            filmJump = 0
+        }
+    }
+    // Replay, « Depuis le début » ou direct en pause / différé : OK maintenu (ou les options) ramène au direct.
+    val canGoLive = state.replay != null || (state.isLive && (state.seekable || state.paused || state.liveDelayMs > 0))
+    val press = remember { HeldKey() }
 
     LifecycleStartEffect(viewModel) {
         viewModel.onStart()
         onStopOrDispose { viewModel.onStop() }
+    }
+
+    // Commandes du film : masquées 5 s après le dernier appui, pendant la lecture.
+    LaunchedEffect(film, filmControls, filmTouch, playWhenReady, optionsVisible) {
+        if (film && filmControls && playWhenReady && !optionsVisible) {
+            delay(BANNER_DURATION_MILLIS)
+            filmControls = false
+        }
+    }
+    // Commandes masquées : le lecteur reprend les touches de la télécommande.
+    LaunchedEffect(film, filmControls) {
+        if (film && !filmControls) runCatching { rootFocus.requestFocus() }
     }
 
     // Bandeau : 5 s après un changement de chaîne ou un appui sur OK.
@@ -140,66 +210,320 @@ fun PlayerScreen(onBack: () -> Unit) {
         bannerVisible = false
     }
     // Le lecteur garde le focus quand le menu est fermé : les touches de la télécommande lui parviennent.
-    LaunchedEffect(menu.open, state.isLive) {
-        if (!menu.open && state.isLive) runCatching { rootFocus.requestFocus() }
+    LaunchedEffect(menu.open, bannerMode) {
+        if (!menu.open && bannerMode) runCatching { rootFocus.requestFocus() }
     }
 
     // Premier « Retour » : menu des chaînes (sans interrompre la lecture) ; second : fermeture du menu.
     BackHandler(enabled = menu.open) { viewModel.closeMenu() }
     BackHandler(enabled = !menu.open && state.isLive) { viewModel.openMenu() }
+    // Film : « Retour » masque d'abord les commandes.
+    BackHandler(enabled = film && filmControls && !optionsVisible && !menu.open && state.upNext == null) { filmControls = false }
+    // Déclaré en dernier : prioritaire, « Retour » ferme d'abord le panneau d'infos.
+    BackHandler(enabled = infoVisible && !menu.open) { infoVisible = false }
+    // Options de lecture (touche Menu) : fermées en premier.
+    BackHandler(enabled = optionsVisible) { optionsVisible = false }
+    // Options refermées : le lecteur reprend les touches de la télécommande.
+    LaunchedEffect(optionsVisible) {
+        if (!optionsVisible && !menu.open && bannerMode) runCatching { rootFocus.requestFocus() }
+    }
 
     Box(
         Modifier
             .fillMaxSize()
             .background(Color.Black)
             .onPreviewKeyEvent { event ->
-                if (event.type != KeyEventType.KeyDown || menu.open) return@onPreviewKeyEvent false
+                if (menu.open || optionsVisible || state.resumePrompt != null || state.upNext != null) {
+                    press.key = null
+                    return@onPreviewKeyEvent false
+                }
+                // Film, commandes affichées : les touches vont aux boutons et à la barre, et les gardent à l'écran.
+                if (film && filmControls) {
+                    if (event.type == KeyEventType.KeyDown) filmTouch++
+                    return@onPreviewKeyEvent when (event.key) {
+                        Key.MediaPlayPause, Key.MediaPlay, Key.MediaPause -> (event.type == KeyEventType.KeyDown).also { if (it) viewModel.togglePause() }
+                        else -> false
+                    }
+                }
+                // Film, commandes masquées : OK, haut ou bas les affichent.
+                if (film && event.type == KeyEventType.KeyDown && event.key in FILM_SHOW_KEYS) {
+                    filmControls = true
+                    filmTouch++
+                    return@onPreviewKeyEvent true
+                }
+                val repeat = event.nativeKeyEvent.repeatCount
+                // OK, ← → : l'appui court agit au relâchement, l'appui long tant que la touche est maintenue.
+                // Seulement pour un appui commencé ici (pas le relâchement de la touche qui a lancé la chaîne).
+                if (event.type == KeyEventType.KeyUp) {
+                    if (press.key != event.key) return@onPreviewKeyEvent false
+                    val long = press.long
+                    val consumed = press.consumed
+                    press.key = null
+                    when (event.key) {
+                        Key.DirectionLeft, Key.DirectionRight -> when {
+                            long -> {
+                                viewModel.stopFastSeek()
+                                bannerTrigger++
+                            }
+                            state.seekable -> {
+                                viewModel.jump(if (event.key == Key.DirectionRight) +1 else -1)
+                                bannerTrigger++
+                            }
+                            // Film : 10 s en arrière ou en avant, affichés au centre.
+                            film -> {
+                                val step = if (event.key == Key.DirectionRight) FILM_STEP_SECONDS else -FILM_STEP_SECONDS
+                                viewModel.seekBy(step * 1_000L)
+                                filmJump += step
+                            }
+                        }
+                        else -> if (!long) {
+                            when {
+                                state.error != null -> viewModel.retry()
+                                bannerVisible || state.paused -> {
+                                    viewModel.togglePause()
+                                    bannerTrigger++
+                                }
+                                else -> bannerTrigger++
+                            }
+                        }
+                    }
+                    return@onPreviewKeyEvent long || consumed
+                }
+                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                val delayed = state.paused || state.liveDelayMs > 0
                 when (event.key) {
                     Key.ChannelUp -> true.also { viewModel.zap(+1) }
                     Key.ChannelDown -> true.also { viewModel.zap(-1) }
                     Key.DirectionUp -> state.isLive.also { if (it) viewModel.zap(+1) }
                     Key.DirectionDown -> state.isLive.also { if (it) viewModel.zap(-1) }
-                    // En erreur, OK relance la lecture ; sinon il affiche le bandeau.
+                    // OK : bandeau, puis pause / lecture (en erreur : nouvel essai). Maintenu : retour au direct.
                     Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> when {
-                        !state.isLive -> false
-                        state.error != null -> true.also { viewModel.retry() }
-                        else -> true.also { bannerTrigger++ }
+                        !bannerMode -> false
+                        repeat == 0 -> true.also { press.start(event.key, consumed = true) }
+                        press.key == event.key && repeat >= LONG_PRESS_REPEATS && !press.long && canGoLive -> true.also {
+                            press.long = true
+                            viewModel.backToLive()
+                        }
+                        else -> true
                     }
-                    Key.Info, Key.Guide -> true.also { bannerTrigger++ }
+                    Key.MediaPlayPause, Key.MediaPlay, Key.MediaPause -> true.also {
+                        viewModel.togglePause()
+                        if (bannerMode) bannerTrigger++
+                    }
+                    // Replay, « Depuis le début », film : ← → reculent / avancent (passer la pub) ; maintenus, retour
+                    // ou avance rapide x2. Film : un appui affiche les commandes, comme avant.
+                    Key.DirectionLeft, Key.DirectionRight -> {
+                        val direction = if (event.key == Key.DirectionRight) 1 else -1
+                        when {
+                            state.seekable -> true.also {
+                                if (repeat == 0) {
+                                    press.start(event.key, consumed = true)
+                                } else if (press.key == event.key && repeat >= FAST_SEEK_REPEATS) {
+                                    if (!press.long) bannerTrigger++
+                                    press.long = true
+                                    viewModel.fastSeek(direction)
+                                }
+                            }
+                            // Film, commandes masquées : appui court, 10 s ; maintenu, avance ou retour rapide.
+                            film -> true.also {
+                                if (repeat == 0) {
+                                    press.start(event.key, consumed = true)
+                                } else if (press.key == event.key && repeat >= FAST_SEEK_REPEATS) {
+                                    press.long = true
+                                    viewModel.fastSeek(direction)
+                                }
+                            }
+                            // Différé (pause du direct) : → retour au direct.
+                            else -> (direction > 0 && state.isLive && delayed).also { if (it) viewModel.backToLive() }
+                        }
+                    }
+                    Key.MediaFastForward -> when {
+                        film -> true.also {
+                            viewModel.seekBy(FILM_MEDIA_STEP_MILLIS)
+                            filmJump += (FILM_MEDIA_STEP_MILLIS / 1_000).toInt()
+                        }
+                        state.seekable && !state.isLive -> true.also {
+                            viewModel.jump(+5)
+                            bannerTrigger++
+                        }
+                        else -> (state.isLive && delayed).also { if (it) viewModel.backToLive() }
+                    }
+                    Key.Info -> true.also { infoVisible = !infoVisible }
+                    Key.Menu -> true.also { optionsVisible = true }
+                    Key.MediaRewind -> when {
+                        film -> true.also {
+                            viewModel.seekBy(-FILM_MEDIA_STEP_MILLIS)
+                            filmJump -= (FILM_MEDIA_STEP_MILLIS / 1_000).toInt()
+                        }
+                        state.seekable && !state.isLive -> true.also {
+                            viewModel.jump(-5)
+                            bannerTrigger++
+                        }
+                        // Chaîne regardée juste avant.
+                        else -> state.isLive.also { if (it) viewModel.previousChannel() }
+                    }
+                    Key.LastChannel -> state.isLive.also { if (it) viewModel.previousChannel() }
+                    Key.Guide -> true.also { bannerTrigger++ }
                     else -> false
                 }
             }
             .focusRequester(rootFocus)
             .focusable()
-            .pointerInput(state.isLive) { detectTapGestures(onTap = { bannerTrigger++ }) },
+            // Toucher l'image : bandeau du direct, ou commandes du film affichées / masquées.
+            .pointerInput(state.isLive, film) {
+                detectTapGestures(onTap = {
+                    if (film) {
+                        filmControls = !filmControls
+                        filmTouch++
+                    } else {
+                        bannerTrigger++
+                    }
+                })
+            },
     ) {
         AndroidView(
             factory = { viewContext ->
                 PlayerView(viewContext).apply {
                     layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                     keepScreenOn = true
+                    // Commandes dessinées par NixTV (direct, replay, films) : jamais celles de Media3.
+                    useController = false
+                    isFocusable = false
+                    descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
                 }
             },
             update = { view ->
+                // Pause, différé, saut dans un replay : la dernière image reste affichée pendant le changement de flux.
+                view.setKeepContentOnPlayerReset(state.paused || state.liveDelayMs > 0 || state.seekable)
                 view.player = player
-                // Direct : pas de barre de lecture, OK affiche le bandeau. Film / épisode : commandes Media3.
-                view.useController = !state.isLive
-                if (!state.isLive) view.requestFocus()
+                view.resizeMode = when (aspect) {
+                    AspectMode.FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    AspectMode.FILL -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+                    AspectMode.ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                }
             },
             onRelease = { view -> view.player = null },
             modifier = Modifier.fillMaxSize(),
         )
 
+        // Film ou épisode : commandes NixTV.
+        if (film) {
+            FilmControls(
+                player = player,
+                state = state,
+                visible = filmControls && !menu.open && !optionsVisible && state.resumePrompt == null && state.upNext == null && state.error == null,
+                onInteraction = { filmTouch++ },
+                onSeekBy = viewModel::seekBy,
+                onSeekTo = viewModel::seekTo,
+                onPlayPause = viewModel::togglePause,
+                onNextEpisode = state.vod?.next?.let { { viewModel.playNextEpisode() } },
+                onOptions = { optionsVisible = true },
+                onBack = onBack,
+            )
+        }
+
         PlayerOverlay(
             state = state,
             now = now,
-            visible = (bannerVisible || state.error != null) && !menu.open,
+            // Film : le bandeau du direct n'apparaît pas (ses commandes le remplacent), sauf en cas d'erreur.
+            visible = (bannerVisible || state.error != null || state.paused || (state.fastSeek != 0 && bannerMode)) &&
+                !menu.open && state.resumePrompt == null && (bannerMode || state.error != null),
             showTouchControls = !window.isTv,
             onBack = onBack,
             onZap = viewModel::zap,
             onRetry = viewModel::retry,
             onOpenMenu = viewModel::openMenu,
+            onInfo = { infoVisible = !infoVisible },
+            onBackToLive = if (canGoLive) viewModel::backToLive else null,
         )
+
+        // Saut en cours (« +30 s »), avance / retour rapide ou pause : en grand au centre de l'écran (film avec ses
+        // commandes affichées : leur bouton de lecture suffit).
+        val filmControlsShown = film && filmControls
+        CenterIndicator(
+            jumpSeconds = state.pendingJumpSeconds + filmJump,
+            fastSeek = state.fastSeek,
+            paused = (state.paused || !playWhenReady) && state.error == null && state.resumePrompt == null && !filmControlsShown && state.upNext == null,
+            visible = !menu.open,
+            modifier = Modifier.align(Alignment.Center),
+        )
+
+        // Fin d'un épisode : le suivant, lancé après un décompte.
+        state.upNext?.let { next ->
+            UpNextCard(next, onPlay = viewModel::playNextEpisode, onDismiss = viewModel::dismissUpNext, modifier = Modifier.align(Alignment.BottomEnd).padding(36.dp))
+        }
+
+        PlaybackInfoPanel(
+            state = state,
+            visible = infoVisible && !menu.open && !optionsVisible,
+            modifier = Modifier.align(Alignment.TopEnd),
+        )
+
+        PlayerOptionsPanel(
+            visible = optionsVisible && !menu.open,
+            tracks = state.tracks,
+            aspect = aspect,
+            isLive = state.isLive,
+            infoVisible = infoVisible,
+            onAudio = viewModel::selectAudio,
+            onSubtitles = viewModel::selectSubtitles,
+            onAspect = viewModel::setAspectMode,
+            onPreviousChannel = {
+                optionsVisible = false
+                viewModel.previousChannel()
+            },
+            onToggleInfo = {
+                infoVisible = !infoVisible
+                optionsVisible = false
+            },
+            onDismiss = { optionsVisible = false },
+            modifier = Modifier.align(Alignment.TopEnd),
+            lowerAdVolume = state.lowerAdVolume,
+            onLowerAdVolume = viewModel::setLowerAdVolume,
+            onBackToLive = if (canGoLive) {
+                {
+                    optionsVisible = false
+                    viewModel.backToLive()
+                }
+            } else {
+                null
+            },
+        )
+
+        // Pub détectée : son baissé, signalé discrètement en haut à gauche.
+        AnimatedVisibility(
+            visible = state.adMuted && !menu.open,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.TopStart).padding(24.dp),
+        ) {
+            StatusPill(stringResource(R.string.player_ad_muted), NexTvColors.Warning)
+        }
+
+        // Image sans son : dit clairement pourquoi, en haut à droite, quelques secondes puis avec le bandeau.
+        val audioProblem = state.audioProblem
+        var audioNoticeShown by remember(audioProblem, state.channelVersion) { mutableStateOf(audioProblem != null) }
+        LaunchedEffect(audioProblem, state.channelVersion) {
+            if (audioProblem != null) {
+                delay(AUDIO_NOTICE_MILLIS)
+                audioNoticeShown = false
+            }
+        }
+        AnimatedVisibility(
+            visible = audioProblem != null && (audioNoticeShown || bannerVisible) && !menu.open,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.TopEnd).padding(24.dp),
+        ) {
+            StatusPill(
+                stringResource(if (audioProblem == AudioProblem.UNSUPPORTED) R.string.player_audio_unsupported else R.string.player_no_audio),
+                NexTvColors.Warning,
+            )
+        }
+
+        state.resumePrompt?.let { prompt ->
+            ResumePromptCard(prompt, onAnswer = viewModel::answerResume, modifier = Modifier.align(Alignment.Center))
+        }
 
         ChannelMenu(
             menu = menu,
@@ -209,8 +533,175 @@ fun PlayerScreen(onBack: () -> Unit) {
             now = now,
             onCategory = viewModel::selectMenuCategory,
             onPlay = viewModel::playFromMenu,
-            onHome = onBack,
+            onProgramme = viewModel::showProgramme,
+            programme = menuProgramme,
+            onFocusChannel = viewModel::focusMenuChannel,
         )
+
+        programmeSheet?.let { sheet ->
+            ProgrammeSheet(
+                channel = sheet.channel,
+                programme = sheet.programme,
+                now = now,
+                onWatch = {
+                    viewModel.hideProgramme()
+                    viewModel.playFromMenu(sheet.channel.id)
+                },
+                onDismiss = viewModel::hideProgramme,
+            )
+        }
+    }
+}
+
+/**
+ * Options de lecture (touche Menu) : piste audio, sous-titres, format de l'image, chaîne
+ * précédente et infos de lecture.
+ */
+@Composable
+fun PlayerOptionsPanel(
+    visible: Boolean,
+    tracks: PlayerTracks,
+    aspect: AspectMode,
+    isLive: Boolean,
+    infoVisible: Boolean,
+    onAudio: (TrackChoice) -> Unit,
+    onSubtitles: (TrackChoice?) -> Unit,
+    onAspect: (AspectMode) -> Unit,
+    onPreviousChannel: () -> Unit,
+    onToggleInfo: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    lowerAdVolume: Boolean = false,
+    onLowerAdVolume: (Boolean) -> Unit = {},
+    onBackToLive: (() -> Unit)? = null,
+) {
+    AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = modifier) {
+        val firstFocus = remember { FocusRequester() }
+        LaunchedEffect(Unit) {
+            delay(50)
+            runCatching { firstFocus.requestFocus() }
+        }
+        Surface(
+            color = Color.Black.copy(alpha = 0.85f),
+            contentColor = Color.White,
+            shape = MaterialTheme.shapes.large,
+            modifier = Modifier
+                .statusBarsPadding()
+                .padding(24.dp)
+                .width(420.dp)
+                .onPreviewKeyEvent { event ->
+                    // Menu referme les options, comme Retour.
+                    if (event.type == KeyEventType.KeyDown && event.key == Key.Menu) true.also { onDismiss() } else false
+                },
+        ) {
+            Column(
+                Modifier.padding(vertical = 16.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(stringResource(R.string.player_options), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
+
+                // Replay, « Depuis le début », différé : le retour au direct en premier.
+                onBackToLive?.let { backToLive ->
+                    OptionRow(
+                        stringResource(R.string.player_back_to_live),
+                        selected = false,
+                        modifier = Modifier.focusRequester(firstFocus),
+                        leading = { LiveDot() },
+                        onClick = backToLive,
+                    )
+                }
+                val focusFirst = onBackToLive == null
+
+                OptionsSection(stringResource(R.string.player_audio))
+                if (tracks.audio.size <= 1) {
+                    OptionsNote(tracks.audio.firstOrNull()?.label ?: stringResource(R.string.player_single_track))
+                } else {
+                    tracks.audio.forEachIndexed { index, track ->
+                        OptionRow(
+                            track.label,
+                            selected = track.selected,
+                            modifier = if (index == 0 && focusFirst) Modifier.focusRequester(firstFocus) else Modifier,
+                        ) { onAudio(track) }
+                    }
+                }
+
+                OptionsSection(stringResource(R.string.player_subtitles))
+                if (tracks.subtitles.isEmpty()) {
+                    OptionsNote(stringResource(R.string.player_no_subtitles))
+                } else {
+                    OptionRow(
+                        stringResource(R.string.player_subtitles_off),
+                        selected = tracks.subtitlesOff,
+                        modifier = if (tracks.audio.size <= 1 && focusFirst) Modifier.focusRequester(firstFocus) else Modifier,
+                    ) { onSubtitles(null) }
+                    tracks.subtitles.forEach { track -> OptionRow(track.label, selected = track.selected) { onSubtitles(track) } }
+                }
+
+                OptionsSection(stringResource(R.string.player_aspect))
+                AspectMode.entries.forEachIndexed { index, mode ->
+                    val label = when (mode) {
+                        AspectMode.FIT -> R.string.player_aspect_fit
+                        AspectMode.FILL -> R.string.player_aspect_fill
+                        AspectMode.ZOOM -> R.string.player_aspect_zoom
+                    }
+                    val first = index == 0 && tracks.audio.size <= 1 && tracks.subtitles.isEmpty() && focusFirst
+                    OptionRow(
+                        stringResource(label),
+                        selected = mode == aspect,
+                        modifier = if (first) Modifier.focusRequester(firstFocus) else Modifier,
+                    ) { onAspect(mode) }
+                }
+
+                OptionsSection(stringResource(R.string.player_more))
+                if (isLive) OptionRow(stringResource(R.string.player_last_channel), selected = false, onClick = onPreviousChannel)
+                if (isLive) OptionRow(stringResource(R.string.player_lower_ads), selected = lowerAdVolume) { onLowerAdVolume(!lowerAdVolume) }
+                OptionRow(stringResource(R.string.player_info_title), selected = infoVisible, onClick = onToggleInfo)
+            }
+        }
+    }
+}
+
+@Composable
+private fun OptionsSection(title: String) {
+    Text(
+        title,
+        style = MaterialTheme.typography.labelLarge,
+        color = NexTvColors.Primary,
+        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 2.dp),
+    )
+}
+
+@Composable
+private fun OptionsNote(text: String) {
+    Text(text, style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.7f), modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp))
+}
+
+@Composable
+private fun OptionRow(
+    label: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    leading: (@Composable () -> Unit)? = null,
+    onClick: () -> Unit,
+) {
+    FocusSurface(
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth().padding(horizontal = 8.dp),
+        shape = MaterialTheme.shapes.small,
+        color = Color.Transparent,
+        focusedColor = Color.White.copy(alpha = 0.16f),
+        contentColor = Color.White,
+        focusScale = 1f,
+    ) {
+        Row(
+            Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            leading?.invoke()
+            Text(label, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            if (selected) Icon(Icons.Filled.Check, contentDescription = null, tint = NexTvColors.Primary, modifier = Modifier.size(20.dp))
+        }
     }
 }
 
@@ -225,6 +716,8 @@ fun PlayerOverlay(
     onZap: (Int) -> Unit,
     onRetry: () -> Unit,
     onOpenMenu: () -> Unit = {},
+    onInfo: () -> Unit = {},
+    onBackToLive: (() -> Unit)? = null,
 ) {
     val window = rememberWindowInfo()
     Box(Modifier.fillMaxSize()) {
@@ -243,6 +736,13 @@ fun PlayerOverlay(
                         monogramSize = 24.dp,
                     )
                     ChannelInfo(state, now, Modifier.weight(1f))
+                    // Heure actuelle.
+                    Text(
+                        timeOf(now),
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = Color.White,
+                        modifier = Modifier.align(Alignment.Top),
+                    )
                     if (showTouchControls && state.isLive) {
                         Column {
                             IconAction(Icons.Filled.KeyboardArrowUp, stringResource(R.string.player_next_channel), { onZap(+1) }, tint = Color.White)
@@ -255,8 +755,16 @@ fun PlayerOverlay(
         }
 
         if (showTouchControls && visible) {
-            Box(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(8.dp)) {
+            Row(
+                Modifier.align(Alignment.TopStart).statusBarsPadding().padding(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 IconAction(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back), onBack, tint = Color.White)
+                onBackToLive?.let { PillButton(stringResource(R.string.player_back_to_live), it, style = PillStyle.Primary) }
+            }
+            Box(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(8.dp)) {
+                IconAction(Icons.Filled.Info, stringResource(R.string.player_info_title), onInfo, tint = Color.White)
             }
         }
 
@@ -307,21 +815,31 @@ private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Mo
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            if (state.isLive) StatusPill(stringResource(R.string.player_live), NexTvColors.Live, Modifier.align(Alignment.CenterVertically))
+            if (state.isLive) {
+                val delay = liveDelay(state, now)
+                if (state.paused) StatusPill(stringResource(R.string.player_paused), NexTvColors.Warning, Modifier.align(Alignment.CenterVertically))
+                if (delay >= 1_000) {
+                    StatusPill(stringResource(R.string.player_delay, formatClock(delay)), NexTvColors.Warning, Modifier.align(Alignment.CenterVertically))
+                }
+            }
+            if (state.replay != null) StatusPill(stringResource(R.string.player_replay), NexTvColors.Primary, Modifier.align(Alignment.CenterVertically))
             state.quality?.let { Badge(it, Modifier.align(Alignment.CenterVertically), color = NexTvColors.Primary) }
             state.bandwidthMbps?.let { SpeedLabel(it, Modifier.align(Alignment.CenterVertically)) }
         }
-        if (state.sourceName.isNotEmpty()) {
-            Text(state.sourceName, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f))
+        state.replay?.let {
+            Text(it, style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.85f), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         state.now?.let { programme ->
+            // En différé (pause, « Depuis le début ») et en replay : la progression de ce qui est à l'écran.
+            val watched = state.watchedAt ?: if (state.isLive) now - liveDelay(state, now) else now
             Text(programme.title, style = MaterialTheme.typography.titleLarge, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            state.match?.let { MatchScore(it) }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.widthIn(max = 640.dp)) {
                 Text(timeOf(programme.startMillis), style = MaterialTheme.typography.labelLarge, color = Color.White)
-                LiveProgress(programme.startMillis, programme.stopMillis, now, Modifier.weight(1f))
+                LiveProgress(programme.startMillis, programme.stopMillis, watched, Modifier.weight(1f))
                 Text(timeOf(programme.stopMillis), style = MaterialTheme.typography.labelLarge, color = Color.White)
                 Text(
-                    stringResource(R.string.player_remaining, formatDuration((programme.stopMillis - now).coerceAtLeast(0))),
+                    stringResource(R.string.player_remaining, formatDuration((programme.stopMillis - watched).coerceAtLeast(0))),
                     style = MaterialTheme.typography.labelMedium,
                     color = Color.White.copy(alpha = 0.7f),
                 )
@@ -345,6 +863,25 @@ private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Mo
     }
 }
 
+/** Match en cours sur la chaîne : écussons, équipes et score (football-data.org). */
+@Composable
+private fun MatchScore(match: PlayerMatch) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        match.homeCrest?.let { ChannelLogo(it, match.home, Modifier.size(32.dp), monogramSize = 11.dp) }
+        Text(match.home, style = MaterialTheme.typography.titleMedium, color = Color.White, maxLines = 1)
+        Text(
+            match.score ?: "–",
+            style = MaterialTheme.typography.titleLarge,
+            color = if (match.live) NexTvColors.Live else Color.White,
+        )
+        Text(match.away, style = MaterialTheme.typography.titleMedium, color = Color.White, maxLines = 1)
+        match.awayCrest?.let { ChannelLogo(it, match.away, Modifier.size(32.dp), monogramSize = 11.dp) }
+        // Minute de jeu ou mi-temps.
+        val minute = if (match.halfTime) stringResource(R.string.football_half_time) else match.clock
+        minute?.let { StatusPill(it, NexTvColors.Live) }
+    }
+}
+
 /** Débit mesuré, en Mbit/s. */
 @Composable
 private fun SpeedLabel(mbps: Double, modifier: Modifier = Modifier) {
@@ -360,32 +897,73 @@ private fun SpeedLabel(mbps: Double, modifier: Modifier = Modifier) {
 }
 
 /**
- * Menu latéral des chaînes : catégories en haut (gauche/droite), chaînes en dessous (haut/bas),
- * OK lance la chaîne. La lecture continue derrière.
+ * Menu latéral des chaînes : gauche/droite change de catégorie, haut/bas parcourt les chaînes,
+ * OK lance la chaîne. Le focus reste dans la liste (en-tête et catégories : toucher seulement).
+ * La lecture continue derrière.
  */
 @Composable
 fun ChannelMenu(
     menu: ChannelMenuState,
     groups: List<GroupRow>,
-    channels: LazyPagingItems<ChannelListRow>,
+    channels: LazyPagingItems<MenuChannel>,
     favorites: List<ChannelListRow>,
     now: Long,
     onCategory: (Category) -> Unit,
     onPlay: (Long) -> Unit,
-    onHome: () -> Unit,
+    /** Appui long sur OK : fiche du programme de la chaîne. */
+    onProgramme: (ChannelListRow) -> Unit = {},
+    /** Programme de la chaîne sélectionnée, montré en grand à côté de la liste (écran large). */
+    programme: MenuProgramme? = null,
+    onFocusChannel: (ChannelListRow) -> Unit = {},
 ) {
     val window = rememberWindowInfo()
     val listState = rememberLazyListState()
     val currentFocus = remember { FocusRequester() }
+    val firstFocus = remember { FocusRequester() }
+    val panelFocus = remember { FocusRequester() }
+    val chipsState = rememberLazyListState()
     val favoritesMode = menu.category == Category.Favorites
+    val categories = remember(groups) { listOf(Category.Favorites, Category.All) + groups.map { Category.Group(it.title.orEmpty()) } }
+    var categoryChanges by remember { mutableIntStateOf(0) }
+    var focusPlaced by remember { mutableStateOf(false) }
+    var panelFocused by remember { mutableStateOf(false) }
+
+    /** Vrai quand la liste affichée est celle de la catégorie choisie (et pas encore la précédente). */
+    fun listReady(category: Category): Boolean =
+        category == Category.Favorites || (channels.itemCount > 0 && channels.peek(0)?.category == category)
 
     // À l'ouverture : chaîne en cours visible et sélectionnée.
     LaunchedEffect(menu.open) {
+        focusPlaced = false
         if (!menu.open) return@LaunchedEffect
-        if (!favoritesMode) snapshotFlow { channels.itemCount }.first { it > 0 }
+        val category = menu.category
+        chipsState.reveal(categories.indexOf(category))
+        withTimeoutOrNull(LIST_WAIT_MILLIS) { snapshotFlow { listReady(category) }.first { it } }
         runCatching { listState.scrollToItem(menu.initialIndex) }
         delay(50)
-        runCatching { currentFocus.requestFocus() }
+        if (runCatching { currentFocus.requestFocus() }.isFailure && runCatching { firstFocus.requestFocus() }.isFailure) {
+            runCatching { panelFocus.requestFocus() }
+        }
+        focusPlaced = true
+    }
+    // Chaîne sélectionnée retirée par le rechargement de la liste : le focus revient dans le menu.
+    LaunchedEffect(menu.open, focusPlaced, panelFocused) {
+        if (!menu.open || !focusPlaced || panelFocused) return@LaunchedEffect
+        delay(FOCUS_RECOVERY_MILLIS)
+        if (runCatching { firstFocus.requestFocus() }.isFailure) runCatching { panelFocus.requestFocus() }
+    }
+    // Catégorie changée (gauche/droite) : un seul déplacement, une fois la nouvelle liste prête.
+    // En attendant, le focus reste sur le panneau : aucune ligne de l'ancienne liste en surbrillance,
+    // et la rangée des catégories ne défile que si la pastille choisie sort de l'écran.
+    LaunchedEffect(categoryChanges) {
+        if (categoryChanges == 0) return@LaunchedEffect
+        val category = menu.category
+        runCatching { panelFocus.requestFocus() }
+        chipsState.reveal(categories.indexOf(category))
+        withTimeoutOrNull(LIST_WAIT_MILLIS) { snapshotFlow { listReady(category) }.first { it } } ?: return@LaunchedEffect
+        runCatching { listState.scrollToItem(0) }
+        withFrameNanos { }
+        runCatching { firstFocus.requestFocus() }
     }
 
     AnimatedVisibility(
@@ -399,37 +977,64 @@ fun ChannelMenu(
                     .then(if (window.isWide) Modifier.width(480.dp) else Modifier.fillMaxWidth(0.88f))
                     .fillMaxHeight()
                     .background(Color(0xF20A0E14))
+                    .onPreviewKeyEvent { event ->
+                        if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                        val step = when (event.key) {
+                            Key.DirectionLeft -> -1
+                            Key.DirectionRight -> 1
+                            else -> return@onPreviewKeyEvent false
+                        }
+                        val index = categories.indexOf(menu.category).coerceAtLeast(0)
+                        onCategory(categories[(index + step + categories.size) % categories.size])
+                        categoryChanges++
+                        true
+                    }
+                    .onFocusChanged { panelFocused = it.hasFocus }
+                    // Repli si la catégorie est vide : gauche/droite continuent de fonctionner.
+                    .focusRequester(panelFocus)
+                    .focusable()
                     .statusBarsPadding()
-                    .padding(top = 20.dp),
+                    .padding(top = if (window.isTv) window.topPadding else 20.dp),
             ) {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(stringResource(R.string.player_channel_list), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                    PillButton(stringResource(R.string.player_home), onHome, icon = Icons.Filled.Home, style = PillStyle.Ghost)
-                }
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    item { MenuChip(stringResource(R.string.home_favorites), favoritesMode, star = true) { onCategory(Category.Favorites) } }
-                    item { MenuChip(stringResource(R.string.channels_all_short), menu.category == Category.All) { onCategory(Category.All) } }
-                    items(groups, key = { it.title ?: "\u0000" }) { group ->
-                        val title = group.title.orEmpty()
-                        MenuChip(group.title ?: stringResource(R.string.channels_no_group), menu.category == Category.Group(title)) {
-                            onCategory(Category.Group(title))
+                // Catégories et heure sur une seule ligne. Catégories : gauche/droite depuis la liste (pas
+                // de focus ici), toucher sur écran tactile ; elles s'estompent sur les bords où il en reste.
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    LazyRow(
+                        state = chipsState,
+                        contentPadding = PaddingValues(start = 24.dp, end = CHIPS_FADE, top = 12.dp, bottom = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .edgeFade(
+                                start = { if (chipsState.canScrollBackward) 1f else 0f },
+                                end = { if (chipsState.canScrollForward) 1f else 0f },
+                                length = CHIPS_FADE,
+                            ),
+                    ) {
+                        item { MenuChip(stringResource(R.string.home_favorites), favoritesMode, star = true) { onCategory(Category.Favorites) } }
+                        item { MenuChip(stringResource(R.string.channels_all_short), menu.category == Category.All) { onCategory(Category.All) } }
+                        items(groups, key = { it.title ?: "\u0000" }) { group ->
+                            val title = group.title.orEmpty()
+                            MenuChip(group.title ?: stringResource(R.string.channels_no_group), menu.category == Category.Group(title)) {
+                                onCategory(Category.Group(title))
+                            }
                         }
                     }
+                    // Heure actuelle.
+                    Text(timeOf(now), style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(end = 24.dp))
                 }
-                val rowFor: @Composable (ChannelListRow) -> Unit = { channel ->
-                    val current = channel.id == menu.currentChannelId
+                val rowFor: @Composable (Int, ChannelListRow) -> Unit = { index, channel ->
+                    val current = channel.id == menu.currentChannelId || channel.itemKey == menu.currentItemKey
                     MenuChannelRow(
                         channel = channel,
                         current = current,
                         now = now,
                         onClick = { onPlay(channel.id) },
-                        modifier = if (current) Modifier.focusRequester(currentFocus) else Modifier,
+                        onLongClick = { onProgramme(channel) },
+                        modifier = Modifier
+                            .onFocusChanged { if (it.isFocused) onFocusChannel(channel) }
+                            .then(if (current) Modifier.focusRequester(currentFocus) else Modifier)
+                            .then(if (index == 0) Modifier.focusRequester(firstFocus) else Modifier),
                     )
                 }
                 LazyColumn(
@@ -449,10 +1054,10 @@ fun ChannelMenu(
                                 )
                             }
                         }
-                        items(favorites, key = { it.id }) { rowFor(it) }
+                        items(favorites.size, key = { favorites[it].id }) { index -> rowFor(index, favorites[index]) }
                     } else {
-                        items(count = channels.itemCount, key = channels.itemKey { it.id }) { index ->
-                            channels[index]?.let { rowFor(it) }
+                        items(count = channels.itemCount, key = channels.itemKey { it.row.id }) { index ->
+                            channels[index]?.let { rowFor(index, it.row) }
                         }
                     }
                 }
@@ -462,15 +1067,104 @@ fun ChannelMenu(
                     .weight(1f)
                     .fillMaxHeight()
                     .background(Brush.horizontalGradient(listOf(Color.Black.copy(alpha = 0.55f), Color.Transparent))),
-            )
+            ) {
+                // Programme de la chaîne sélectionnée, en grand : sa description sans passer par le guide.
+                if (window.isWide) {
+                    programme?.let {
+                        MenuProgrammePanel(
+                            it,
+                            now,
+                            Modifier.align(Alignment.TopStart).padding(start = 28.dp, end = 40.dp, top = window.topPadding + 12.dp, bottom = 24.dp),
+                        )
+                    }
+                }
+            }
         }
     }
 }
+
+/** Volet du menu des chaînes : programme en cours (titre, horaires, description complète) et suivant. */
+@Composable
+fun MenuProgrammePanel(info: MenuProgramme, now: Long, modifier: Modifier = Modifier) {
+    val channel = info.channel
+    Column(
+        modifier
+            .widthIn(max = 620.dp)
+            .background(Color.Black.copy(alpha = 0.78f), RoundedCornerShape(20.dp))
+            .padding(horizontal = 28.dp, vertical = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            ChannelLogo(channel.logoUrl, channel.title.ifBlank { channel.name }, Modifier.size(width = 72.dp, height = 48.dp), monogramSize = 16.dp)
+            channel.channelNumber?.let { Badge(it, color = Color.White) }
+            Text(channel.title.ifBlank { channel.name }, style = MaterialTheme.typography.titleLarge, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        val current = info.now
+        if (current == null) {
+            Text(stringResource(R.string.channels_no_epg), style = MaterialTheme.typography.bodyLarge, color = Color.White.copy(alpha = 0.7f))
+        } else {
+            // Image du programme (guide, sinon TMDB pour un film ou une série) ; sans image, le texte prend toute la place.
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                ProgrammeArt(current, Modifier.width(MENU_ART_WIDTH).aspectRatio(16f / 9f))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        stringResource(R.string.box_now).uppercase(),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(current.title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("${timeOf(current.startMillis)} – ${timeOf(current.stopMillis)}", style = MaterialTheme.typography.titleMedium, color = Color.White)
+                LiveProgress(current.startMillis, current.stopMillis, now, Modifier.weight(1f))
+                Text(
+                    stringResource(R.string.player_remaining, formatDuration((current.stopMillis - now).coerceAtLeast(0))),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = Color.White.copy(alpha = 0.7f),
+                )
+            }
+            listOfNotNull(current.subtitle, current.category, current.year?.toString()).takeIf { it.isNotEmpty() }?.let { details ->
+                Text(details.joinToString("  ·  "), style = MaterialTheme.typography.titleSmall, color = Color.White.copy(alpha = 0.8f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            // Description entière ; coupée seulement si elle dépasse la hauteur de l'écran (« Plus tard » reste visible).
+            current.description?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = Color.White.copy(alpha = 0.9f),
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+            }
+        }
+        info.next?.let { next ->
+            Spacer(Modifier.height(4.dp))
+            Text(
+                stringResource(R.string.box_later).uppercase(),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold,
+            )
+            Text("${timeOf(next.startMillis)}  ${next.title}", style = MaterialTheme.typography.titleMedium, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+
+/** Largeur de l'image du programme dans le volet du menu des chaînes. */
+private val MENU_ART_WIDTH = 176.dp
+
+/** Fondu sur les bords de la rangée des catégories du menu des chaînes. */
+private val CHIPS_FADE = 28.dp
 
 @Composable
 private fun MenuChip(name: String, selected: Boolean, star: Boolean = false, onClick: () -> Unit) {
     FocusSurface(
         onClick = onClick,
+        // Jamais de focus : les catégories se changent avec gauche/droite depuis la liste.
+        modifier = Modifier.focusProperties { canFocus = false },
         shape = CircleShape,
         color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
         focusedColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -485,9 +1179,17 @@ private fun MenuChip(name: String, selected: Boolean, star: Boolean = false, onC
 }
 
 @Composable
-private fun MenuChannelRow(channel: ChannelListRow, current: Boolean, now: Long, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun MenuChannelRow(
+    channel: ChannelListRow,
+    current: Boolean,
+    now: Long,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     FocusSurface(
         onClick = onClick,
+        onLongClick = onLongClick,
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         color = if (current) NexTvColors.PrimaryContainer.copy(alpha = 0.6f) else Color.Transparent,
@@ -527,4 +1229,249 @@ private fun MenuChannelRow(channel: ChannelListRow, current: Boolean, now: Long,
 
 private const val BANNER_DURATION_MILLIS = 5_000L
 
+/** Film : pas d'un appui sur ← → (commandes masquées), et des touches avance / retour rapide de la télécommande. */
+private const val FILM_STEP_SECONDS = 10
+private const val FILM_MEDIA_STEP_MILLIS = 30_000L
+private const val FILM_JUMP_DISPLAY_MILLIS = 1_200L
+
+/** Touches qui affichent les commandes d'un film. */
+private val FILM_SHOW_KEYS = setOf(Key.DirectionCenter, Key.Enter, Key.NumPadEnter, Key.DirectionUp, Key.DirectionDown)
+
+/** Message « Aucun son » affiché seul, avant de ne plus apparaître qu'avec le bandeau. */
+private const val AUDIO_NOTICE_MILLIS = 8_000L
+
 private fun timeOf(millis: Long): String = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(millis))
+
+/** Panneau « Infos de lecture » : ce que le lecteur décode réellement (formats, décodeurs, images perdues). */
+@Composable
+fun PlaybackInfoPanel(state: PlayerUiState, visible: Boolean, modifier: Modifier = Modifier) {
+    AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = modifier) {
+        val info = state.info
+        val unknown = stringResource(R.string.player_info_unknown)
+        val video = listOfNotNull(
+            codecLabel(info.videoMimeType),
+            if (info.width != null && info.height != null) "${info.width}×${info.height}" else null,
+            info.frameRate?.let { stringResource(R.string.player_info_fps, formatDecimal(it.toDouble())) },
+        ).joinToString(" · ").ifEmpty { unknown }
+        val decoder = info.videoDecoder?.let { name ->
+            when (info.hardwareDecoder) {
+                true -> stringResource(R.string.settings_decoder_hardware, name)
+                false -> stringResource(R.string.settings_decoder_software, name)
+                null -> name
+            }
+        } ?: unknown
+        val audio = listOfNotNull(codecLabel(info.audioMimeType), info.audioChannels?.let { channelsLabel(it) })
+            .joinToString(" · ").ifEmpty { unknown }
+        Surface(
+            color = Color.Black.copy(alpha = 0.78f),
+            contentColor = Color.White,
+            shape = MaterialTheme.shapes.large,
+            modifier = Modifier.statusBarsPadding().padding(24.dp).widthIn(max = 460.dp),
+        ) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.player_info_title), style = MaterialTheme.typography.titleMedium)
+                InfoLine(stringResource(R.string.player_info_video), video)
+                InfoLine(stringResource(R.string.player_info_decoder), decoder)
+                InfoLine(stringResource(R.string.player_info_audio), audio)
+                info.audioDecoder?.let { InfoLine(stringResource(R.string.player_info_audio_decoder), it) }
+                InfoLine(
+                    stringResource(R.string.player_info_bitrate),
+                    state.bandwidthMbps?.let { stringResource(R.string.player_speed, formatDecimal(it)) } ?: unknown,
+                )
+                InfoLine(stringResource(R.string.player_info_dropped), info.droppedFrames.toString(), warning = info.droppedFrames > 0)
+                InfoLine(stringResource(R.string.player_info_version), state.quality ?: unknown)
+            }
+        }
+    }
+}
+
+@Composable
+private fun InfoLine(label: String, value: String, warning: Boolean = false) {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.65f), modifier = Modifier.width(140.dp))
+        Text(value, style = MaterialTheme.typography.bodyMedium, color = if (warning) NexTvColors.Warning else Color.White)
+    }
+}
+
+private fun formatDecimal(value: Double): String =
+    NumberFormat.getNumberInstance().apply { maximumFractionDigits = 1 }.format(value)
+
+/** Nom lisible d'un format (types MIME de Media3). */
+private fun codecLabel(mimeType: String?): String? = when (mimeType) {
+    null -> null
+    "video/hevc" -> "HEVC (H.265)"
+    "video/avc" -> "H.264 (AVC)"
+    "video/av01" -> "AV1"
+    "video/x-vnd.on2.vp9" -> "VP9"
+    "video/mpeg2" -> "MPEG-2"
+    "audio/ac3" -> "Dolby Digital (AC-3)"
+    "audio/eac3" -> "Dolby Digital Plus (E-AC-3)"
+    "audio/ac4" -> "AC-4"
+    "audio/mp4a-latm" -> "AAC"
+    "audio/mpeg" -> "MP3"
+    "audio/mpeg-L2" -> "MPEG audio"
+    "audio/opus" -> "Opus"
+    "audio/vnd.dts" -> "DTS"
+    else -> mimeType.substringAfter('/')
+}
+
+@Composable
+private fun channelsLabel(count: Int): String = when (count) {
+    1 -> stringResource(R.string.player_info_mono)
+    2 -> stringResource(R.string.player_info_stereo)
+    6 -> "5.1"
+    8 -> "7.1"
+    else -> stringResource(R.string.player_info_channels, count)
+}
+
+/**
+ * Indicateur au centre de l'écran : saut demandé dans un replay (« +30 s », flèches d'avance ou de
+ * retour), sinon icône de pause quand la lecture est en pause.
+ */
+@Composable
+fun CenterIndicator(jumpSeconds: Int, paused: Boolean, visible: Boolean, modifier: Modifier = Modifier, fastSeek: Int = 0) {
+    AnimatedVisibility(
+        visible = visible && (fastSeek != 0 || jumpSeconds != 0 || paused),
+        enter = fadeIn(),
+        exit = fadeOut(),
+        modifier = modifier,
+    ) {
+        if (fastSeek != 0 || jumpSeconds != 0) {
+            val forward = if (fastSeek != 0) fastSeek > 0 else jumpSeconds > 0
+            val jump = if (jumpSeconds != 0) {
+                stringResource(if (jumpSeconds > 0) R.string.player_jump_forward else R.string.player_jump_back, jumpLabel(abs(jumpSeconds)))
+            } else {
+                null
+            }
+            // Avance / retour rapide : « x2 » (et le recul additionné, appliqué au relâchement).
+            val label = if (fastSeek != 0) listOfNotNull(stringResource(R.string.player_fast_speed), jump).joinToString("  ·  ") else jump.orEmpty()
+            Row(
+                Modifier
+                    .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+                    .padding(horizontal = 32.dp, vertical = 18.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Icon(
+                    if (forward) NexTvIcons.FastForward else NexTvIcons.FastRewind,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(44.dp),
+                )
+                Text(
+                    label,
+                    style = MaterialTheme.typography.displaySmall,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                )
+            }
+        } else {
+            Box(
+                Modifier.size(112.dp).background(Color.Black.copy(alpha = 0.6f), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(NexTvIcons.Pause, contentDescription = stringResource(R.string.player_paused), tint = Color.White, modifier = Modifier.size(64.dp))
+            }
+        }
+    }
+}
+
+/** « 30 s », « 1 min », « 2 min 30 s ». */
+private fun jumpLabel(seconds: Int): String = when {
+    seconds < 60 -> "$seconds s"
+    seconds % 60 == 0 -> "${seconds / 60} min"
+    else -> "${seconds / 60} min ${seconds % 60} s"
+}
+
+/** ← → maintenu un peu plus d'une demi-seconde : avance ou retour rapide. */
+private const val FAST_SEEK_REPEATS = 3
+
+/** OK maintenu environ une seconde : retour au direct. */
+private const val LONG_PRESS_REPEATS = 12
+
+/** Touche enfoncée dans le lecteur : l'appui court agit au relâchement, l'appui long pendant l'appui. */
+private class HeldKey {
+    var key: Key? = null
+    var long = false
+    /** L'appui est traité ici (sinon, il va aussi aux commandes du film). */
+    var consumed = false
+
+    fun start(key: Key, consumed: Boolean) {
+        this.key = key
+        this.long = false
+        this.consumed = consumed
+    }
+}
+
+/** Point rouge du direct. */
+@Composable
+private fun LiveDot() {
+    Box(Modifier.size(10.dp).background(NexTvColors.Live, CircleShape))
+}
+
+/** Retard sur le direct, pause en cours comprise. */
+private fun liveDelay(state: PlayerUiState, now: Long): Long =
+    state.liveDelayMs + (state.pausedAtMillis?.let { (now - it).coerceAtLeast(0) } ?: 0)
+
+/** « 4:05 », « 1:02:03 ». */
+fun formatClock(millis: Long): String {
+    val total = millis / 1_000
+    val hours = total / 3_600
+    val minutes = total % 3_600 / 60
+    val seconds = total % 60
+    return if (hours > 0) "%d:%02d:%02d".format(hours, minutes, seconds) else "%d:%02d".format(minutes, seconds)
+}
+
+/** Film ou épisode déjà commencé : reprendre (épisode en cours pour une série) ou recommencer. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun ResumePromptCard(prompt: ResumePrompt, onAnswer: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+    val resumeFocus = remember { FocusRequester() }
+    LaunchedEffect(prompt) { runCatching { resumeFocus.requestFocus() } }
+    val resumeText = when {
+        prompt.resumeLabel == null -> stringResource(R.string.player_resume_at, formatClock(prompt.positionMs))
+        prompt.positionMs > 0 -> stringResource(R.string.player_resume_episode_at, prompt.resumeLabel, formatClock(prompt.positionMs))
+        else -> stringResource(R.string.player_resume_next_episode, prompt.resumeLabel)
+    }
+    val restartText = prompt.startLabel?.let { stringResource(R.string.player_restart_episode, it) }
+        ?: stringResource(R.string.player_restart)
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = MaterialTheme.shapes.large,
+        modifier = modifier.padding(24.dp).widthIn(max = 620.dp),
+    ) {
+        Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text(stringResource(R.string.player_resume_title), style = MaterialTheme.typography.titleLarge)
+            Text(prompt.title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                PillButton(
+                    resumeText,
+                    { onAnswer(true) },
+                    icon = Icons.Filled.PlayArrow,
+                    style = PillStyle.Primary,
+                    modifier = Modifier.focusRequester(resumeFocus),
+                )
+                PillButton(restartText, { onAnswer(false) }, icon = Icons.Filled.Refresh)
+            }
+        }
+    }
+}
+
+/** Attente maximale de la liste d'une catégorie avant de placer le focus. */
+private const val LIST_WAIT_MILLIS = 3_000L
+private const val FOCUS_RECOVERY_MILLIS = 150L
+
+/** Fait défiler la rangée juste assez pour que l'élément [index] soit entièrement visible, sans animation. */
+private suspend fun LazyListState.reveal(index: Int) {
+    if (index < 0) return
+    val info = layoutInfo
+    val item = info.visibleItemsInfo.firstOrNull { it.index == index }
+    val end = info.viewportEndOffset - info.afterContentPadding
+    runCatching {
+        when {
+            item == null -> scrollToItem((index - 1).coerceAtLeast(0))
+            item.offset < 0 -> scrollBy(item.offset.toFloat())
+            item.offset + item.size > end -> scrollBy((item.offset + item.size - end).toFloat())
+        }
+    }
+}

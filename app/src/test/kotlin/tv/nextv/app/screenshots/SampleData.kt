@@ -1,6 +1,21 @@
 package tv.nextv.app.screenshots
 
+import tv.nextv.app.ui.football.FootballMatch
+import tv.nextv.app.ui.home.ChannelPreview
+import tv.nextv.app.ui.home.HomeRows
+import tv.nextv.app.ui.home.Discover
+import tv.nextv.app.ui.home.Spotlight
+import tv.nextv.app.ui.home.toPoster
+import tv.nextv.app.ui.football.FootballUiState
+import tv.nextv.core.football.Competition
+import tv.nextv.core.football.MatchStatus
+import tv.nextv.core.football.ScheduledMatch
+import tv.nextv.core.football.Standing
+import tv.nextv.core.football.TeamMatches
+import tv.nextv.app.ui.football.TeamMatchesState
+import tv.nextv.core.football.Team
 import tv.nextv.app.data.catalog.MetadataState
+import tv.nextv.app.data.progress.ProgressEntity
 import tv.nextv.app.data.db.ChannelListRow
 import tv.nextv.app.data.db.EpisodeRow
 import tv.nextv.app.data.db.GroupRow
@@ -14,7 +29,10 @@ import tv.nextv.app.ui.editor.LocationMode
 import tv.nextv.app.ui.guide.GuideChannel
 import tv.nextv.app.ui.guide.GuideProgramme
 import tv.nextv.app.ui.guide.GuideUiState
+import tv.nextv.app.ui.guide.TonightRow
+import tv.nextv.app.ui.guide.TonightUiState
 import tv.nextv.app.ui.player.ChannelMenuState
+import tv.nextv.app.ui.player.PlaybackInfo
 import tv.nextv.app.ui.player.PlayerProgramme
 import tv.nextv.app.ui.player.PlayerUiState
 import tv.nextv.app.ui.settings.ProxyFormState
@@ -83,7 +101,7 @@ object SampleData {
                         channelCount = 42,
                     ),
                 ),
-                refreshing = true,
+                refreshing = false, // Barre de chargement indéterminée : animation infinie, la capture ne se terminerait pas.
             ),
             SourceItem(
                 PlaylistSource(
@@ -287,6 +305,27 @@ object SampleData {
         version = "0.2.0",
     )
 
+    val continueSeries = listOf(
+        ProgressEntity(1, "series:enquêtes en série", "SERIES", 2_018, "Enquêtes en série", "S01E08", null, 754_000, 2_700_000, NOW),
+        ProgressEntity(1, "series:les héritiers", "SERIES", 2_109, "Les Héritiers", "S02E03", null, 0, 0, NOW - 3_600_000),
+        ProgressEntity(1, "series:code atlas", "SERIES", 2_501, "Code Atlas", "S01E02", null, 1_800_000, 3_000_000, NOW - 86_400_000),
+    )
+
+    val movieProgress = ProgressEntity(1, "movie:le grand voyage", "MOVIE", 1_000, "Le Grand Voyage", null, null, 2_530_000, 7_080_000, NOW)
+
+    val playbackInfo = PlaybackInfo(
+        videoMimeType = "video/hevc",
+        width = 3840,
+        height = 2160,
+        frameRate = 50f,
+        videoDecoder = "c2.example.hevc.decoder",
+        hardwareDecoder = true,
+        audioMimeType = "audio/eac3",
+        audioChannels = 6,
+        audioDecoder = "c2.android.eac3.decoder",
+        droppedFrames = 37,
+    )
+
     val menu = ChannelMenuState(open = true, currentChannelId = 8, initialIndex = 7)
 
     val guide: GuideUiState = run {
@@ -343,12 +382,210 @@ object SampleData {
         error = "Le serveur du flux ne répond pas (délai dépassé).\nLa lecture passe par le proxy configuré : vérifiez qu’il est joignable.",
     )
 
+    val channelPreview = ChannelPreview(
+        channel = channels[0],
+        current = GuideProgramme(
+            "Le 20h",
+            NOW - 15 * MINUTE,
+            NOW + 25 * MINUTE,
+            description = "Toute l’actualité du jour en France et dans le monde, avec les invités du journal et la météo.",
+        ),
+        next = GuideProgramme("Météo", NOW + 25 * MINUTE, NOW + 30 * MINUTE),
+        later = listOf(
+            GuideProgramme("Grand débat : l’Europe en question", NOW + 30 * MINUTE, NOW + 95 * MINUTE),
+            GuideProgramme("Le club de l’éco", NOW + 95 * MINUTE, NOW + 125 * MINUTE),
+            GuideProgramme("Journal de la nuit", NOW + 125 * MINUTE, NOW + 140 * MINUTE),
+        ),
+    )
+
+    /** « Ce soir » : programme du soir des chaînes de la TNT puis des autres. */
+    val tonight: TonightUiState = run {
+        val evening = java.util.Calendar.getInstance().apply {
+            timeInMillis = NOW
+            set(java.util.Calendar.HOUR_OF_DAY, 21)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        fun p(title: String, start: Int, minutes: Int, category: String, description: String? = null) =
+            GuideProgramme(title, evening + start * MINUTE, evening + (start + minutes) * MINUTE, description = description, category = category)
+        val lines = listOf(
+            Triple("1", "TF1", p("Le Grand Voyage", 10, 115, "Film", "Un explorateur part sur les traces de son grand-père, disparu dans le Grand Nord il y a cinquante ans.") to p("Esprits criminels", 125, 50, "Série policière")),
+            Triple("2", "France 2", p("Envoyé spécial", 10, 110, "Magazine") to p("Complément d’enquête", 120, 60, "Magazine")),
+            Triple("3", "France 3", p("Meurtres à Collioure", 5, 95, "Téléfilm policier") to p("Le monde en face", 105, 70, "Documentaire")),
+            Triple("4", "France 4", p("Le Lac des cygnes", 0, 140, "Spectacle") to null),
+            Triple("5", "France 5", p("La Grande Librairie", 0, 90, "Magazine littéraire") to p("C dans l’air", 95, 65, "Débat")),
+            Triple("6", "M6", p("Zone interdite", 10, 125, "Magazine") to p("Enquête exclusive", 135, 70, "Magazine")),
+            Triple("7", "Arte", p("Les Gardiens du phare", -5, 105, "Film") to p("Court-circuit", 100, 45, "Courts métrages")),
+            Triple(null, "Ciné Club", p("Nuit blanche à Lisbonne", 0, 100, "Film") to p("Les Faussaires", 105, 110, "Film")),
+        )
+        TonightUiState(
+            loading = false,
+            day = 0,
+            evenings = (0 until 7).map { evening + it * 24 * 60 * MINUTE },
+            rows = lines.mapIndexed { index, (number, name, programmes) ->
+                TonightRow(GuideChannel(500L + index, name, number, null, emptyList()), programmes.first, programmes.second)
+            },
+            now = NOW,
+        )
+    }
+
+    /** Rangées de l'interface « Streaming » : éléments de chaque catégorie. */
+    val rows = HomeRows(
+        channels = { group, limit -> channels.filter { it.groupTitle.orEmpty() == group }.take(limit) },
+        movies = { group, limit -> movies.filter { it.groupTitle == group }.ifEmpty { movies.reversed() }.take(limit) },
+        series = { group, limit -> series.filter { it.groupTitle == group }.ifEmpty { series.reversed() }.take(limit) },
+    )
+
+    val movieDiscover = Discover(
+        trending = movies.take(6).map { it.toPoster().copy(rating = 7.8) },
+        newest = movies.drop(4).take(6).map { it.toPoster() },
+        recommended = movies.drop(2).take(5).map { it.toPoster() },
+        recommendedFrom = movies[1].title,
+    )
+
+    val seriesDiscover = Discover(
+        trending = series.take(5).map { it.toPoster() },
+        newest = series.drop(3).map { it.toPoster() },
+    )
+
+    val spotlight = Spotlight(
+        movies[0].toPoster(),
+        MediaDetails(
+            tmdbId = 1,
+            type = MediaType.MOVIE,
+            title = movies[0].title,
+            overview = "Une enquêtrice reprend une affaire classée depuis vingt ans et découvre que le principal témoin vit toujours dans le village, sous un autre nom.",
+            tagline = "Certaines vérités refont surface.",
+            year = movies[0].year,
+            rating = 7.6,
+            voteCount = 1200,
+            genres = listOf("Thriller", "Drame"),
+            runtimeMinutes = 118,
+        ),
+    )
+
+    val seriesSpotlight = Spotlight(
+        series[0].toPoster(),
+        MediaDetails(
+            tmdbId = 2,
+            type = MediaType.SERIES,
+            title = series[0].title,
+            overview = "Une brigade de police judiciaire enchaîne les affaires dans une ville portuaire où chacun a quelque chose à cacher.",
+            year = series[0].year,
+            rating = 8.1,
+            voteCount = 800,
+            genres = listOf("Policier"),
+            seasonCount = 3,
+        ),
+    )
+
+    val football = FootballUiState(
+        loading = false,
+        now = NOW,
+        matches = listOf(
+            Triple(Competition.LIGUE_1, "Canal+ Sport", "PSG / Marseille") to (NOW - 40 * MINUTE),
+            Triple(Competition.PREMIER_LEAGUE, "FR| CANAL+ HDR (Résolution Exclusive)", "Chelsea / Man United") to (NOW + 75 * MINUTE),
+            Triple(Competition.PREMIER_LEAGUE, null, "Coventry City / Sunderland") to (NOW + 75 * MINUTE),
+            Triple(Competition.LA_LIGA, null, "Real Madrid / Barça") to (NOW + 3 * 60 * MINUTE),
+            Triple(Competition.CHAMPIONS_LEAGUE, "beIN Sports 1", "Bayern / Inter") to (NOW + 26 * 60 * MINUTE),
+            Triple(Competition.EUROPA_LEAGUE, "Canal+ Live 2", "Lyon / AS Rome") to (NOW + 27 * 60 * MINUTE),
+            Triple(Competition.LIGUE_1, "Ligue 1+", "Lens / Lille") to (NOW + 50 * 60 * MINUTE),
+        ).mapIndexed { index, (match, start) ->
+            val (competition, channel, teams) = match
+            val (home, away) = teams.split(" / ")
+            FootballMatch(
+                competition = competition,
+                home = home,
+                away = away,
+                kickoffMillis = start,
+                endMillis = start + 115 * MINUTE,
+                channel = channel?.let { GuideChannel(100L + index, it, null, null, emptyList()) },
+                programme = channel?.let {
+                    GuideProgramme("Football : ${competition.label}", start, start + 115 * MINUTE, teams, "Match de ${competition.label}.", "Football")
+                },
+                // Chaîne connue du guide mais absente de la playlist.
+                guideChannel = if (channel == null && competition == Competition.LA_LIGA) "DAZN 1" else null,
+                otherChannels = if (index == 0) 2 else 0,
+                homeScore = if (index == 0) 1 else null,
+                clock = if (index == 0) "67'" else null,
+                awayScore = if (index == 0) 0 else null,
+            )
+        },
+    )
+
+    /** Fiche du PSG : trois derniers matchs et deux prochains. */
+    val teamMatches: TeamMatchesState = run {
+        val psg = Team("Paris Saint-Germain FC", "PSG", "PSG", null, id = 524)
+        fun match(id: Long, competition: Competition, home: Team, away: Team, days: Int, score: Pair<Int, Int>?) = ScheduledMatch(
+            id = id,
+            competition = competition,
+            kickoffMillis = NOW + days * 24 * 60 * MINUTE,
+            status = if (score != null) MatchStatus.FINISHED else MatchStatus.SCHEDULED,
+            home = home,
+            away = away,
+            homeScore = score?.first,
+            awayScore = score?.second,
+        )
+        val om = Team("Olympique de Marseille", "Marseille", "OM", null, id = 516)
+        val monaco = Team("AS Monaco FC", "Monaco", "ASM", null, id = 548)
+        val bayern = Team("FC Bayern München", "Bayern", "FCB", null, id = 5)
+        val lens = Team("Racing Club de Lens", "Lens", "RCL", null, id = 546)
+        TeamMatchesState.Loaded(
+            psg,
+            TeamMatches(
+                last = listOf(
+                    match(1, Competition.LIGUE_1, monaco, psg, -4, 1 to 1),
+                    match(2, Competition.CHAMPIONS_LEAGUE, psg, bayern, -8, 2 to 1),
+                    match(3, Competition.LIGUE_1, om, psg, -12, 1 to 0),
+                ),
+                next = listOf(
+                    match(4, Competition.LIGUE_1, psg, lens, 3, null),
+                    match(5, Competition.CHAMPIONS_LEAGUE, bayern, psg, 7, null),
+                ),
+            ),
+        )
+    }
+
+    /** Classement de Ligue 1. */
+    val standings = listOf(
+        "Paris Saint-Germain FC" to "PSG",
+        "Olympique de Marseille" to "Marseille",
+        "AS Monaco FC" to "Monaco",
+        "Lille OSC" to "Lille",
+        "Racing Club de Lens" to "Lens",
+        "Olympique Lyonnais" to "Lyon",
+        "OGC Nice" to "Nice",
+        "Stade Rennais FC 1901" to "Rennes",
+    ).mapIndexed { index, (name, short) ->
+        val won = 8 - index
+        val draw = index % 3
+        Standing(
+            position = index + 1,
+            team = Team(name, short, null, null),
+            played = 10,
+            won = won,
+            draw = draw,
+            lost = 10 - won - draw,
+            goalDifference = 16 - 4 * index,
+            points = 3 * won + draw,
+        )
+    }
+
     val editor = EditorState(
         name = "Bouquet Maison",
         mode = LocationMode.URL,
         url = "https://iptv.example.com/get.php?type=m3u_plus",
         username = "alice",
         password = "s3cret",
+    )
+
+    val editorXtream = EditorState(
+        name = "Bouquet Maison",
+        mode = LocationMode.XTREAM,
+        server = "http://iptv.example.com:8080",
+        xtreamUsername = "alice",
+        xtreamPassword = "s3cret",
     )
 
     val editorWithErrors = EditorState(

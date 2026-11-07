@@ -7,10 +7,14 @@ import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChangedBy
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -31,22 +35,144 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import tv.nextv.app.AppContainer
+import tv.nextv.app.data.progress.ProgressEntity
+import tv.nextv.app.data.settings.GridColumns
 import tv.nextv.app.R
 import tv.nextv.app.data.db.ChannelListRow
 import tv.nextv.app.data.db.GroupRow
+import tv.nextv.app.data.db.HiddenGroupEntity
 import tv.nextv.app.data.db.MovieRow
 import tv.nextv.app.data.db.SeriesRow
+import tv.nextv.app.player.ChannelPreviewPlayer
+import tv.nextv.app.ui.guide.GuideProgramme
 import tv.nextv.core.model.ContentKind
+import tv.nextv.app.data.catalog.MetadataState
+import tv.nextv.core.meta.MediaType
+import tv.nextv.core.meta.MediaDetails
+import tv.nextv.app.ui.detail.metadataCacheKey
+import tv.nextv.app.data.db.ItemKeys
+import kotlinx.coroutines.flow.transformLatest
+import kotlinx.coroutines.flow.first
+import androidx.compose.runtime.Immutable
 
-enum class HomeSection { TV, MOVIES, SERIES, GUIDE }
+enum class HomeSection { TV, MOVIES, SERIES, GUIDE, FOOTBALL }
 
 /** Catégorie affichée dans une section. */
 sealed interface Category {
     data object Favorites : Category
     data object All : Category
 
+    /** Films et séries commencés (reprise de lecture). */
+    data object ContinueWatching : Category
+
+    /** Chaînes regardées récemment, la dernière en premier. */
+    data object Recent : Category
+
     /** [title] vide : éléments sans groupe. */
     data class Group(val title: String) : Category
+}
+
+/**
+ * Chaîne sélectionnée à l'accueil, avec son programme en cours, le suivant (panneau du haut) et
+ * les programmes d'après ([later], volet de l'interface « Box TV »).
+ */
+data class ChannelPreview(
+    val channel: ChannelListRow,
+    val current: GuideProgramme?,
+    val next: GuideProgramme?,
+    val later: List<GuideProgramme> = emptyList(),
+)
+
+/**
+ * Contenu des rangées des interfaces « Streaming » et « Cinéma Premium » : premiers éléments d'une
+ * catégorie ([String] vide : sans groupe), au plus le nombre demandé (« Voir plus » l'augmente).
+ */
+class HomeRows(
+    val channels: suspend (group: String, limit: Int) -> List<ChannelListRow> = { _, _ -> emptyList() },
+    val movies: suspend (group: String, limit: Int) -> List<MovieRow> = { _, _ -> emptyList() },
+    val series: suspend (group: String, limit: Int) -> List<SeriesRow> = { _, _ -> emptyList() },
+) {
+    private class Entry(val version: String, val limit: Int, val rows: List<Any>)
+
+    /**
+     * Rangées déjà lues, avec la version et la longueur de leur lecture : une rangée qui revient à
+     * l'écran (ou que la télécommande vise juste en dessous) est remplie aussitôt, sans attendre la base.
+     */
+    private val cache = ConcurrentHashMap<Pair<HomeSection, String>, Entry>()
+
+    /** Dernière lecture de la rangée, quelle que soit sa version. */
+    @Suppress("UNCHECKED_CAST")
+    fun <T : Any> cached(section: HomeSection, group: String): List<T>? = cache[section to group]?.rows as List<T>?
+
+    /** La rangée dans la [version] demandée, avec au moins [limit] éléments s'il y en a : gardée si elle est déjà lue, sinon lue dans la base. */
+    @Suppress("UNCHECKED_CAST")
+    suspend fun <T : Any> fresh(section: HomeSection, group: String, version: String, limit: Int = ROW_SIZE): List<T> {
+        cache[section to group]?.takeIf { it.version == version && it.limit >= limit }?.let { return it.rows as List<T> }
+        val rows: List<Any> = when (section) {
+            HomeSection.TV -> channels(group, limit)
+            HomeSection.MOVIES -> movies(group, limit)
+            else -> series(group, limit)
+        }
+        cache[section to group] = Entry(version, limit, rows)
+        return rows as List<T>
+    }
+
+    /** Autre playlist : rien n'est gardé. */
+    fun clear() = cache.clear()
+
+    companion object {
+        /** Éléments d'une rangée à son premier affichage. */
+        const val ROW_SIZE = 24
+
+        /** Éléments ajoutés par « Voir plus ». */
+        const val MORE_SIZE = 48
+    }
+}
+
+/**
+ * Film ou série affiché en affiche (rangées, grilles, Cinéma Premium), avec les informations de la
+ * tendance TMDB quand il en vient ([backdropUrl], [overview], [rating]).
+ */
+@Immutable
+data class PosterItem(
+    val id: Long,
+    val kind: ContentKind,
+    val itemKey: String,
+    val title: String,
+    val year: Int?,
+    val imageUrl: String?,
+    /** Épisodes d'une série. */
+    val episodeCount: Int = 0,
+    val backdropUrl: String? = null,
+    val overview: String? = null,
+    val rating: Double? = null,
+)
+
+fun MovieRow.toPoster() = PosterItem(id, ContentKind.MOVIE, itemKey, title, year, logoUrl)
+
+fun SeriesRow.toPoster() = PosterItem(id, ContentKind.SERIES, itemKey, title, year, logoUrl, episodeCount)
+
+/** Rangées de découverte des films ou des séries : tendances de la semaine, nouveautés, recommandations. */
+@Immutable
+data class Discover(
+    val trending: List<PosterItem> = emptyList(),
+    val newest: List<PosterItem> = emptyList(),
+    val recommended: List<PosterItem> = emptyList(),
+    /** Titre regardé qui inspire les recommandations. */
+    val recommendedFrom: String? = null,
+)
+
+/** Affiche sélectionnée, puis sa fiche TMDB (visuel plein écran, résumé, genres, note) une fois lue. */
+@Immutable
+data class Spotlight(val item: PosterItem, val details: MediaDetails? = null) {
+    val backdropUrl: String? get() = details?.backdropUrl ?: item.backdropUrl
+    val overview: String? get() = details?.overview ?: item.overview
+    /** Note TMDB, seulement quand assez de votes la rendent parlante (pas de « 10,0 » sur 2 votes). */
+    val rating: Double? get() = if (details != null) details.rating?.takeIf { details.voteCount >= MIN_VOTES } else item.rating
+
+    private companion object {
+        const val MIN_VOTES = 10
+    }
 }
 
 /** Réorganisation des favoris : [movingKey] est l'élément « soulevé », déplacé avec les flèches. */
@@ -56,7 +182,7 @@ fun HomeSection.kind(): ContentKind? = when (this) {
     HomeSection.TV -> ContentKind.LIVE
     HomeSection.MOVIES -> ContentKind.MOVIE
     HomeSection.SERIES -> ContentKind.SERIES
-    HomeSection.GUIDE -> null
+    HomeSection.GUIDE, HomeSection.FOOTBALL -> null
 }
 
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
@@ -66,6 +192,7 @@ class HomeViewModel(
 ) : ViewModel() {
 
     private val dao = container.channelDao
+    private val hiddenGroups = container.hiddenGroupDao
 
     val sourceId: StateFlow<Long?> = container.settings.activePlaylistId
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
@@ -94,6 +221,27 @@ class HomeViewModel(
         .flatMapLatest { (id, kind) -> if (id == null || kind == null) flowOf(emptyList()) else dao.observeGroups(id, kind.name) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    init {
+        // Catégorie masquée (ici ou dans les réglages) : retour à « Toutes » dans sa section.
+        for (section in listOf(HomeSection.TV, HomeSection.MOVIES, HomeSection.SERIES)) {
+            viewModelScope.launch {
+                sourceId.filterNotNull()
+                    .flatMapLatest { hiddenGroups.observeTitles(it, checkNotNull(section.kind()).name) }
+                    .collect { hidden ->
+                        categories.update { current ->
+                            val selected = current[section] as? Category.Group
+                            if (selected != null && selected.title in hidden) current + (section to Category.All) else current
+                        }
+                    }
+            }
+        }
+    }
+
+    /** Chaînes de la liste « Toutes » (une ligne par chaîne, catégories masquées exclues). */
+    val channelCount: StateFlow<Int?> = sourceId.flatMapLatest { id ->
+        if (id == null) flowOf(null) else dao.observeListedCount(id)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
     val favoriteKeys: StateFlow<Set<String>> = sourceId.flatMapLatest { id ->
         if (id == null) flowOf(emptySet()) else container.favorites.observeKeys(id).map { it.toSet() }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
@@ -106,6 +254,164 @@ class HomeViewModel(
     }
 
     val now: StateFlow<Long> = clock.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), System.currentTimeMillis())
+
+    /** Chaînes regardées récemment (catégorie « Récentes »). */
+    val recentChannels: StateFlow<List<ChannelListRow>> = combine(sourceId.filterNotNull(), clock) { id, now -> id to now }
+        .flatMapLatest { (id, now) ->
+            container.settings.recentChannels(id).flatMapLatest { keys ->
+                if (keys.isEmpty()) {
+                    flowOf(emptyList())
+                } else {
+                    dao.observeChannelsByKey(id, keys, now).map { rows -> rows.sortedBy { keys.indexOf(it.itemKey) } }
+                }
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Aperçu vidéo de la chaîne sélectionnée (réglages). */
+    val previewEnabled: StateFlow<Boolean> = container.settings.channelPreview
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    private val previewer = ChannelPreviewPlayer(container.playerFactory, container.sourceRepository)
+
+    /** Lecteur de l'aperçu (sans le son), `null` sans aperçu. */
+    val previewPlayer = previewer.player
+
+    /** Dernière chaîne sélectionnée dans la grille des chaînes. */
+    private val focusedChannel = MutableStateFlow<ChannelListRow?>(null)
+
+    /** Accueil affiché (aperçu possible). */
+    private val previewActive = MutableStateFlow(false)
+
+    /** Chaîne sélectionnée avec son programme (panneau du haut). */
+    val preview: StateFlow<ChannelPreview?> = focusedChannel
+        .mapLatest { row ->
+            row ?: return@mapLatest null
+            val upcoming = container.programmeDao.upcoming(row.id, System.currentTimeMillis(), limit = PREVIEW_PROGRAMMES).map {
+                GuideProgramme(it.title, it.startMillis, it.stopMillis, it.subtitle, it.description, it.category, it.year, it.imageUrl)
+            }
+            val current = upcoming.firstOrNull()?.takeIf { it.startMillis <= System.currentTimeMillis() }
+            val following = upcoming.filter { it != current }
+            ChannelPreview(row, current, following.firstOrNull(), following.drop(1))
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    init {
+        // Son de l'aperçu (réglages).
+        viewModelScope.launch { container.settings.previewVolume.collect { previewer.volume = it.volume } }
+        // Aperçu : la chaîne sélectionnée démarre après un court arrêt dessus, section TV affichée.
+        viewModelScope.launch {
+            combine(focusedChannel, previewActive, previewEnabled, section) { row, active, enabled, current ->
+                row.takeIf { active && enabled && current == HomeSection.TV }
+            }
+                .distinctUntilChangedBy { it?.id }
+                .collectLatest { row ->
+                    if (row == null) {
+                        previewer.stop()
+                        return@collectLatest
+                    }
+                    delay(PREVIEW_DELAY_MILLIS)
+                    dao.get(row.id)?.let { previewer.show(it) }
+                }
+        }
+    }
+
+    /** Chaînes et affiches par ligne (réglages). */
+    val gridColumns: StateFlow<GridColumns> = container.settings.gridColumns
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), GridColumns())
+
+    /** Interface de l'accueil (réglages). */
+    val layout: StateFlow<HomeLayout> = container.settings.homeLayout
+        .stateIn(viewModelScope, SharingStarted.Eagerly, HomeLayout.DEFAULT)
+
+    /** Premiers éléments de chaque catégorie, lus d'avance et gardés pendant que l'accueil existe. */
+    val rows = HomeRows(
+        channels = { group, limit -> sourceId.value?.let { dao.channelRow(it, group, System.currentTimeMillis(), limit) }.orEmpty() },
+        movies = { group, limit -> sourceId.value?.let { dao.movieRow(it, group.ifEmpty { null }, limit) }.orEmpty() },
+        series = { group, limit -> sourceId.value?.let { dao.seriesRow(it, group.ifEmpty { null }, limit) }.orEmpty() },
+    )
+
+    init {
+        viewModelScope.launch { sourceId.collect { rows.clear() } }
+    }
+
+    /**
+     * Rangées de découverte, lues quand une interface qui les montre est choisie (Streaming, Cinéma
+     * Premium) : les tendances demandent TMDB.
+     */
+    private fun discover(kind: ContentKind, progress: Flow<List<ProgressEntity>>): StateFlow<Discover> =
+        combine(sourceId.filterNotNull(), layout, progress.map { it.firstOrNull() }.distinctUntilChangedBy { it?.itemKey }, ::Triple)
+            .mapLatest { (id, layout, lastWatched) ->
+                if (layout == HomeLayout.LIVE_CENTER) return@mapLatest Discover()
+                val isMovie = kind == ContentKind.MOVIE
+                val minYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR) - 1
+                val newest = runCatching {
+                    if (isMovie) dao.newestMovies(id, minYear, ROW_SIZE).map { it.toPoster() } else dao.newestSeries(id, minYear, ROW_SIZE).map { it.toPoster() }
+                }.getOrDefault(emptyList())
+                // Recommandations : même catégorie que le dernier titre regardé, sans ceux déjà commencés.
+                val watched = runCatching { container.progress.observeAll(id, kind.name).first().mapTo(HashSet()) { it.itemKey } }.getOrDefault(emptySet())
+                val group = lastWatched?.let { dao.get(it.channelId)?.groupTitle }
+                val recommended = if (lastWatched == null) {
+                    emptyList()
+                } else {
+                    runCatching {
+                        val rows = if (isMovie) dao.movieRow(id, group, ROW_SIZE * 2).map { it.toPoster() } else dao.seriesRow(id, group, ROW_SIZE * 2).map { it.toPoster() }
+                        rows.filter { it.itemKey !in watched }.take(ROW_SIZE)
+                    }.getOrDefault(emptyList())
+                }
+                Discover(trending = trending(id, kind), newest = newest, recommended = recommended, recommendedFrom = lastWatched?.title?.takeIf { recommended.isNotEmpty() })
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), Discover())
+
+    /** Tendances TMDB de la semaine retrouvées dans la playlist (titre et année, ou titre original). */
+    private suspend fun trending(sourceId: Long, kind: ContentKind): List<PosterItem> {
+        if (!container.hasTmdbKey()) return emptyList()
+        val isMovie = kind == ContentKind.MOVIE
+        val titles = runCatching { container.metadata.trending(if (isMovie) MediaType.MOVIE else MediaType.SERIES) }.getOrDefault(emptyList())
+        if (titles.isEmpty()) return emptyList()
+        fun keyOf(title: String, year: Int?) =
+            if (isMovie) "movie:${ItemKeys.normalize(title)}:${year ?: ""}" else "series:${ItemKeys.normalize(title)}"
+        val keys = titles.associateBy { keyOf(it.title, it.year) } +
+            titles.filter { it.originalTitle != null }.associateBy { keyOf(it.originalTitle!!, it.year) }
+        val found = runCatching {
+            if (isMovie) dao.moviesByKey(sourceId, keys.keys.toList()).map { it.toPoster() } else dao.seriesByKey(sourceId, keys.keys.toList()).map { it.toPoster() }
+        }.getOrDefault(emptyList()).distinctBy { it.itemKey }
+        return found.mapNotNull { item ->
+            val trend = keys[item.itemKey] ?: return@mapNotNull null
+            item.copy(backdropUrl = trend.backdropUrl, overview = trend.overview, rating = trend.rating, imageUrl = item.imageUrl ?: trend.posterUrl)
+        }.sortedBy { item -> titles.indexOf(keys[item.itemKey]) }
+    }
+
+    val movieDiscover: StateFlow<Discover> by lazy { discover(ContentKind.MOVIE, continueMovies) }
+    val seriesDiscover: StateFlow<Discover> by lazy { discover(ContentKind.SERIES, continueSeries) }
+
+    private val spotlightTarget = MutableStateFlow<PosterItem?>(null)
+
+    /** Affiche sélectionnée et sa fiche TMDB, lue après un court arrêt dessus (pas à chaque déplacement). */
+    val spotlight: StateFlow<Spotlight?> = spotlightTarget
+        .transformLatest { item ->
+            if (item == null) {
+                emit(null)
+                return@transformLatest
+            }
+            emit(Spotlight(item))
+            if (!container.hasTmdbKey()) return@transformLatest
+            delay(SPOTLIGHT_DELAY_MILLIS)
+            val type = if (item.kind == ContentKind.SERIES) MediaType.SERIES else MediaType.MOVIE
+            val state = runCatching { container.metadata.details(metadataCacheKey(item.itemKey), type, item.title, item.year) }.getOrNull()
+            (state as? MetadataState.Available)?.let { emit(Spotlight(item, it.details)) }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    fun onPosterFocused(item: PosterItem) {
+        if (spotlightTarget.value?.itemKey != item.itemKey) spotlightTarget.value = item
+    }
+
+    /** Retour aux rangées (interface « Streaming ») : catégorie « Toutes » et recherche vidée. */
+    fun showRows() {
+        categories.update { it + (section.value to Category.All) }
+        queries.update { it + (section.value to "") }
+    }
 
     private fun filterFor(target: HomeSection): Flow<Triple<Long, Category, String>> =
         combine(
@@ -121,7 +427,7 @@ class HomeViewModel(
      */
     val channels: Flow<PagingData<ChannelListRow>> = filterFor(HomeSection.TV)
         .flatMapLatest { (id, c, q) ->
-            if (c == Category.Favorites) {
+            if (c == Category.Favorites || c == Category.ContinueWatching || c == Category.Recent) {
                 emptyFlow()
             } else {
                 pager { dao.pageChannels(id, c.filterFlag(), c.groupTitle(), q, System.currentTimeMillis()) }
@@ -135,7 +441,7 @@ class HomeViewModel(
 
     val movies: Flow<PagingData<MovieRow>> = filterFor(HomeSection.MOVIES)
         .flatMapLatest { (id, c, q) ->
-            if (c == Category.Favorites) emptyFlow() else pager { dao.pageMovies(id, c.filterFlag(), c.groupTitle(), q) }
+            if (c == Category.Favorites || c == Category.ContinueWatching) emptyFlow() else pager { dao.pageMovies(id, c.filterFlag(), c.groupTitle(), q) }
         }
         .cachedIn(viewModelScope)
 
@@ -145,7 +451,7 @@ class HomeViewModel(
 
     val series: Flow<PagingData<SeriesRow>> = filterFor(HomeSection.SERIES)
         .flatMapLatest { (id, c, q) ->
-            if (c == Category.Favorites) emptyFlow() else pager { dao.pageSeries(id, c.filterFlag(), c.groupTitle(), q) }
+            if (c == Category.Favorites || c == Category.ContinueWatching) emptyFlow() else pager { dao.pageSeries(id, c.filterFlag(), c.groupTitle(), q) }
         }
         .cachedIn(viewModelScope)
 
@@ -153,7 +459,37 @@ class HomeViewModel(
         .flatMapLatest { dao.observeFavoriteSeries(it) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    /** Films et séries commencés, du plus récent au plus ancien. */
+    val continueMovies: StateFlow<List<ProgressEntity>> = sourceId.flatMapLatest { id ->
+        if (id == null) flowOf(emptyList()) else container.progress.observeAll(id, ContentKind.MOVIE.name)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val continueSeries: StateFlow<List<ProgressEntity>> = sourceId.flatMapLatest { id ->
+        if (id == null) flowOf(emptyList()) else container.progress.observeAll(id, ContentKind.SERIES.name)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Retire un film ou une série de « Reprendre la lecture ». */
+    fun clearProgress(itemKey: String) {
+        val id = sourceId.value ?: return
+        viewModelScope.launch { container.progress.clear(id, itemKey) }
+    }
+
+    fun onChannelFocused(row: ChannelListRow) {
+        focusedChannel.value = row
+    }
+
+    /** Accueil affiché ou quitté ; l'aperçu s'arrête aussitôt (une seule connexion pour la lecture). */
+    fun setPreviewActive(active: Boolean) {
+        previewActive.value = active
+        if (!active) previewer.stop()
+    }
+
+    override fun onCleared() {
+        previewer.stop()
+    }
+
     fun selectSection(target: HomeSection) {
+        if (section.value != target) spotlightTarget.value = null
         section.value = target
         reorder.value = ReorderState()
     }
@@ -161,6 +497,18 @@ class HomeViewModel(
     fun selectCategory(target: Category) {
         categories.update { it + (section.value to target) }
         reorder.value = ReorderState()
+    }
+
+    /** Masque une catégorie de chaînes ([title] vide : chaînes sans groupe). */
+    /** Masque la catégorie [title] de la section affichée (chaînes, films ou séries). */
+    fun hideGroup(title: String) {
+        val id = sourceId.value ?: return
+        val kind = section.value.kind() ?: return
+        viewModelScope.launch {
+            hiddenGroups.hide(HiddenGroupEntity(id, kind.name, title))
+            val name = title.ifEmpty { resources.getString(R.string.channels_no_group) }
+            mutableMessages.emit(resources.getString(R.string.category_hidden, name))
+        }
     }
 
     fun setQuery(text: String) {
@@ -202,5 +550,9 @@ class HomeViewModel(
         const val PAGE_SIZE = 60
         const val SEARCH_DEBOUNCE_MILLIS = 300L
         const val NOW_REFRESH_MILLIS = 30_000L
+        const val PREVIEW_DELAY_MILLIS = 900L
+        const val PREVIEW_PROGRAMMES = 6
+        const val ROW_SIZE = HomeRows.ROW_SIZE
+        const val SPOTLIGHT_DELAY_MILLIS = 350L
     }
 }

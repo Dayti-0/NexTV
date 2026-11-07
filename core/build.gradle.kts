@@ -22,6 +22,8 @@ kotlin {
 dependencies {
     api(libs.kotlinx.coroutines.core)
     api(libs.okhttp)
+    // DNS sur HTTPS (résolveur public au choix, quand celui du fournisseur d'accès bloque).
+    implementation(libs.okhttp.dnsoverhttps)
     // Les API XmlPull et org.json sont fournies par le framework Android ; on ne les embarque pas.
     compileOnly(libs.xmlpull)
     compileOnly(libs.orgjson)

@@ -9,7 +9,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import tv.nextv.app.AppContainer
 import tv.nextv.app.data.catalog.MetadataState
+import tv.nextv.app.data.progress.ProgressEntity
 import tv.nextv.app.data.db.EpisodeRow
+import tv.nextv.core.catalog.ContentClassifier
 import tv.nextv.core.meta.MediaType
 import tv.nextv.core.meta.TmdbError
 import tv.nextv.core.model.ContentKind
@@ -33,6 +35,8 @@ data class DetailUiState(
     val seasons: List<Season> = emptyList(),
     val selectedSeason: Int = 0,
     val missing: Boolean = false,
+    /** Lecture en cours (film commencé, épisode en cours de la série). */
+    val progress: ProgressEntity? = null,
 )
 
 /** Fiche d'un film ou d'une série : données de la playlist, enrichies par TMDB si possible. */
@@ -55,7 +59,9 @@ class DetailViewModel(
             mutableState.update { it.copy(missing = true, metadata = MetadataState.NotFound) }
             return
         }
-        val title = if (kind == ContentKind.SERIES) entity.seriesName ?: entity.title else entity.title
+        val rawTitle = if (kind == ContentKind.SERIES) entity.seriesName ?: entity.title else entity.title
+        // Nettoyé à nouveau : les titres importés avant une amélioration du nettoyage (« … (MULTI ») en profitent.
+        val title = ContentClassifier.cleanTitle(rawTitle).ifBlank { rawTitle }
         val item = PlaylistItem(entity.sourceId, entity.id, title, entity.year, entity.logoUrl, entity.itemKey)
         mutableState.update { it.copy(item = item) }
 
@@ -68,6 +74,11 @@ class DetailViewModel(
         }
 
         viewModelScope.launch {
+            container.progress.observe(entity.sourceId, entity.itemKey).collect { progress ->
+                mutableState.update { it.copy(progress = progress) }
+            }
+        }
+        viewModelScope.launch {
             container.favorites.observeKeys(entity.sourceId).collect { keys ->
                 mutableState.update { it.copy(isFavorite = entity.itemKey in keys) }
             }
@@ -77,7 +88,8 @@ class DetailViewModel(
             MetadataState.Unavailable(TmdbError.MISSING_KEY)
         } else {
             container.metadata.details(
-                cacheKey = entity.itemKey,
+                // Version de la recherche : les « introuvables » enregistrés avant son amélioration sont ignorés.
+                cacheKey = metadataCacheKey(entity.itemKey),
                 type = if (kind == ContentKind.SERIES) MediaType.SERIES else MediaType.MOVIE,
                 title = title,
                 year = entity.year,
@@ -90,6 +102,8 @@ class DetailViewModel(
         mutableState.update { it.copy(selectedSeason = index) }
     }
 
+
+
     fun toggleFavorite() {
         val item = state.value.item ?: return
         viewModelScope.launch {
@@ -97,3 +111,9 @@ class DetailViewModel(
         }
     }
 }
+
+/**
+ * Clé de la fiche TMDB d'un film ou d'une série, partagée par la fiche et l'accueil. Version de la
+ * recherche : les « introuvables » enregistrés avant son amélioration sont ignorés.
+ */
+internal fun metadataCacheKey(itemKey: String): String = "v3|$itemKey"

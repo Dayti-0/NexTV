@@ -46,7 +46,7 @@ class InMemoryPlaylistStore : PlaylistStore {
         epgMapping.remove(id)
     }
 
-    override suspend fun replaceChannels(sourceId: Long, channels: List<Channel>) {
+    override suspend fun replaceChannels(sourceId: Long, channels: List<Channel>, onSaved: (Int) -> Unit) {
         this.channels[sourceId] = channels.map { nextChannelId++ to it }
     }
 
@@ -64,7 +64,7 @@ class InMemoryPlaylistStore : PlaylistStore {
             pending += batch
         }
 
-        override suspend fun commit(mapping: Map<Long, String>) {
+        override suspend fun commit(mapping: Map<Long, String>, guideOnlyChannels: Map<String, String>) {
             programmes[sourceId] = pending.toList()
             epgMapping[sourceId] = mapping
         }

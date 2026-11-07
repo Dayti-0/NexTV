@@ -25,17 +25,40 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import tv.nextv.app.CrashLog
+import tv.nextv.app.data.db.GroupVisibilityRow
+import tv.nextv.app.data.settings.GridColumns
+import tv.nextv.app.data.update.UpdateState
 import tv.nextv.app.ui.detail.DetailContent
 import tv.nextv.app.ui.editor.SourceEditorContent
 import tv.nextv.app.ui.guide.GuideContent
+import tv.nextv.app.ui.guide.GuideViewModel
 import tv.nextv.app.ui.guide.ProgrammeSheetContent
 import tv.nextv.app.ui.home.Category
 import tv.nextv.app.ui.home.HomeActions
 import tv.nextv.app.ui.home.HomeContent
+import tv.nextv.app.ui.home.HomeLayout
+import tv.nextv.app.ui.player.NextEpisode
+import tv.nextv.app.ui.player.VodInfo
+import tv.nextv.app.ui.player.UpNextCard
+import tv.nextv.app.ui.player.FilmControls
+import tv.nextv.app.ui.settings.AppearanceContent
 import tv.nextv.app.ui.home.HomeSection
 import tv.nextv.app.ui.home.ReorderState
+import tv.nextv.app.ui.player.MenuChannel
 import tv.nextv.app.ui.player.ChannelMenu
+import tv.nextv.app.ui.player.MenuProgramme
+import tv.nextv.app.ui.player.PlaybackInfoPanel
+import tv.nextv.app.ui.player.ResumePrompt
+import tv.nextv.app.ui.player.ResumePromptCard
 import tv.nextv.app.ui.player.PlayerOverlay
+import tv.nextv.app.ui.football.FootballContent
+import tv.nextv.app.ui.football.StandingsState
+import tv.nextv.app.ui.football.TeamSheetContent
+import tv.nextv.app.ui.guide.GuideProgramme
+import tv.nextv.app.ui.update.UpdateDialog
+import tv.nextv.core.football.Competition
+import tv.nextv.app.ui.settings.ChannelGroupsContent
 import tv.nextv.app.ui.settings.ProxySettingsContent
 import tv.nextv.app.ui.settings.SettingsContent
 import tv.nextv.app.ui.sources.SourcesContent
@@ -43,9 +66,14 @@ import tv.nextv.app.ui.startup.StartupContent
 import tv.nextv.app.ui.startup.StartupStep
 import tv.nextv.app.ui.startup.WelcomeScreen
 import tv.nextv.app.ui.theme.NexTvTheme
+import tv.nextv.app.ui.theme.ThemeStyle
+import tv.nextv.app.ui.player.CenterIndicator
+import tv.nextv.app.ui.player.PlayerMatch
+import tv.nextv.app.ui.player.PlayerProgramme
 import tv.nextv.core.log.Redactor
 import tv.nextv.core.model.ContentKind
 import java.util.TimeZone
+import tv.nextv.core.update.AppRelease
 
 /**
  * Captures d'écran des écrans principaux, générées par `./gradlew :app:recordRoborazziDebug`
@@ -58,9 +86,9 @@ abstract class ScreenshotSuite(private val device: String) {
         TimeZone.setDefault(TimeZone.getTimeZone("Europe/Paris"))
     }
 
-    private fun capture(name: String, content: @Composable () -> Unit) {
+    private fun capture(name: String, theme: ThemeStyle = ThemeStyle.NIGHT, content: @Composable () -> Unit) {
         captureRoboImage("build/screenshots/${device}_$name.png") {
-            NexTvTheme { content() }
+            NexTvTheme(theme) { content() }
         }
     }
 
@@ -91,8 +119,23 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
-    fun homeTv() = capture("05_accueil_tv") {
-        Home(HomeSection.TV, Category.All)
+    fun homeTv() = capture("05_accueil_live_center") {
+        Home(HomeSection.TV, Category.All, preview = true)
+    }
+
+    @Test
+    fun homeTvMosaic() = capture("05m_accueil_live_center_mosaique") {
+        Home(HomeSection.TV, Category.All, preview = true, grid = GridColumns(liveCenterMosaic = true))
+    }
+
+    @Test
+    fun homeTvPreview() = capture("05c_accueil_tout_voir") {
+        Home(HomeSection.TV, Category.Group(SampleData.groups[0].title.orEmpty()), preview = true, layout = HomeLayout.STREAMING)
+    }
+
+    @Test
+    fun homeTvDense() = capture("05b_accueil_tv_5_par_ligne") {
+        Home(HomeSection.TV, Category.Group(SampleData.groups[0].title.orEmpty()), grid = GridColumns(perRow = 5), layout = HomeLayout.STREAMING)
     }
 
     @Test
@@ -111,8 +154,190 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
+    fun homeMoviesDense() = capture("07b_accueil_films_5_par_ligne") {
+        Home(HomeSection.MOVIES, Category.Group(SampleData.movieGroups[0].title.orEmpty()), grid = GridColumns(perRow = 5), layout = HomeLayout.STREAMING)
+    }
+
+    @Test
+    fun homeContinue() = capture("08b_reprendre") {
+        Home(HomeSection.SERIES, Category.ContinueWatching)
+    }
+
+    @Test
+    fun homeCinema() = capture("05d_accueil_rouge", ThemeStyle.CINEMA) {
+        Home(HomeSection.TV, Category.All, preview = true)
+    }
+
+    @Test
+    fun homeViolet() = capture("05f_accueil_violet", ThemeStyle.VIOLET) {
+        Home(HomeSection.MOVIES, Category.All)
+    }
+
+    @Test
+    fun homeStreaming() = capture("05g_accueil_streaming") {
+        Home(HomeSection.TV, Category.All, preview = true, layout = HomeLayout.STREAMING)
+    }
+
+    @Test
+    fun homeStreamingMovies() = capture("05h_accueil_streaming_films", ThemeStyle.CINEMA) {
+        Home(HomeSection.MOVIES, Category.All, layout = HomeLayout.STREAMING)
+    }
+
+    @Test
+    fun homePremiumMovies() = capture("05i_accueil_premium_films") {
+        Home(HomeSection.MOVIES, Category.All, layout = HomeLayout.PREMIUM)
+    }
+
+    @Test
+    fun homePremiumTv() = capture("05j_accueil_premium_tv", ThemeStyle.MIDNIGHT) {
+        Home(HomeSection.TV, Category.All, preview = true, layout = HomeLayout.PREMIUM)
+    }
+
+    @Test
+    fun homeIvory() = capture("05k_palette_blanc_elegant", ThemeStyle.IVORY) {
+        Home(HomeSection.TV, Category.All, preview = true)
+    }
+
+    @Test
+    fun homeGlacier() = capture("05l_palette_bleu_glacier", ThemeStyle.GLACIER) {
+        Home(HomeSection.MOVIES, Category.All, layout = HomeLayout.STREAMING)
+    }
+
+    @Test
+    fun homePowder() = capture("05m_palette_rose_poudre", ThemeStyle.POWDER) {
+        Home(HomeSection.MOVIES, Category.All)
+    }
+
+    @Test
+    fun homeEmerald() = capture("05n_palette_emeraude", ThemeStyle.EMERALD) {
+        Home(HomeSection.SERIES, Category.All, layout = HomeLayout.STREAMING)
+    }
+
+    @Test
+    fun homeAmber() = capture("05o_palette_orange_ambre", ThemeStyle.AMBER) {
+        Home(HomeSection.TV, Category.All, preview = true, layout = HomeLayout.STREAMING)
+    }
+
+    @Test
+    fun appearance() = capture("16d_apparence") {
+        AppearanceContent(theme = ThemeStyle.NIGHT, previous = ThemeStyle.CINEMA, layout = HomeLayout.LIVE_CENTER, onBack = {}, onTheme = {}, onLayout = {})
+    }
+
+    @Test
+    fun appearanceLight() = capture("16e_apparence_claire", ThemeStyle.LAVENDER) {
+        AppearanceContent(theme = ThemeStyle.LAVENDER, previous = ThemeStyle.NIGHT, layout = HomeLayout.PREMIUM, onBack = {}, onTheme = {}, onLayout = {})
+    }
+
+    @Test
+    fun filmPlayer() = capture("13j_lecteur_film") {
+        Box(Modifier.fillMaxSize()) {
+            FakeVideo()
+            FilmControls(
+                player = null,
+                state = SampleData.player.copy(
+                    isLive = false,
+                    buffering = false,
+                    vod = VodInfo("Enquêtes en série", "S02E05  ·  Le Témoin", 2022, null, NextEpisode(9, "S02E06", "La Nuit du port", null)),
+                ),
+                visible = true,
+                onInteraction = {},
+                onSeekBy = {},
+                onSeekTo = {},
+                onPlayPause = {},
+                onNextEpisode = {},
+                onOptions = {},
+                onBack = {},
+                sample = 1_534_000L to 3_120_000L,
+            )
+        }
+    }
+
+    @Test
+    fun filmUpNext() = capture("13k_episode_suivant") {
+        Box(Modifier.fillMaxSize()) {
+            FakeVideo()
+            UpNextCard(NextEpisode(9, "S02E06", "La Nuit du port", null), onPlay = {}, onDismiss = {}, modifier = Modifier.align(Alignment.BottomEnd).padding(36.dp))
+        }
+    }
+
+    @Test
     fun guide() = capture("09_guide") {
         Home(HomeSection.GUIDE, Category.All)
+    }
+
+    @Test
+    fun football() = capture("09b_foot") {
+        Home(HomeSection.FOOTBALL, Category.All)
+    }
+
+    @Test
+    fun guideStreaming() = capture("09f_guide_streaming") {
+        Home(HomeSection.GUIDE, Category.All, layout = HomeLayout.STREAMING)
+    }
+
+    @Test
+    fun footballPremium() = capture("09g_foot_premium") {
+        Home(HomeSection.FOOTBALL, Category.All, layout = HomeLayout.PREMIUM)
+    }
+
+    @Test
+    fun moviesStreamingTabs() = capture("09h_films_streaming") {
+        Home(HomeSection.MOVIES, Category.All, layout = HomeLayout.STREAMING)
+    }
+
+    @Test
+    fun guideTonight() = capture("09e_guide_ce_soir") {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+            GuideContent(
+                state = SampleData.guide,
+                groups = SampleData.groups,
+                selectedGroup = GuideViewModel.TONIGHT,
+                onSelectGroup = {},
+                onPlay = {},
+                tonight = SampleData.tonight,
+            )
+        }
+    }
+
+    @Test
+    fun footballStandings() = capture("09c_foot_classement") {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+            FootballContent(
+                SampleData.football,
+                competition = Competition.LIGUE_1,
+                onCompetition = {},
+                onPlay = {},
+                favoriteTeams = setOf("Olympique de Marseille"),
+                standings = StandingsState.Loaded(SampleData.standings),
+                showStandings = true,
+            )
+        }
+    }
+
+    @Test
+    fun footballTeam() = capture("09d_foot_club") {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background.copy(alpha = 0.9f)), contentAlignment = Alignment.Center) {
+            Box(Modifier.padding(24.dp)) {
+                TeamSheetContent(SampleData.teamMatches, SampleData.NOW, followed = true, onToggleTeam = {}, onDismiss = {})
+            }
+        }
+    }
+
+    @Test
+    fun programmeReplay() = capture("10b_programme_replay") {
+        val channel = SampleData.guide.channels[7].copy(catchupDays = 7)
+        val programme = GuideProgramme(
+            "Journal de 13 h",
+            SampleData.NOW - 4 * 60 * 60_000L,
+            SampleData.NOW - 3 * 60 * 60_000L - 20 * 60_000L,
+            description = "Le point sur l'actualité de la mi-journée.",
+            category = "Information",
+        )
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background.copy(alpha = 0.9f)), contentAlignment = Alignment.Center) {
+            Box(Modifier.widthIn(max = 560.dp).padding(24.dp)) {
+                ProgrammeSheetContent(channel, programme, SampleData.NOW, onWatch = {}, onDismiss = {}, onReplay = {})
+            }
+        }
     }
 
     @Test
@@ -126,10 +351,46 @@ abstract class ScreenshotSuite(private val device: String) {
         }
     }
 
+    /** Programme avec image et longue description : description entière, boutons compris. */
+    @Test
+    fun programmeLong() = capture("10c_programme_image") {
+        val channel = SampleData.guide.channels[0]
+        val programme = GuideProgramme(
+            "Star Academy",
+            SampleData.NOW - 30 * 60_000L,
+            SampleData.NOW + 50 * 60_000L,
+            description = "Les talents en herbe retenus pour cette quatorzième saison ont intégré le château de Dammarie-les-Lys, " +
+                "où un nouveau directeur les a accueillis, en la personne de Mosimann, gagnant de la saison 7. A ses côtés, une équipe " +
+                "de professeurs composée de Sofia Morgavi, Jonathan Jenvrin, Fanny Delaigue et Philippine Leroy-Beaulieu, qui les " +
+                "accompagneront chaque semaine jusqu'aux évaluations et aux primes du samedi soir.",
+            category = "Téléréalité",
+            imageUrl = "https://example.com/star-academy.jpg",
+        )
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background.copy(alpha = 0.9f)), contentAlignment = Alignment.Center) {
+            Box(Modifier.padding(24.dp)) {
+                ProgrammeSheetContent(channel, programme, SampleData.NOW, onWatch = {}, onDismiss = {}, inSelection = false)
+            }
+        }
+    }
+
     @Test
     fun movie() = capture("11_fiche_film") {
         DetailContent(
             state = SampleData.movieDetail,
+            kind = ContentKind.MOVIE,
+            snackbarHostState = remember { SnackbarHostState() },
+            onPlay = {},
+            onTrailer = {},
+            onToggleFavorite = {},
+            onSelectSeason = {},
+            onBack = {},
+        )
+    }
+
+    @Test
+    fun movieInProgress() = capture("11b_fiche_film_reprise") {
+        DetailContent(
+            state = SampleData.movieDetail.copy(progress = SampleData.movieProgress),
             kind = ContentKind.MOVIE,
             snackbarHostState = remember { SnackbarHostState() },
             onPlay = {},
@@ -169,9 +430,111 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
+    fun playerReplay() = capture("13g_lecteur_replay") {
+        FakeVideo()
+        PlayerOverlay(
+            // Replay d'un programme passé : bandeau, progression et saut de 3 minutes en cours (pub avant le programme).
+            state = SampleData.player.copy(
+                isLive = false,
+                replay = "ven. 30 oct., 20:58 – 22:50",
+                seekable = true,
+                now = PlayerProgramme("Le Grand Voyage", SampleData.NOW - 26 * 60 * 60_000L, SampleData.NOW - 24 * 60 * 60_000L),
+                next = null,
+                watchedAt = SampleData.NOW - 26 * 60 * 60_000L + 4 * 60_000L,
+                pendingJumpSeconds = 90,
+                jumpStepSeconds = 30,
+                qualityNotice = null,
+            ),
+            now = SampleData.NOW,
+            visible = true,
+            showTouchControls = device == "phone",
+            onBack = {},
+            onZap = {},
+            onRetry = {},
+            onBackToLive = {},
+        )
+    }
+
+    @Test
+    fun playerJump() = capture("13h_lecteur_saut") {
+        FakeVideo()
+        Box(Modifier.fillMaxSize()) {
+            CenterIndicator(jumpSeconds = 90, paused = false, visible = true, modifier = Modifier.align(Alignment.Center))
+        }
+    }
+
+    @Test
+    fun playerFastSeek() = capture("13i_lecteur_avance_rapide") {
+        FakeVideo()
+        Box(Modifier.fillMaxSize()) {
+            CenterIndicator(jumpSeconds = 0, fastSeek = 1, paused = false, visible = true, modifier = Modifier.align(Alignment.Center))
+        }
+    }
+
+    @Test
+    fun playerRestart() = capture("13f_lecteur_depuis_le_debut") {
+        FakeVideo()
+        PlayerOverlay(
+            // « Depuis le début » d'un programme commencé il y a 25 min : bandeau du direct, différé affiché.
+            state = SampleData.player.copy(liveDelayMs = 25 * 60_000L + 12_000, seekable = true, qualityNotice = null),
+            now = SampleData.NOW,
+            visible = true,
+            showTouchControls = false,
+            onBack = {},
+            onZap = {},
+            onRetry = {},
+            onBackToLive = {},
+        )
+    }
+
+    @Test
+    fun playerMatch() = capture("13e_lecteur_match") {
+        FakeVideo()
+        PlayerOverlay(
+            state = SampleData.player.copy(match = PlayerMatch("PSG", "Marseille", null, null, "1 – 0", live = true, clock = "45+2'"), adMuted = true),
+            now = SampleData.NOW,
+            visible = true,
+            showTouchControls = false,
+            onBack = {},
+            onZap = {},
+            onRetry = {},
+        )
+    }
+
+    @Test
+    fun playerInfo() = capture("13b_lecteur_infos") {
+        FakeVideo()
+        val state = SampleData.player.copy(bandwidthMbps = 21.6, quality = "4K", info = SampleData.playbackInfo)
+        PlayerOverlay(state = state, now = SampleData.NOW, visible = false, showTouchControls = false, onBack = {}, onZap = {}, onRetry = {})
+        Box(Modifier.fillMaxSize()) {
+            PlaybackInfoPanel(state = state, visible = true, modifier = Modifier.align(Alignment.TopEnd))
+        }
+    }
+
+    @Test
+    fun playerPaused() = capture("13c_lecteur_pause") {
+        FakeVideo()
+        val state = SampleData.player.copy(paused = true, pausedAtMillis = SampleData.NOW - 83_000, qualityNotice = null)
+        PlayerOverlay(state = state, now = SampleData.NOW, visible = true, showTouchControls = device == "phone", onBack = {}, onZap = {}, onRetry = {})
+        Box(Modifier.fillMaxSize()) {
+            CenterIndicator(jumpSeconds = 0, paused = true, visible = true, modifier = Modifier.align(Alignment.Center))
+        }
+    }
+
+    @Test
+    fun resumePrompt() = capture("13d_reprise") {
+        FakeVideo()
+        Box(Modifier.fillMaxSize()) {
+            ResumePromptCard(ResumePrompt("Enquêtes en série", "S01E08", 754_000, "S01E01"), onAnswer = {}, modifier = Modifier.align(Alignment.Center))
+        }
+    }
+
+    @Test
     fun playerMenu() = capture("14_lecteur_menu") {
         FakeVideo()
-        val channels = remember { flowOf(PagingData.from(SampleData.channels)) }.collectAsLazyPagingItems()
+        val channels = remember {
+            flowOf(PagingData.from(SampleData.channels.map { MenuChannel(SampleData.menu.category, it) }))
+        }.collectAsLazyPagingItems()
         ChannelMenu(
             menu = SampleData.menu,
             groups = SampleData.groups,
@@ -180,7 +543,21 @@ abstract class ScreenshotSuite(private val device: String) {
             now = SampleData.NOW,
             onCategory = {},
             onPlay = {},
-            onHome = {},
+            // Volet du programme de la chaîne sélectionnée.
+            programme = MenuProgramme(
+                SampleData.channels[0],
+                GuideProgramme(
+                    "Le journal du soir",
+                    SampleData.NOW - 15 * 60_000L,
+                    SampleData.NOW + 25 * 60_000L,
+                    subtitle = "Édition spéciale",
+                    description = "Toute l’actualité du jour en France et dans le monde, avec les invités du journal, " +
+                        "les reportages de nos envoyés spéciaux et la météo du week-end. En seconde partie, le débat de la " +
+                        "semaine avec les représentants des partis et les questions des téléspectateurs.",
+                    category = "Information",
+                ),
+                GuideProgramme("Météo", SampleData.NOW + 25 * 60_000L, SampleData.NOW + 30 * 60_000L),
+            ),
         )
     }
 
@@ -195,6 +572,44 @@ abstract class ScreenshotSuite(private val device: String) {
             onBack = {},
             onZap = {},
             onRetry = {},
+        )
+    }
+
+    @Test
+    fun updatePrompt() = capture("16c_mise_a_jour") {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+            UpdateDialog(
+                state = UpdateState.Available(AppRelease("0.2.16", null, "https://example.invalid/NexTV.apk", 18_000_000, null)),
+                onInstall = {},
+                onAllow = {},
+                onClose = {},
+            )
+        }
+    }
+
+    @Test
+    fun settingsCrash() = capture("16b_reglages_incident") {
+        SettingsContent(
+            state = SampleData.settings.copy(
+                lastCrash = CrashLog.Entry(
+                    SampleData.NOW - 20 * 60_000L,
+                    "0.2.15",
+                    "java.lang.OutOfMemoryError: Failed to allocate a 65552 byte allocation\ntv.nextv.app.ui.player.PlayerViewModel.start(PlayerViewModel.kt:1012)",
+                    "java.lang.OutOfMemoryError: Failed to allocate a 65552 byte allocation\n" +
+                        "\tat androidx.media3.exoplayer.upstream.DefaultAllocator.allocate(DefaultAllocator.java:106)\n" +
+                        "\tat tv.nextv.app.ui.player.PlayerViewModel.start(PlayerViewModel.kt:1012)",
+                ),
+            ),
+            snackbarHostState = remember { SnackbarHostState() },
+            onBack = {},
+            onPlaylists = {},
+            onRefreshPlaylist = {},
+            onRefreshGuide = {},
+            onAutoQuality = {},
+            onSaveTmdbKey = {},
+            onClearTmdbKey = {},
+            onProxy = {},
+            now = SampleData.NOW,
         )
     }
 
@@ -245,6 +660,18 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
+    fun editorXtream() = capture("18b_edition_xtream") {
+        SourceEditorContent(
+            state = SampleData.editorXtream,
+            snackbarHostState = remember { SnackbarHostState() },
+            onEdit = {},
+            onPick = {},
+            onSave = {},
+            onBack = {},
+        )
+    }
+
+    @Test
     fun editorErrors() = capture("19_edition_erreur") {
         SourceEditorContent(
             state = SampleData.editorWithErrors,
@@ -268,8 +695,27 @@ abstract class ScreenshotSuite(private val device: String) {
         )
     }
 
+    @Test
+    fun channelGroups() = capture("21_categories_chaines") {
+        ChannelGroupsContent(
+            groups = SampleData.groups.mapIndexed { index, group ->
+                GroupVisibilityRow(group.title, group.count, hidden = index == 2 || index == 4)
+            },
+            onVisibility = { _, _ -> },
+            onShowAll = {},
+            onBack = {},
+        )
+    }
+
     @Composable
-    private fun Home(section: HomeSection, category: Category, reorder: ReorderState = ReorderState()) {
+    private fun Home(
+        section: HomeSection,
+        category: Category,
+        reorder: ReorderState = ReorderState(),
+        grid: GridColumns = GridColumns(),
+        preview: Boolean = false,
+        layout: HomeLayout = HomeLayout.LIVE_CENTER,
+    ) {
         val channels = remember { flowOf(PagingData.from(SampleData.channels)) }.collectAsLazyPagingItems()
         val movies = remember { flowOf(PagingData.from(SampleData.movies)) }.collectAsLazyPagingItems()
         val series = remember { flowOf(PagingData.from(SampleData.series)) }.collectAsLazyPagingItems()
@@ -294,6 +740,9 @@ abstract class ScreenshotSuite(private val device: String) {
             now = SampleData.NOW,
             snackbarHostState = remember { SnackbarHostState() },
             actions = HomeActions(),
+            continueSeries = SampleData.continueSeries,
+            continueMovies = listOf(SampleData.movieProgress),
+            gridColumns = grid,
             guide = { modifier ->
                 GuideContent(
                     state = SampleData.guide,
@@ -304,6 +753,16 @@ abstract class ScreenshotSuite(private val device: String) {
                     modifier = modifier,
                 )
             },
+            football = { modifier ->
+                FootballContent(SampleData.football, competition = null, onCompetition = {}, onPlay = {}, modifier = modifier)
+            },
+            recentChannels = SampleData.channels.take(3),
+            showPreview = preview,
+            preview = SampleData.channelPreview.takeIf { preview },
+            layout = layout,
+            rows = SampleData.rows,
+            discover = if (section == HomeSection.SERIES) SampleData.seriesDiscover else SampleData.movieDiscover,
+            spotlight = SampleData.spotlight.takeIf { section == HomeSection.MOVIES } ?: SampleData.seriesSpotlight.takeIf { section == HomeSection.SERIES },
         )
     }
 

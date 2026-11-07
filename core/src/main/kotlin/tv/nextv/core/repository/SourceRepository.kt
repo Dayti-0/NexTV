@@ -2,6 +2,8 @@ package tv.nextv.core.repository
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -28,6 +30,7 @@ import tv.nextv.core.model.SourceStatus
 import tv.nextv.core.model.SourceWarning
 import tv.nextv.core.net.RemoteUrlValidator
 import tv.nextv.core.net.RequestPurpose
+import tv.nextv.core.source.Catchup
 import tv.nextv.core.source.PlaylistLoaderRegistry
 import java.util.concurrent.ConcurrentHashMap
 
@@ -59,6 +62,8 @@ class SourceRepository(
      * les guides configurés par playlist ou annoncés par leur en-tête.
      */
     private val epgFeed: EpgFeedProvider? = null,
+    /** Jours de replay des chaînes, par identifiant de flux (comptes Xtream) ; `null` : inconnus. */
+    private val catchupDays: suspend (PlaylistSource) -> Map<String, Int>? = { null },
 ) {
 
     val sources: Flow<List<PlaylistSource>> = store.observeSources()
@@ -74,6 +79,17 @@ class SourceRepository(
     suspend fun registerStoredSecrets() {
         for (source in store.getSources()) {
             if (source.hasCredentials) credentialStore.get(source.id)?.let(::registerSecrets)
+        }
+    }
+
+    /** Au démarrage : noms enregistrés qui sont des adresses (avec identifiants) réduits au nom du serveur. */
+    suspend fun cleanStoredNames() {
+        for (source in store.getSources()) {
+            val name = SourceInputValidator.sanitizeName(source.name)
+            if (name.isNotEmpty() && name != source.name) {
+                store.updateSourceDefinition(source.copy(name = name))
+                logger.info(TAG, "Source ${source.id} : adresse utilisée comme nom remplacée par le nom du serveur")
+            }
         }
     }
 
@@ -103,6 +119,7 @@ class SourceRepository(
                 hasCredentials = credentials != null,
                 createdAtMillis = now,
                 updatedAtMillis = now,
+                mirrors = valid.mirrors,
             ),
         )
         if (credentials != null) {
@@ -114,7 +131,8 @@ class SourceRepository(
     }
 
     /**
-     * @return vrai si le contenu doit être rechargé (emplacement, guide, User-Agent ou identifiants modifiés).
+     * @return vrai si le contenu doit être rechargé (emplacement, guide, User-Agent ou identifiants
+     * modifiés, ou serveurs de secours changés alors que le dernier chargement a échoué).
      * @throws InvalidSourceInputException
      * @throws NoSuchElementException si la source n'existe pas.
      */
@@ -142,6 +160,7 @@ class SourceRepository(
             userAgent = valid.userAgent,
             hasCredentials = hasCredentials,
             updatedAtMillis = clock(),
+            mirrors = valid.mirrors,
         )
         store.updateSourceDefinition(updated)
         releaseUnusedDocuments(listOfNotNull(existing.location, existing.epg.location))
@@ -151,7 +170,8 @@ class SourceRepository(
             existing.userAgent != updated.userAgent ||
             existing.type != updated.type ||
             change is CredentialsChange.Replace ||
-            existing.hasCredentials != hasCredentials
+            existing.hasCredentials != hasCredentials ||
+            (existing.mirrors != updated.mirrors && existing.status.error != null)
     }
 
     suspend fun delete(id: Long) {
@@ -175,7 +195,12 @@ class SourceRepository(
         val attemptAt = clock()
 
         val loaded = try {
-            loaders.get(source.type).load(source, credentials, progress)
+            coroutineScope {
+                // Chaînes avec replay : demandées au serveur pendant le téléchargement de la playlist.
+                val archive = async { archiveDays(source) }
+                val playlist = loaders.get(source.type).load(source, credentials, progress)
+                archive.await()?.let { days -> playlist.copy(channels = Catchup.annotate(playlist.channels, days)) } ?: playlist
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -185,9 +210,18 @@ class SourceRepository(
             return@withRefreshLock RefreshResult.Failure(error)
         }
 
-        progress?.onProgress(LoadProgress(LoadStep.SAVING, 0, loaded.channels.size.toLong()))
-        store.replaceChannels(id, loaded.channels)
-        progress?.onProgress(LoadProgress(LoadStep.SAVING, loaded.channels.size.toLong(), loaded.channels.size.toLong()))
+        // Le serveur n'a accepté qu'un User-Agent de lecteur courant : il est retenu pour la source
+        // (flux compris) et visible dans l'éditeur.
+        val fallbackUserAgent = loaded.userAgent
+        if (fallbackUserAgent != null && source.userAgent.isNullOrBlank()) {
+            store.updateSourceDefinition(source.copy(userAgent = fallbackUserAgent))
+            logger.info(TAG, "Source $id : User-Agent de repli retenu")
+        }
+
+        val total = loaded.channels.size.toLong()
+        progress?.onProgress(LoadProgress(LoadStep.SAVING, 0, total))
+        store.replaceChannels(id, loaded.channels) { saved -> progress?.onProgress(LoadProgress(LoadStep.SAVING, saved.toLong(), total)) }
+        progress?.onProgress(LoadProgress(LoadStep.SAVING, total, total))
         var status = source.status.copy(
             lastAttemptAtMillis = attemptAt,
             lastSuccessAtMillis = clock(),
@@ -205,6 +239,15 @@ class SourceRepository(
             store.updateStatus(id, status)
         }
         RefreshResult.Success(loaded.channels.size, loaded.warnings, status.epg)
+    }
+
+    private suspend fun archiveDays(source: PlaylistSource): Map<String, Int>? = try {
+        catchupDays(source)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        logger.warn(TAG, "Replay de la source ${source.id} inconnu", e)
+        null
     }
 
     /**
@@ -268,6 +311,7 @@ class SourceRepository(
             userAgent = source.userAgent,
         )
         val mapping = HashMap<Long, String>()
+        val guideOnly = HashMap<String, String>()
         val covered = HashSet<String>()
         var programmes = 0
         var firstError: SourceError? = null
@@ -278,6 +322,7 @@ class SourceRepository(
                 try {
                     val result = epgLoader.load(location, request, channels, session, excludedEpgIds = covered, progress = progress)
                     result.mapping.forEach { (channelId, epgId) -> mapping.putIfAbsent(channelId, epgId) }
+                    result.guideOnlyChannels.forEach { (epgId, name) -> guideOnly.putIfAbsent(epgId, name) }
                     covered += result.coveredEpgIds
                     programmes += result.programmeCount
                     succeeded++
@@ -294,7 +339,7 @@ class SourceRepository(
                 session.abort()
                 return EpgOutcome(previous.copy(lastAttemptAtMillis = attemptAt, error = firstError), failure = firstError)
             }
-            session.commit(mapping)
+            session.commit(mapping, guideOnly.filterKeys { it !in mapping.values })
         } catch (e: Throwable) {
             withContext(NonCancellable) { session.abort() }
             throw e
@@ -335,7 +380,7 @@ class SourceRepository(
         val session = store.beginEpgImport(source.id)
         try {
             val result = epgLoader.importFile(feed.file, store.getEpgChannelRefs(source.id), session, progress = progress)
-            session.commit(result.mapping)
+            session.commit(result.mapping, result.guideOnlyChannels)
             logger.info(TAG, "Guide : ${result.programmeCount} programmes, ${result.mapping.size} chaînes associées")
             val status = EpgStatus(
                 lastAttemptAtMillis = attemptAt,

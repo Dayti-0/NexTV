@@ -6,6 +6,7 @@ import tv.nextv.app.data.db.NexTvDatabase
 import tv.nextv.app.data.db.TmdbCacheEntity
 import tv.nextv.core.meta.MediaDetails
 import tv.nextv.core.meta.MediaType
+import tv.nextv.core.meta.TrendingTitle
 import tv.nextv.core.meta.TmdbClient
 import tv.nextv.core.meta.TmdbError
 import tv.nextv.core.meta.TmdbResult
@@ -30,13 +31,13 @@ class MetadataRepository(
 ) {
     private val dao = database.tmdbDao()
 
-    suspend fun details(cacheKey: String, type: MediaType, title: String, year: Int?): MetadataState {
+    suspend fun details(cacheKey: String, type: MediaType, title: String, year: Int?, exact: Boolean = false): MetadataState {
         val now = clock()
         dao.get(cacheKey)?.let { cached ->
             val ttl = if (cached.found) FOUND_TTL else NOT_FOUND_TTL
             if (now - cached.fetchedAt < ttl) return if (cached.found) MetadataState.Available(cached.toDetails(type)) else MetadataState.NotFound
         }
-        return when (val result = client.lookup(type, title, year)) {
+        return when (val result = client.lookup(type, title, year, exact)) {
             is TmdbResult.Found -> {
                 dao.put(result.details.toEntity(cacheKey, now))
                 MetadataState.Available(result.details)
@@ -91,10 +92,22 @@ class MetadataRepository(
         seasonCount = seasonCount,
     )
 
+    /** Tendances de la semaine, gardées quelques heures (une seule demande par type et par période). */
+    private val trending = java.util.concurrent.ConcurrentHashMap<MediaType, Pair<Long, List<TrendingTitle>>>()
+
+    suspend fun trending(type: MediaType): List<TrendingTitle> {
+        val now = clock()
+        trending[type]?.takeIf { now - it.first < TRENDING_TTL && it.second.isNotEmpty() }?.let { return it.second }
+        val titles = client.trending(type)
+        if (titles.isNotEmpty()) trending[type] = now to titles
+        return titles
+    }
+
     private companion object {
         const val DAY = 24 * 60 * 60_000L
         const val FOUND_TTL = 30 * DAY
         const val NOT_FOUND_TTL = 7 * DAY
+        const val TRENDING_TTL = 6 * 60 * 60_000L
     }
 }
 
@@ -107,15 +120,30 @@ class FavoritesRepository(private val database: NexTvDatabase) {
 
     /** Ajoute ou retire un favori. @return vrai s'il est désormais favori. */
     suspend fun toggle(sourceId: Long, kind: ContentKind, itemKey: String, title: String, logoUrl: String?): Boolean =
+        toggle(sourceId, kind.name, itemKey, title, logoUrl)
+
+    /** Chaînes de « L'essentiel » (guide TV), choisies une à une. */
+    fun observeGuideSelection(sourceId: Long) = dao.observeKeys(sourceId, GUIDE_SELECTION)
+
+    /** Ajoute une chaîne à « L'essentiel » ou l'en retire. @return vrai si elle y figure désormais. */
+    suspend fun toggleGuideSelection(sourceId: Long, itemKey: String, title: String, logoUrl: String?): Boolean =
+        toggle(sourceId, GUIDE_SELECTION, itemKey, title, logoUrl)
+
+    private suspend fun toggle(sourceId: Long, kind: String, itemKey: String, title: String, logoUrl: String?): Boolean =
         database.withTransaction {
-            if (dao.delete(sourceId, kind.name, itemKey) > 0) {
+            if (dao.delete(sourceId, kind, itemKey) > 0) {
                 false
             } else {
-                val position = dao.maxPosition(sourceId, kind.name) + 1
-                dao.insert(FavoriteEntity(sourceId = sourceId, kind = kind.name, itemKey = itemKey, title = title, logoUrl = logoUrl, position = position))
+                val position = dao.maxPosition(sourceId, kind) + 1
+                dao.insert(FavoriteEntity(sourceId = sourceId, kind = kind, itemKey = itemKey, title = title, logoUrl = logoUrl, position = position))
                 true
             }
         }
+
+    companion object {
+        /** Type des entrées de « L'essentiel » dans la table des favoris (chaînes choisies pour le guide). */
+        const val GUIDE_SELECTION = "GUIDE"
+    }
 
     /** Déplace un favori de [offset] places (négatif : vers le début). */
     suspend fun move(sourceId: Long, kind: ContentKind, itemKey: String, offset: Int) {

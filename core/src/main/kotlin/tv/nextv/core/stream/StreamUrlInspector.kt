@@ -36,7 +36,8 @@ object StreamUrlInspector {
         drmProtected: Boolean = false,
     ): StreamDescriptor {
         val (urlPart, kodiHeaders) = splitKodiHeaders(rawUrl.trim())
-        val headers = HttpHeaderValues.sanitize(declaredHeaders + kodiHeaders)
+        // Cas le plus fréquent : aucun en-tête (pas de copie ni de validation).
+        val headers = if (declaredHeaders.isEmpty() && kodiHeaders.isEmpty()) emptyMap() else HttpHeaderValues.sanitize(declaredHeaders + kodiHeaders)
         val scheme = SCHEME.find(urlPart)?.groupValues?.get(1)?.lowercase()
             ?.takeUnless { urlPart.length > it.length + 1 && urlPart[it.length + 1].isDigit() && "://" !in urlPart }
 
@@ -73,14 +74,13 @@ object StreamUrlInspector {
     fun guessFormat(url: HttpUrl): StreamFormat {
         val path = url.encodedPath.lowercase()
         val extension = path.substringAfterLast('/').substringAfterLast('.', missingDelimiterValue = "")
-        val hints = listOfNotNull(
-            url.queryParameter("output"),
-            url.queryParameter("type"),
-            url.queryParameter("format"),
-            url.queryParameter("extension"),
-        ).map { it.lowercase() }
+        val hints = if (url.querySize == 0) {
+            emptyList()
+        } else {
+            HINT_PARAMETERS.mapNotNull { url.queryParameter(it)?.lowercase() }
+        }
         return when {
-            extension in setOf("m3u8", "m3u") || hints.any { it == "m3u8" || it == "hls" } -> StreamFormat.HLS
+            extension in HLS_EXTENSIONS || hints.any { it == "m3u8" || it == "hls" } -> StreamFormat.HLS
             extension == "mpd" || hints.any { it == "mpd" || it == "dash" } -> StreamFormat.DASH
             extension == "ism" || extension == "isml" || path.endsWith("/manifest") && ".ism" in path -> StreamFormat.SMOOTH_STREAMING
             extension in PROGRESSIVE_EXTENSIONS || hints.any { it == "ts" || it == "mpegts" } -> StreamFormat.PROGRESSIVE
@@ -112,6 +112,9 @@ object StreamUrlInspector {
         support = StreamSupport.UNSUPPORTED,
         issues = setOf(issue),
     )
+
+    private val HINT_PARAMETERS = listOf("output", "type", "format", "extension")
+    private val HLS_EXTENSIONS = setOf("m3u8", "m3u")
 
     private val PROGRESSIVE_EXTENSIONS = setOf(
         "ts", "mts", "m2ts", "mp4", "m4v", "mkv", "webm", "mov", "flv", "avi",

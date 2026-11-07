@@ -15,6 +15,8 @@ data class LoadedPlaylist(
     /** Guides EPG annoncés par la source elle-même. */
     val epgUrls: List<String> = emptyList(),
     val warnings: Set<SourceWarning> = emptySet(),
+    /** User-Agent de repli qui a permis le téléchargement : à réutiliser pour les flux. */
+    val userAgent: String? = null,
 )
 
 /**

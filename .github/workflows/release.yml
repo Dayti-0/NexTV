@@ -5,9 +5,17 @@ name: Release
 #  - pousser une branche de version : release/v0.1.0 (ou claude/release-v0.1.0)
 #  - lancer le workflow à la main (onglet Actions) avec la version voulue.
 # Le tag est créé par la publication s'il n'existe pas encore.
-# Signature : définir les secrets NEXTV_KEYSTORE_BASE64, NEXTV_KEYSTORE_PASSWORD, NEXTV_KEY_ALIAS
-# et NEXTV_KEY_PASSWORD. Sans eux, l'APK est signé avec une clé de test temporaire.
+# Signature, au choix :
+#  - clé privée chiffrée dans le dépôt (app/nextv-release.keystore.enc, créée par le workflow
+#    « Signing key ») et son mot de passe dans le secret NEXTV_KEY_PASSPHRASE ;
+#  - ou les secrets NEXTV_KEYSTORE_BASE64, NEXTV_KEYSTORE_PASSWORD, NEXTV_KEY_ALIAS et NEXTV_KEY_PASSWORD.
+# Sans l'un ni l'autre, l'APK est signé avec la clé de test du dépôt (app/nextv-test.keystore).
 # Fiches films/séries : le secret facultatif NEXTV_TMDB_API_KEY intègre une clé TMDB à l'APK.
+# Section Foot : le secret facultatif NEXTV_FOOTBALL_API_KEY intègre une clé football-data.org.
+# Mises à jour depuis l'application : elles lisent les versions publiées de ce dépôt (il doit être public).
+# Pour garder le code privé : créer un dépôt public NexTV-releases (avec un README) et le secret
+# NEXTV_RELEASES_TOKEN (jeton d'accès en écriture au contenu de ce dépôt) ; les APK y sont alors aussi
+# publiés et l'application y cherche ses mises à jour. Autre nom : variable NEXTV_RELEASES_REPO.
 
 on:
   push:
@@ -32,6 +40,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       KEYSTORE_BASE64: ${{ secrets.NEXTV_KEYSTORE_BASE64 }}
+      RELEASES_TOKEN: ${{ secrets.NEXTV_RELEASES_TOKEN }}
+      RELEASES_REPO: ${{ vars.NEXTV_RELEASES_REPO || format('{0}/NexTV-releases', github.repository_owner) }}
     steps:
       - name: Resolve version
         env:
@@ -50,6 +60,11 @@ jobs:
           fi
           echo "TAG=$TAG" >> "$GITHUB_ENV"
           echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
+          if [ -n "$RELEASES_TOKEN" ]; then
+            echo "UPDATE_REPO=$RELEASES_REPO" >> "$GITHUB_ENV"
+          else
+            echo "UPDATE_REPO=$GITHUB_REPOSITORY" >> "$GITHUB_ENV"
+          fi
 
       - uses: actions/checkout@v5
       - uses: actions/setup-java@v5
@@ -57,65 +72,118 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          # Cache Gradle (dépendances, résultats de compilation) enregistré aussi depuis les branches de
+          # travail et de version : les publications suivantes repartent de ce qui est déjà construit.
+          cache-read-only: false
 
       - name: Decode signing key
         if: env.KEYSTORE_BASE64 != ''
         run: |
           echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
           echo "NEXTV_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          echo "PRIVATE_KEY=1" >> "$GITHUB_ENV"
 
-      - name: Test core module
-        run: ./gradlew -p core test --stacktrace
+      # Une fois la clé privée créée, jamais de repli sur la clé de test : la mise à jour serait refusée.
+      - name: Decrypt the release signing key
+        if: env.KEYSTORE_BASE64 == '' && hashFiles('app/nextv-release.keystore.enc') != ''
+        env:
+          PASSPHRASE: ${{ secrets.NEXTV_KEY_PASSPHRASE }}
+        run: |
+          if [ -z "$PASSPHRASE" ]; then
+            echo "::error::Clé de signature chiffrée présente mais secret NEXTV_KEY_PASSPHRASE absent."
+            exit 1
+          fi
+          umask 077
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 \
+            -in app/nextv-release.keystore.enc -out "$RUNNER_TEMP/release.jks" -pass env:PASSPHRASE
+          echo "NEXTV_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          echo "PRIVATE_KEY=1" >> "$GITHUB_ENV"
 
+      # Les tests tournent déjà dans la CI à chaque envoi : la publication ne les refait pas.
       - name: Build release APK
         env:
-          NEXTV_KEYSTORE_PASSWORD: ${{ secrets.NEXTV_KEYSTORE_PASSWORD }}
-          NEXTV_KEY_ALIAS: ${{ secrets.NEXTV_KEY_ALIAS }}
-          NEXTV_KEY_PASSWORD: ${{ secrets.NEXTV_KEY_PASSWORD }}
+          NEXTV_KEYSTORE_PASSWORD: ${{ secrets.NEXTV_KEYSTORE_PASSWORD || secrets.NEXTV_KEY_PASSPHRASE }}
+          NEXTV_KEY_ALIAS: ${{ secrets.NEXTV_KEY_ALIAS || 'nextv' }}
+          NEXTV_KEY_PASSWORD: ${{ secrets.NEXTV_KEY_PASSWORD || secrets.NEXTV_KEY_PASSPHRASE }}
           # Clé TMDB facultative intégrée à l'APK (sinon, elle se saisit dans les réglages).
           NEXTV_TMDB_API_KEY: ${{ secrets.NEXTV_TMDB_API_KEY }}
+          # Clé football-data.org facultative (section Foot), intégrée de la même façon.
+          NEXTV_FOOTBALL_API_KEY: ${{ secrets.NEXTV_FOOTBALL_API_KEY }}
         run: |
           ./gradlew :app:assembleRelease --stacktrace \
             -Pnextv.versionName="$VERSION" \
-            -Pnextv.versionCode="${GITHUB_RUN_NUMBER}"
+            -Pnextv.versionCode="${GITHUB_RUN_NUMBER}" \
+            -Pnextv.updateRepo="${UPDATE_REPO}"
 
       - name: Prepare release assets
         run: |
           APK="NexTV-${TAG}.apk"
           cp app/build/outputs/apk/release/app-release.apk "$APK"
           sha256sum "$APK" > "$APK.sha256"
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            SIGNING="Signé avec la clé de publication du projet."
+          # Table de correspondance de R8 : décode les traces des plantages (« Dernier incident » des réglages).
+          MAPPING="NexTV-${TAG}-mapping.txt"
+          cp app/build/outputs/mapping/release/mapping.txt "$MAPPING"
+          # Nom fixe : lien stable vers la dernière version (…/releases/latest/download/NexTV.apk).
+          cp "$APK" NexTV.apk
+          if [ -n "$PRIVATE_KEY" ]; then
+            SIGNING="Signé avec la clé privée du projet : les versions suivantes s'installent par-dessus celle-ci (Réglages › Mise à jour), playlists et réglages conservés. En venant d'une version signée autrement (0.2.1 ou plus ancienne), désinstallez-la d'abord."
           else
-            SIGNING="⚠️ Version de test signée avec une clé temporaire : désinstallez la version précédente avant d'installer celle-ci."
+            SIGNING="Version de test signée avec la clé de test du dépôt : elle s'installe par-dessus la précédente (à partir de la 0.2.2 ; une seule désinstallation nécessaire en venant d'une version plus ancienne)."
           fi
           cat > notes.md <<NOTES
           Version ${VERSION} de NexTV (Android 7.0+, téléphone, tablette et Android TV).
 
           **Fonctionnalités**
           - Démarrage direct sur la dernière playlist, avec progression réelle du chargement
-          - Accueil TV, Films, Séries et Guide TV, favoris (appui long sur OK) réorganisables
+          - Accueil TV, Films, Séries, Guide TV et Foot, favoris (appui long sur OK) réorganisables, chaînes récentes
+          - Section TV : aperçu vidéo et programme de la chaîne sélectionnée ; catégories de chaînes, films et séries masquables
+          - Trois interfaces au choix : Classique (mosaïque ou liste), Streaming (affiche et rangées par catégorie) ou Box TV (liste des chaînes et grand volet du direct) ; thèmes bleu nuit, noir profond, cinéma ou violet
+          - Foot : matchs à venir (Ligue 1, Premier League, Liga, Serie A, Bundesliga, coupes d'Europe, équipes nationales) avec la chaîne qui les diffuse, scores en direct, classements et « Mes équipes »
+          - Guide TV depuis la veille, replay des programmes passés (comptes Xtream qui enregistrent) ; « Ce soir » : programme du soir comme un magazine télé (TNT d'abord) ; « L'essentiel » : une ligne par chaîne, sans doublons SD/HD/FHD
           - Fiches films et séries enrichies par TMDB (clé d'API à saisir dans les réglages)
-          - Lecteur : bandeau de 5 s avec programme et débit, zapping haut/bas, liste des chaînes sur « Retour »
-          - Qualité automatique FHD → HD → SD → LOW entre les versions de la playlist (désactivable)
+          - Lecteur : bandeau avec heure, programme et débit, zapping haut/bas, liste des chaînes sur « Retour » (catégories avec gauche/droite), options sur Menu (audio, sous-titres, format de l'image), dernière chaîne regardée sur ⏪, score des matchs en direct, option pour baisser le son des pubs
+          - Pause du direct (OK) avec affichage du retard sur le direct, retour au direct avec droite
+          - Reprise de lecture des films et séries (catégorie « Reprendre la lecture », bouton sur les fiches)
+          - Qualité visée au choix (meilleure, HD maximum, économie SD) et qualité automatique FHD → HD → SD → LOW entre les versions de la playlist (désactivable) : baisse en cas de blocage ou si l'appareil perd des images, remonte à l'essai quand la lecture est stable
+          - Infos de lecture (touche Info/Menu) et choix du décodeur vidéo matériel ou logiciel
+          - Nombre de chaînes et d'affiches par ligne réglable ; double appui sur « Retour » pour revenir à l'accueil
+          - Ajout d'une playlist depuis un ordinateur : adb shell "am start -n tv.nextv.app/.MainActivity --es url 'ADRESSE'"
+          - Mise à jour depuis les réglages (versions publiées publiquement sur GitHub)
           - Guide TV xmltvfr.fr téléchargé, mis en cache et actualisé automatiquement
-          - Playlists M3U/M3U8 distantes ou locales, protégées par identifiants (chiffrés, masqués dans les journaux)
+          - Playlists M3U/M3U8 distantes ou locales, ou compte Xtream Codes (serveur, identifiant, mot de passe), avec serveurs de secours et infos d'abonnement
+          - Sauvegarde et restauration des playlists et réglages
           - Proxy HTTP/SOCKS pour les playlists, le guide et les flux
 
           **Installation** : téléchargez \`${APK}\`, autorisez l'installation depuis des sources inconnues puis ouvrez le fichier.
+          Lien permanent vers la dernière version (Fire TV, app Downloader) : https://github.com/${UPDATE_REPO}/releases/latest/download/NexTV.apk
 
           ${SIGNING}
           NOTES
           echo "APK=$APK" >> "$GITHUB_ENV"
+          echo "MAPPING=$MAPPING" >> "$GITHUB_ENV"
 
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           PRERELEASE=""
-          case "$TAG" in v0.*|*-*) PRERELEASE="--prerelease" ;; esac
-          gh release create "$TAG" "$APK" "$APK.sha256" \
+          case "$TAG" in *-*) PRERELEASE="--prerelease" ;; esac
+          gh release create "$TAG" "$APK" "$APK.sha256" NexTV.apk "$MAPPING" \
             --target "$GITHUB_SHA" \
+            --title "NexTV ${TAG}" \
+            --notes-file notes.md \
+            $PRERELEASE
+
+      - name: Publish to the public releases repository
+        if: env.RELEASES_TOKEN != ''
+        env:
+          GH_TOKEN: ${{ secrets.NEXTV_RELEASES_TOKEN }}
+        run: |
+          PRERELEASE=""
+          case "$TAG" in *-*) PRERELEASE="--prerelease" ;; esac
+          gh release create "$TAG" "$APK" "$APK.sha256" NexTV.apk \
+            --repo "$RELEASES_REPO" \
             --title "NexTV ${TAG}" \
             --notes-file notes.md \
             $PRERELEASE

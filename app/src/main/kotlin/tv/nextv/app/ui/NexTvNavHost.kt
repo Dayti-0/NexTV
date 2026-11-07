@@ -1,22 +1,35 @@
 package tv.nextv.app.ui
 
+import androidx.activity.compose.LocalActivity
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.getValue
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import tv.nextv.app.MainActivity
+import tv.nextv.app.ui.common.appContainer
 import tv.nextv.app.ui.detail.DetailScreen
 import tv.nextv.app.ui.editor.SourceEditorScreen
 import tv.nextv.app.ui.editor.SourceEditorViewModel
 import tv.nextv.app.ui.home.HomeScreen
 import tv.nextv.app.ui.player.PlayerScreen
 import tv.nextv.app.ui.player.PlayerViewModel
+import tv.nextv.app.ui.settings.ChannelGroupsScreen
 import tv.nextv.app.ui.settings.ProxySettingsScreen
 import tv.nextv.app.ui.settings.SettingsScreen
 import tv.nextv.app.ui.sources.SourcesScreen
+import tv.nextv.app.ui.settings.AppearanceScreen
 import tv.nextv.app.ui.startup.StartupScreen
+import tv.nextv.app.ui.theme.VideoTheme
 import tv.nextv.app.ui.startup.StartupViewModel
 import tv.nextv.app.ui.startup.WelcomeScreen
 import tv.nextv.core.model.ContentKind
@@ -27,20 +40,29 @@ private object Routes {
     const val HOME = "home"
     const val PLAYLISTS = "playlists"
     const val EDITOR = "editor?${SourceEditorViewModel.ARG_SOURCE_ID}={${SourceEditorViewModel.ARG_SOURCE_ID}}"
-    const val PLAYER = "player/{${PlayerViewModel.ARG_CHANNEL_ID}}"
+    const val PLAYER = "player/{${PlayerViewModel.ARG_CHANNEL_ID}}?${PlayerViewModel.ARG_RESUME}={${PlayerViewModel.ARG_RESUME}}" +
+        "&${PlayerViewModel.ARG_REPLAY_START}={${PlayerViewModel.ARG_REPLAY_START}}&${PlayerViewModel.ARG_REPLAY_STOP}={${PlayerViewModel.ARG_REPLAY_STOP}}"
     const val MOVIE = "movie/{$ARG_ITEM}"
     const val SERIES = "series/{$ARG_ITEM}"
     const val SETTINGS = "settings"
+    const val APPEARANCE = "appearance"
     const val PROXY = "proxy"
+    const val GROUPS = "groups/{$ARG_KIND}"
 
     fun startup(reload: Boolean = false) = "startup?${StartupViewModel.ARG_RELOAD}=$reload"
     fun editor(sourceId: Long? = null) = "editor?${SourceEditorViewModel.ARG_SOURCE_ID}=${sourceId ?: -1}"
-    fun player(channelId: Long) = "player/$channelId"
+    fun player(channelId: Long, resume: String = PlayerViewModel.RESUME_ASK) = "player/$channelId?${PlayerViewModel.ARG_RESUME}=$resume"
+
+    /** Programme passé d'une chaîne avec replay. */
+    fun replay(channelId: Long, startMillis: Long, stopMillis: Long) =
+        "player/$channelId?${PlayerViewModel.ARG_REPLAY_START}=$startMillis&${PlayerViewModel.ARG_REPLAY_STOP}=$stopMillis"
+    fun groups(kind: ContentKind) = "groups/${kind.name}"
     fun movie(channelId: Long) = "movie/$channelId"
     fun series(channelId: Long) = "series/$channelId"
 }
 
 private const val ARG_ITEM = "itemId"
+private const val ARG_KIND = "kind"
 
 /**
  * Démarrage → accueil (ou bienvenue sans playlist). Changer de playlist active repasse par
@@ -49,6 +71,28 @@ private const val ARG_ITEM = "itemId"
 @Composable
 fun NexTvNavHost() {
     val navController = rememberNavController()
+    // Appui long sur « Retour » : retour direct à l'accueil, depuis n'importe quel écran.
+    val activity = LocalActivity.current as? MainActivity
+    DisposableEffect(activity, navController) {
+        activity?.onLongBack = { navController.popBackStack(Routes.HOME, inclusive = false) }
+        onDispose { activity?.onLongBack = null }
+    }
+    // Playlist transmise par adb : éditeur prérempli, après l'écran de démarrage (qui remplace la pile).
+    val container = appContainer()
+    val playlistImport by container.playlistImport.collectAsState()
+    LaunchedEffect(playlistImport) {
+        if (playlistImport == null) return@LaunchedEffect
+        navController.currentBackStackEntryFlow.first { it.destination.route != Routes.STARTUP }
+        navController.navigate(Routes.editor())
+    }
+    AppNavHost(navController)
+}
+
+
+@Composable
+private fun AppNavHost(navController: NavHostController) {
+    val container = appContainer()
+    val scope = rememberCoroutineScope()
     NavHost(navController = navController, startDestination = Routes.STARTUP) {
         composable(
             Routes.STARTUP,
@@ -60,7 +104,11 @@ fun NexTvNavHost() {
             ),
         ) {
             StartupScreen(
-                onHome = { navController.restartAt(Routes.HOME) },
+                onHome = {
+                    navController.restartAt(Routes.HOME)
+                    // Réglage « Démarrer sur la dernière chaîne » : lecture directe, l'accueil reste derrière.
+                    scope.launch { container.lastChannelToResume()?.let { navController.navigate(Routes.player(it)) } }
+                },
                 onWelcome = { navController.restartAt(Routes.WELCOME) },
                 onChoosePlaylist = { navController.navigate(Routes.PLAYLISTS) },
             )
@@ -74,6 +122,8 @@ fun NexTvNavHost() {
                 onMovie = { navController.navigate(Routes.movie(it)) },
                 onSeries = { navController.navigate(Routes.series(it)) },
                 onSettings = { navController.navigate(Routes.SETTINGS) },
+                onResume = { navController.navigate(Routes.player(it, PlayerViewModel.RESUME_YES)) },
+                onReplay = { channelId, start, stop -> navController.navigate(Routes.replay(channelId, start, stop)) },
             )
         }
         composable(
@@ -85,6 +135,8 @@ fun NexTvNavHost() {
                 kind = ContentKind.MOVIE,
                 onPlay = { navController.navigate(Routes.player(it)) },
                 onBack = { navController.popBackStack() },
+                onResume = { navController.navigate(Routes.player(it, PlayerViewModel.RESUME_YES)) },
+                onRestart = { navController.navigate(Routes.player(it, PlayerViewModel.RESUME_NO)) },
             )
         }
         composable(
@@ -96,20 +148,43 @@ fun NexTvNavHost() {
                 kind = ContentKind.SERIES,
                 onPlay = { navController.navigate(Routes.player(it)) },
                 onBack = { navController.popBackStack() },
+                onResume = { navController.navigate(Routes.player(it, PlayerViewModel.RESUME_YES)) },
+                onRestart = { navController.navigate(Routes.player(it, PlayerViewModel.RESUME_NO)) },
             )
         }
         composable(
             Routes.PLAYER,
-            arguments = listOf(navArgument(PlayerViewModel.ARG_CHANNEL_ID) { type = NavType.LongType }),
+            arguments = listOf(
+                navArgument(PlayerViewModel.ARG_CHANNEL_ID) { type = NavType.LongType },
+                navArgument(PlayerViewModel.ARG_RESUME) {
+                    type = NavType.StringType
+                    defaultValue = PlayerViewModel.RESUME_ASK
+                },
+                navArgument(PlayerViewModel.ARG_REPLAY_START) {
+                    type = NavType.LongType
+                    defaultValue = 0L
+                },
+                navArgument(PlayerViewModel.ARG_REPLAY_STOP) {
+                    type = NavType.LongType
+                    defaultValue = 0L
+                },
+            ),
         ) {
-            PlayerScreen(onBack = { navController.popBackStack() })
+            // Interface sur l'image : toujours sombre, même avec une palette claire.
+            VideoTheme { PlayerScreen(onBack = { navController.popBackStack() }) }
         }
         composable(Routes.SETTINGS) {
             SettingsScreen(
                 onBack = { navController.popBackStack() },
                 onPlaylists = { navController.navigate(Routes.PLAYLISTS) },
                 onProxy = { navController.navigate(Routes.PROXY) },
+                onGroups = { navController.navigate(Routes.groups(it)) },
+                onRestored = { navController.restartAt(Routes.startup(reload = true)) },
+                onAppearance = { navController.navigate(Routes.APPEARANCE) },
             )
+        }
+        composable(Routes.APPEARANCE) {
+            AppearanceScreen(onBack = { navController.popBackStack() })
         }
         composable(Routes.PLAYLISTS) {
             SourcesScreen(
@@ -135,6 +210,10 @@ fun NexTvNavHost() {
         }
         composable(Routes.PROXY) {
             ProxySettingsScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Routes.GROUPS, arguments = listOf(navArgument(ARG_KIND) { type = NavType.StringType })) { entry ->
+            val kind = ContentKind.entries.firstOrNull { it.name == entry.arguments?.getString(ARG_KIND) } ?: ContentKind.LIVE
+            ChannelGroupsScreen(kind = kind, onBack = { navController.popBackStack() })
         }
     }
 }

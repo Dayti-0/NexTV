@@ -40,14 +40,42 @@ class QualitySwitcherTest {
     }
 
     @Test
-    fun `persistent buffering steps down`() {
+    fun `a slow start steps down after the start allowance`() {
         val switcher = switcher()
         switcher.onBufferingStarted()
         now += 5_000
         assertEquals(QualitySwitcher.Decision.Stay, switcher.evaluate(null))
 
-        now += 8_000
+        now += 3_000
         assertEquals(QualitySwitcher.Decision.Switch(hd, QualitySwitcher.Reason.BUFFERING), switcher.evaluate(null))
+    }
+
+    @Test
+    fun `a stall during playback steps down within seconds`() {
+        val switcher = switcher()
+        switcher.onBufferingStarted()
+        now += 2_000
+        switcher.onReady()
+        now += 60_000
+
+        switcher.onBufferingStarted()
+        now += 2_000
+        assertEquals(QualitySwitcher.Decision.Stay, switcher.evaluate(null))
+        now += 1_000
+        assertEquals(QualitySwitcher.Decision.Switch(hd, QualitySwitcher.Reason.BUFFERING), switcher.evaluate(null))
+    }
+
+    @Test
+    fun `the new version gets the start allowance again`() {
+        val switcher = switcher()
+        switcher.onReady()
+        switcher.onBufferingStarted()
+        now += 3_000
+        assertEquals(QualitySwitcher.Decision.Switch(hd, QualitySwitcher.Reason.BUFFERING), switcher.evaluate(null))
+
+        switcher.onBufferingStarted()
+        now += 5_000
+        assertEquals(QualitySwitcher.Decision.Stay, switcher.evaluate(null))
     }
 
     @Test
@@ -93,6 +121,58 @@ class QualitySwitcherTest {
     }
 
     @Test
+    fun `stable playback tries the better version even when the bandwidth cannot prove it`() {
+        // Direct MPEG-TS : le débit mesuré reste celui de la vidéo en cours (SD).
+        val switcher = switcher(initial = 3)
+        switcher.onReady()
+        now += 60_000
+        assertEquals(QualitySwitcher.Decision.Stay, switcher.evaluate(2_500_000))
+
+        now += 30_000
+        assertEquals(QualitySwitcher.Decision.Switch(hd, QualitySwitcher.Reason.UPGRADE), switcher.evaluate(2_500_000))
+        switcher.onReady()
+        now += 90_000
+        assertEquals(QualitySwitcher.Decision.Switch(fhd, QualitySwitcher.Reason.UPGRADE), switcher.evaluate(5_000_000))
+    }
+
+    @Test
+    fun `a trial that does not start goes back to the version that worked, then waits longer`() {
+        val switcher = switcher(initial = 3)
+        switcher.onReady()
+        now += 90_000
+        assertEquals(QualitySwitcher.Decision.Switch(hd, QualitySwitcher.Reason.UPGRADE), switcher.evaluate(null))
+
+        switcher.onBufferingStarted()
+        now += 4_000
+        assertEquals(QualitySwitcher.Decision.Stay, switcher.evaluate(null))
+        now += 1_000
+        assertEquals(QualitySwitcher.Decision.Switch(sd, QualitySwitcher.Reason.BUFFERING), switcher.evaluate(null))
+
+        // HD en délai de grâce (5 min) : pas de nouvel essai avant.
+        switcher.onReady()
+        now += 3 * 60_000
+        assertEquals(QualitySwitcher.Decision.Stay, switcher.evaluate(null))
+        now += 2 * 60_000
+        assertEquals(QualitySwitcher.Decision.Switch(hd, QualitySwitcher.Reason.UPGRADE), switcher.evaluate(null))
+    }
+
+    @Test
+    fun `an error during a trial goes back to the version that worked`() {
+        val switcher = switcher(initial = 3)
+        switcher.onReady()
+        now += 90_000
+        assertEquals(QualitySwitcher.Decision.Switch(hd, QualitySwitcher.Reason.UPGRADE), switcher.evaluate(null))
+        assertEquals(QualitySwitcher.Decision.Switch(sd, QualitySwitcher.Reason.ERROR), switcher.onError())
+    }
+
+    @Test
+    fun `no trial before the version has played`() {
+        val switcher = switcher(initial = 3)
+        now += 10 * 60_000
+        assertEquals(QualitySwitcher.Decision.Stay, switcher.evaluate(null))
+    }
+
+    @Test
     fun `disabled switching never changes quality`() {
         val switcher = switcher(enabled = false)
         switcher.onBufferingStarted()
@@ -107,5 +187,54 @@ class QualitySwitcherTest {
     fun `single version is not adaptive`() {
         assertFalse(switcher(options = listOf(fhd)).isAdaptive)
         assertTrue(switcher().isAdaptive)
+    }
+
+    @Test
+    fun `too many dropped frames steps down to a lower quality and never comes back`() {
+        val uhd = QualityOption(5, StreamQuality.UHD)
+        val uhdBackup = QualityOption(6, StreamQuality.UHD)
+        val switcher = switcher(initial = 5, options = listOf(uhd, uhdBackup, fhd))
+
+        assertEquals(QualitySwitcher.Decision.Stay, switcher.onDroppedFrames(20))
+        now += 2_000
+        // Une autre version 4K poserait le même problème : passage direct en FHD.
+        assertEquals(QualitySwitcher.Decision.Switch(fhd, QualitySwitcher.Reason.DECODER), switcher.onDroppedFrames(20))
+
+        now += 600_000
+        assertEquals(QualitySwitcher.Decision.Stay, switcher.evaluate(bandwidthBps = 200_000_000))
+    }
+
+    @Test
+    fun `dropped frames spread over time are tolerated`() {
+        val switcher = switcher()
+        repeat(5) {
+            assertEquals(QualitySwitcher.Decision.Stay, switcher.onDroppedFrames(20))
+            now += 10_000
+        }
+    }
+
+    @Test
+    fun `dropped frames do nothing when automatic quality is off`() {
+        val switcher = switcher(enabled = false)
+
+        assertEquals(QualitySwitcher.Decision.Stay, switcher.onDroppedFrames(500))
+    }
+
+    @Test
+    fun `a limit seen on another channel starts below it`() {
+        val uhd = QualityOption(5, StreamQuality.UHD)
+        val switcher = QualitySwitcher(listOf(uhd, fhd, hd), 5, clock = { now }, decoderCeilingRank = StreamQuality.UHD.rank)
+
+        assertEquals(fhd, switcher.current)
+        now += 600_000
+        assertEquals(QualitySwitcher.Decision.Stay, switcher.evaluate(bandwidthBps = 200_000_000))
+    }
+
+    @Test
+    fun `the limit is ignored when automatic quality is off`() {
+        val uhd = QualityOption(5, StreamQuality.UHD)
+        val switcher = QualitySwitcher(listOf(uhd, fhd), 5, enabled = false, clock = { now }, decoderCeilingRank = StreamQuality.UHD.rank)
+
+        assertEquals(uhd, switcher.current)
     }
 }

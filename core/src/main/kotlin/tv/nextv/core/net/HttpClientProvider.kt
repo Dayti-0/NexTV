@@ -2,12 +2,16 @@ package tv.nextv.core.net
 
 import okhttp3.Call
 import okhttp3.Callback
+import okhttp3.Dns
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Response
+import okhttp3.dnsoverhttps.DnsOverHttps
 import kotlinx.coroutines.suspendCancellableCoroutine
 import tv.nextv.core.log.Logger
 import java.io.IOException
+import java.net.InetAddress
 import java.net.Proxy
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
@@ -16,7 +20,8 @@ import kotlin.coroutines.resumeWithException
 
 /**
  * Fournit un [OkHttpClient] configuré par type de requête : délais, redirections, proxy
- * (selon [ProxySettings.scopes]) et authentification par origine.
+ * (selon [ProxySettings.scopes]), résolution des noms ([NetworkSettings.dns]) et
+ * authentification par origine.
  *
  * Tous les clients partagent le pool de connexions et le dispatcher de [baseClient].
  * Les clients sont recréés quand les réglages changent ([update]).
@@ -38,9 +43,13 @@ class HttpClientProvider(
 
     private val clients = ConcurrentHashMap<RequestPurpose, OkHttpClient>()
 
+    @Volatile
+    private var resolver: Dns? = null
+
     fun update(proxySettings: ProxySettings = this.proxySettings, networkSettings: NetworkSettings = this.networkSettings) {
         this.proxySettings = proxySettings
         this.networkSettings = networkSettings
+        resolver = null
         clients.clear()
     }
 
@@ -62,6 +71,7 @@ class HttpClientProvider(
             .followSslRedirects(false)
             .authenticator(ScopedCredentialsAuthenticator())
             .addInterceptor(RedirectInterceptor(network.maxRedirects))
+            .dns(resolver())
 
         if (proxy.appliesTo(purpose)) {
             builder.proxySelector(ConfiguredProxySelector.from(proxy))
@@ -74,6 +84,20 @@ class HttpClientProvider(
             builder.proxy(Proxy.NO_PROXY)
         }
         return builder.build()
+    }
+
+    /** Résolveur partagé par tous les clients, recréé quand le réglage change. */
+    private fun resolver(): Dns = resolver ?: buildResolver(networkSettings.dns).also { resolver = it }
+
+    private fun buildResolver(provider: DnsProvider): Dns {
+        val url = provider.dohUrl ?: return Dns.SYSTEM
+        logger.debug(TAG, "DNS sur HTTPS : $provider")
+        return DnsOverHttps.Builder()
+            // Le résolveur est joint directement par ses adresses IP, sans proxy.
+            .client(baseClient.newBuilder().proxy(Proxy.NO_PROXY).build())
+            .url(url.toHttpUrl())
+            .bootstrapDnsHosts(provider.addresses.map(InetAddress::getByName))
+            .build()
     }
 
     private companion object {

@@ -89,7 +89,7 @@ fun ProxySettingsContent(
         Column(Modifier.fillMaxSize().padding(padding)) {
             ScreenHeader(
                 title = stringResource(R.string.proxy_section),
-                modifier = Modifier.padding(start = window.horizontalPadding - 12.dp, end = window.horizontalPadding, top = 12.dp, bottom = 8.dp),
+                modifier = Modifier.padding(start = window.horizontalPadding - 12.dp, end = window.horizontalPadding, top = window.topPadding, bottom = 8.dp),
                 navigation = { IconAction(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back), onBack) },
                 actions = {
                     PillButton(stringResource(R.string.action_save), onSave, icon = Icons.Filled.Check, style = PillStyle.Primary, enabled = !state.loading)

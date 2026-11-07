@@ -29,8 +29,10 @@ interface PlaylistStore {
     /**
      * Remplace atomiquement les chaînes de la source. L'association EPG des chaînes
      * inchangées (même `tvg-id` et même nom) est conservée jusqu'au prochain import du guide.
+     *
+     * @param onSaved nombre de chaînes déjà enregistrées, appelé au fil de l'écriture (progression).
      */
-    suspend fun replaceChannels(sourceId: Long, channels: List<Channel>)
+    suspend fun replaceChannels(sourceId: Long, channels: List<Channel>, onSaved: (Int) -> Unit = {})
 
     suspend fun updateStatus(sourceId: Long, status: SourceStatus)
 
@@ -44,8 +46,12 @@ interface PlaylistStore {
 }
 
 interface EpgImportSession : ProgrammeSink {
-    /** @param mapping chaîne de la playlist (identifiant en base) → identifiant de chaîne XMLTV. */
-    suspend fun commit(mapping: Map<Long, String>)
+    /**
+     * @param mapping chaîne de la playlist (identifiant en base) → identifiant de chaîne XMLTV.
+     * @param guideOnlyChannels chaînes du guide sans chaîne de la playlist mais dont des matchs ont
+     * été importés (identifiant XMLTV → nom affiché).
+     */
+    suspend fun commit(mapping: Map<Long, String>, guideOnlyChannels: Map<String, String> = emptyMap())
 
     suspend fun abort()
 }

@@ -6,6 +6,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -13,15 +15,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -45,6 +48,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -56,11 +61,16 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import tv.nextv.app.R
 import tv.nextv.app.ui.common.appViewModel
 import tv.nextv.app.ui.common.describe
 import tv.nextv.app.ui.components.FocusSurface
+import tv.nextv.core.net.UserAgents
+import tv.nextv.app.ui.components.fieldKeyboardOptions
+import tv.nextv.app.ui.components.RemoteTextField
+import tv.nextv.app.ui.components.openKeyboardOnOk
 import tv.nextv.app.ui.components.IconAction
 import tv.nextv.app.ui.components.PillButton
 import tv.nextv.app.ui.components.PillStyle
@@ -121,6 +131,17 @@ fun SourceEditorContent(
     val resources = LocalContext.current.resources
     fun errorText(field: SourceInputField): String? = state.errors[field]?.let(resources::describe)
 
+    // Playlist transmise par adb : le bouton d'enregistrement est sélectionné, il reste à confirmer.
+    val saveFocus = remember { FocusRequester() }
+    LaunchedEffect(state.imported) {
+        if (!state.imported) return@LaunchedEffect
+        // Le bouton peut ne pas être encore placé à la première image.
+        repeat(5) {
+            if (runCatching { saveFocus.requestFocus() }.isSuccess) return@LaunchedEffect
+            delay(100)
+        }
+    }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -128,7 +149,7 @@ fun SourceEditorContent(
         Column(Modifier.fillMaxSize().padding(padding)) {
             ScreenHeader(
                 title = stringResource(if (state.isNew) R.string.editor_title_new else R.string.editor_title_edit),
-                modifier = Modifier.padding(start = window.horizontalPadding - 12.dp, end = window.horizontalPadding, top = 12.dp, bottom = 8.dp),
+                modifier = Modifier.padding(start = window.horizontalPadding - 12.dp, end = window.horizontalPadding, top = window.topPadding, bottom = 8.dp),
                 navigation = { IconAction(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back), onBack) },
                 actions = {
                     PillButton(
@@ -137,6 +158,7 @@ fun SourceEditorContent(
                         icon = Icons.Filled.Check,
                         style = PillStyle.Primary,
                         enabled = !state.saving && !state.loading,
+                        modifier = Modifier.focusRequester(saveFocus),
                     )
                 },
             )
@@ -161,14 +183,21 @@ fun SourceEditorContent(
                                     title = stringResource(R.string.editor_mode_url_short),
                                     subtitle = stringResource(R.string.editor_mode_url_hint),
                                     selected = state.mode == LocationMode.URL,
-                                    onClick = { onEdit { it.copy(mode = LocationMode.URL) } },
+                                    onClick = { onEdit { it.withMode(LocationMode.URL) } },
+                                )
+                                ChoiceTile(
+                                    icon = Icons.Filled.Person,
+                                    title = stringResource(R.string.editor_mode_xtream_short),
+                                    subtitle = stringResource(R.string.editor_mode_xtream_hint),
+                                    selected = state.mode == LocationMode.XTREAM,
+                                    onClick = { onEdit { it.withMode(LocationMode.XTREAM) } },
                                 )
                                 ChoiceTile(
                                     icon = NexTvIcons.Folder,
                                     title = stringResource(R.string.editor_mode_file_short),
                                     subtitle = stringResource(R.string.editor_mode_file_hint),
                                     selected = state.mode == LocationMode.FILE,
-                                    onClick = { onEdit { it.copy(mode = LocationMode.FILE) } },
+                                    onClick = { onEdit { it.withMode(LocationMode.FILE) } },
                                 )
                             }
                             when (state.mode) {
@@ -180,6 +209,12 @@ fun SourceEditorContent(
                                     error = errorText(SourceInputField.LOCATION),
                                     help = stringResource(R.string.editor_url_help),
                                     keyboardType = KeyboardType.Uri,
+                                )
+                                LocationMode.XTREAM -> XtreamFields(
+                                    state = state,
+                                    onEdit = onEdit,
+                                    serverError = errorText(SourceInputField.LOCATION),
+                                    usernameMissing = state.errors.containsKey(SourceInputField.USERNAME),
                                 )
                                 LocationMode.FILE -> DocumentField(
                                     document = state.document,
@@ -204,12 +239,27 @@ fun SourceEditorContent(
                                 icon = Icons.Filled.Lock,
                             ) {
                                 CredentialsFields(state, onEdit, errorText(SourceInputField.USERNAME))
+                                UserAgentFields(state, onEdit, errorText(SourceInputField.USER_AGENT))
+                            }
+                        }
+                        if (state.mode == LocationMode.XTREAM) {
+                            SectionCard(stringResource(R.string.editor_section_connection), icon = Icons.Filled.Lock) {
+                                UserAgentFields(state, onEdit, errorText(SourceInputField.USER_AGENT))
+                            }
+                        }
+                        if (state.mode != LocationMode.FILE) {
+                            SectionCard(
+                                stringResource(R.string.editor_section_mirrors),
+                                subtitle = stringResource(R.string.editor_mirrors_help),
+                                icon = NexTvIcons.Cloud,
+                            ) {
                                 NexTvTextField(
-                                    value = state.userAgent,
-                                    onValueChange = { value -> onEdit { it.copy(userAgent = value) } },
-                                    label = stringResource(R.string.editor_user_agent),
-                                    error = errorText(SourceInputField.USER_AGENT),
-                                    help = stringResource(R.string.editor_user_agent_help),
+                                    value = state.mirrors,
+                                    onValueChange = { value -> onEdit { it.copy(mirrors = value) } },
+                                    label = stringResource(R.string.editor_mirrors),
+                                    placeholder = "http://serveur2.com:8080, http://serveur3.net",
+                                    error = errorText(SourceInputField.MIRRORS),
+                                    keyboardType = KeyboardType.Uri,
                                 )
                             }
                         }
@@ -227,6 +277,106 @@ fun SourceEditorContent(
             }
         }
     }
+}
+
+private enum class UserAgentChoice { AUTO, VLC, BROWSER, CUSTOM }
+
+/** Identité annoncée au serveur : automatique, VLC, navigateur, ou saisie libre. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun UserAgentFields(state: EditorState, onEdit: ((EditorState) -> EditorState) -> Unit, error: String?) {
+    val choice = when {
+        state.customUserAgent -> UserAgentChoice.CUSTOM
+        state.userAgent.isBlank() -> UserAgentChoice.AUTO
+        state.userAgent == UserAgents.VLC -> UserAgentChoice.VLC
+        state.userAgent == UserAgents.BROWSER -> UserAgentChoice.BROWSER
+        else -> UserAgentChoice.CUSTOM
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(stringResource(R.string.editor_user_agent), style = MaterialTheme.typography.titleSmall)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            UserAgentChoice.entries.forEach { option ->
+                val label = when (option) {
+                    UserAgentChoice.AUTO -> R.string.editor_user_agent_auto
+                    UserAgentChoice.VLC -> R.string.editor_user_agent_vlc
+                    UserAgentChoice.BROWSER -> R.string.editor_user_agent_browser
+                    UserAgentChoice.CUSTOM -> R.string.editor_user_agent_custom
+                }
+                ChoiceChip(stringResource(label), selected = option == choice) {
+                    onEdit {
+                        when (option) {
+                            UserAgentChoice.AUTO -> it.copy(userAgent = "", customUserAgent = false)
+                            UserAgentChoice.VLC -> it.copy(userAgent = UserAgents.VLC, customUserAgent = false)
+                            UserAgentChoice.BROWSER -> it.copy(userAgent = UserAgents.BROWSER, customUserAgent = false)
+                            UserAgentChoice.CUSTOM -> it.copy(customUserAgent = true)
+                        }
+                    }
+                }
+            }
+        }
+        Text(stringResource(R.string.editor_user_agent_help), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (choice == UserAgentChoice.CUSTOM) {
+            NexTvTextField(
+                value = state.userAgent,
+                onValueChange = { value -> onEdit { it.copy(userAgent = value) } },
+                label = stringResource(R.string.editor_user_agent_custom_field),
+                error = error,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChoiceChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    FocusSurface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
+        focusedColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+        contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+        selected = selected,
+        focusScale = 1.05f,
+    ) {
+        Text(label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp))
+    }
+}
+
+/** Compte Xtream Codes : adresse du serveur, identifiant et mot de passe. */
+@Composable
+private fun XtreamFields(
+    state: EditorState,
+    onEdit: ((EditorState) -> EditorState) -> Unit,
+    serverError: String?,
+    usernameMissing: Boolean,
+) {
+    var showPassword by rememberSaveable { mutableStateOf(false) }
+    NexTvTextField(
+        value = state.server,
+        onValueChange = { value -> onEdit { it.copy(server = value) } },
+        label = stringResource(R.string.editor_xtream_server),
+        placeholder = "http://exemple.com:8080",
+        error = serverError,
+        help = stringResource(R.string.editor_xtream_server_help),
+        keyboardType = KeyboardType.Uri,
+    )
+    NexTvTextField(
+        value = state.xtreamUsername,
+        onValueChange = { value -> onEdit { it.copy(xtreamUsername = value) } },
+        label = stringResource(R.string.editor_xtream_username),
+        error = if (usernameMissing) stringResource(R.string.editor_xtream_username_missing) else null,
+    )
+    NexTvTextField(
+        value = state.xtreamPassword,
+        onValueChange = { value -> onEdit { it.copy(xtreamPassword = value) } },
+        label = stringResource(R.string.editor_password),
+        keyboardType = KeyboardType.Password,
+        visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+        trailing = {
+            TextButton(onClick = { showPassword = !showPassword }) {
+                Text(stringResource(if (showPassword) R.string.action_hide else R.string.action_show))
+            }
+        },
+    )
 }
 
 @Composable
@@ -361,21 +511,24 @@ fun NexTvTextField(
     visualTransformation: VisualTransformation = VisualTransformation.None,
     trailing: (@Composable () -> Unit)? = null,
 ) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        label = { Text(label) },
-        placeholder = placeholder?.let { text -> @Composable { Text(text) } },
-        singleLine = true,
-        isError = error != null,
-        supportingText = (error ?: help)?.let { text -> @Composable { Text(text) } },
-        keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-        visualTransformation = visualTransformation,
-        trailingIcon = trailing,
-        shape = MaterialTheme.shapes.medium,
-        colors = nexTvTextFieldColors(),
-        modifier = modifier.fillMaxWidth(),
-    )
+    RemoteTextField(modifier.fillMaxWidth()) { fieldModifier, interactionSource ->
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            label = { Text(label) },
+            placeholder = placeholder?.let { text -> @Composable { Text(text) } },
+            singleLine = true,
+            isError = error != null,
+            supportingText = (error ?: help)?.let { text -> @Composable { Text(text) } },
+            keyboardOptions = fieldKeyboardOptions(keyboardType),
+            visualTransformation = visualTransformation,
+            trailingIcon = trailing,
+            shape = MaterialTheme.shapes.medium,
+            colors = nexTvTextFieldColors(),
+            interactionSource = interactionSource,
+            modifier = fieldModifier.fillMaxWidth().openKeyboardOnOk(),
+        )
+    }
 }
 
 @Composable

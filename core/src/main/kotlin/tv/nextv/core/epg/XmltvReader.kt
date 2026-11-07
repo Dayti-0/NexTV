@@ -23,6 +23,10 @@ data class XmltvProgramme(
     val subtitle: String? = null,
     val description: String? = null,
     val category: String? = null,
+    /** Année de production (`<date>`), si le guide l'indique. */
+    val year: Int? = null,
+    /** Image du programme (`<icon src>`), si le guide en donne une. */
+    val iconUrl: String? = null,
 ) : XmltvItem
 
 /**
@@ -52,6 +56,12 @@ class XmltvReader(
     var skippedProgrammes: Int = 0
         private set
 
+    /**
+     * Chaînes dont les programmes sont lus (identifiant XMLTV tel qu'écrit dans le guide) ; les
+     * programmes des autres chaînes sont sautés sans lire leur contenu. `null` : tous sont lus.
+     */
+    var programmeFilter: ((String) -> Boolean)? = null
+
     /** @return l'élément suivant, ou `null` en fin de document. */
     fun next(): XmltvItem? {
         try {
@@ -70,7 +80,14 @@ class XmltvReader(
                         if (parser.depth != 2) continue
                         when (parser.name) {
                             "channel" -> readChannel()?.let { return it }
-                            "programme" -> readProgramme()?.let { return it } ?: skippedProgrammes++
+                            "programme" -> {
+                                val filter = programmeFilter
+                                if (filter != null && !filter(parser.getAttributeValue(null, "channel").orEmpty())) {
+                                    skipElement()
+                                    continue
+                                }
+                                readProgramme()?.let { return it } ?: skippedProgrammes++
+                            }
                             else -> skipElement()
                         }
                     }
@@ -105,13 +122,25 @@ class XmltvReader(
         var title: String? = null
         var subtitle: String? = null
         var description: String? = null
-        var category: String? = null
+        // Tous les genres (« Sport, Football ») : le premier seul est souvent trop vague.
+        val categories = mutableListOf<String>()
+        var year: Int? = null
+        var icon: String? = null
         forEachChild { name ->
             when (name) {
                 "title" -> readText().let { if (title.isNullOrEmpty()) title = it }
+                "icon" -> {
+                    icon = icon ?: parser.getAttributeValue(null, "src")?.trim()?.takeIf { it.startsWith("http") }
+                    skipElement()
+                }
                 "sub-title" -> readText().let { if (subtitle.isNullOrEmpty()) subtitle = it }
                 "desc" -> readText().let { if (description.isNullOrEmpty()) description = it }
-                "category" -> readText().let { if (category.isNullOrEmpty()) category = it }
+                // « Inconnu », « Unknown » : genre vide, rien à afficher.
+                "category" -> readText().takeIf { it.isNotEmpty() && it.lowercase() !in UNKNOWN_CATEGORIES }?.let { text ->
+                    if (categories.none { it.equals(text, ignoreCase = true) }) categories += text
+                }
+                // « 2019 », « 20190314 »… : seule une année plausible est retenue.
+                "date" -> readText().take(4).toIntOrNull()?.takeIf { it in 1880..2100 }?.let { year = it }
                 else -> skipElement()
             }
         }
@@ -125,7 +154,9 @@ class XmltvReader(
             title = finalTitle.take(MAX_TITLE_LENGTH),
             subtitle = subtitle?.takeIf { it.isNotEmpty() }?.take(MAX_TITLE_LENGTH),
             description = description?.takeIf { it.isNotEmpty() }?.take(MAX_DESCRIPTION_LENGTH),
-            category = category?.takeIf { it.isNotEmpty() }?.take(MAX_TITLE_LENGTH),
+            category = categories.joinToString(", ").takeIf { it.isNotEmpty() }?.take(MAX_TITLE_LENGTH),
+            year = year,
+            iconUrl = icon?.take(MAX_URL_LENGTH),
         )
     }
 
@@ -172,8 +203,12 @@ class XmltvReader(
     }
 
     private companion object {
+        /** Genres qui n'en sont pas. */
+        private val UNKNOWN_CATEGORIES = setOf("inconnu", "unknown", "non défini", "non defini", "n/a", "undefined", "autre", "other")
+
         const val FEATURE_RELAXED = "http://xmlpull.org/v1/doc/features.html#relaxed"
         const val MAX_TITLE_LENGTH = 300
         const val MAX_DESCRIPTION_LENGTH = 2000
+        const val MAX_URL_LENGTH = 500
     }
 }

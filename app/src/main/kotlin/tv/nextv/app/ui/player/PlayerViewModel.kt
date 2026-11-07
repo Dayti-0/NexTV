@@ -6,16 +6,10 @@ import androidx.annotation.OptIn
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.paging.Pager
-import androidx.paging.PagingConfig
 import androidx.paging.PagingData
-import androidx.paging.cachedIn
 import androidx.media3.common.PlaybackException
-import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.analytics.AnalyticsListener
-import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -24,10 +18,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.emptyFlow
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -36,56 +27,24 @@ import tv.nextv.app.R
 import tv.nextv.app.data.db.ChannelEntity
 import tv.nextv.app.data.db.ChannelListRow
 import tv.nextv.app.data.db.GroupRow
-import tv.nextv.app.data.db.HeaderCodec
+import tv.nextv.app.data.settings.AspectMode
 import tv.nextv.app.player.PlaybackRequest
+import tv.nextv.app.player.toStream
 import tv.nextv.app.player.describePlaybackError
 import tv.nextv.app.ui.common.describe
 import tv.nextv.app.ui.home.Category
+import tv.nextv.core.football.Broadcast
+import tv.nextv.core.football.BroadcastFinder
+import tv.nextv.core.football.FootballDataResult
+import tv.nextv.core.football.FootballMatches
+import tv.nextv.core.football.MatchStatus
 import tv.nextv.core.model.ContentKind
 import tv.nextv.core.model.SourceLocation
-import tv.nextv.core.model.StreamDescriptor
 import tv.nextv.core.model.StreamFormat
-import tv.nextv.core.model.StreamIssue
 import tv.nextv.core.model.StreamQuality
 import tv.nextv.core.model.StreamSupport
 import tv.nextv.core.net.RequestPurpose
-import tv.nextv.core.stream.QualityOption
-import tv.nextv.core.stream.QualitySwitcher
-
-/** Programme affiché dans le bandeau du lecteur. */
-data class PlayerProgramme(val title: String, val startMillis: Long, val stopMillis: Long)
-
-data class PlayerUiState(
-    val channelName: String = "",
-    val channelNumber: String? = null,
-    val logoUrl: String? = null,
-    val sourceName: String = "",
-    /** Chaîne en direct (bandeau, zapping, menu) ou film / épisode (commandes de lecture). */
-    val isLive: Boolean = true,
-    val buffering: Boolean = true,
-    val error: String? = null,
-    /** Limites connues du flux (pas de proxy pour RTSP/UDP…). */
-    val notices: List<String> = emptyList(),
-    val now: PlayerProgramme? = null,
-    val next: PlayerProgramme? = null,
-    /** Qualité de la version en cours de lecture (« FHD »…), si la playlist l'indique. */
-    val quality: String? = null,
-    /** Message après un changement automatique de qualité. */
-    val qualityNotice: String? = null,
-    /** Débit réellement mesuré sur les téléchargements du flux, en Mbit/s (absent avant la première mesure). */
-    val bandwidthMbps: Double? = null,
-    /** Incrémenté à chaque changement de chaîne : le bandeau se réaffiche. */
-    val channelVersion: Int = 0,
-)
-
-/** Menu latéral des chaînes, ouvert par « Retour » pendant la lecture. */
-data class ChannelMenuState(
-    val open: Boolean = false,
-    val category: Category = Category.All,
-    val currentChannelId: Long = 0,
-    /** Rang de la chaîne en cours dans la liste affichée (focus initial). */
-    val initialIndex: Int = 0,
-)
+import tv.nextv.core.source.Mirrors
 
 @OptIn(UnstableApi::class)
 @kotlin.OptIn(ExperimentalCoroutinesApi::class)
@@ -96,85 +55,104 @@ class PlayerViewModel(
 ) : ViewModel() {
 
     private var channelId: Long = checkNotNull(handle.get<Long>(ARG_CHANNEL_ID))
-    /** Chaîne affichée (meilleure version), base du zapping. */
-    private var channel: ChannelEntity? = null
-    /** Version effectivement lue (peut différer de [channel] après un changement de qualité). */
-    private var playing: ChannelEntity? = null
+
     private val resources = context.resources
+
+    /** Chaîne, version et flux en cours, partagés par les parties du lecteur. */
+    private val session = PlaybackSession()
 
     private val mutableState = MutableStateFlow(PlayerUiState())
     val state: StateFlow<PlayerUiState> = mutableState.asStateFlow()
 
-    private val mutablePlayer = MutableStateFlow<ExoPlayer?>(null)
-    val player: StateFlow<ExoPlayer?> = mutablePlayer.asStateFlow()
-
-    private val mutableMenu = MutableStateFlow(ChannelMenuState())
-    val menu: StateFlow<ChannelMenuState> = mutableMenu.asStateFlow()
-
     private val sourceId = MutableStateFlow<Long?>(null)
 
-    val menuGroups: StateFlow<List<GroupRow>> = sourceId.flatMapLatest { id ->
-        if (id == null) flowOf(emptyList()) else container.channelDao.observeGroups(id, ContentKind.LIVE.name)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    // Menu des chaînes (« Retour ») : catégories, liste, programme de la chaîne sélectionnée.
+    private val channelMenu = ChannelMenuController(container, viewModelScope, sourceId)
+    val menu: StateFlow<ChannelMenuState> = channelMenu.menu
+    val programmeSheet: StateFlow<ProgrammeSheetState?> = channelMenu.programmeSheet
+    val menuProgramme: StateFlow<MenuProgramme?> = channelMenu.menuProgramme
+    val menuGroups: StateFlow<List<GroupRow>> = channelMenu.groups
+    val menuChannels: Flow<PagingData<MenuChannel>> = channelMenu.channels
+    val menuFavorites: StateFlow<List<ChannelListRow>> = channelMenu.favorites
 
-    val menuChannels: Flow<PagingData<ChannelListRow>> = combine(sourceId, mutableMenu) { id, menu -> id to menu.category }
-        .flatMapLatest { (id, category) ->
-            if (id == null || category == Category.Favorites) {
-                emptyFlow()
-            } else {
-                Pager(PagingConfig(pageSize = 60, enablePlaceholders = false)) {
-                    container.channelDao.pageChannels(
-                        sourceId = id,
-                        filterGroup = if (category is Category.Group) 1 else 0,
-                        group = (category as? Category.Group)?.title.orEmpty(),
-                        query = "",
-                        now = System.currentTimeMillis(),
-                    )
-                }.flow
-            }
-        }
-        .cachedIn(viewModelScope)
+    /** Chaîne sélectionnée dans le menu : son programme s'affiche à côté. */
+    fun focusMenuChannel(row: ChannelListRow) = channelMenu.focus(row)
 
-    val menuFavorites: StateFlow<List<ChannelListRow>> = sourceId.flatMapLatest { id ->
-        if (id == null) flowOf(emptyList()) else container.channelDao.observeFavoriteChannels(id, System.currentTimeMillis())
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-
-    private var request: PlaybackRequest? = null
-    private var triedHlsFallback = false
     private var resumeOnStart = true
     private var multicastLock: WifiManager.MulticastLock? = null
     private var loadJob: Job? = null
-    private var switcher: QualitySwitcher? = null
-    private var autoQuality = true
-    private val bandwidthMeter: DefaultBandwidthMeter = container.playerFactory.newBandwidthMeter()
 
-    private val listener = object : Player.Listener {
-        override fun onPlaybackStateChanged(playbackState: Int) {
-            when (playbackState) {
-                Player.STATE_BUFFERING -> switcher?.onBufferingStarted()
-                Player.STATE_READY -> switcher?.onReady()
+    /** Format de l'image (réglage commun à toutes les lectures). */
+    val aspectMode: StateFlow<AspectMode> = container.settings.aspectMode
+        .stateIn(viewModelScope, SharingStarted.Eagerly, AspectMode.FIT)
+
+    /** Dernier serveur qui a répondu (playlist, racine) : les chaînes suivantes commencent par lui. */
+    private var workingServer: Pair<Long, String>? = null
+
+    // Lecteur ExoPlayer : lecture, pistes, infos techniques.
+    private val engine = PlayerEngine(
+        container = container,
+        scope = viewModelScope,
+        state = mutableState,
+        resources = resources,
+        events = object : PlayerEngine.Events {
+            override fun onBuffering() = quality.onBufferingStarted()
+            override fun onReady() {
+                quality.onReady()
+                rememberServer()
             }
-            mutableState.update { it.copy(buffering = playbackState == Player.STATE_BUFFERING) }
-        }
+            override fun onEnded() = this@PlayerViewModel.onEnded()
+            override fun onError(error: PlaybackException) = handleError(error)
+        },
+    )
+    val player: StateFlow<ExoPlayer?> = engine.player
 
-        override fun onPlayerError(error: PlaybackException) = handleError(error)
-    }
+    // Pause, différé, replay, sauts et avance rapide.
+    private val delayed = DelayedPlaybackController(
+        container = container,
+        context = context,
+        scope = viewModelScope,
+        state = mutableState,
+        session = session,
+        engine = engine,
+        handle = handle,
+        host = object : DelayedPlaybackController.Host {
+            override fun start(forceHls: Boolean) = this@PlayerViewModel.start(forceHls)
+            override fun reload() = load(channelId)
+            override suspend fun refreshProgrammes() = this@PlayerViewModel.refreshProgrammes()
+            override fun showPlaylist(sourceId: Long) {
+                this@PlayerViewModel.sourceId.value = sourceId
+            }
+        },
+    )
 
-    private val analytics = object : AnalyticsListener {
-        override fun onBandwidthEstimate(
-            eventTime: AnalyticsListener.EventTime,
-            totalLoadTimeMs: Int,
-            totalBytesLoaded: Long,
-            bitrateEstimate: Long,
-        ) {
-            mutableState.update { it.copy(bandwidthMbps = bitrateEstimate / 1_000_000.0) }
-        }
-    }
+    // Qualité automatique (versions SD, HD, FHD, 4K d'une même chaîne).
+    private val quality = AutoQualityController(
+        container = container,
+        scope = viewModelScope,
+        state = mutableState,
+        session = session,
+        resources = resources,
+        host = object : AutoQualityController.Host {
+            override suspend fun playVariant(variant: ChannelEntity, notice: String) = this@PlayerViewModel.playVariant(variant, notice)
+        },
+    )
+
+    // Reprise de lecture des films et épisodes.
+    private val resume = ResumeController(
+        container = container,
+        scope = viewModelScope,
+        state = mutableState,
+        session = session,
+        initialMode = handle.get<String>(ARG_RESUME) ?: RESUME_ASK,
+        player = { engine.current },
+        host = object : ResumeController.Host {
+            override suspend fun playVariant(variant: ChannelEntity) = this@PlayerViewModel.playVariant(variant, notice = null)
+            override fun load(id: Long) = this@PlayerViewModel.load(id)
+        },
+    )
 
     init {
-        viewModelScope.launch {
-            container.settings.autoQuality.collect { autoQuality = it }
-        }
         load(channelId)
         viewModelScope.launch {
             while (true) {
@@ -182,55 +160,91 @@ class PlayerViewModel(
                 delay(PROGRAMME_REFRESH_MILLIS)
             }
         }
-        // Surveillance de la lecture : mise en mémoire tampon prolongée, retour à une meilleure qualité.
+        // Surveillance de la lecture (2 fois par seconde) : blocage, images perdues, retour à une meilleure qualité.
         viewModelScope.launch {
             while (true) {
                 delay(QUALITY_CHECK_MILLIS)
-                val estimate = state.value.bandwidthMbps?.let { (it * 1_000_000).toLong() }
-                val decision = switcher?.evaluate(estimate)
-                if (decision is QualitySwitcher.Decision.Switch) switchQuality(decision)
+                delayed.updateWatchedAt()
+                val adMuted = engine.adVolume.enabled && engine.adVolume.attenuating
+                if (state.value.adMuted != adMuted) mutableState.update { it.copy(adMuted = adMuted) }
+                val dropped = engine.newDroppedFrames()
+                // Pause ou différé : changer de version ramènerait au direct.
+                if (delayed.recording || state.value.paused || state.value.liveDelayMs > 0) continue
+                quality.check(dropped)
             }
+        }
+        // Position des films et épisodes, pour la reprise de lecture.
+        viewModelScope.launch {
+            while (true) {
+                delay(PROGRESS_SAVE_MILLIS)
+                resume.save()
+            }
+        }
+    }
+
+    fun selectAudio(choice: TrackChoice) = engine.selectAudio(choice)
+
+    /** [choice] `null` : sous-titres désactivés. */
+    fun selectSubtitles(choice: TrackChoice?) = engine.selectSubtitles(choice)
+
+    fun setLowerAdVolume(enabled: Boolean) {
+        viewModelScope.launch { container.settings.setLowerAdVolume(enabled) }
+    }
+
+    fun setAspectMode(mode: AspectMode) {
+        viewModelScope.launch { container.settings.setAspectMode(mode) }
+    }
+
+    /** Chaîne regardée juste avant celle-ci (touche « chaîne précédente », ⏪). */
+    fun previousChannel() {
+        val current = session.listed ?: return
+        if (current.kind != ContentKind.LIVE.name) return
+        viewModelScope.launch {
+            val key = container.settings.recentChannels(current.sourceId).first().firstOrNull { it != current.itemKey } ?: return@launch
+            val id = container.channelDao.primaryIdByKey(current.sourceId, key) ?: return@launch
+            load(id)
         }
     }
 
     /** Chaîne suivante (+1) ou précédente (-1) de la playlist, en boucle. */
     fun zap(direction: Int) {
-        val current = channel ?: return
+        val current = session.listed ?: return
         if (current.kind != ContentKind.LIVE.name) return
         viewModelScope.launch {
             val dao = container.channelDao
+            // Ordre de la liste « Toutes » : depuis la place de la chaîne en cours dans cette liste.
+            val position = current.variantKey.takeIf { it.isNotEmpty() }?.let { dao.listedPosition(current.sourceId, it) } ?: current.position
             val target = if (direction > 0) {
-                dao.nextChannelId(current.sourceId, current.position) ?: dao.nextChannelId(current.sourceId, -1)
+                dao.nextChannelId(current.sourceId, position) ?: dao.nextChannelId(current.sourceId, -1)
             } else {
-                dao.previousChannelId(current.sourceId, current.position) ?: dao.previousChannelId(current.sourceId, Int.MAX_VALUE)
+                dao.previousChannelId(current.sourceId, position) ?: dao.previousChannelId(current.sourceId, Int.MAX_VALUE)
             }
             if (target != null && target != current.id) load(target)
         }
     }
 
     fun openMenu() {
-        val current = channel ?: return
-        viewModelScope.launch {
-            val category = Category.Group(current.groupTitle.orEmpty())
-            val index = container.channelDao.indexInList(current.sourceId, 1, category.title, current.position)
-            mutableMenu.value = ChannelMenuState(open = true, category = category, currentChannelId = current.id, initialIndex = index)
-        }
+        val current = session.listed ?: return
+        channelMenu.open(current)
     }
 
-    fun closeMenu() {
-        mutableMenu.update { it.copy(open = false) }
-    }
+    fun closeMenu() = channelMenu.close()
 
-    fun selectMenuCategory(category: Category) {
-        mutableMenu.update { it.copy(category = category, initialIndex = 0) }
-    }
+    fun selectMenuCategory(category: Category) = channelMenu.selectCategory(category)
+
+    /** Programme en cours (ou le prochain) d'une chaîne du menu, avec sa description. */
+    fun showProgramme(row: ChannelListRow) = channelMenu.showProgramme(row)
+
+    fun hideProgramme() = channelMenu.hideProgramme()
 
     fun playFromMenu(id: Long) {
         closeMenu()
-        if (id != channel?.id) load(id)
+        if (id != session.listed?.id) load(id)
     }
 
     private fun load(id: Long) {
+        delayed.beforeLoad(otherChannel = id != channelId)
+        engine.startZapTimer()
         channelId = id
         handle[ARG_CHANNEL_ID] = id
         loadJob?.cancel()
@@ -241,26 +255,29 @@ class PlayerViewModel(
         val dao = container.channelDao
         val requested = dao.get(id)
         if (requested == null) {
-            releasePlayer()
+            engine.stop()
             mutableState.update { it.copy(buffering = false, error = resources.getString(R.string.player_channel_missing)) }
             return
         }
         val isLive = requested.kind == ContentKind.LIVE.name
         // Pour l'affichage et le zapping : la meilleure version de la chaîne.
         val primary = if (isLive && requested.variantKey.isNotEmpty()) dao.primaryOf(requested.sourceId, requested.variantKey) ?: requested else requested
-        channel = primary
+        session.channel = primary
+        session.listed = requested
+        val replayed = delayed.replay
+        if (replayed != null && isLive) {
+            // Programme encore en cours : « Depuis le début », avec le bandeau du direct. Pas de qualité automatique.
+            quality.reset()
+            delayed.playReplay(requested, primary, replayed)
+            return
+        }
+        delayed.playingLive()
+        // Chaînes récentes de l'accueil.
+        if (isLive) container.settings.addRecentChannel(primary.sourceId, primary.itemKey)
         sourceId.value = primary.sourceId
         val source = container.sourceRepository.getSource(primary.sourceId)
 
-        val variants = if (isLive && primary.variantKey.isNotEmpty()) dao.variants(primary.sourceId, primary.variantKey) else emptyList()
-        val options = variants.filter { it.streamSupport != StreamSupport.UNSUPPORTED.name }
-            .map { QualityOption(it.id, StreamQuality.entries.firstOrNull { q -> q.name == it.quality }) }
-        val startId = if (options.any { it.channelId == requested.id }) requested.id else options.firstOrNull()?.channelId ?: requested.id
-        switcher = if (options.size > 1) {
-            QualitySwitcher(options, startId, enabled = autoQuality, clock = System::currentTimeMillis)
-        } else {
-            null
-        }
+        val startId = quality.prepare(requested, primary, isLive)
 
         mutableState.update {
             it.copy(
@@ -271,6 +288,7 @@ class PlayerViewModel(
                 isLive = isLive,
                 now = null,
                 next = null,
+                match = null,
                 error = null,
                 qualityNotice = null,
                 buffering = true,
@@ -278,13 +296,23 @@ class PlayerViewModel(
             )
         }
         refreshProgrammes()
-        val variant = if (startId == requested.id) requested else dao.get(startId) ?: requested
+        if (!isLive) mutableState.update { it.copy(vod = resume.vodInfo(requested), upNext = null) }
+        if (isLive) session.startPositionMs = 0
+        if (!isLive && resume.handle(requested)) {
+            // Question « reprendre / recommencer » : pas d'image attendue avant la réponse.
+            if (state.value.resumePrompt != null) engine.cancelZapTimer()
+            return
+        }
+        val firstId = quality.currentChannelId ?: startId
+        val variant = if (firstId == requested.id) requested else dao.get(firstId) ?: requested
         playVariant(variant, notice = null)
     }
 
     /** Lance la lecture d'une version précise de la chaîne. */
     private suspend fun playVariant(variant: ChannelEntity, notice: String?) {
-        playing = variant
+        delayed.stopTimeshift()
+        session.playing = variant
+        quality.rememberWhenStable(variant)
         val stream = variant.toStream()
         mutableState.update {
             it.copy(
@@ -295,100 +323,147 @@ class PlayerViewModel(
             )
         }
         if (stream.support == StreamSupport.UNSUPPORTED) {
-            releasePlayer()
+            engine.stop()
             mutableState.update { it.copy(buffering = false, error = resources.getString(R.string.stream_unsupported)) }
             return
         }
         val source = container.sourceRepository.getSource(variant.sourceId)
-        request = PlaybackRequest(
-            stream = stream,
+        session.serverRoots = source?.let(::serverRootsOf).orEmpty()
+        val url = workingServer?.takeIf { it.first == variant.sourceId }
+            ?.let { (_, root) -> stream.url.takeIf { Mirrors.alternatives(it, session.serverRoots).isNotEmpty() }?.let { Mirrors.rewrite(it, root) } }
+            ?: stream.url
+        session.backupUrls = Mirrors.alternatives(url, session.serverRoots)
+        session.request = PlaybackRequest(
+            stream = stream.copy(url = url),
             userAgent = source?.userAgent,
             credentials = container.sourceRepository.credentialsFor(variant.sourceId),
             credentialsOrigin = (source?.location as? SourceLocation.Remote)?.url,
         )
         if (stream.format == StreamFormat.UDP) acquireMulticastLock() else releaseMulticastLock()
-        triedHlsFallback = false
+        session.triedHlsFallback = false
         start(forceHls = false)
     }
 
-    private fun switchQuality(decision: QualitySwitcher.Decision.Switch) {
-        val notice = resources.getString(
-            if (decision.reason == QualitySwitcher.Reason.UPGRADE) R.string.player_quality_up else R.string.player_quality_down,
-            decision.option.quality?.label ?: resources.getString(R.string.player_quality_unknown),
-        )
-        container.logger.info(TAG, "Qualité ${decision.reason} → ${decision.option.quality}")
-        viewModelScope.launch {
-            val variant = container.channelDao.get(decision.option.channelId) ?: return@launch
-            playVariant(variant, notice)
-        }
-    }
-
     private suspend fun refreshProgrammes() {
-        val current = channel ?: return
-        if (current.kind != ContentKind.LIVE.name) return
-        val now = System.currentTimeMillis()
+        val current = session.channel ?: return
+        if (current.kind != ContentKind.LIVE.name || delayed.replayingPast) return
+        // En différé : le programme à l'écran, pas celui du direct.
+        val shown = state.value
+        val now = System.currentTimeMillis() - shown.liveDelayMs - (shown.pausedAtMillis?.let { System.currentTimeMillis() - it } ?: 0)
         val upcoming = container.programmeDao.upcoming(current.id, now, limit = 2)
             .map { PlayerProgramme(it.title, it.startMillis, it.stopMillis) }
         val live = upcoming.firstOrNull()?.takeIf { it.startMillis <= now }
         mutableState.update { it.copy(now = live, next = upcoming.firstOrNull { p -> p != live }) }
+        val match = if (live != null) matchOnAir(current.id, now) else null
+        if (session.channel?.id == current.id) mutableState.update { it.copy(match = match) }
+    }
+
+    /**
+     * Match que diffuse le programme en cours de la chaîne, avec son score : celui de football-data.org
+     * (réponse partagée avec la section Foot), sinon l'affiche du guide (coupes d'Europe, titre sans
+     * compétition) avec le score en direct.
+     */
+    private suspend fun matchOnAir(channelId: Long, now: Long): PlayerMatch? {
+        val programme = container.programmeDao.upcoming(channelId, now, limit = 1).firstOrNull()?.takeIf { it.startMillis <= now } ?: return null
+        val result = container.footballData.matches(now, now + FOOTBALL_WINDOW_MILLIS) as? FootballDataResult.Success
+        val broadcast = Broadcast(Unit, programme.title, programme.subtitle, programme.category, programme.description, programme.startMillis, programme.stopMillis)
+        val match = result?.let { BroadcastFinder.assign(it.matches, listOf(broadcast)).keys.firstOrNull() }
+        if (match != null) {
+            val live = match.status == MatchStatus.LIVE
+            return PlayerMatch(
+                home = match.home.displayName,
+                away = match.away.displayName,
+                homeCrest = match.home.crestUrl,
+                awayCrest = match.away.crestUrl,
+                score = if (match.homeScore != null && match.awayScore != null && (live || match.status == MatchStatus.FINISHED)) {
+                    "${match.homeScore} – ${match.awayScore}"
+                } else {
+                    null
+                },
+                live = live,
+                clock = match.clock.takeIf { live },
+                halfTime = live && match.halfTime,
+            )
+        }
+        val fixture = FootballMatches.fixtureOf(programme.title, programme.subtitle, programme.category, programme.description)
+        val (home, away) = fixture?.let { it.home to it.away }
+            ?: FootballMatches.teamsOf(programme.title, programme.subtitle, programme.category)
+            ?: return null
+        val score = container.liveScores.find(fixture?.competition, home, away, programme.startMillis, programme.stopMillis)
+            ?.takeIf { it.inPlay || it.finished }
+        val crest = result?.let { BroadcastFinder.crests(it.matches.flatMap { scheduled -> listOf(scheduled.home, scheduled.away) }) }
+        return PlayerMatch(
+            home = home,
+            away = away,
+            homeCrest = crest?.invoke(home),
+            awayCrest = crest?.invoke(away),
+            score = score?.let { if (it.homeScore != null && it.awayScore != null) "${it.homeScore} – ${it.awayScore}" else null },
+            live = score?.inPlay == true,
+            clock = score?.clock,
+            halfTime = score?.halfTime == true,
+        )
     }
 
     private fun start(forceHls: Boolean) {
-        val playbackRequest = request ?: return
-        releasePlayer()
-        val player = container.playerFactory.create(playbackRequest, bandwidthMeter).apply {
-            addListener(listener)
-            addAnalyticsListener(analytics)
-            setMediaItem(container.playerFactory.mediaItem(playbackRequest.stream, forceHls))
-            playWhenReady = true
-            prepare()
-        }
-        mutablePlayer.value = player
-        mutableState.update { it.copy(error = null, buffering = true) }
+        val playbackRequest = session.request ?: return
+        session.playingAsHls = forceHls || playbackRequest.stream.format == StreamFormat.HLS
+        // Position de départ seulement pour une reprise : un direct démarre au plus près du direct.
+        engine.play(playbackRequest, forceHls, session.startPositionMs)
+        mutableState.update { it.copy(buffering = true) }
     }
 
     private fun handleError(error: PlaybackException) {
-        val player = mutablePlayer.value ?: return
-        val playbackRequest = request ?: return
-        if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
-            // Direct trop en retard sur la fenêtre disponible : on revient au direct.
-            player.seekToDefaultPosition()
-            player.prepare()
-            return
-        }
+        val player = engine.current ?: return
+        val playbackRequest = session.request ?: return
+        // Différé interrompu, replay HLS refusé, direct sorti de la fenêtre du serveur.
+        if (delayed.handleError(error, player)) return
         val format = playbackRequest.stream.format
-        if (!triedHlsFallback && format in HLS_FALLBACK_FORMATS && error.errorCode in HLS_FALLBACK_ERRORS) {
+        if (!session.triedHlsFallback && format in HLS_FALLBACK_FORMATS && error.errorCode in HLS_FALLBACK_ERRORS) {
             // Beaucoup d'URL IPTV sans extension servent en réalité du HLS.
-            triedHlsFallback = true
+            session.triedHlsFallback = true
             container.logger.info(TAG, "Format non reconnu, nouvelle tentative en HLS")
             start(forceHls = true)
             return
         }
-        container.logger.warn(TAG, "Lecture impossible (${error.errorCodeName}) : ${playbackRequest.stream.url}", error)
-        // Autre version de la même chaîne, de qualité inférieure, si elle existe.
-        val decision = switcher?.onError()
-        if (decision is QualitySwitcher.Decision.Switch) {
-            switchQuality(decision)
+        if (error.errorCode in SERVER_ERRORS && session.backupUrls.isNotEmpty()) {
+            // Serveur injoignable : même flux sur un serveur de secours de la playlist.
+            container.logger.info(TAG, "Serveur injoignable (${error.errorCodeName}), essai d'un serveur de secours")
+            session.request = playbackRequest.copy(stream = playbackRequest.stream.copy(url = session.backupUrls.first()))
+            session.backupUrls = session.backupUrls.drop(1)
+            mutableState.update { it.copy(qualityNotice = resources.getString(R.string.player_backup_server)) }
+            start(forceHls = session.playingAsHls)
             return
         }
+        container.logger.warn(TAG, "Lecture impossible (${error.errorCodeName}) : ${playbackRequest.stream.url}", error)
+        // Autre version de la même chaîne, de qualité inférieure, si elle existe.
+        if (quality.onError()) return
         val viaProxy = container.httpClients.usesProxy(RequestPurpose.STREAM) &&
             format != StreamFormat.RTSP && format != StreamFormat.UDP
         mutableState.update { it.copy(buffering = false, error = resources.describePlaybackError(error, viaProxy)) }
     }
 
+    /** Le flux joue : son serveur sert de départ aux chaînes suivantes de la playlist. */
+    private fun rememberServer() {
+        val variant = session.playing ?: return
+        if (session.serverRoots.isEmpty() || delayed.playingTimeshift) return
+        val url = session.request?.stream?.url ?: return
+        if (Mirrors.alternatives(url, session.serverRoots).isEmpty()) return
+        Mirrors.normalize(url)?.let { workingServer = variant.sourceId to it }
+    }
+
     fun retry() {
-        triedHlsFallback = false
-        val variant = playing
-        if (request == null || variant == null) {
+        session.triedHlsFallback = false
+        val variant = session.playing
+        if (session.request == null || variant == null) {
             load(channelId)
         } else {
             // Nouvel essai complet : toutes les versions redeviennent candidates.
-            load(channel?.id ?: variant.id)
+            load(session.listed?.id ?: variant.id)
         }
     }
 
     fun onStart() {
-        val player = mutablePlayer.value ?: return
+        val player = engine.current ?: return
         if (resumeOnStart) {
             // Flux en direct : on reprend au direct plutôt qu'à la position mise en pause.
             if (player.isCurrentMediaItemLive) player.seekToDefaultPosition()
@@ -397,27 +472,54 @@ class PlayerViewModel(
     }
 
     fun onStop() {
-        val player = mutablePlayer.value ?: return
+        val player = engine.current ?: return
         resumeOnStart = player.playWhenReady
         player.pause()
+        viewModelScope.launch { resume.save() }
     }
 
-    private fun ChannelEntity.toStream() = StreamDescriptor(
-        url = streamUrl,
-        headers = HeaderCodec.decode(streamHeaders),
-        format = StreamFormat.entries.firstOrNull { it.name == streamFormat } ?: StreamFormat.UNKNOWN,
-        support = StreamSupport.entries.firstOrNull { it.name == streamSupport } ?: StreamSupport.SUPPORTED,
-        issues = streamIssues.split(',').mapNotNull { name -> StreamIssue.entries.firstOrNull { it.name == name } }.toSet(),
-    )
+    /** Pause / lecture. En direct, la pause crée un différé ; le retard sur le direct est affiché. */
+    fun togglePause() = delayed.togglePause()
 
-    private fun releasePlayer() {
-        mutablePlayer.value?.let {
-            it.removeListener(listener)
-            it.removeAnalyticsListener(analytics)
-            it.release()
-        }
-        mutablePlayer.value = null
+    /** Retour au direct : fin du différé, de « Depuis le début » ou du replay. */
+    fun backToLive() = delayed.backToLive()
+
+    /** Replay ou « Depuis le début » : recule ou avance de [steps] pas (voir [DelayedPlaybackController.jump]). */
+    fun jump(steps: Int) = delayed.jump(steps)
+
+    /** ← → maintenu : avance ([direction] 1) ou retour (−1) rapide x2, à rappeler tant que la touche reste enfoncée. */
+    fun fastSeek(direction: Int) = delayed.fastSeek(direction)
+
+    /** Touche relâchée : lecture normale à l'endroit atteint. */
+    fun stopFastSeek() = delayed.stopFastSeek()
+
+    private fun onEnded() {
+        if (delayed.onEnded()) return
+        if (!state.value.isLive) resume.onVodEnded()
     }
+
+    /** Choix fait dans la question « reprendre / recommencer ». */
+    fun answerResume(resume: Boolean) = this.resume.answer(resume)
+
+    /** Film ou épisode : avance ou recul de [deltaMs] dans la vidéo. */
+    fun seekBy(deltaMs: Long) {
+        val player = engine.current ?: return
+        if (state.value.isLive) return
+        val duration = player.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
+        player.seekTo((player.currentPosition + deltaMs).coerceIn(0, duration))
+    }
+
+    /** Film ou épisode : position choisie sur la barre de progression. */
+    fun seekTo(positionMs: Long) {
+        val player = engine.current ?: return
+        if (state.value.isLive) return
+        player.seekTo(positionMs.coerceAtLeast(0))
+    }
+
+    /** Épisode suivant de la série, depuis son début. */
+    fun playNextEpisode() = resume.playNextEpisode()
+
+    fun dismissUpNext() = resume.dismissUpNext()
 
     private fun acquireMulticastLock() {
         if (multicastLock?.isHeld == true) return
@@ -434,19 +536,50 @@ class PlayerViewModel(
     }
 
     override fun onCleared() {
-        releasePlayer()
+        resume.saveBeforeClose()
+        delayed.stopTimeshift()
+        engine.release()
         releaseMulticastLock()
     }
 
     companion object {
         const val ARG_CHANNEL_ID = "channelId"
+        const val ARG_RESUME = "resume"
+
+        /** Replay : début et fin du programme passé (millisecondes), 0 pour une lecture normale. */
+        const val ARG_REPLAY_START = "replayStart"
+        const val ARG_REPLAY_STOP = "replayStop"
+
+        /** Demander s'il faut reprendre un film ou un épisode commencé. */
+        const val RESUME_ASK = "ask"
+
+        /** Reprendre sans demander (catégorie « Reprendre la lecture », bouton « Reprendre »). */
+        const val RESUME_YES = "yes"
+
+        /** Depuis le début, sans demander. */
+        const val RESUME_NO = "no"
+
+        private const val PROGRESS_SAVE_MILLIS = 10_000L
         private const val TAG = "Player"
         private const val PROGRAMME_REFRESH_MILLIS = 30_000L
-        private const val QUALITY_CHECK_MILLIS = 2_000L
+
+        /** Même période que la section Foot : la réponse de football-data.org est partagée. */
+        private const val FOOTBALL_WINDOW_MILLIS = 8 * 24 * 60 * 60_000L
+        private const val QUALITY_CHECK_MILLIS = 500L
         private val HLS_FALLBACK_FORMATS = setOf(StreamFormat.UNKNOWN, StreamFormat.PROGRESSIVE)
         private val HLS_FALLBACK_ERRORS = setOf(
             PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
             PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+        )
+
+        /** Erreurs qui peuvent venir du serveur (injoignable, en panne, bloqué) : un serveur de secours peut répondre. */
+        private val SERVER_ERRORS = setOf(
+            PlaybackException.ERROR_CODE_IO_UNSPECIFIED,
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+            PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE,
+            PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
+            PlaybackException.ERROR_CODE_TIMEOUT,
         )
     }
 }

@@ -239,6 +239,28 @@ class SourceRepositoryTest {
     }
 
     @Test
+    fun `backup servers are normalised and an invalid one is rejected`() = runBlocking {
+        val url = server.url("/list.m3u").toString()
+        val id = repository.add(
+            SourceInput(
+                name = "A",
+                location = SourceLocation.Remote(url),
+                mirrors = listOf(" r56mail.top ", "http://backup.example:8080/get.php?username=u", "r56mail.top", ""),
+            ),
+        )
+
+        assertEquals(listOf("http://r56mail.top", "http://backup.example:8080"), store.source(id).mirrors)
+        // Le dernier chargement a réussi (jamais tenté ici) : changer les secours ne recharge pas.
+        assertFalse(repository.update(id, SourceInput(name = "A", location = SourceLocation.Remote(url))))
+        assertEquals(emptyList<String>(), store.source(id).mirrors)
+
+        val error = runCatching {
+            runBlocking { repository.update(id, SourceInput(name = "A", location = SourceLocation.Remote(url), mirrors = listOf("pas une adresse"))) }
+        }.exceptionOrNull() as InvalidSourceInputException
+        assertEquals(listOf(SourceInputField.MIRRORS), error.problems.map { it.field })
+    }
+
+    @Test
     fun `delete removes credentials and releases unused local documents`() = runBlocking {
         val shared = SourceLocation.LocalDocument("content://docs/shared.m3u", "shared.m3u")
         val first = repository.add(SourceInput(name = "1", location = shared))
@@ -329,4 +351,37 @@ class SourceRepositoryTest {
 
     private fun MockWebServer.takeRequestPaths(): List<String> =
         generateSequence { takeRequest(10, java.util.concurrent.TimeUnit.MILLISECONDS) }.map { it.url.encodedPath }.toList()
+
+    @Test
+    fun `a user agent accepted after a refusal is kept for the source and its streams`() = runBlocking {
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse =
+                if (request.headers["User-Agent"].orEmpty().startsWith("VLC/")) {
+                    MockResponse.Builder().code(200).addHeader("Content-Type", "audio/x-mpegurl").body(playlist.replace("%EPG%", "")).build()
+                } else {
+                    MockResponse.Builder().code(403).build()
+                }
+        }
+        val id = repository.add(SourceInput(name = "IPTV", location = SourceLocation.Remote(server.url("/get.php").toString())))
+
+        val result = repository.refresh(id, includeEpg = false)
+
+        assertTrue(result.toString(), result is RefreshResult.Success)
+        assertEquals(RemoteContentOpener.FALLBACK_USER_AGENTS[0], store.source(id).userAgent)
+    }
+
+    @Test
+    fun `an address given as name never shows credentials`() = runBlocking {
+        val url = "http://www.r56mail.top/get.php?username=bob&password=hunter2&type=m3u_plus"
+        assertEquals("www.r56mail.top", SourceInputValidator.sanitizeName(url))
+        assertEquals("Ma playlist", SourceInputValidator.sanitizeName("  Ma playlist "))
+
+        val id = repository.add(SourceInput(name = url, location = SourceLocation.Remote(server.url("/get.php").toString())))
+        assertEquals("www.r56mail.top", store.source(id).name)
+
+        // Nom enregistré par une version précédente : nettoyé au démarrage.
+        store.updateSourceDefinition(store.source(id).copy(name = url))
+        repository.cleanStoredNames()
+        assertEquals("www.r56mail.top", store.source(id).name)
+    }
 }

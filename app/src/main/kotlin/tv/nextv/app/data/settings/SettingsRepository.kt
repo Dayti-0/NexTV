@@ -15,9 +15,14 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import tv.nextv.app.data.security.KeystoreSecretCipher
+import tv.nextv.app.ui.home.HomeLayout
+import tv.nextv.app.ui.theme.ThemeStyle
+import tv.nextv.core.backup.SettingBackup
+import tv.nextv.core.net.DnsProvider
 import tv.nextv.core.net.ProxyScope
 import tv.nextv.core.net.ProxySettings
 import tv.nextv.core.net.ProxyType
+import tv.nextv.core.stream.QualityTarget
 
 private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
@@ -67,6 +72,281 @@ class SettingsRepository(
         dataStore.edit { it[AUTO_QUALITY] = enabled }
     }
 
+    /** Qualité visée : la meilleure, au plus HD, ou l'économie (SD). */
+    val qualityTarget: Flow<QualityTarget> = dataStore.data
+        .map { prefs -> prefs[QUALITY_TARGET]?.let { name -> QualityTarget.entries.firstOrNull { it.name == name } } ?: QualityTarget.BEST }
+        .distinctUntilChanged()
+
+    suspend fun setQualityTarget(target: QualityTarget) {
+        dataStore.edit { it[QUALITY_TARGET] = target.name }
+    }
+
+    /**
+     * Décodeur vidéo choisi par type de flux (`video/hevc`, `video/avc`…) ; absent : choix automatique
+     * (matériel en priorité, repli sur un autre décodeur en cas d'échec).
+     */
+    val preferredDecoders: Flow<Map<String, String>> = dataStore.data
+        .map { prefs ->
+            prefs.asMap().mapNotNull { (key, value) ->
+                val mime = key.name.removePrefix(DECODER_PREFIX).takeIf { key.name.startsWith(DECODER_PREFIX) }
+                if (mime != null && value is String) mime to value else null
+            }.toMap()
+        }
+        .distinctUntilChanged()
+
+    suspend fun setPreferredDecoder(mimeType: String, decoderName: String?) {
+        val key = stringPreferencesKey(DECODER_PREFIX + mimeType)
+        dataStore.edit { prefs ->
+            if (decoderName != null) {
+                prefs[key] = decoderName
+            } else {
+                prefs.remove(key)
+            }
+        }
+    }
+
+    /** Vignettes par ligne des grilles de l'accueil (TV, tablette). */
+    val gridColumns: Flow<GridColumns> = dataStore.data
+        .map { prefs ->
+            GridColumns(
+                perRow = (prefs[TILES_PER_ROW] ?: GridColumns.DEFAULT_PER_ROW).coerceIn(GridColumns.PER_ROW),
+                channelList = prefs[CHANNEL_LIST] ?: false,
+                liveCenterMosaic = prefs[LIVE_CENTER_MOSAIC] ?: false,
+            )
+        }
+        .distinctUntilChanged()
+
+    suspend fun setGridColumns(columns: GridColumns) {
+        dataStore.edit { prefs ->
+            prefs[TILES_PER_ROW] = columns.perRow.coerceIn(GridColumns.PER_ROW)
+            prefs[CHANNEL_LIST] = columns.channelList
+            prefs[LIVE_CENTER_MOSAIC] = columns.liveCenterMosaic
+        }
+    }
+
+    /** Thème de l'interface. */
+    val themeStyle: Flow<ThemeStyle> = dataStore.data
+        .map { prefs -> prefs[THEME_STYLE]?.let { name -> ThemeStyle.entries.firstOrNull { it.name == name } } ?: ThemeStyle.NIGHT }
+        .distinctUntilChanged()
+
+    /** Palette choisie avant l'actuelle (« Revenir à … » de l'écran Apparence), `null` : aucune. */
+    val previousThemeStyle: Flow<ThemeStyle?> = dataStore.data
+        .map { prefs -> prefs[PREVIOUS_THEME_STYLE]?.let { name -> ThemeStyle.entries.firstOrNull { it.name == name } } }
+        .distinctUntilChanged()
+
+    /** Nouvelle palette ; l'ancienne devient la précédente. */
+    suspend fun setThemeStyle(style: ThemeStyle) {
+        dataStore.edit { prefs ->
+            val current = prefs[THEME_STYLE] ?: ThemeStyle.DEFAULT.name
+            if (current != style.name) prefs[PREVIOUS_THEME_STYLE] = current
+            prefs[THEME_STYLE] = style.name
+        }
+    }
+
+    /** Dernière catégorie du guide TV (« Ce soir », « L'essentiel », un groupe…), `null` : toutes les chaînes. */
+    val guideCategory: Flow<String?> = dataStore.data.map { it[GUIDE_CATEGORY] }.distinctUntilChanged()
+
+    suspend fun setGuideCategory(category: String?) {
+        dataStore.edit { prefs -> if (category == null) prefs.remove(GUIDE_CATEGORY) else prefs[GUIDE_CATEGORY] = category }
+    }
+
+    /** Version des règles d'import du dernier guide importé ([tv.nextv.core.epg.EpgImporter.VERSION]). */
+    val epgImportVersion: Flow<Int> = dataStore.data.map { it[EPG_IMPORT_VERSION] ?: 0 }.distinctUntilChanged()
+
+    suspend fun setEpgImportVersion(version: Int) {
+        dataStore.edit { it[EPG_IMPORT_VERSION] = version }
+    }
+
+    /** Version des règles de regroupement des chaînes de la dernière playlist lue ([tv.nextv.core.catalog.QualityParser.VERSION]). */
+    val catalogImportVersion: Flow<Int> = dataStore.data.map { it[CATALOG_IMPORT_VERSION] ?: 0 }.distinctUntilChanged()
+
+    suspend fun setCatalogImportVersion(version: Int) {
+        dataStore.edit { it[CATALOG_IMPORT_VERSION] = version }
+    }
+
+    /** Son de l'aperçu vidéo de l'accueil (faible par défaut). */
+    val previewVolume: Flow<PreviewVolume> = dataStore.data
+        .map { prefs -> prefs[PREVIEW_VOLUME]?.let { name -> PreviewVolume.entries.firstOrNull { it.name == name } } ?: PreviewVolume.LOW }
+        .distinctUntilChanged()
+
+    suspend fun setPreviewVolume(volume: PreviewVolume) {
+        dataStore.edit { it[PREVIEW_VOLUME] = volume.name }
+    }
+
+    /** Fréquence de mise à jour automatique de la playlist (12 h par défaut). */
+    val playlistRefresh: Flow<PlaylistRefresh> = dataStore.data
+        .map { prefs -> prefs[PLAYLIST_REFRESH]?.let { name -> PlaylistRefresh.entries.firstOrNull { it.name == name } } ?: PlaylistRefresh.HOURS_12 }
+        .distinctUntilChanged()
+
+    suspend fun setPlaylistRefresh(refresh: PlaylistRefresh) {
+        dataStore.edit { it[PLAYLIST_REFRESH] = refresh.name }
+    }
+
+    /** Interface de l'accueil : classique, streaming ou box TV. */
+    val homeLayout: Flow<HomeLayout> = dataStore.data
+        .map { prefs -> HomeLayout.fromStored(prefs[HOME_LAYOUT]) }
+        .distinctUntilChanged()
+
+    suspend fun setHomeLayout(layout: HomeLayout) {
+        dataStore.edit { it[HOME_LAYOUT] = layout.name }
+    }
+
+    /** Format de l'image dans le lecteur. */
+    val aspectMode: Flow<AspectMode> = dataStore.data
+        .map { prefs -> prefs[ASPECT_MODE]?.let { name -> AspectMode.entries.firstOrNull { it.name == name } } ?: AspectMode.FIT }
+        .distinctUntilChanged()
+
+    suspend fun setAspectMode(mode: AspectMode) {
+        dataStore.edit { it[ASPECT_MODE] = mode.name }
+    }
+
+    /** Langue audio choisie en dernier (« fr », « en »…), proposée en premier aux lectures suivantes. */
+    val audioLanguage: Flow<String?> = dataStore.data.map { it[AUDIO_LANGUAGE] }.distinctUntilChanged()
+
+    suspend fun setAudioLanguage(language: String?) {
+        dataStore.edit { prefs -> if (language != null) prefs[AUDIO_LANGUAGE] = language else prefs.remove(AUDIO_LANGUAGE) }
+    }
+
+    /** Langue des sous-titres choisie en dernier ; `null` : sous-titres désactivés. */
+    val subtitleLanguage: Flow<String?> = dataStore.data.map { it[SUBTITLE_LANGUAGE] }.distinctUntilChanged()
+
+    suspend fun setSubtitleLanguage(language: String?) {
+        dataStore.edit { prefs -> if (language != null) prefs[SUBTITLE_LANGUAGE] = language else prefs.remove(SUBTITLE_LANGUAGE) }
+    }
+
+    /** Son baissé pendant les publicités (repérées à leur niveau sonore). */
+    val lowerAdVolume: Flow<Boolean> = dataStore.data.map { it[LOWER_AD_VOLUME] ?: false }.distinctUntilChanged()
+
+    suspend fun setLowerAdVolume(enabled: Boolean) {
+        dataStore.edit { it[LOWER_AD_VOLUME] = enabled }
+    }
+
+    /** Chaînes 4K (UHD, HDR) masquées partout et jamais choisies : l'appareil ne les lit pas bien. */
+    val hideUhd: Flow<Boolean> = dataStore.data.map { it[HIDE_UHD] ?: false }.distinctUntilChanged()
+
+    suspend fun setHideUhd(enabled: Boolean) {
+        dataStore.edit { it[HIDE_UHD] = enabled }
+    }
+
+    /**
+     * Région de France 3 gardée dans les listes (« Alpes », clé de [tv.nextv.core.catalog.FranceRegions]) ;
+     * les autres éditions régionales sont masquées. `null` : toutes affichées.
+     */
+    val france3Region: Flow<String?> = dataStore.data.map { it[FRANCE3_REGION] }.distinctUntilChanged()
+
+    suspend fun setFrance3Region(region: String?) {
+        dataStore.edit { prefs -> if (region != null) prefs[FRANCE3_REGION] = region else prefs.remove(FRANCE3_REGION) }
+    }
+
+    /**
+     * Son Dolby (AC3, E-AC3) et DTS envoyé tel quel à l'ampli ou à la barre de son. Désactivé (par
+     * défaut), il est décodé par l'appareil : le son sort aussi sur un écran ou un moniteur qui ne
+     * sait pas le lire.
+     */
+    val audioPassthrough: Flow<Boolean> = dataStore.data.map { it[AUDIO_PASSTHROUGH] ?: false }.distinctUntilChanged()
+
+    suspend fun setAudioPassthrough(enabled: Boolean) {
+        dataStore.edit { it[AUDIO_PASSTHROUGH] = enabled }
+    }
+
+    /** Au lancement, lecture directe de la dernière chaîne regardée (comme une télévision). */
+    val startOnLastChannel: Flow<Boolean> = dataStore.data.map { it[START_ON_LAST_CHANNEL] ?: false }.distinctUntilChanged()
+
+    suspend fun setStartOnLastChannel(enabled: Boolean) {
+        dataStore.edit { it[START_ON_LAST_CHANNEL] = enabled }
+    }
+
+    /** Aperçu vidéo (sans le son) de la chaîne sélectionnée à l'accueil. */
+    val channelPreview: Flow<Boolean> = dataStore.data.map { it[CHANNEL_PREVIEW] ?: true }.distinctUntilChanged()
+
+    suspend fun setChannelPreview(enabled: Boolean) {
+        dataStore.edit { it[CHANNEL_PREVIEW] = enabled }
+    }
+
+    /** Chaînes regardées récemment dans une playlist (clés des chaînes, la plus récente en premier). */
+    fun recentChannels(sourceId: Long): Flow<List<String>> = dataStore.data
+        .map { prefs -> prefs[recentKey(sourceId)]?.split('\n')?.filter { it.isNotEmpty() }.orEmpty() }
+        .distinctUntilChanged()
+
+    suspend fun addRecentChannel(sourceId: Long, itemKey: String) {
+        val key = recentKey(sourceId)
+        dataStore.edit { prefs ->
+            val previous = prefs[key]?.split('\n')?.filter { it.isNotEmpty() && it != itemKey }.orEmpty()
+            prefs[key] = (listOf(itemKey) + previous).take(MAX_RECENT_CHANNELS).joinToString("\n")
+        }
+    }
+
+    private fun recentKey(sourceId: Long) = stringPreferencesKey(RECENT_PREFIX + sourceId)
+
+    /**
+     * Réglages transportables d'un appareil à l'autre (sauvegarde) : tous sauf les secrets chiffrés
+     * avec une clé de l'appareil, les décodeurs, et ce qui dépend des numéros de playlist ou de chaîne.
+     */
+    suspend fun exportPreferences(): List<SettingBackup> = dataStore.data.first().asMap()
+        .filterKeys { isPortable(it.name) }
+        .map { (key, value) -> SettingBackup(key.name, value) }
+
+    suspend fun importPreferences(values: List<SettingBackup>) {
+        dataStore.edit { prefs ->
+            for (setting in values) {
+                if (!isPortable(setting.key)) continue
+                when (val value = setting.value) {
+                    is Boolean -> prefs[booleanPreferencesKey(setting.key)] = value
+                    is Int -> prefs[intPreferencesKey(setting.key)] = value
+                    is Long -> prefs[longPreferencesKey(setting.key)] = value
+                    is String -> prefs[stringPreferencesKey(setting.key)] = value
+                    is Set<*> -> prefs[stringSetPreferencesKey(setting.key)] = value.filterIsInstance<String>().toSet()
+                }
+            }
+        }
+    }
+
+    private fun isPortable(name: String): Boolean =
+        name !in NOT_PORTABLE && NOT_PORTABLE_PREFIXES.none { name.startsWith(it) }
+
+    /** Équipes suivies dans la section Foot (noms donnés par football-data.org ou le guide). */
+    val favoriteTeams: Flow<Set<String>> = dataStore.data
+        .map { prefs -> prefs[FAVORITE_TEAMS]?.split('\n')?.filter { it.isNotEmpty() }?.toSet().orEmpty() }
+        .distinctUntilChanged()
+
+    suspend fun toggleFavoriteTeam(name: String) {
+        if (name.isBlank() || '\n' in name) return
+        dataStore.edit { prefs ->
+            val teams = prefs[FAVORITE_TEAMS]?.split('\n')?.filter { it.isNotEmpty() }.orEmpty()
+            prefs[FAVORITE_TEAMS] = (if (name in teams) teams - name else teams + name).joinToString("\n")
+        }
+    }
+
+    /**
+     * Qualité qui a joué sans problème pour chaque chaîne d'une playlist (clé de version → nom de
+     * [tv.nextv.core.model.StreamQuality]) : la lecture suivante commence directement par elle.
+     */
+    suspend fun workingQuality(sourceId: Long, variantKey: String): String? =
+        dataStore.data.first()[qualityKey(sourceId)]?.lineSequence()
+            ?.firstOrNull { it.substringBefore('\t') == variantKey }
+            ?.substringAfter('\t', "")
+            ?.takeIf { it.isNotEmpty() }
+
+    suspend fun rememberWorkingQuality(sourceId: Long, variantKey: String, quality: String) {
+        if (variantKey.isEmpty() || '\t' in variantKey || '\n' in variantKey) return
+        val key = qualityKey(sourceId)
+        dataStore.edit { prefs ->
+            val others = prefs[key]?.lineSequence()?.filter { it.isNotEmpty() && it.substringBefore('\t') != variantKey }?.toList().orEmpty()
+            prefs[key] = (listOf("$variantKey\t$quality") + others).take(MAX_REMEMBERED_QUALITIES).joinToString("\n")
+        }
+    }
+
+    private fun qualityKey(sourceId: Long) = stringPreferencesKey(QUALITY_PREFIX + sourceId)
+
+    /** Résolution des noms (DNS du système ou résolveur public en DNS sur HTTPS). */
+    val dnsProvider: Flow<DnsProvider> = dataStore.data
+        .map { prefs -> prefs[DNS_PROVIDER]?.let { name -> DnsProvider.entries.firstOrNull { it.name == name } } ?: DnsProvider.SYSTEM }
+        .distinctUntilChanged()
+
+    suspend fun setDnsProvider(provider: DnsProvider) {
+        dataStore.edit { it[DNS_PROVIDER] = provider.name }
+    }
+
     /** Clé TMDB saisie par l'utilisateur (chiffrée sur l'appareil). */
     val tmdbApiKey: Flow<String?> = dataStore.data
         .map { prefs -> prefs[TMDB_KEY]?.let(cipher::decrypt) }
@@ -79,6 +359,22 @@ class SettingsRepository(
                 prefs[TMDB_KEY] = encrypted
             } else {
                 prefs.remove(TMDB_KEY)
+            }
+        }
+    }
+
+    /** Clé football-data.org saisie par l'utilisateur (chiffrée sur l'appareil). */
+    val footballApiKey: Flow<String?> = dataStore.data
+        .map { prefs -> prefs[FOOTBALL_KEY]?.let(cipher::decrypt) }
+        .distinctUntilChanged()
+
+    suspend fun setFootballApiKey(key: String?) {
+        val encrypted = key?.trim()?.takeIf { it.isNotEmpty() }?.let(cipher::encrypt)
+        dataStore.edit { prefs ->
+            if (encrypted != null) {
+                prefs[FOOTBALL_KEY] = encrypted
+            } else {
+                prefs.remove(FOOTBALL_KEY)
             }
         }
     }
@@ -110,6 +406,60 @@ class SettingsRepository(
         val PROXY_BYPASS_LOCAL = booleanPreferencesKey("proxy_bypass_local")
         val ACTIVE_PLAYLIST = longPreferencesKey("active_playlist")
         val AUTO_QUALITY = booleanPreferencesKey("auto_quality")
+        val QUALITY_TARGET = stringPreferencesKey("quality_target")
         val TMDB_KEY = stringPreferencesKey("tmdb_key")
+        val FOOTBALL_KEY = stringPreferencesKey("football_key")
+        val TILES_PER_ROW = intPreferencesKey("tiles_per_row")
+        val DNS_PROVIDER = stringPreferencesKey("dns_provider")
+        val CHANNEL_PREVIEW = booleanPreferencesKey("channel_preview")
+        val ASPECT_MODE = stringPreferencesKey("aspect_mode")
+        val AUDIO_LANGUAGE = stringPreferencesKey("audio_language")
+        val SUBTITLE_LANGUAGE = stringPreferencesKey("subtitle_language")
+        val START_ON_LAST_CHANNEL = booleanPreferencesKey("start_on_last_channel")
+        val FAVORITE_TEAMS = stringPreferencesKey("favorite_teams")
+        val LOWER_AD_VOLUME = booleanPreferencesKey("lower_ad_volume")
+        val THEME_STYLE = stringPreferencesKey("theme_style")
+        val PREVIOUS_THEME_STYLE = stringPreferencesKey("previous_theme_style")
+        val HOME_LAYOUT = stringPreferencesKey("home_layout")
+        val PREVIEW_VOLUME = stringPreferencesKey("preview_volume")
+        val PLAYLIST_REFRESH = stringPreferencesKey("playlist_refresh")
+        val GUIDE_CATEGORY = stringPreferencesKey("guide_category")
+        val EPG_IMPORT_VERSION = intPreferencesKey("epg_import_version")
+        val CATALOG_IMPORT_VERSION = intPreferencesKey("catalog_import_version")
+        val CHANNEL_LIST = booleanPreferencesKey("channel_list")
+        val LIVE_CENTER_MOSAIC = booleanPreferencesKey("live_center_mosaic")
+        val HIDE_UHD = booleanPreferencesKey("hide_uhd")
+        val FRANCE3_REGION = stringPreferencesKey("france3_region")
+        val AUDIO_PASSTHROUGH = booleanPreferencesKey("audio_passthrough")
+
+        /** Réglages de la version 0.2.10 retirés depuis (rappels, code parental). */
+        val OBSOLETE = setOf("reminders", "parental_pin")
+
+        /** Secrets chiffrés pour cet appareil, playlist active (numéro local), réglages retirés. */
+        val NOT_PORTABLE = setOf(PROXY_CREDENTIALS, TMDB_KEY, FOOTBALL_KEY, ACTIVE_PLAYLIST, EPG_IMPORT_VERSION, CATALOG_IMPORT_VERSION).map { it.name }.toSet() + OBSOLETE
+        val NOT_PORTABLE_PREFIXES = listOf(DECODER_PREFIX, RECENT_PREFIX, QUALITY_PREFIX)
+        const val DECODER_PREFIX = "decoder_"
+        const val RECENT_PREFIX = "recent_channels_"
+        const val MAX_RECENT_CHANNELS = 30
+        const val QUALITY_PREFIX = "working_quality_"
+        const val MAX_REMEMBERED_QUALITIES = 300
+    }
+}
+
+/** Format de l'image : adaptée à l'écran (bandes noires), étirée, ou agrandie (bords coupés). */
+enum class AspectMode { FIT, FILL, ZOOM }
+
+/** Éléments par ligne des grilles de l'accueil sur TV et tablette (le téléphone garde sa disposition). */
+data class GridColumns(
+    /** Chaînes, films et séries par ligne : exactement ce nombre à l'écran (TV, tablette). */
+    val perRow: Int = DEFAULT_PER_ROW,
+    /** Chaînes en liste (logo, nom, programme en cours) plutôt qu'en mosaïque. */
+    val channelList: Boolean = false,
+    /** Live Center : chaînes en mosaïque de vignettes plutôt qu'en liste. */
+    val liveCenterMosaic: Boolean = false,
+) {
+    companion object {
+        val PER_ROW = 2..5
+        const val DEFAULT_PER_ROW = 4
     }
 }

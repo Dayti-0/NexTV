@@ -10,7 +10,8 @@ plugins {
     alias(libs.plugins.roborazzi)
 }
 
-// Clé de publication fournie par l'environnement (secrets CI) ; jamais versionnée.
+// Clé de publication fournie par l'environnement (CI) : déchiffrée à partir de
+// app/nextv-release.keystore.enc avec le secret NEXTV_KEY_PASSPHRASE, ou décodée des secrets.
 val releaseKeystorePath: String? = providers.environmentVariable("NEXTV_KEYSTORE_FILE").orNull
 
 android {
@@ -27,9 +28,24 @@ android {
         // Clé TMDB optionnelle fournie à la compilation (secret CI) ; l'utilisateur peut aussi la saisir.
         val tmdbKey = providers.environmentVariable("NEXTV_TMDB_API_KEY").orNull.orEmpty()
         buildConfigField("String", "TMDB_API_KEY", "\"${tmdbKey.replace("\"", "")}\"")
+        // Clé football-data.org optionnelle (secret CI) pour la section Foot ; elle peut aussi se saisir dans les réglages.
+        val footballKey = providers.environmentVariable("NEXTV_FOOTBALL_API_KEY").orNull.orEmpty()
+        buildConfigField("String", "FOOTBALL_API_KEY", "\"${footballKey.replace("\"", "")}\"")
+
+        // Dépôt GitHub dont les versions publiées servent de mises à jour (lecture anonyme : dépôt public).
+        val updateRepository = providers.gradleProperty("nextv.updateRepo").orNull ?: "Dayti-0/NexTV"
+        buildConfigField("String", "UPDATE_REPOSITORY", "\"${updateRepository.replace("\"", "")}\"")
     }
 
     signingConfigs {
+        // Clé de test fixe (dépôt privé) pour les versions de test et de debug : chaque version
+        // s'installe par-dessus la précédente, sans désinstaller ni perdre playlists et réglages.
+        getByName("debug") {
+            storeFile = file("nextv-test.keystore")
+            storePassword = "nextv-test"
+            keyAlias = "nextv-test"
+            keyPassword = "nextv-test"
+        }
         if (releaseKeystorePath != null) {
             create("release") {
                 storeFile = file(releaseKeystorePath)
@@ -45,7 +61,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Sans clé de publication, l'APK est signé avec la clé de debug : installable pour les tests.
+            // Sans clé de publication (secrets CI), l'APK est signé avec la clé de test du dépôt.
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
@@ -64,6 +80,8 @@ android {
         unitTests {
             // Robolectric rend les écrans avec les vraies ressources (captures d'écran Roborazzi).
             isIncludeAndroidResources = true
+            // Captures en 1920 × 1080 : la mémoire par défaut (512 Mo) ne suffit plus.
+            all { it.maxHeapSize = "2g" }
         }
     }
 
@@ -108,6 +126,8 @@ dependencies {
     implementation(libs.androidx.media3.exoplayer.rtsp)
     implementation(libs.androidx.media3.datasource.okhttp)
     implementation(libs.androidx.media3.ui)
+    // Son que l'appareil ne sait pas décoder (licence GPL v3, voir LICENSE).
+    implementation(libs.media3.ffmpeg.decoder)
 
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
@@ -127,6 +147,7 @@ dependencies {
     testImplementation(libs.roborazzi)
     testImplementation(libs.roborazzi.compose)
     testImplementation(libs.androidx.compose.ui.test.junit4)
+    testImplementation(libs.okhttp.mockwebserver)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
 

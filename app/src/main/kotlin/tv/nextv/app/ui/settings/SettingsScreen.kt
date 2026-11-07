@@ -1,5 +1,9 @@
 package tv.nextv.app.ui.settings
 
+import tv.nextv.app.ui.components.FadingBottom
+import android.content.ActivityNotFoundException
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -8,9 +12,13 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -18,55 +26,160 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import java.io.File
+import java.io.IOException
+import java.text.DateFormat
+import java.util.Date
+import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import tv.nextv.app.R
+import tv.nextv.app.data.settings.PlaylistRefresh
+import tv.nextv.app.data.settings.PreviewVolume
+import tv.nextv.app.data.update.UpdateFailure
+import tv.nextv.app.data.update.UpdateState
+import tv.nextv.app.player.VideoDecoders
 import tv.nextv.app.ui.common.appViewModel
 import tv.nextv.app.ui.common.describe
 import tv.nextv.app.ui.common.relativeTime
+import tv.nextv.app.ui.components.FocusSurface
 import tv.nextv.app.ui.components.IconAction
 import tv.nextv.app.ui.components.PillButton
 import tv.nextv.app.ui.components.PillStyle
 import tv.nextv.app.ui.components.ScreenHeader
+import tv.nextv.app.ui.components.ignoreHeldOk
 import tv.nextv.app.ui.components.rememberWindowInfo
 import tv.nextv.app.ui.editor.NexTvTextField
 import tv.nextv.app.ui.editor.SectionCard
 import tv.nextv.app.ui.editor.ToggleRow
+import tv.nextv.app.ui.home.HomeLayout
 import tv.nextv.app.ui.theme.NexTvColors
 import tv.nextv.app.ui.theme.NexTvIcons
+import tv.nextv.app.ui.theme.ThemeStyle
+import tv.nextv.core.backup.BackupFormatException
+import tv.nextv.core.catalog.FranceRegions
 import tv.nextv.core.epg.HttpEpgFeedProvider
+import tv.nextv.core.model.ContentKind
+import tv.nextv.core.net.DnsProvider
 import tv.nextv.core.repository.RefreshResult
+import tv.nextv.core.stream.QualityTarget
+import tv.nextv.core.update.AppRelease
 
+private const val BACKUP_FILE_NAME = "nextv-sauvegarde.json"
+
+/** [onRestored] : sauvegarde restaurée, la playlist active est à recharger. */
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onPlaylists: () -> Unit, onProxy: () -> Unit) {
+fun SettingsScreen(
+    onBack: () -> Unit,
+    onPlaylists: () -> Unit,
+    onProxy: () -> Unit,
+    onGroups: (ContentKind) -> Unit = {},
+    onRestored: () -> Unit = {},
+    onAppearance: () -> Unit = {},
+) {
     val viewModel = appViewModel { container, _ -> SettingsViewModel(container) }
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val resources = LocalContext.current.resources
+    val update by viewModel.update.collectAsStateWithLifecycle()
+    val account by viewModel.account.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val resources = context.resources
     val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+
+    // Sauvegarde : fichier choisi avec le sélecteur du système, sinon dans le dossier de l'application.
+    val backupFile = remember { File(context.getExternalFilesDir(null) ?: context.filesDir, BACKUP_FILE_NAME) }
+    fun saveBackup(where: String, write: (String) -> Unit) {
+        scope.launch {
+            val message = try {
+                val text = viewModel.exportBackup()
+                withContext(Dispatchers.IO) { write(text) }
+                resources.getString(R.string.settings_backup_saved, where)
+            } catch (e: IOException) {
+                resources.getString(R.string.settings_backup_failed)
+            } catch (e: SecurityException) {
+                resources.getString(R.string.settings_backup_failed)
+            }
+            snackbar.showSnackbar(message)
+        }
+    }
+    fun restoreBackup(read: () -> String) {
+        scope.launch {
+            val result = try {
+                viewModel.restoreBackup(withContext(Dispatchers.IO) { read() })
+            } catch (e: IOException) {
+                null
+            } catch (e: SecurityException) {
+                null
+            } catch (e: BackupFormatException) {
+                null
+            }
+            if (result == null) {
+                snackbar.showSnackbar(resources.getString(R.string.settings_restore_failed))
+            } else {
+                snackbar.showSnackbar(resources.getQuantityString(R.plurals.settings_restore_done, result.total, result.total))
+                onRestored()
+            }
+        }
+    }
+    val createDocument = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) {
+            saveBackup(uri.lastPathSegment.orEmpty()) { text ->
+                context.contentResolver.openOutputStream(uri)?.use { it.write(text.toByteArray()) } ?: throw IOException("Fichier inaccessible")
+            }
+        }
+    }
+    val openDocument = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            restoreBackup { context.contentResolver.openInputStream(uri)?.use { it.readBytes().decodeToString() } ?: throw IOException("Fichier inaccessible") }
+        }
+    }
+
+    // Recherche de mise à jour à l'ouverture des réglages.
+    LaunchedEffect(viewModel) {
+        if (update == UpdateState.Idle) viewModel.checkUpdate()
+    }
 
     LaunchedEffect(viewModel) {
         viewModel.refreshEvents.collect { event ->
@@ -85,6 +198,7 @@ fun SettingsScreen(onBack: () -> Unit, onPlaylists: () -> Unit, onProxy: () -> U
 
     SettingsContent(
         state = state,
+        account = account,
         snackbarHostState = snackbar,
         onBack = onBack,
         onPlaylists = onPlaylists,
@@ -93,7 +207,52 @@ fun SettingsScreen(onBack: () -> Unit, onPlaylists: () -> Unit, onProxy: () -> U
         onAutoQuality = viewModel::setAutoQuality,
         onSaveTmdbKey = viewModel::saveTmdbKey,
         onClearTmdbKey = viewModel::clearTmdbKey,
+        onSaveFootballKey = viewModel::saveFootballKey,
+        onClearFootballKey = viewModel::clearFootballKey,
         onProxy = onProxy,
+        onGroups = onGroups,
+        onBackup = {
+            try {
+                createDocument.launch(BACKUP_FILE_NAME)
+            } catch (e: ActivityNotFoundException) {
+                // Pas de sélecteur de fichiers (Fire TV) : dossier de l'application.
+                saveBackup(backupFile.path) { backupFile.writeText(it) }
+            }
+        },
+        onRestore = {
+            try {
+                openDocument.launch(arrayOf("application/json", "text/plain", "application/octet-stream"))
+            } catch (e: ActivityNotFoundException) {
+                if (backupFile.exists()) {
+                    restoreBackup { backupFile.readText() }
+                } else {
+                    scope.launch { snackbar.showSnackbar(resources.getString(R.string.settings_restore_missing, backupFile.path)) }
+                }
+            }
+        },
+        onCycleDecoder = viewModel::cycleDecoder,
+        onChannelPreview = viewModel::setChannelPreview,
+        onStartOnLastChannel = viewModel::setStartOnLastChannel,
+        onLowerAdVolume = viewModel::setLowerAdVolume,
+        onAppearance = onAppearance,
+        onCycleQualityTarget = viewModel::cycleQualityTarget,
+        onCyclePreviewVolume = viewModel::cyclePreviewVolume,
+        onCyclePlaylistRefresh = viewModel::cyclePlaylistRefresh,
+        onClearCrash = viewModel::clearCrash,
+        onToggleChannelList = viewModel::toggleChannelList,
+        onCycleDns = viewModel::cycleDns,
+        onHideUhd = viewModel::setHideUhd,
+        onAudioPassthrough = viewModel::setAudioPassthrough,
+        onFrance3Region = viewModel::setFrance3Region,
+        update = update,
+        onCheckUpdate = viewModel::checkUpdate,
+        onInstallUpdate = viewModel::installUpdate,
+        onAllowInstall = {
+            val opened = viewModel.installPermissionIntent()?.let { intent ->
+                runCatching { context.startActivity(intent) }.isSuccess
+            } ?: false
+            if (!opened) scope.launch { snackbar.showSnackbar(resources.getString(R.string.settings_update_permission_manual)) }
+        },
     )
 }
 
@@ -111,6 +270,30 @@ fun SettingsContent(
     onSaveTmdbKey: (String) -> Unit,
     onClearTmdbKey: () -> Unit,
     onProxy: () -> Unit,
+    onSaveFootballKey: (String) -> Unit = {},
+    onClearFootballKey: () -> Unit = {},
+    onGroups: (ContentKind) -> Unit = {},
+    onCycleDecoder: (String) -> Unit = {},
+    onChannelPreview: (Boolean) -> Unit = {},
+    onStartOnLastChannel: (Boolean) -> Unit = {},
+    onLowerAdVolume: (Boolean) -> Unit = {},
+    onAppearance: () -> Unit = {},
+    onCycleQualityTarget: () -> Unit = {},
+    onCyclePreviewVolume: () -> Unit = {},
+    onCyclePlaylistRefresh: () -> Unit = {},
+    onClearCrash: () -> Unit = {},
+    onToggleChannelList: () -> Unit = {},
+    onCycleDns: () -> Unit = {},
+    onHideUhd: (Boolean) -> Unit = {},
+    onAudioPassthrough: (Boolean) -> Unit = {},
+    onFrance3Region: (String?) -> Unit = {},
+    update: UpdateState = UpdateState.Idle,
+    onCheckUpdate: () -> Unit = {},
+    onInstallUpdate: (AppRelease) -> Unit = {},
+    onAllowInstall: () -> Unit = {},
+    onBackup: () -> Unit = {},
+    onRestore: () -> Unit = {},
+    account: AccountState? = null,
     now: Long = System.currentTimeMillis(),
 ) {
     val window = rememberWindowInfo()
@@ -122,142 +305,331 @@ fun SettingsContent(
         Column(Modifier.fillMaxSize().padding(padding)) {
             ScreenHeader(
                 title = stringResource(R.string.settings_title),
-                modifier = Modifier.padding(start = window.horizontalPadding - 12.dp, end = window.horizontalPadding, top = 12.dp, bottom = 8.dp),
+                modifier = Modifier.padding(start = window.horizontalPadding - 12.dp, end = window.horizontalPadding, top = window.topPadding, bottom = 8.dp),
                 navigation = { IconAction(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back), onBack) },
             )
-            Box(Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()), contentAlignment = Alignment.TopCenter) {
-                Column(
-                    Modifier.widthIn(max = 760.dp).fillMaxWidth().padding(horizontal = window.horizontalPadding, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    // Playlist active.
-                    SectionCard(stringResource(R.string.settings_playlist), icon = NexTvIcons.Tv) {
-                        val playlist = state.playlist
-                        if (playlist == null) {
-                            InfoText(stringResource(R.string.settings_no_playlist))
-                        } else {
-                            Text(playlist.name, style = MaterialTheme.typography.titleLarge)
-                            val status = playlist.status
-                            InfoText(
-                                listOfNotNull(
-                                    resources.getQuantityString(R.plurals.channels_count, status.channelCount, status.channelCount),
-                                    status.lastSuccessAtMillis?.let { stringResource(R.string.settings_updated, relativeTime(it, now).lowercaseFirst()) },
-                                ).joinToString("  ·  "),
-                            )
-                            status.error?.let { ErrorText(resources.describe(it)) }
-                            if (state.refreshing) LinearProgressIndicator(Modifier.fillMaxWidth(), color = NexTvColors.Live)
+            val settingsScroll = rememberScrollState()
+            FadingBottom({ settingsScroll.canScrollForward }) { fade ->
+                Box(Modifier.fillMaxSize().imePadding().then(fade).verticalScroll(settingsScroll), contentAlignment = Alignment.TopCenter) {
+                    Column(
+                        Modifier.widthIn(max = 760.dp).fillMaxWidth().padding(horizontal = window.horizontalPadding, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        // Dernier plantage : en tête, pour pouvoir le signaler (photo de l'écran).
+                        state.lastCrash?.let { crash ->
+                            SectionCard(stringResource(R.string.settings_crash), icon = Icons.Filled.Warning) {
+                                InfoText(stringResource(R.string.settings_crash_help, relativeTime(crash.atMillis, now).lowercaseFirst(), crash.version))
+                                Text(crash.summary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+                                Text(
+                                    crash.details,
+                                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = CRASH_LINES,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                PillButton(stringResource(R.string.settings_crash_clear), onClearCrash, icon = Icons.Filled.Delete, style = PillStyle.Ghost)
+                            }
                         }
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            PillButton(
-                                stringResource(R.string.settings_manage_playlists, state.playlistCount),
-                                onPlaylists,
-                                icon = NexTvIcons.Grid,
-                                style = PillStyle.Primary,
-                            )
-                            if (playlist != null) {
+
+                        // Playlist active.
+                        SectionCard(stringResource(R.string.settings_playlist), icon = NexTvIcons.Tv) {
+                            val playlist = state.playlist
+                            if (playlist == null) {
+                                InfoText(stringResource(R.string.settings_no_playlist))
+                            } else {
+                                Text(playlist.name, style = MaterialTheme.typography.titleLarge)
+                                val status = playlist.status
+                                InfoText(
+                                    listOfNotNull(
+                                        resources.getQuantityString(R.plurals.channels_count, status.channelCount, status.channelCount),
+                                        status.lastSuccessAtMillis?.let { stringResource(R.string.settings_updated, relativeTime(it, now).lowercaseFirst()) },
+                                    ).joinToString("  ·  "),
+                                )
+                                status.error?.let { ErrorText(resources.describe(it)) }
+                                account?.let { AccountText(it, now) }
+                                if (state.refreshing) LinearProgressIndicator(Modifier.fillMaxWidth(), color = NexTvColors.Live)
+                                // Fréquence de mise à jour automatique (le guide TV, lui, se met à jour chaque jour).
+                                ValueRow(
+                                    title = stringResource(R.string.settings_playlist_refresh),
+                                    value = playlistRefreshLabel(state.playlistRefresh),
+                                    onClick = onCyclePlaylistRefresh,
+                                )
+                                InfoText(stringResource(R.string.settings_playlist_refresh_help))
+                            }
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 PillButton(
-                                    stringResource(R.string.action_refresh),
-                                    onRefreshPlaylist,
+                                    stringResource(R.string.settings_manage_playlists, state.playlistCount),
+                                    onPlaylists,
+                                    icon = NexTvIcons.Grid,
+                                    style = PillStyle.Primary,
+                                )
+                                if (playlist != null) {
+                                    PillButton(
+                                        stringResource(R.string.settings_refresh_playlist_now),
+                                        onRefreshPlaylist,
+                                        icon = Icons.Filled.Refresh,
+                                        enabled = !state.refreshing,
+                                    )
+                                }
+                            }
+                        }
+
+                        // Lecture.
+                        SectionCard(stringResource(R.string.settings_playback), icon = Icons.Filled.PlayArrow) {
+                            ValueRow(
+                                title = stringResource(R.string.settings_quality_target),
+                                value = qualityTargetLabel(state.qualityTarget),
+                                onClick = onCycleQualityTarget,
+                            )
+                            InfoText(qualityTargetHelp(state.qualityTarget))
+                            ToggleRow(
+                                title = stringResource(R.string.settings_auto_quality),
+                                description = stringResource(R.string.settings_auto_quality_help),
+                                checked = state.autoQuality,
+                                onChange = onAutoQuality,
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_start_last_channel),
+                                description = stringResource(R.string.settings_start_last_channel_help),
+                                checked = state.startOnLastChannel,
+                                onChange = onStartOnLastChannel,
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_lower_ads),
+                                description = stringResource(R.string.settings_lower_ads_help),
+                                checked = state.lowerAdVolume,
+                                onChange = onLowerAdVolume,
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_hide_uhd),
+                                description = stringResource(R.string.settings_hide_uhd_help),
+                                checked = state.hideUhd,
+                                onChange = onHideUhd,
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_audio_passthrough),
+                                description = stringResource(R.string.settings_audio_passthrough_help),
+                                checked = state.audioPassthrough,
+                                onChange = onAudioPassthrough,
+                            )
+                            // Une seule édition régionale de France 3 dans les listes.
+                            var choosingRegion by remember { mutableStateOf(false) }
+                            ValueRow(
+                                title = stringResource(R.string.settings_france3_region),
+                                value = state.france3Regions.firstOrNull { it.key == state.france3Region }?.label
+                                    ?: state.france3Region?.let { stringResource(R.string.settings_france3_region_missing) }
+                                    ?: stringResource(R.string.settings_france3_region_all),
+                                onClick = { choosingRegion = true },
+                                enabled = state.france3Regions.isNotEmpty() || state.france3Region != null,
+                            )
+                            InfoText(
+                                if (state.france3Regions.isEmpty()) {
+                                    stringResource(R.string.settings_france3_region_none)
+                                } else {
+                                    stringResource(R.string.settings_france3_region_help)
+                                },
+                            )
+                            if (choosingRegion) {
+                                RegionDialog(
+                                    regions = state.france3Regions,
+                                    selected = state.france3Region,
+                                    onSelect = {
+                                        choosingRegion = false
+                                        onFrance3Region(it)
+                                    },
+                                    onDismiss = { choosingRegion = false },
+                                )
+                            }
+                            state.decoders.forEach { choice -> DecoderRow(choice) { onCycleDecoder(choice.mimeType) } }
+                            if (state.decoders.isNotEmpty()) InfoText(stringResource(R.string.settings_decoder_help))
+                        }
+
+                        // Affichage de l'accueil.
+                        SectionCard(stringResource(R.string.settings_display), icon = NexTvIcons.Grid) {
+                            // Interface de l'accueil et palette de couleurs : écran Apparence.
+                            ValueRow(
+                                title = stringResource(R.string.appearance_open),
+                                value = "${homeLayoutLabel(state.homeLayout)}  ·  ${themeLabel(state.theme)}",
+                                onClick = onAppearance,
+                            )
+                            ToggleRow(
+                                title = stringResource(R.string.settings_channel_preview),
+                                description = stringResource(R.string.settings_channel_preview_help),
+                                checked = state.channelPreview,
+                                onChange = onChannelPreview,
+                            )
+                            if (state.channelPreview) {
+                                ValueRow(
+                                    title = stringResource(R.string.settings_preview_volume),
+                                    value = previewVolumeLabel(state.previewVolume),
+                                    onClick = onCyclePreviewVolume,
+                                )
+                            }
+                            if (state.playlist != null) {
+                                // Catégories masquables : chaînes, films, séries.
+                                listOf(
+                                    ContentKind.LIVE to R.string.settings_channel_groups,
+                                    ContentKind.MOVIE to R.string.settings_movie_groups,
+                                    ContentKind.SERIES to R.string.settings_series_groups,
+                                ).forEach { (kind, title) ->
+                                    val hidden = state.hiddenGroups[kind] ?: 0
+                                    ValueRow(
+                                        title = stringResource(title),
+                                        value = if (hidden == 0) {
+                                            stringResource(R.string.settings_channel_groups_visible)
+                                        } else {
+                                            resources.getQuantityString(R.plurals.channel_groups_hidden, hidden, hidden)
+                                        },
+                                        onClick = { onGroups(kind) },
+                                    )
+                                }
+                            }
+                        }
+
+                        // Guide TV commun.
+                        SectionCard(
+                            stringResource(R.string.settings_guide),
+                            subtitle = stringResource(R.string.settings_guide_help, HttpEpgFeedProvider.XMLTV_FR_URL),
+                            icon = NexTvIcons.Guide,
+                        ) {
+                            val epg = state.playlist?.status?.epg
+                            InfoText(
+                                state.guideDownloadedAt?.let { stringResource(R.string.settings_guide_downloaded, relativeTime(it, now).lowercaseFirst()) }
+                                    ?: stringResource(R.string.settings_guide_never),
+                            )
+                            if (epg != null && epg.programmeCount > 0) {
+                                InfoText(stringResource(R.string.settings_guide_matched, epg.programmeCount, epg.matchedChannelCount))
+                            }
+                            epg?.error?.let { ErrorText(resources.describe(it)) }
+                            if (state.playlist != null) {
+                                PillButton(
+                                    stringResource(R.string.settings_guide_refresh),
+                                    onRefreshGuide,
                                     icon = Icons.Filled.Refresh,
                                     enabled = !state.refreshing,
                                 )
                             }
                         }
-                    }
 
-                    // Lecture.
-                    SectionCard(stringResource(R.string.settings_playback), icon = Icons.Filled.PlayArrow) {
-                        ToggleRow(
-                            title = stringResource(R.string.settings_auto_quality),
-                            description = stringResource(R.string.settings_auto_quality_help),
-                            checked = state.autoQuality,
-                            onChange = onAutoQuality,
-                        )
-                    }
-
-                    // Guide TV commun.
-                    SectionCard(
-                        stringResource(R.string.settings_guide),
-                        subtitle = stringResource(R.string.settings_guide_help, HttpEpgFeedProvider.XMLTV_FR_URL),
-                        icon = NexTvIcons.Guide,
-                    ) {
-                        val epg = state.playlist?.status?.epg
-                        InfoText(
-                            state.guideDownloadedAt?.let { stringResource(R.string.settings_guide_downloaded, relativeTime(it, now).lowercaseFirst()) }
-                                ?: stringResource(R.string.settings_guide_never),
-                        )
-                        if (epg != null && epg.programmeCount > 0) {
-                            InfoText(stringResource(R.string.settings_guide_matched, epg.programmeCount, epg.matchedChannelCount))
-                        }
-                        epg?.error?.let { ErrorText(resources.describe(it)) }
-                        if (state.playlist != null) {
-                            PillButton(
-                                stringResource(R.string.settings_guide_refresh),
-                                onRefreshGuide,
-                                icon = Icons.Filled.Refresh,
-                                enabled = !state.refreshing,
+                        // Fiches films et séries.
+                        SectionCard(
+                            stringResource(R.string.settings_tmdb),
+                            subtitle = stringResource(R.string.settings_tmdb_help),
+                            icon = Icons.Filled.Star,
+                        ) {
+                            var key by rememberSaveable { mutableStateOf("") }
+                            InfoText(
+                                stringResource(
+                                    when {
+                                        state.tmdbKeySaved -> R.string.settings_tmdb_saved
+                                        state.tmdbBuiltIn -> R.string.settings_tmdb_builtin
+                                        else -> R.string.settings_tmdb_missing
+                                    },
+                                ),
                             )
-                        }
-                    }
-
-                    // Fiches films et séries.
-                    SectionCard(
-                        stringResource(R.string.settings_tmdb),
-                        subtitle = stringResource(R.string.settings_tmdb_help),
-                        icon = Icons.Filled.Star,
-                    ) {
-                        var key by rememberSaveable { mutableStateOf("") }
-                        InfoText(
-                            stringResource(
-                                when {
-                                    state.tmdbKeySaved -> R.string.settings_tmdb_saved
-                                    state.tmdbBuiltIn -> R.string.settings_tmdb_builtin
-                                    else -> R.string.settings_tmdb_missing
-                                },
-                            ),
-                        )
-                        NexTvTextField(
-                            value = key,
-                            onValueChange = { key = it.trim() },
-                            label = stringResource(R.string.settings_tmdb_key),
-                            keyboardType = KeyboardType.Password,
-                            visualTransformation = PasswordVisualTransformation(),
-                        )
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            PillButton(
-                                stringResource(R.string.settings_tmdb_save),
-                                {
-                                    onSaveTmdbKey(key)
-                                    key = ""
-                                },
-                                icon = Icons.Filled.Check,
-                                enabled = key.isNotBlank(),
+                            NexTvTextField(
+                                value = key,
+                                onValueChange = { key = it.trim() },
+                                label = stringResource(R.string.settings_tmdb_key),
+                                keyboardType = KeyboardType.Password,
+                                visualTransformation = PasswordVisualTransformation(),
                             )
-                            if (state.tmdbKeySaved) {
-                                PillButton(stringResource(R.string.settings_tmdb_remove), onClearTmdbKey, icon = Icons.Filled.Delete, style = PillStyle.Ghost)
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                PillButton(
+                                    stringResource(R.string.settings_tmdb_save),
+                                    {
+                                        onSaveTmdbKey(key)
+                                        key = ""
+                                    },
+                                    icon = Icons.Filled.Check,
+                                    enabled = key.isNotBlank(),
+                                )
+                                if (state.tmdbKeySaved) {
+                                    PillButton(stringResource(R.string.settings_tmdb_remove), onClearTmdbKey, icon = Icons.Filled.Delete, style = PillStyle.Ghost)
+                                }
                             }
                         }
-                    }
 
-                    // Réseau.
-                    SectionCard(stringResource(R.string.proxy_section), icon = NexTvIcons.Cloud) {
-                        InfoText(
-                            if (state.proxyEnabled) {
-                                stringResource(R.string.settings_proxy_on, state.proxyAddress.orEmpty())
-                            } else {
-                                stringResource(R.string.settings_proxy_off)
-                            },
-                        )
-                        PillButton(stringResource(R.string.settings_proxy_configure), onProxy, icon = Icons.Filled.Settings)
-                    }
+                        // Matchs de la section Foot.
+                        SectionCard(
+                            stringResource(R.string.settings_football),
+                            subtitle = stringResource(R.string.settings_football_help),
+                            icon = NexTvIcons.Football,
+                        ) {
+                            var key by rememberSaveable { mutableStateOf("") }
+                            InfoText(
+                                stringResource(
+                                    when {
+                                        state.footballKeySaved -> R.string.settings_tmdb_saved
+                                        state.footballBuiltIn -> R.string.settings_tmdb_builtin
+                                        else -> R.string.settings_football_missing
+                                    },
+                                ),
+                            )
+                            NexTvTextField(
+                                value = key,
+                                onValueChange = { key = it.trim() },
+                                label = stringResource(R.string.settings_football_key),
+                                keyboardType = KeyboardType.Password,
+                                visualTransformation = PasswordVisualTransformation(),
+                            )
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                PillButton(
+                                    stringResource(R.string.settings_tmdb_save),
+                                    {
+                                        onSaveFootballKey(key)
+                                        key = ""
+                                    },
+                                    icon = Icons.Filled.Check,
+                                    enabled = key.isNotBlank(),
+                                )
+                                if (state.footballKeySaved) {
+                                    PillButton(stringResource(R.string.settings_tmdb_remove), onClearFootballKey, icon = Icons.Filled.Delete, style = PillStyle.Ghost)
+                                }
+                            }
+                        }
 
-                    Row(
-                        Modifier.fillMaxWidth().padding(bottom = 24.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(Icons.Filled.Info, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        InfoText(stringResource(R.string.settings_version, state.version))
+                        // Réseau.
+                        SectionCard(stringResource(R.string.settings_network), icon = NexTvIcons.Cloud) {
+                            ValueRow(
+                                title = stringResource(R.string.settings_dns),
+                                value = dnsLabel(state.dns),
+                                onClick = onCycleDns,
+                            )
+                            InfoText(stringResource(R.string.settings_dns_help))
+                            InfoText(
+                                if (state.proxyEnabled) {
+                                    stringResource(R.string.settings_proxy_on, state.proxyAddress.orEmpty())
+                                } else {
+                                    stringResource(R.string.settings_proxy_off)
+                                },
+                            )
+                            PillButton(stringResource(R.string.settings_proxy_configure), onProxy, icon = Icons.Filled.Settings)
+                        }
+
+                        // Mise à jour de l'application.
+                        // Sauvegarde et restauration.
+                        SectionCard(stringResource(R.string.settings_backup), subtitle = stringResource(R.string.settings_backup_help), icon = Icons.Filled.Lock) {
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                PillButton(stringResource(R.string.settings_backup_save), onBackup, icon = Icons.Filled.Check)
+                                PillButton(stringResource(R.string.settings_backup_restore), onRestore, icon = Icons.Filled.Refresh)
+                            }
+                        }
+
+                        SectionCard(stringResource(R.string.settings_update), icon = Icons.Filled.Refresh) {
+                            UpdateSection(state.version, update, onCheckUpdate, onInstallUpdate, onAllowInstall)
+                        }
+
+                        Row(
+                            Modifier.fillMaxWidth().padding(bottom = 24.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Filled.Info, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            InfoText(stringResource(R.string.settings_version, state.version))
+                            // Mentions légales (licence GPL v3, imposée par le décodeur FFmpeg).
+                            InfoText(stringResource(R.string.settings_license))
+                        }
                     }
                 }
             }
@@ -267,6 +639,280 @@ fun SettingsContent(
 
 /** « Il y a 5 minutes » → « il y a 5 minutes », en milieu de phrase. */
 private fun String.lowercaseFirst(): String = replaceFirstChar { it.lowercaseChar() }
+
+/** Décodeur d'un codec : OK passe au choix suivant (automatique, puis chaque décodeur de l'appareil). */
+@Composable
+private fun DecoderRow(choice: DecoderChoice, onClick: () -> Unit) {
+    val selected = choice.options.firstOrNull { it.name == choice.selected }
+    val value = when {
+        choice.options.isEmpty() -> stringResource(R.string.settings_decoder_none)
+        selected == null -> stringResource(R.string.settings_decoder_auto)
+        else -> stringResource(
+            if (selected.hardware) R.string.settings_decoder_hardware else R.string.settings_decoder_software,
+            selected.name,
+        )
+    }
+    ValueRow(
+        title = stringResource(if (choice.mimeType == VideoDecoders.HEVC) R.string.settings_decoder_hevc else R.string.settings_decoder_avc),
+        value = value,
+        onClick = onClick,
+        enabled = choice.options.isNotEmpty(),
+    )
+}
+
+/** État de la mise à jour et action possible (rechercher, installer, autoriser l'installation). */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun UpdateSection(
+    installed: String,
+    update: UpdateState,
+    onCheck: () -> Unit,
+    onInstall: (AppRelease) -> Unit,
+    onAllowInstall: () -> Unit,
+) {
+    when (update) {
+        UpdateState.Idle -> InfoText(stringResource(R.string.settings_update_installed, installed))
+        UpdateState.Checking -> {
+            InfoText(stringResource(R.string.settings_update_checking))
+            LinearProgressIndicator(Modifier.fillMaxWidth(), color = NexTvColors.Live)
+        }
+        UpdateState.UpToDate -> InfoText(stringResource(R.string.settings_update_up_to_date, installed))
+        is UpdateState.Available -> ReleaseInfo(update.release, installed)
+        is UpdateState.Downloading -> {
+            InfoText(stringResource(R.string.settings_update_downloading, update.release.version, megabytes(update.downloaded), megabytes(update.total)))
+            LinearProgressIndicator(
+                progress = { if (update.total > 0) (update.downloaded.toFloat() / update.total).coerceIn(0f, 1f) else 0f },
+                modifier = Modifier.fillMaxWidth(),
+                color = NexTvColors.Live,
+            )
+        }
+        is UpdateState.Installing -> InfoText(stringResource(R.string.settings_update_installing, update.release.version))
+        is UpdateState.NeedsPermission -> InfoText(stringResource(R.string.settings_update_permission))
+        is UpdateState.Failed -> ErrorText(
+            stringResource(
+                when (update.error) {
+                    UpdateFailure.NOT_PUBLISHED -> R.string.settings_update_not_published
+                    UpdateFailure.NETWORK -> R.string.settings_update_network
+                    UpdateFailure.SERVER -> R.string.settings_update_server
+                    UpdateFailure.CORRUPTED -> R.string.settings_update_corrupted
+                    UpdateFailure.INSTALL -> R.string.settings_update_install_failed
+                },
+            ),
+        )
+    }
+    val release = when (update) {
+        is UpdateState.Available -> update.release
+        is UpdateState.NeedsPermission -> update.release
+        is UpdateState.Failed -> update.release
+        else -> null
+    }
+    val busy = update is UpdateState.Checking || update is UpdateState.Downloading || update is UpdateState.Installing
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (update is UpdateState.NeedsPermission) {
+            PillButton(stringResource(R.string.settings_update_allow), onAllowInstall, icon = Icons.Filled.Settings, style = PillStyle.Primary)
+        }
+        if (release != null) {
+            PillButton(
+                stringResource(R.string.settings_update_install, release.version),
+                { onInstall(release) },
+                icon = Icons.Filled.Check,
+                style = if (update is UpdateState.NeedsPermission) PillStyle.Secondary else PillStyle.Primary,
+                enabled = !busy,
+            )
+        }
+        PillButton(stringResource(R.string.settings_update_check), onCheck, icon = Icons.Filled.Refresh, enabled = !busy, style = PillStyle.Ghost)
+    }
+}
+
+@Composable
+private fun ReleaseInfo(release: AppRelease, installed: String) {
+    Text(stringResource(R.string.settings_update_available, release.version), style = MaterialTheme.typography.titleMedium)
+    InfoText(stringResource(R.string.settings_update_installed, installed))
+    // Notes de version : la liste des nouveautés, sans la partie installation.
+    release.notes
+        ?.substringBefore("**Installation**")
+        ?.replace("**", "")
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+        ?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 12) }
+}
+
+private fun megabytes(bytes: Long): String = String.format(Locale.FRANCE, "%.1f", bytes / 1_000_000.0)
+
+@Composable
+private fun previewVolumeLabel(volume: PreviewVolume): String = stringResource(
+    when (volume) {
+        PreviewVolume.OFF -> R.string.preview_volume_off
+        PreviewVolume.LOW -> R.string.preview_volume_low
+        PreviewVolume.MEDIUM -> R.string.preview_volume_medium
+    },
+)
+
+/** « À chaque démarrage », « Toutes les 12 h », « Tous les 3 jours ». */
+@Composable
+private fun playlistRefreshLabel(refresh: PlaylistRefresh): String {
+    val hours = (refresh.maxAgeMillis / HOUR_MILLIS).toInt()
+    return when {
+        refresh == PlaylistRefresh.EVERY_START -> stringResource(R.string.playlist_refresh_every_start)
+        hours <= 24 -> stringResource(R.string.playlist_refresh_hours, hours)
+        else -> stringResource(R.string.playlist_refresh_days, hours / 24)
+    }
+}
+
+private const val HOUR_MILLIS = 60 * 60_000L
+
+/**
+ * Lignes de la trace d'un plantage montrées dans les réglages : toutes celles enregistrées (les noms
+ * du code de NexTV sont raccourcis dans les versions publiées, l'endroit en cause est souvent bas).
+ */
+private const val CRASH_LINES = 40
+
+@Composable
+private fun qualityTargetLabel(target: QualityTarget): String = stringResource(
+    when (target) {
+        QualityTarget.BEST -> R.string.quality_target_best
+        QualityTarget.HD -> R.string.quality_target_hd
+        QualityTarget.ECO -> R.string.quality_target_eco
+    },
+)
+
+@Composable
+private fun qualityTargetHelp(target: QualityTarget): String = stringResource(
+    when (target) {
+        QualityTarget.BEST -> R.string.quality_target_best_help
+        QualityTarget.HD -> R.string.quality_target_hd_help
+        QualityTarget.ECO -> R.string.quality_target_eco_help
+    },
+)
+
+@Composable
+private fun dnsLabel(dns: DnsProvider): String = when (dns) {
+    DnsProvider.SYSTEM -> stringResource(R.string.settings_dns_system)
+    else -> stringResource(
+        R.string.settings_dns_public,
+        when (dns) {
+            DnsProvider.QUAD9 -> "Quad9"
+            DnsProvider.CLOUDFLARE -> "Cloudflare"
+            else -> "Google"
+        },
+        dns.addresses.take(2).joinToString(" / "),
+    )
+}
+
+/** Nombre réglable : gauche/droite pour diminuer/augmenter, OK passe à la valeur suivante (en boucle). */
+/** Choix de la région de France 3 : « Toutes les régions » puis chaque édition de la playlist. */
+@Composable
+private fun RegionDialog(
+    regions: List<FranceRegions.Region>,
+    selected: String?,
+    onSelect: (String?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { firstFocus.requestFocus() } }
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            modifier = Modifier.widthIn(max = 520.dp).ignoreHeldOk(),
+        ) {
+            Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(stringResource(R.string.settings_france3_region), style = MaterialTheme.typography.titleLarge)
+                val choices = listOf<Pair<String?, String>>(null to stringResource(R.string.settings_france3_region_all)) +
+                    regions.map { it.key to it.label }
+                val selectedIndex = choices.indexOfFirst { it.first == selected }.coerceAtLeast(0)
+                LazyColumn(
+                    Modifier.heightIn(max = 420.dp),
+                    state = rememberLazyListState(initialFirstVisibleItemIndex = (selectedIndex - 2).coerceAtLeast(0)),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    itemsIndexed(choices, key = { _, choice -> choice.first ?: "" }) { index, (key, label) ->
+                        FocusSurface(
+                            onClick = { onSelect(key) },
+                            modifier = Modifier.fillMaxWidth().then(if (index == selectedIndex) Modifier.focusRequester(firstFocus) else Modifier),
+                            shape = MaterialTheme.shapes.medium,
+                            color = Color.Transparent,
+                            selected = key == selected,
+                            focusScale = 1f,
+                        ) {
+                            Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(label, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                                if (key == selected) Icon(Icons.Filled.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Ligne titre + valeur ; OK change la valeur. */
+@Composable
+private fun ValueRow(title: String, value: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
+    FocusSurface(
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        color = Color.Transparent,
+        focusedColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+        focusScale = 1f,
+        enabled = enabled,
+    ) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleSmall)
+                Text(value, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text("›", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** Abonnement Xtream : état, date de fin et connexions simultanées. */
+@Composable
+private fun AccountText(account: AccountState, now: Long) {
+    when (account) {
+        AccountState.Loading -> InfoText(stringResource(R.string.settings_account_checking))
+        AccountState.Unavailable -> InfoText(stringResource(R.string.settings_account_unavailable))
+        is AccountState.Loaded -> {
+            val info = account.info
+            val resources = LocalContext.current.resources
+            when {
+                !info.authenticated -> ErrorText(stringResource(R.string.settings_account_refused))
+                !info.active -> ErrorText(
+                    stringResource(
+                        R.string.settings_account_inactive,
+                        when (info.status?.lowercase(Locale.ROOT)) {
+                            "expired" -> stringResource(R.string.settings_account_expired)
+                            "banned" -> stringResource(R.string.settings_account_banned)
+                            "disabled" -> stringResource(R.string.settings_account_disabled)
+                            else -> info.status.orEmpty()
+                        },
+                    ),
+                )
+                else -> {
+                    val expires = info.expiresAtMillis
+                    val text = listOfNotNull(
+                        stringResource(if (info.trial) R.string.settings_account_trial else R.string.settings_account_active),
+                        expires?.let { stringResource(R.string.settings_account_until, DateFormat.getDateInstance(DateFormat.LONG).format(Date(it))) }
+                            ?: stringResource(R.string.settings_account_unlimited),
+                        info.maxConnections?.takeIf { it > 0 }?.let { resources.getQuantityString(R.plurals.settings_account_connections, it, it) },
+                    ).joinToString("  ·  ")
+                    // Fin dans moins d'une semaine : en évidence.
+                    val soon = expires != null && expires - now < ACCOUNT_WARNING_MILLIS
+                    Text(
+                        text,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (soon) NexTvColors.Warning else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private const val ACCOUNT_WARNING_MILLIS = 7 * 24 * 60 * 60_000L
 
 @Composable
 private fun InfoText(text: String) {
