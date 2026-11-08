@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
@@ -94,29 +96,35 @@ internal fun StreamingNav(
             .focusProperties { onEnter = { runCatching { current.requestFocus() } } }
             .focusGroup()
             .padding(vertical = window.topPadding, horizontal = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Row(Modifier.height(48.dp).padding(start = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.height(44.dp).padding(start = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             BrandMark(compact = true, showName = open)
         }
-        Spacer(Modifier.height(18.dp))
-        onSearch?.let { NavItem(Icons.Filled.Search, stringResource(R.string.search_everywhere), open, selected = false, onClick = it) }
         Spacer(Modifier.height(10.dp))
-        HomeSection.entries.forEach { target ->
-            NavItem(
-                icon = sectionIcon(target),
-                label = sectionLabel(target),
-                open = open,
-                selected = target == section,
-                onClick = { onSection(target) },
-                modifier = if (target == section) Modifier.focusRequester(current) else Modifier,
-            )
+        // Rechercher, sections et catégories : défilent si l'écran manque de hauteur, pour que
+        // « Réglages » reste toujours entier en bas (il était écrasé sur la Fire TV).
+        Column(
+            Modifier.weight(1f).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            onSearch?.let { NavItem(Icons.Filled.Search, stringResource(R.string.search_everywhere), open, selected = false, onClick = it) }
+            Spacer(Modifier.height(6.dp))
+            HomeSection.entries.forEach { target ->
+                NavItem(
+                    icon = sectionIcon(target),
+                    label = sectionLabel(target),
+                    open = open,
+                    selected = target == section,
+                    onClick = { onSection(target) },
+                    modifier = if (target == section) Modifier.focusRequester(current) else Modifier,
+                )
+            }
+            onCategories?.let {
+                Spacer(Modifier.height(6.dp))
+                NavItem(Icons.AutoMirrored.Filled.List, stringResource(R.string.nav_categories), open, selected = false, onClick = it)
+            }
         }
-        onCategories?.let {
-            Spacer(Modifier.height(10.dp))
-            NavItem(Icons.AutoMirrored.Filled.List, stringResource(R.string.nav_categories), open, selected = false, onClick = it)
-        }
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.height(6.dp))
         NavItem(Icons.Filled.Settings, stringResource(R.string.settings_title), open, selected = false, onClick = onSettings)
     }
 }
@@ -133,7 +141,7 @@ private fun NavItem(icon: ImageVector, label: String, open: Boolean, selected: B
         contentColor = if (selected) colors.primary else colors.onSurfaceVariant,
         focusScale = 1f,
     ) {
-        Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(icon, contentDescription = label, modifier = Modifier.size(24.dp))
             AnimatedVisibility(open, enter = fadeIn() + expandHorizontally(), exit = fadeOut() + shrinkHorizontally()) {
                 Text(

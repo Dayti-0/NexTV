@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.58
+- Streaming, menu de gauche : « Réglages » tout en bas s'affiche en entier et lisible (il était écrasé)
+
 ## 0.2.57
 - Streaming : la bande-annonce remplit tout son cadre sur la Fire TV (elle ne tenait qu'une bande en haut, le reste en noir)
 
