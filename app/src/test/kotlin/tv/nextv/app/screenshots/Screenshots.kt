@@ -41,6 +41,7 @@ import tv.nextv.app.ui.home.Category
 import tv.nextv.app.ui.home.HomeActions
 import tv.nextv.app.ui.home.HomeContent
 import tv.nextv.app.ui.home.HomeLayout
+import tv.nextv.app.ui.home.PremiumResume
 import tv.nextv.core.stream.QualityTarget
 import tv.nextv.app.ui.player.NextEpisode
 import tv.nextv.app.ui.player.VodInfo
@@ -212,6 +213,11 @@ abstract class ScreenshotSuite(private val device: String) {
     @Test
     fun homeStreamingMosaic() = capture("05r_streaming_tv_mosaique") {
         Home(HomeSection.TV, Category.All, preview = true, layout = HomeLayout.STREAMING, grid = GridColumns(liveCenterMosaic = true))
+    }
+
+    @Test
+    fun premiumResume() = capture("05s_premium_reprendre") {
+        PremiumResume(movies = listOf(SampleData.movieProgress), series = SampleData.continueSeries, onResume = {}, onClear = {}, onBack = {})
     }
 
     @Test

@@ -128,6 +128,9 @@
     <string name="home_guide">Guide TV</string>
     <string name="home_favorites">Favoris</string>
     <string name="home_continue">Reprendre la lecture</string>
+    <string name="resume_empty_movies">Aucun film en cours</string>
+    <string name="resume_empty_series">Aucune série en cours</string>
+    <string name="resume_clear_hint">Appui long sur une affiche pour la retirer de la liste</string>
     <string name="home_continue_empty_title">Rien à reprendre</string>
     <string name="home_continue_empty">Aucun film ni épisode en cours.</string>
     <string name="home_continue_remaining">Reste %1$s</string>

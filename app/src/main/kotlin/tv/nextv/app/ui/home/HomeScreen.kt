@@ -205,6 +205,8 @@ fun HomeScreen(
     // Cinéma Premium : menu d'accueil (grandes tuiles) au lieu des onglets ; « Retour » depuis une section y ramène.
     var premiumMenu by rememberSaveable { mutableStateOf(true) }
     val showMenu = layout == HomeLayout.PREMIUM && premiumMenu
+    // Écran « Reprendre la lecture » ouvert depuis le menu de Cinéma Premium (gardé au retour du lecteur).
+    var resumeOpen by rememberSaveable { mutableStateOf(false) }
     BackHandler(enabled = layout == HomeLayout.PREMIUM && !premiumMenu) { premiumMenu = true }
     // Interfaces à rangées : « Retour » ramène d'une catégorie ou d'une recherche aux rangées.
     BackHandler(enabled = layout != HomeLayout.LIVE_CENTER && section.kind() != null && (category != Category.All || query.isNotEmpty())) {
@@ -287,6 +289,18 @@ fun HomeScreen(
         return
     }
 
+    if (showMenu && resumeOpen) {
+        // « Reprendre la lecture » du menu de Cinéma Premium : films et séries en cours, Retour ramène au menu.
+        PremiumResume(
+            movies = continueMovies,
+            series = continueSeries,
+            onResume = actions.onResume,
+            onClear = actions.onClearProgress,
+            onBack = { resumeOpen = false },
+        )
+        return
+    }
+
     if (showMenu) {
         val container = appContainer()
         val subscription by produceState<String?>(null, sourceId) {
@@ -306,11 +320,7 @@ fun HomeScreen(
                 viewModel.selectCategory(Category.Favorites)
                 premiumMenu = false
             },
-            onContinue = {
-                viewModel.selectSection(HomeSection.MOVIES)
-                viewModel.selectCategory(Category.ContinueWatching)
-                premiumMenu = false
-            },
+            onContinue = { resumeOpen = true },
             onSettings = onSettings,
             onSearch = openSearch,
             counts = menuCounts,

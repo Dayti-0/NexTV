@@ -872,6 +872,19 @@ internal fun ShelfPoster(
     }
 }
 
+/** « S01E08 · reste 12 min », « Épisode suivant : S01E09 » ou « Reste 1 h 15 ». */
+@Composable
+internal fun continueDetail(item: ProgressEntity): String? {
+    val remaining = (item.durationMs - item.positionMs).coerceAtLeast(0)
+    return when {
+        item.episodeLabel != null && item.positionMs <= 0 -> stringResource(R.string.home_continue_next, item.episodeLabel)
+        item.episodeLabel != null && item.durationMs > 0 -> stringResource(R.string.home_continue_episode, item.episodeLabel, formatDuration(remaining))
+        item.episodeLabel != null -> item.episodeLabel
+        item.durationMs > 0 -> stringResource(R.string.home_continue_remaining, formatDuration(remaining))
+        else -> null
+    }
+}
+
 @Composable
 private fun ContinueCard(
     item: ProgressEntity,
@@ -882,14 +895,7 @@ private fun ContinueCard(
     actions: HomeActions,
     style: ShelfStyle,
 ) {
-    val remaining = (item.durationMs - item.positionMs).coerceAtLeast(0)
-    val detail = when {
-        item.episodeLabel != null && item.positionMs <= 0 -> stringResource(R.string.home_continue_next, item.episodeLabel)
-        item.episodeLabel != null && item.durationMs > 0 -> stringResource(R.string.home_continue_episode, item.episodeLabel, formatDuration(remaining))
-        item.episodeLabel != null -> item.episodeLabel
-        item.durationMs > 0 -> stringResource(R.string.home_continue_remaining, formatDuration(remaining))
-        else -> null
-    }
+    val detail = continueDetail(item)
     val kind = if (item.episodeLabel != null) ContentKind.SERIES else ContentKind.MOVIE
     val poster = PosterItem(item.channelId, kind, item.itemKey, item.title, null, item.logoUrl)
     val onClick = {
