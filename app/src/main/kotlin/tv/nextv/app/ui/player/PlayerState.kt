@@ -92,6 +92,13 @@ data class PlayerUiState(
     val vod: VodInfo? = null,
     /** Épisode terminé : le suivant est proposé (lancé seul après un court décompte). */
     val upNext: NextEpisode? = null,
+    /**
+     * Épisode suivant proposé avant la fin (générique) : secondes restantes de l'épisode en cours, le suivant
+     * démarre à la fin. `null` : proposé à la fin, avec son propre décompte.
+     */
+    val upNextSeconds: Int? = null,
+    /** Film (ou dernier épisode) terminé : le lecteur se ferme. */
+    val finished: Boolean = false,
 )
 
 /** Film ou épisode en cours : titre (de la série), épisode, année, affiche et épisode suivant. */

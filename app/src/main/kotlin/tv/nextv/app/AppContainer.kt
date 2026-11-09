@@ -37,6 +37,8 @@ import tv.nextv.app.data.local.AndroidDocumentAccess
 import tv.nextv.app.data.local.ContentResolverOpener
 import tv.nextv.app.data.progress.ProgressDatabase
 import tv.nextv.app.data.progress.ProgressRepository
+import tv.nextv.app.data.progress.WatchedDatabase
+import tv.nextv.app.data.progress.WatchedRepository
 import tv.nextv.app.data.security.EncryptedCredentialStore
 import tv.nextv.app.data.security.KeystoreSecretCipher
 import tv.nextv.app.data.settings.SettingsRepository
@@ -183,6 +185,9 @@ class AppContainer(context: Context) {
 
     /** Reprise de lecture des films et séries (base distincte, sans migration de celle des playlists). */
     val progress = ProgressRepository(ProgressDatabase.create(appContext))
+
+    /** Films et épisodes regardés jusqu'au bout (badge « Déjà vu »). */
+    val watched = WatchedRepository(WatchedDatabase.create(appContext))
 
     /** Mises à jour de l'application (versions publiées sur GitHub). */
     val updater = AppUpdater(

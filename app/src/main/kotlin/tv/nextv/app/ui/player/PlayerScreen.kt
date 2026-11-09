@@ -143,6 +143,8 @@ fun PlayerScreen(onBack: () -> Unit) {
     val programmeSheet by viewModel.programmeSheet.collectAsStateWithLifecycle()
     val menuProgramme by viewModel.menuProgramme.collectAsStateWithLifecycle()
     val window = rememberWindowInfo()
+    // Film (ou dernier épisode) terminé : retour à l'écran d'où il a été lancé.
+    LaunchedEffect(state.finished) { if (state.finished) onBack() }
     var bannerTrigger by remember { mutableIntStateOf(0) }
     var bannerVisible by remember { mutableStateOf(true) }
     var infoVisible by rememberSaveable { mutableStateOf(false) }
@@ -460,9 +462,15 @@ fun PlayerScreen(onBack: () -> Unit) {
             modifier = Modifier.align(Alignment.Center),
         )
 
-        // Fin d'un épisode : le suivant, lancé après un décompte.
+        // Épisode suivant : proposé 40 s avant la fin (il démarre à la fin), ou à la fin avec un décompte.
         state.upNext?.let { next ->
-            UpNextCard(next, onPlay = viewModel::playNextEpisode, onDismiss = viewModel::dismissUpNext, modifier = Modifier.align(Alignment.BottomEnd).padding(36.dp))
+            UpNextCard(
+                next,
+                onPlay = viewModel::playNextEpisode,
+                onDismiss = viewModel::dismissUpNext,
+                modifier = Modifier.align(Alignment.BottomEnd).padding(36.dp),
+                remainingSeconds = state.upNextSeconds,
+            )
         }
 
         PlaybackInfoPanel(

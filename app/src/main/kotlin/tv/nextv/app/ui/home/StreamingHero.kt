@@ -270,6 +270,7 @@ internal fun StreamingPoster(
     width: Dp,
     progress: Float? = null,
     detail: String? = null,
+    watched: Boolean = false,
 ) {
     Column(Modifier.width(width), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         FocusSurface(
@@ -283,6 +284,7 @@ internal fun StreamingPoster(
             Box(Modifier.fillMaxSize()) {
                 PosterImage(title, imageUrl, Modifier.fillMaxSize(), compact = width < COMPACT_POSTER_WIDTH)
                 if (isFavorite) FavoriteStar(Modifier.align(Alignment.TopEnd).padding(6.dp).size(18.dp))
+                if (watched) WatchedBadge(Modifier.align(Alignment.TopStart).padding(6.dp))
                 if (progress != null) {
                     Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp).background(Color.Black.copy(alpha = 0.45f))) {
                         Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).fillMaxHeight().background(MaterialTheme.colorScheme.primary))

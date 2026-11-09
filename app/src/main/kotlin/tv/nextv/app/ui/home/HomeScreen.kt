@@ -342,47 +342,51 @@ fun HomeScreen(
         return
     }
 
-    HomeContent(
-        onMenu = if (layout == HomeLayout.PREMIUM) ({ premiumMenu = true }) else null,
-        section = section,
-        groups = groups,
-        category = category,
-        query = query,
-        channels = channels,
-        favoriteChannels = favoriteChannels,
-        movies = movies,
-        favoriteMovies = favoriteMovies,
-        series = series,
-        favoriteSeries = favoriteSeries,
-        favoriteKeys = favoriteKeys,
-        reorder = reorder,
-        now = now,
-        snackbarHostState = snackbar,
-        actions = actions,
-        onSearch = openSearch,
-        trailers = trailers,
-        guide = { modifier ->
-            sourceId?.let {
-                GuideScreen(it, playChannel, modifier, onReplay = { channelId, start, stop ->
-                    viewModel.setPreviewActive(false)
-                    onReplay(channelId, start, stop)
-                })
-            }
-        },
-        football = { modifier -> sourceId?.let { FootballScreen(it, playChannel, modifier) } },
-        continueMovies = continueMovies,
-        continueSeries = continueSeries,
-        gridColumns = gridColumns,
-        channelCount = channelCount,
-        recentChannels = recentChannels,
-        showPreview = previewEnabled,
-        preview = preview,
-        previewPlayer = previewPlayer,
-        layout = layout,
-        rows = viewModel.rows,
-        discover = discover,
-        spotlight = spotlight,
-    )
+    // Films et épisodes déjà vus : badge « Déjà vu » sur leurs affiches.
+    val watchedKeys by viewModel.watchedKeys.collectAsStateWithLifecycle()
+    CompositionLocalProvider(LocalWatchedKeys provides watchedKeys) {
+        HomeContent(
+            onMenu = if (layout == HomeLayout.PREMIUM) ({ premiumMenu = true }) else null,
+            section = section,
+            groups = groups,
+            category = category,
+            query = query,
+            channels = channels,
+            favoriteChannels = favoriteChannels,
+            movies = movies,
+            favoriteMovies = favoriteMovies,
+            series = series,
+            favoriteSeries = favoriteSeries,
+            favoriteKeys = favoriteKeys,
+            reorder = reorder,
+            now = now,
+            snackbarHostState = snackbar,
+            actions = actions,
+            onSearch = openSearch,
+            trailers = trailers,
+            guide = { modifier ->
+                sourceId?.let {
+                    GuideScreen(it, playChannel, modifier, onReplay = { channelId, start, stop ->
+                        viewModel.setPreviewActive(false)
+                        onReplay(channelId, start, stop)
+                    })
+                }
+            },
+            football = { modifier -> sourceId?.let { FootballScreen(it, playChannel, modifier) } },
+            continueMovies = continueMovies,
+            continueSeries = continueSeries,
+            gridColumns = gridColumns,
+            channelCount = channelCount,
+            recentChannels = recentChannels,
+            showPreview = previewEnabled,
+            preview = preview,
+            previewPlayer = previewPlayer,
+            layout = layout,
+            rows = viewModel.rows,
+            discover = discover,
+            spotlight = spotlight,
+        )
+    }
 
     if (confirmExit) {
         val activity = LocalActivity.current
@@ -1525,6 +1529,7 @@ private fun MoviesBody(
             subtitle = movie.year?.toString(),
             imageUrl = movie.logoUrl,
             isFavorite = movie.itemKey in favoriteKeys,
+            watched = movie.itemKey in LocalWatchedKeys.current,
             onClick = if (inFavorites && reorder.active) {
                 { actions.onPick(movie.itemKey) }
             } else {

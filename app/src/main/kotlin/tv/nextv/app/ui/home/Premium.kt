@@ -222,6 +222,7 @@ internal fun PremiumPoster(
     modifier: Modifier,
     progress: Float? = null,
     detail: String? = null,
+    watched: Boolean = false,
 ) {
     val width = POSTER_COLUMN_WIDTH
     Column(Modifier.width(width), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -236,6 +237,7 @@ internal fun PremiumPoster(
             Box(Modifier.fillMaxSize()) {
                 PosterImage(title, imageUrl, Modifier.fillMaxSize())
                 if (isFavorite) FavoriteStar(Modifier.align(Alignment.TopEnd).padding(6.dp))
+                if (watched) WatchedBadge(Modifier.align(Alignment.TopStart).padding(6.dp))
                 if (progress != null) {
                     Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp).background(Color.Black.copy(alpha = 0.4f))) {
                         Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).fillMaxHeight().background(MaterialTheme.colorScheme.primary))

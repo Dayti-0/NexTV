@@ -4,6 +4,13 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.79
+- Streaming : nouvelle fiche des films et séries, plein écran : grand visuel avec sa bande-annonce (muette selon les réglages, bouton « Son »), affiche, titre, note, année, genres, durée, accroche et résumé, boutons « Reprendre », « Depuis le début », « Bande-annonce » (plein écran) et « Favoris », puis les titres similaires
+- Séries (Streaming) : saisons en onglets (la saison change dès qu’on passe dessus), épisodes en vignettes avec l’épisode en cours et sa progression ; OK reprend l’épisode en cours ou lance celui choisi
+- Badge « Déjà vu » sur les films et les épisodes regardés jusqu’au bout (affiches de l’accueil, fiches, épisodes)
+- Épisodes : le suivant est proposé 40 s avant la fin, avec le temps restant ; il démarre à la fin (« Annuler » pour rester)
+- Fin d’un film, ou du dernier épisode : le lecteur se ferme et revient à l’écran précédent
+
 ## 0.2.78
 - Lecteur : la pause, le retour en arrière, le retour au direct et les sauts ne font plus baisser la qualité (ils étaient pris pour une connexion qui faiblit)
 - Direct en différé : → ne ramène plus au direct par mégarde, seul OK maintenu le fait

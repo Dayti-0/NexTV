@@ -467,6 +467,36 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
+    fun streamingMovie() = capture("11c_fiche_film_streaming", ThemeStyle.CINEMA) {
+        tv.nextv.app.ui.detail.StreamingDetailContent(
+            state = SampleData.movieDetail.copy(
+                progress = SampleData.movieProgress,
+                watched = setOf(SampleData.movieDetail.item!!.itemKey),
+                similar = SampleData.movies.take(8).map { tv.nextv.app.ui.home.PosterItem(it.id, ContentKind.MOVIE, it.itemKey, it.title, it.year, it.logoUrl) },
+            ),
+            kind = ContentKind.MOVIE,
+            window = tv.nextv.app.ui.components.rememberWindowInfo(),
+            trailers = tv.nextv.app.ui.home.TrailerSettings(),
+            onPlay = {}, onResume = {}, onRestart = {}, onToggleFavorite = {}, onSelectSeason = {}, onOpenItem = {},
+        )
+    }
+
+    @Test
+    fun streamingSeries() = capture("12b_fiche_serie_streaming", ThemeStyle.EMERALD) {
+        val detail = SampleData.seriesDetail
+        val firstEpisode = detail.seasons.first().episodes.first()
+        tv.nextv.app.ui.detail.StreamingDetailContent(
+            state = detail.copy(
+                watched = setOf(tv.nextv.app.data.progress.WatchedRepository.episodeKey(detail.item!!.itemKey, firstEpisode.season, firstEpisode.episode, firstEpisode.name)),
+            ),
+            kind = ContentKind.SERIES,
+            window = tv.nextv.app.ui.components.rememberWindowInfo(),
+            trailers = tv.nextv.app.ui.home.TrailerSettings(),
+            onPlay = {}, onResume = {}, onRestart = {}, onToggleFavorite = {}, onSelectSeason = {}, onOpenItem = {},
+        )
+    }
+
+    @Test
     fun player() = capture("13_lecteur") {
         FakeVideo()
         PlayerOverlay(

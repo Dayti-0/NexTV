@@ -9,6 +9,7 @@ import tv.nextv.app.AppContainer
 import tv.nextv.app.data.db.ChannelEntity
 import tv.nextv.app.data.progress.ProgressEntity
 import tv.nextv.app.data.progress.ProgressRepository
+import tv.nextv.app.data.progress.WatchedRepository
 import tv.nextv.core.model.ContentKind
 
 /**
@@ -38,6 +39,9 @@ internal class ResumeController(
 
     private var resumeMode: String = initialMode
     private var pendingResume: Pair<ChannelEntity, ProgressEntity>? = null
+
+    /** Épisode pour lequel « Annuler » a été choisi dans la proposition de l'épisode suivant. */
+    private var upNextDismissedFor: Long? = null
 
     /** @return vrai si la lecture attend le choix « reprendre / recommencer » (ou reprend un autre épisode). */
     suspend fun handle(requested: ChannelEntity): Boolean {
@@ -117,6 +121,15 @@ internal class ResumeController(
             updatedAt = System.currentTimeMillis(),
         )
         val finished = duration > 0 && (duration - position < ProgressRepository.END_MARGIN_MS || position >= duration * 95 / 100)
+        if (finished) {
+            // Regardé jusqu'au bout : badge « Déjà vu » (film, ou cet épisode).
+            val key = if (item.kind == ContentKind.SERIES.name) {
+                WatchedRepository.episodeKey(item.itemKey, item.season, item.episode, item.name)
+            } else {
+                item.itemKey
+            }
+            runCatching { container.watched.mark(item.sourceId, key) }
+        }
         if (finished && item.kind == ContentKind.SERIES.name) {
             // Épisode terminé : la série reprendra à l'épisode suivant.
             val episodes = container.channelDao.episodes(item.sourceId, item.itemKey)
@@ -132,12 +145,43 @@ internal class ResumeController(
         container.progress.save(entity)
     }
 
-    /** Film ou épisode arrivé à la fin : position finale enregistrée, épisode suivant proposé. */
+    /**
+     * Film ou épisode arrivé à la fin : position finale enregistrée. Épisode suivant déjà proposé (avant la fin) :
+     * il démarre ; proposé pendant le générique puis refusé, ou film, ou dernier épisode : le lecteur se ferme.
+     */
     fun onVodEnded() {
         val player = player() ?: return
         scope.launch { save(positionMs = player.duration, durationMs = player.duration) }
-        // Épisode terminé : le suivant est proposé.
-        state.value.vod?.next?.let { next -> state.update { it.copy(upNext = next) } }
+        val current = session.playing?.id
+        val next = state.value.vod?.next
+        when {
+            next != null && state.value.upNext != null -> playNextEpisode()
+            next != null && upNextDismissedFor != current -> state.update { it.copy(upNext = next, upNextSeconds = null) }
+            else -> state.update { it.copy(upNext = null, finished = true) }
+        }
+    }
+
+    /**
+     * Pendant la lecture d'un épisode : le suivant est proposé [UP_NEXT_BEFORE_END_MILLIS] avant la fin, avec
+     * les secondes restantes (sauf si « Annuler » a été choisi pour cet épisode).
+     */
+    fun checkUpNext() {
+        val item = session.playing ?: return
+        if (item.kind != ContentKind.SERIES.name || state.value.resumePrompt != null) return
+        val next = state.value.vod?.next ?: return
+        val player = player() ?: return
+        val duration = player.duration.takeIf { it > 0 } ?: return
+        val remaining = duration - player.currentPosition
+        val shown = state.value.upNext != null
+        when {
+            remaining in 0..UP_NEXT_BEFORE_END_MILLIS && upNextDismissedFor != item.id -> {
+                val seconds = ((remaining + 999) / 1_000).toInt()
+                if (!shown || state.value.upNextSeconds != seconds) state.update { it.copy(upNext = next, upNextSeconds = seconds) }
+            }
+            // Retour en arrière avant le générique : la proposition disparaît.
+            shown && state.value.upNextSeconds != null && remaining > UP_NEXT_BEFORE_END_MILLIS ->
+                state.update { it.copy(upNext = null, upNextSeconds = null) }
+        }
     }
 
     /** Écran du lecteur fermé : dernière position enregistrée dans la portée de l'application. */
@@ -174,14 +218,20 @@ internal class ResumeController(
     /** Épisode suivant de la série, depuis son début. */
     fun playNextEpisode() {
         val next = state.value.vod?.next ?: state.value.upNext ?: return
-        state.update { it.copy(upNext = null) }
+        state.update { it.copy(upNext = null, upNextSeconds = null) }
         scope.launch { save() }
         resumeMode = PlayerViewModel.RESUME_NO
         host.load(next.id)
     }
 
     fun dismissUpNext() {
-        state.update { it.copy(upNext = null) }
+        upNextDismissedFor = session.playing?.id
+        state.update { it.copy(upNext = null, upNextSeconds = null) }
+    }
+
+    private companion object {
+        /** L'épisode suivant est proposé 40 s avant la fin de l'épisode en cours. */
+        const val UP_NEXT_BEFORE_END_MILLIS = 40_000L
     }
 
     private fun episodeLabel(item: ChannelEntity): String? {

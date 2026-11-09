@@ -946,11 +946,12 @@ internal fun ShelfPoster(
         .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
         .restoreFocus(item.itemKey, lastOpened)
         .onFocusChanged { if (it.isFocused) actions.onPosterFocus(item) }
+    val watched = item.kind == ContentKind.MOVIE && item.itemKey in LocalWatchedKeys.current
     if (style == ShelfStyle.PREMIUM) {
-        PremiumPoster(item.title, item.imageUrl, item.itemKey in favoriteKeys, onClick, onLongClick, modifier)
+        PremiumPoster(item.title, item.imageUrl, item.itemKey in favoriteKeys, onClick, onLongClick, modifier, watched = watched)
     } else {
         // Streaming : l'affiche seule, ses informations sont dans le bandeau.
-        StreamingPoster(item.title, item.imageUrl, item.itemKey in favoriteKeys, onClick, onLongClick, modifier, width)
+        StreamingPoster(item.title, item.imageUrl, item.itemKey in favoriteKeys, onClick, onLongClick, modifier, width, watched = watched)
     }
 }
 

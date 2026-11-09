@@ -152,6 +152,7 @@ private fun AppNavHost(navController: NavHostController) {
                 onBack = { navController.popBackStack() },
                 onResume = { navController.navigate(Routes.player(it, PlayerViewModel.RESUME_YES)) },
                 onRestart = { navController.navigate(Routes.player(it, PlayerViewModel.RESUME_NO)) },
+                onOpenItem = { id, kind -> navController.navigate(if (kind == ContentKind.SERIES) Routes.series(id) else Routes.movie(id)) },
             )
         }
         composable(
@@ -165,6 +166,7 @@ private fun AppNavHost(navController: NavHostController) {
                 onBack = { navController.popBackStack() },
                 onResume = { navController.navigate(Routes.player(it, PlayerViewModel.RESUME_YES)) },
                 onRestart = { navController.navigate(Routes.player(it, PlayerViewModel.RESUME_NO)) },
+                onOpenItem = { id, kind -> navController.navigate(if (kind == ContentKind.SERIES) Routes.series(id) else Routes.movie(id)) },
             )
         }
         composable(

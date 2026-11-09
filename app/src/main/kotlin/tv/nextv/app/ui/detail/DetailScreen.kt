@@ -70,6 +70,7 @@ import tv.nextv.app.ui.components.PillButton
 import tv.nextv.app.ui.components.PillStyle
 import tv.nextv.app.ui.components.rememberWindowInfo
 import tv.nextv.app.ui.guide.formatDuration
+import tv.nextv.app.ui.home.HomeLayout
 import tv.nextv.app.ui.home.PosterImage
 import tv.nextv.app.ui.theme.NexTvColors
 import tv.nextv.app.ui.theme.NexTvIcons
@@ -86,9 +87,30 @@ fun DetailScreen(
     onBack: () -> Unit,
     onResume: (Long) -> Unit = onPlay,
     onRestart: (Long) -> Unit = onPlay,
+    /** Titre similaire choisi (fiche Streaming). */
+    onOpenItem: (Long, ContentKind) -> Unit = { _, _ -> },
 ) {
     val viewModel = appViewModel(key = "detail-$kind-$channelId") { container, _ -> DetailViewModel(container, channelId, kind) }
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val layout by viewModel.layout.collectAsStateWithLifecycle()
+    val trailers by viewModel.trailers.collectAsStateWithLifecycle()
+    val window = rememberWindowInfo()
+    // Interface Streaming sur grand écran : fiche immersive (visuel, bande-annonce, épisodes en vignettes).
+    if (layout == HomeLayout.STREAMING && window.isWide && !state.missing) {
+        StreamingDetailContent(
+            state = state,
+            kind = kind,
+            window = window,
+            trailers = trailers,
+            onPlay = onPlay,
+            onResume = onResume,
+            onRestart = onRestart,
+            onToggleFavorite = viewModel::toggleFavorite,
+            onSelectSeason = viewModel::selectSeason,
+            onOpenItem = { onOpenItem(it.id, it.kind) },
+        )
+        return
+    }
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()

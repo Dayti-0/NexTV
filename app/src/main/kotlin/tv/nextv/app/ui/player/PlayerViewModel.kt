@@ -181,6 +181,8 @@ class PlayerViewModel(
             while (true) {
                 delay(QUALITY_CHECK_MILLIS)
                 delayed.updateWatchedAt()
+                // Épisode : le suivant est proposé 40 s avant la fin.
+                resume.checkUpNext()
                 val adMuted = engine.adVolume.enabled && engine.adVolume.attenuating
                 if (state.value.adMuted != adMuted) mutableState.update { it.copy(adMuted = adMuted) }
                 val dropped = engine.newDroppedFrames()
@@ -325,7 +327,7 @@ class PlayerViewModel(
             )
         }
         refreshProgrammes()
-        if (!isLive) mutableState.update { it.copy(vod = resume.vodInfo(requested), upNext = null) }
+        if (!isLive) mutableState.update { it.copy(vod = resume.vodInfo(requested), upNext = null, upNextSeconds = null) }
         if (isLive) session.startPositionMs = 0
         if (!isLive && resume.handle(requested)) {
             // Question « reprendre / recommencer » : pas d'image attendue avant la réponse.

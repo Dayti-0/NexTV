@@ -4,6 +4,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import tv.nextv.app.ui.home.toPoster
+import tv.nextv.app.ui.home.TrailerSettings
+import tv.nextv.app.ui.home.PosterItem
+import tv.nextv.app.ui.home.HomeLayout
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -37,6 +44,10 @@ data class DetailUiState(
     val missing: Boolean = false,
     /** Lecture en cours (film commencé, épisode en cours de la série). */
     val progress: ProgressEntity? = null,
+    /** Films et épisodes déjà vus (clés, voir [tv.nextv.app.data.progress.WatchedRepository]). */
+    val watched: Set<String> = emptySet(),
+    /** Titres de la même catégorie (fiche Streaming). */
+    val similar: List<PosterItem> = emptyList(),
 )
 
 /** Fiche d'un film ou d'une série : données de la playlist, enrichies par TMDB si possible. */
@@ -79,6 +90,22 @@ class DetailViewModel(
             }
         }
         viewModelScope.launch {
+            container.watched.observeKeys(entity.sourceId).collect { keys ->
+                mutableState.update { it.copy(watched = keys) }
+            }
+        }
+        // Titres similaires : la même catégorie de la playlist, sans celui-ci.
+        viewModelScope.launch {
+            val similar = runCatching {
+                if (kind == ContentKind.SERIES) {
+                    container.channelDao.seriesRow(entity.sourceId, entity.groupTitle, SIMILAR_COUNT + 1).map { it.toPoster() }
+                } else {
+                    container.channelDao.movieRow(entity.sourceId, entity.groupTitle, SIMILAR_COUNT + 1).map { it.toPoster() }
+                }
+            }.getOrDefault(emptyList()).filter { it.itemKey != entity.itemKey }.take(SIMILAR_COUNT)
+            mutableState.update { it.copy(similar = similar) }
+        }
+        viewModelScope.launch {
             container.favorites.observeKeys(entity.sourceId).collect { keys ->
                 mutableState.update { it.copy(isFavorite = entity.itemKey in keys) }
             }
@@ -97,6 +124,18 @@ class DetailViewModel(
         }
         mutableState.update { it.copy(metadata = metadata) }
     }
+
+    /** Interface choisie (la fiche Streaming a sa propre présentation). */
+    val layout: StateFlow<HomeLayout> = container.settings.homeLayout
+        .stateIn(viewModelScope, SharingStarted.Eagerly, HomeLayout.DEFAULT)
+
+    /** Bandes-annonces (fiche Streaming) : lecture automatique, son, délai. */
+    val trailers: StateFlow<TrailerSettings> = combine(
+        container.settings.trailerAutoplay,
+        container.settings.trailerSound,
+        container.settings.trailerDelaySeconds,
+    ) { autoplay, sound, delay -> TrailerSettings(autoplay, sound, delay * 1_000L) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, TrailerSettings())
 
     fun selectSeason(index: Int) {
         mutableState.update { it.copy(selectedSeason = index) }
@@ -117,3 +156,6 @@ class DetailViewModel(
  * recherche : les « introuvables » enregistrés avant son amélioration sont ignorés.
  */
 internal fun metadataCacheKey(itemKey: String): String = "v3|$itemKey"
+
+/** Titres similaires affichés sur la fiche Streaming. */
+private const val SIMILAR_COUNT = 20

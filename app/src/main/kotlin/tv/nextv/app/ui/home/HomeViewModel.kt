@@ -274,6 +274,11 @@ class HomeViewModel(
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
+    /** Films et épisodes déjà vus (badge « Déjà vu »). */
+    val watchedKeys: StateFlow<Set<String>> = sourceId.flatMapLatest { id ->
+        if (id == null) flowOf(emptySet()) else container.watched.observeKeys(id)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
     val favoriteKeys: StateFlow<Set<String>> = sourceId.flatMapLatest { id ->
         if (id == null) flowOf(emptySet()) else container.favorites.observeKeys(id).map { it.toSet() }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())

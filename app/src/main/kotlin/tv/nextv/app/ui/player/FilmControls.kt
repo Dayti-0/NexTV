@@ -345,15 +345,25 @@ private fun SkipButton(label: String, description: String, onClick: () -> Unit) 
  * « Annuler »).
  */
 @Composable
-fun UpNextCard(next: NextEpisode, onPlay: () -> Unit, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
-    var seconds by remember(next) { mutableIntStateOf(UP_NEXT_SECONDS) }
-    LaunchedEffect(next) {
-        while (seconds > 0) {
-            delay(1_000)
-            seconds--
+fun UpNextCard(
+    next: NextEpisode,
+    onPlay: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    /** Proposé avant la fin : secondes restantes de l'épisode (il démarre à sa fin). `null` : décompte propre. */
+    remainingSeconds: Int? = null,
+) {
+    var countdown by remember(next) { mutableIntStateOf(UP_NEXT_SECONDS) }
+    if (remainingSeconds == null) {
+        LaunchedEffect(next) {
+            while (countdown > 0) {
+                delay(1_000)
+                countdown--
+            }
+            onPlay()
         }
-        onPlay()
     }
+    val seconds = remainingSeconds ?: countdown
     val playFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { playFocus.requestFocus() } }
     Row(

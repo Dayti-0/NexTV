@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -308,6 +309,8 @@ fun PosterCard(
     progress: Float? = null,
     /** Affiche étroite (nombreuses par ligne) : titre sur une ligne, sans sous-titre. */
     compact: Boolean = false,
+    /** Déjà vu jusqu'au bout : badge en haut à gauche. */
+    watched: Boolean = false,
 ) {
     FocusSurface(
         onClick = onClick,
@@ -321,6 +324,7 @@ fun PosterCard(
                 PosterImage(title, imageUrl, Modifier.fillMaxSize(), compact)
                 val inset = if (compact) 4.dp else 8.dp
                 if (isFavorite) FavoriteStar(Modifier.align(Alignment.TopEnd).padding(inset).then(if (compact) Modifier.size(16.dp) else Modifier))
+                if (watched) WatchedBadge(Modifier.align(Alignment.TopStart).padding(inset), compact)
                 progress?.let { LiveProgress(0, 1_000, (it * 1_000).toLong(), Modifier.align(Alignment.BottomCenter).padding(inset)) }
             }
             if (compact) {
@@ -369,6 +373,27 @@ fun PosterImage(title: String, imageUrl: String?, modifier: Modifier = Modifier,
                 onState = { loaded = it is AsyncImagePainter.State.Success },
                 modifier = Modifier.fillMaxSize(),
             )
+        }
+    }
+}
+
+/** Films et épisodes déjà vus (clés), pour le badge « Déjà vu » des affiches de l'accueil. */
+internal val LocalWatchedKeys = androidx.compose.runtime.staticCompositionLocalOf<Set<String>> { emptySet() }
+
+/** Badge « Déjà vu » : coche et libellé sur fond sombre, en haut à gauche d'une affiche ou d'une vignette. */
+@Composable
+internal fun WatchedBadge(modifier: Modifier = Modifier, compact: Boolean = false) {
+    Row(
+        modifier
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+            .background(Color.Black.copy(alpha = 0.72f))
+            .padding(horizontal = if (compact) 4.dp else 6.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Icon(androidx.compose.material.icons.Icons.Filled.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(if (compact) 11.dp else 13.dp))
+        if (!compact) {
+            Text(androidx.compose.ui.res.stringResource(tv.nextv.app.R.string.watched_badge), style = MaterialTheme.typography.labelSmall, color = Color.White, maxLines = 1)
         }
     }
 }
