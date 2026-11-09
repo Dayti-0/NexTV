@@ -49,6 +49,14 @@ class TmdbClientTest {
                     path.endsWith("/search/movie") -> json(searchJson)
                     path.endsWith("/movie/19995") -> json(detailsJson)
                     path.endsWith("/search/tv") -> json("""{"results":[]}""")
+                    path.endsWith("/movie/19995/credits") -> json(
+                        """{"cast":[{"name":"Zoe Saldana","character":"Neytiri","order":1,"profile_path":"/zoe.jpg"},
+                        {"name":"Sam Worthington","character":"Jake Sully","order":0,"profile_path":"/sam.jpg"},
+                        {"name":"Inconnu","character":"","order":2,"profile_path":null}]}""",
+                    )
+                    path.endsWith("/tv/42/aggregate_credits") -> json(
+                        """{"cast":[{"name":"Pedro Pascal","order":0,"roles":[{"character":"Joel","episode_count":9},{"character":"Invité","episode_count":1}]}]}""",
+                    )
                     else -> MockResponse.Builder().code(404).build()
                 }
             }
@@ -83,6 +91,21 @@ class TmdbClientTest {
         assertEquals("2009", search.url.queryParameter("year"))
         assertEquals("fr-FR", search.url.queryParameter("language"))
         assertEquals("abc123", search.url.queryParameter("api_key"))
+    }
+
+    @Test
+    fun `reads the cast in order, with roles and photos`() = runBlocking {
+        val cast = client.credits(MediaType.MOVIE, 19995)
+        assertEquals(listOf("Sam Worthington", "Zoe Saldana", "Inconnu"), cast.map { it.name })
+        assertEquals("Jake Sully", cast[0].character)
+        assertEquals("https://image.tmdb.org/t/p/w185/sam.jpg", cast[0].photoUrl)
+        assertNull(cast[2].character)
+        assertNull(cast[2].photoUrl)
+        // Série : le rôle joué dans le plus d'épisodes.
+        val series = client.credits(MediaType.SERIES, 42)
+        assertEquals("Joel", series.single().character)
+        // Fiche inconnue : pas de distribution, sans erreur.
+        assertEquals(emptyList<CastMember>(), client.credits(MediaType.MOVIE, 7))
     }
 
     @Test

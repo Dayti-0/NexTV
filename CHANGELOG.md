@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.81
+- Fiches films et séries : la distribution (TMDB). « Avec … » et les têtes d’affiche sous le résumé ; dans l’interface Streaming, une rangée « Distribution » avec photo, nom et rôle (rôle principal sur toutes les saisons pour une série)
+
 ## 0.2.80
 - Plus réactif : passage d’un écran à l’autre en un quart de seconde (au lieu de 0,7 s), le lecteur s’ouvre et se ferme sans fondu
 - Affiches et visuels apparaissent en fondu ; les affiches suivantes d’une rangée, et les premières des rangées du dessous, sont téléchargées d’avance (moins d’affiches vides en défilant vite)

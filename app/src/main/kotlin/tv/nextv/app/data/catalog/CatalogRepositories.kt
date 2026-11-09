@@ -4,6 +4,7 @@ import androidx.room.withTransaction
 import tv.nextv.app.data.db.FavoriteEntity
 import tv.nextv.app.data.db.NexTvDatabase
 import tv.nextv.app.data.db.TmdbCacheEntity
+import tv.nextv.core.meta.CastMember
 import tv.nextv.core.meta.MediaDetails
 import tv.nextv.core.meta.MediaType
 import tv.nextv.core.meta.TrendingTitle
@@ -30,6 +31,20 @@ class MetadataRepository(
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private val dao = database.tmdbDao()
+
+    /** Distributions déjà lues pendant cette session (les fiches rouvertes ne la redemandent pas). */
+    private val castCache = object : LinkedHashMap<String, List<CastMember>>(CAST_CACHE_SIZE, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<CastMember>>?) = size > CAST_CACHE_SIZE
+    }
+
+    /** Distribution d'une fiche trouvée (vide si TMDB ne la donne pas ou en cas d'échec). */
+    suspend fun credits(details: MediaDetails): List<CastMember> {
+        val key = "${details.type}:${details.tmdbId}"
+        synchronized(castCache) { castCache[key] }?.let { return it }
+        val cast = client.credits(details.type, details.tmdbId)
+        if (cast.isNotEmpty()) synchronized(castCache) { castCache[key] = cast }
+        return cast
+    }
 
     /** Fiche déjà en cache et encore valable, sans appel réseau (`null` sinon). */
     suspend fun cachedDetails(cacheKey: String, type: MediaType): MediaDetails? {
@@ -119,6 +134,9 @@ class MetadataRepository(
         const val FOUND_TTL = 30 * DAY
         const val NOT_FOUND_TTL = 7 * DAY
         const val TRENDING_TTL = 6 * 60 * 60_000L
+
+        /** Distributions gardées en mémoire (fiches ouvertes pendant la session). */
+        const val CAST_CACHE_SIZE = 40
     }
 }
 

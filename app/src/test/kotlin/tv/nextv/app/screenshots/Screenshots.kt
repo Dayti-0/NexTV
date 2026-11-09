@@ -473,6 +473,8 @@ abstract class ScreenshotSuite(private val device: String) {
                 progress = SampleData.movieProgress,
                 watched = setOf(SampleData.movieDetail.item!!.itemKey),
                 similar = SampleData.movies.take(8).map { tv.nextv.app.ui.home.PosterItem(it.id, ContentKind.MOVIE, it.itemKey, it.title, it.year, it.logoUrl) },
+                cast = listOf("Camille Martin" to "Lucie", "Hugo Bernard" to "Tom", "Inès Petit" to "Sarah", "Louis Moreau" to "Le garagiste", "Jeanne Laurent" to null)
+                    .map { (name, role) -> tv.nextv.core.meta.CastMember(name, role, null) },
             ),
             kind = ContentKind.MOVIE,
             window = tv.nextv.app.ui.components.rememberWindowInfo(),

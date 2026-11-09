@@ -48,6 +48,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
+import tv.nextv.core.meta.CastMember
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -184,6 +186,8 @@ internal fun StreamingDetailContent(
                         (details?.overview)?.let {
                             Text(it, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant, maxLines = 5, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = TEXT_MAX_WIDTH))
                         }
+                        // Les têtes d'affiche, sous le résumé (la distribution complète est plus bas).
+                        CastLine(state.cast)
                         DetailButtons(
                             state, kind, playFocus,
                             trailerKey = details?.trailerYoutubeKey,
@@ -231,6 +235,19 @@ internal fun StreamingDetailContent(
                                 current = current,
                                 onClick = { if (current) onResume(episode.id) else onPlay(episode.id) },
                             )
+                        }
+                    }
+                }
+            }
+            if (state.cast.isNotEmpty()) {
+                item(key = "cast") {
+                    Column(Modifier.padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(R.string.detail_cast), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = padding))
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = padding, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(18.dp),
+                        ) {
+                            itemsIndexed(state.cast, key = { index, person -> "$index:${person.name}" }) { _, person -> CastCard(person) }
                         }
                     }
                 }
@@ -429,6 +446,56 @@ private fun EpisodeCard(
         Spacer(Modifier.height(2.dp))
     }
 }
+
+/** « Avec Sam Worthington, Zoe Saldana, Sigourney Weaver ». */
+@Composable
+internal fun CastLine(cast: List<CastMember>, modifier: Modifier = Modifier) {
+    if (cast.isEmpty()) return
+    Text(
+        stringResource(R.string.detail_starring, cast.take(STARRING_COUNT).joinToString(", ") { it.name }),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier.widthIn(max = TEXT_MAX_WIDTH),
+    )
+}
+
+/**
+ * Acteur ou actrice : photo ronde (ses initiales sans photo), nom et rôle. Sélectionnable sans action : la
+ * télécommande parcourt la distribution, et la page défile jusqu'à elle.
+ */
+@Composable
+private fun CastCard(person: CastMember) {
+    val colors = MaterialTheme.colorScheme
+    Column(Modifier.width(CAST_WIDTH), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        FocusSurface(
+            onClick = {},
+            modifier = Modifier.size(CAST_PHOTO),
+            shape = CircleShape,
+            color = colors.surfaceContainerHigh,
+            focusScale = 1.08f,
+        ) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(
+                    person.name.split(' ').filter { it.isNotBlank() }.take(2).joinToString("") { it.take(1).uppercase() },
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.onSurfaceVariant,
+                )
+                person.photoUrl?.let { AsyncImage(model = it, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
+            }
+        }
+        Text(person.name, style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+        person.character?.let {
+            Text(it, style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+        }
+    }
+}
+
+private val CAST_WIDTH = 110.dp
+private val CAST_PHOTO = 88.dp
+private const val STARRING_COUNT = 3
 
 private val EPISODE_WIDTH = 240.dp
 

@@ -223,8 +223,12 @@ fun DetailContent(
                                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                                     Text(stringResource(R.string.detail_loading), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
-                                is MetadataState.Available -> metadata.details.overview?.let {
-                                    Text(it, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.9f), maxLines = 8, overflow = TextOverflow.Ellipsis)
+                                is MetadataState.Available -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    metadata.details.overview?.let {
+                                        Text(it, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.9f), maxLines = 8, overflow = TextOverflow.Ellipsis)
+                                    }
+                                    // Têtes d'affiche (TMDB).
+                                    CastLine(state.cast)
                                 }
                                 MetadataState.NotFound -> MetadataNotice(stringResource(R.string.detail_tmdb_not_found))
                                 is MetadataState.Unavailable -> MetadataNotice(

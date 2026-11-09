@@ -19,6 +19,7 @@ import tv.nextv.app.data.catalog.MetadataState
 import tv.nextv.app.data.progress.ProgressEntity
 import tv.nextv.app.data.db.EpisodeRow
 import tv.nextv.core.catalog.ContentClassifier
+import tv.nextv.core.meta.CastMember
 import tv.nextv.core.meta.MediaType
 import tv.nextv.core.meta.TmdbError
 import tv.nextv.core.model.ContentKind
@@ -48,6 +49,8 @@ data class DetailUiState(
     val watched: Set<String> = emptySet(),
     /** Titres de la même catégorie (fiche Streaming). */
     val similar: List<PosterItem> = emptyList(),
+    /** Distribution (TMDB), par ordre d'importance. */
+    val cast: List<CastMember> = emptyList(),
 )
 
 /** Fiche d'un film ou d'une série : données de la playlist, enrichies par TMDB si possible. */
@@ -123,6 +126,11 @@ class DetailViewModel(
             )
         }
         mutableState.update { it.copy(metadata = metadata) }
+        // Distribution : lue après la fiche (elle ne retarde ni le titre ni le résumé).
+        (metadata as? MetadataState.Available)?.details?.let { details ->
+            val cast = runCatching { container.metadata.credits(details) }.getOrDefault(emptyList())
+            mutableState.update { it.copy(cast = cast) }
+        }
     }
 
     /** Interface choisie (la fiche Streaming a sa propre présentation). */

@@ -46,6 +46,9 @@ data class MediaDetails(
     val stars: Double? get() = rating?.takeIf { voteCount > 0 }?.let { it / 2 }
 }
 
+/** Acteur ou actrice de la distribution : nom, rôle et photo (TMDB). */
+data class CastMember(val name: String, val character: String?, val photoUrl: String?)
+
 /** Film ou série de la semaine sur TMDB (« Tendances »), à retrouver dans la playlist. */
 data class TrendingTitle(
     val title: String,
@@ -101,6 +104,35 @@ class TmdbClient(
             return lookupWith(fallback, type, title, year, exact)
         }
         return result
+    }
+
+    /**
+     * Distribution du film ou de la série [tmdbId] (fiche déjà trouvée), par ordre d'importance, au plus
+     * [limit] personnes. Série : toutes les saisons (rôle principal de chacun). Vide sans clé ou en cas
+     * d'échec (la fiche s'affiche sans).
+     */
+    suspend fun credits(type: MediaType, tmdbId: Long, limit: Int = 15): List<CastMember> {
+        val key = apiKey()?.trim()?.takeIf { it.isNotEmpty() } ?: fallbackApiKey()?.trim()?.takeIf { it.isNotEmpty() } ?: return emptyList()
+        val path = if (type == MediaType.MOVIE) "movie/$tmdbId/credits" else "tv/$tmdbId/aggregate_credits"
+        val url = baseUrl.newBuilder().addPathSegments(path).addQueryParameter("language", language).build()
+        val json = try {
+            get(key, url)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logger.warn(TAG, "Distribution TMDB indisponible", e)
+            return emptyList()
+        }
+        return json.optJSONArray("cast").objects()
+            .sortedBy { it.optInt("order", Int.MAX_VALUE) }
+            .mapNotNull { person ->
+                val name = person.optStringOrNull("name") ?: return@mapNotNull null
+                // Série (aggregate_credits) : le rôle le plus joué ; film : le rôle.
+                val character = person.optStringOrNull("character")
+                    ?: person.optJSONArray("roles").objects().maxByOrNull { it.optInt("episode_count") }?.optStringOrNull("character")
+                CastMember(name, character, person.optStringOrNull("profile_path")?.let { "${imageBaseUrl}w185$it" })
+            }
+            .take(limit)
     }
 
     /**

@@ -137,6 +137,8 @@
     <string name="home_continue">Reprendre la lecture</string>
     <string name="watched_badge">Déjà vu</string>
     <string name="detail_similar">Titres similaires</string>
+    <string name="detail_cast">Distribution</string>
+    <string name="detail_starring">Avec %1$s</string>
     <string name="detail_episode_current">En cours</string>
     <string name="hero_watch">Regarder</string>
     <string name="hero_resume">Reprendre</string>
