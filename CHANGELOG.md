@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.64
+- Bande-annonce derrière la grande affiche : l’affichage YouTube du début (titre, chaîne, boutons) n’apparaît plus ; la vidéo arrive en fondu une fois ces commandes parties, avec le son à ce moment-là
+
 ## 0.2.63
 - Chaînes en mosaïque (Streaming et Cinéma Premium) : l’aperçu passe en bandeau en haut, avec le nom de la chaîne et le programme en grand ; la mosaïque prend toute la largeur, vignettes plus grandes
 

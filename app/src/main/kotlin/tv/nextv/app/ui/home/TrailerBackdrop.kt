@@ -87,7 +87,8 @@ private fun trailerView(context: android.content.Context, key: String, captions:
     isFocusable = false
     isFocusableInTouchMode = false
     importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
-    setBackgroundColor(AndroidColor.BLACK)
+    // Transparente tant que la vidéo est cachée (commandes YouTube du démarrage) : l'image reste visible dessous.
+    setBackgroundColor(AndroidColor.TRANSPARENT)
     settings.javaScriptEnabled = true
     settings.mediaPlaybackRequiresUserGesture = false
     settings.domStorageEnabled = true
@@ -97,16 +98,29 @@ private fun trailerView(context: android.content.Context, key: String, captions:
     // rien n'est coupé. L'API YouTube se branche sur ce lecteur pour le son, la pause et les sous-titres.
     val html = """
         <html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>
-        html,body{margin:0;width:${width}px;height:${height}px;background:#000;overflow:hidden}
-        iframe{position:absolute;top:0;left:0;width:${width}px;height:${height}px;border:0;pointer-events:none}
+        html,body{margin:0;width:${width}px;height:${height}px;background:transparent;overflow:hidden}
+        iframe{position:absolute;top:0;left:0;width:${width}px;height:${height}px;border:0;pointer-events:none;opacity:0;transition:opacity .8s}
         </style></head><body>
         <iframe id="player" width="$width" height="$height" src="https://www.youtube-nocookie.com/embed/$key?autoplay=1&mute=1&controls=0&loop=1&playlist=$key&modestbranding=1&rel=0&playsinline=1&iv_load_policy=3&disablekb=1&fs=0&hl=fr&cc_load_policy=${captions.loadPolicy}&enablejsapi=1&origin=https%3A%2F%2Fnixtv.app"
         allow="autoplay; encrypted-media" referrerpolicy="strict-origin-when-cross-origin"></iframe>
         <script>
         var player=null;
-        var unmuted=false;
+        // Vidéo cachée au démarrage, à la reprise et à chaque boucle : YouTube y affiche quelques secondes
+        // son titre, sa chaîne et ses boutons. Elle apparaît (avec le son) une fois ces commandes parties.
+        var hidden=true;
+        var revealTimer=null;
+        function frame(){return document.getElementById('player');}
+        function hide(){hidden=true;clearTimeout(revealTimer);frame().style.opacity=0;call(function(){player.mute();});}
+        function revealSoon(p){
+          clearTimeout(revealTimer);
+          revealTimer=setTimeout(function(){
+            hidden=false;
+            frame().style.opacity=1;
+            call(function(){p.unMute();p.setVolume(100);});
+          },${REVEAL_DELAY_MILLIS});
+        }
         function pause(){try{player.pauseVideo();}catch(e){}}
-        function resume(){try{player.playVideo();}catch(e){}}
+        function resume(){hide();try{player.playVideo();}catch(e){}}
         var captions='${captions.name}';
         var captionsSet=false;
         function call(f){try{f();}catch(e){}}
@@ -133,9 +147,10 @@ private fun trailerView(context: android.content.Context, key: String, captions:
             events:{
               onReady:function(e){applyCaptions(e.target);watchCaptions(e.target);},
               onApiChange:function(e){applyCaptions(e.target);},
-              // Démarrage sans le son (comme avant), puis le son dès que l'image défile.
+              // Lecture (1) : la vidéo apparaît après les commandes du démarrage ; fin (0, avant la boucle) : cachée.
               onStateChange:function(e){
-                if(e.data==1&&!unmuted){unmuted=true;call(function(){e.target.unMute();e.target.setVolume(100);});}
+                if(e.data==1&&hidden)revealSoon(e.target);
+                if(e.data==0)hide();
               }
             }
           });
@@ -164,6 +179,9 @@ private fun captions(language: String?): Captions = when {
     language.startsWith("fr") -> Captions.OFF
     else -> Captions.FRENCH
 }
+
+/** Attente après le début de la lecture avant de montrer la vidéo : le temps que les commandes YouTube disparaissent. */
+private const val REVEAL_DELAY_MILLIS = 3_500
 
 /** Temps passé sur la même affiche avant que sa bande-annonce démarre. */
 private const val TRAILER_DELAY_MILLIS = 4_000L
