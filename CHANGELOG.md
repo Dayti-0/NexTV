@@ -4,6 +4,10 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.77
+- Streaming, films et séries : « Rechercher un film / une série » retiré du haut de l’écran (la « Recherche Globale » du menu suffit)
+- Bandes-annonces bien plus rapides à démarrer : le lecteur se prépare caché et muet pendant le délai, le navigateur intégré est préparé à l’arrivée sur Films et Séries, et les fiches des contenus mis en avant sont lues d’avance
+
 ## 0.2.76
 - Streaming, films et séries : nouveau grand bandeau à l’ouverture, avec plusieurs contenus mis en avant qui défilent d’eux-mêmes (points en bas), et les boutons « Regarder » ou « Reprendre », « Bande-annonce », « Plus d’infos ». La sélection s’ouvre sur « Regarder » ; ↓ passe aux rangées (le bandeau montre alors l’affiche choisie), ↑ depuis la première rangée revient aux boutons
 - Bandes-annonces : muettes par défaut, bouton « Son » dans le bandeau, lues une seule fois puis retour à l’image ; si YouTube refuse la lecture, l’image reste. « Bande-annonce » la lit en plein écran avec le son (Retour pour fermer)

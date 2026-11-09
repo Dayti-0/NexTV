@@ -57,14 +57,22 @@ internal fun TrailerBackdrop(
     onShown: (Boolean) -> Unit = {},
     onFinished: () -> Unit = {},
 ) {
-    var show by remember(key) { mutableStateOf(delayMillis <= 0) }
+    // Le lecteur se prépare dès [PRELOAD_AFTER_MILLIS] (caché, muet), pendant le délai : la bande-annonce
+    // apparaît au bout du délai si elle est prête (le chargement de YouTube prend plusieurs secondes sur
+    // la Fire TV ; enchaîné après le délai, il la faisait attendre 10 à 20 s). Le court délai de préparation
+    // évite d'ouvrir un lecteur à chaque affiche survolée.
+    val preloadAfter = minOf(delayMillis, PRELOAD_AFTER_MILLIS)
+    var load by remember(key) { mutableStateOf(preloadAfter <= 0) }
+    var delayPassed by remember(key) { mutableStateOf(delayMillis <= 0) }
     LaunchedEffect(key, delayMillis) {
-        if (show) return@LaunchedEffect
-        delay(delayMillis)
-        show = true
+        if (delayPassed) return@LaunchedEffect
+        delay(preloadAfter)
+        load = true
+        delay(delayMillis - preloadAfter)
+        delayPassed = true
     }
     DisposableEffect(key) { onDispose { onShown(false) } }
-    if (!show) return
+    if (!load) return
     // Taille du cadre donnée au lecteur en pixels CSS (= dp) : sur la Fire TV, la page calcule mal la
     // hauteur disponible (100 %, vh), et la vidéo ne tenait qu'une bande en haut, ou rien (carré noir).
     BoxWithConstraints(modifier) {
@@ -72,7 +80,7 @@ internal fun TrailerBackdrop(
         val height = maxHeight.value.roundToInt()
         if (width > 0 && height > 0) {
             androidx.compose.runtime.key(key, width, height) {
-                TrailerPage(key, captions(language), width, height, muted, onShown, onFinished)
+                TrailerPage(key, captions(language), width, height, muted, delayPassed, onShown, onFinished)
             }
         }
     }
@@ -108,13 +116,16 @@ private fun TrailerPage(
     width: Int,
     height: Int,
     muted: Boolean,
+    /** Délai d'attente écoulé : la vidéo peut apparaître (avant, elle se prépare cachée et muette). */
+    delayPassed: Boolean,
     onShown: (Boolean) -> Unit,
     onFinished: () -> Unit,
 ) {
     var view by remember { mutableStateOf<WebView?>(null) }
-    // Vue cachée (alpha) tant que YouTube affiche ses commandes du démarrage ; la page, qui ne le voit pas,
-    // continue de lire la vidéo (une vidéo cachée dans la page elle-même n'était jamais lancée).
-    var visible by remember { mutableStateOf(false) }
+    // Vue cachée (alpha) tant que YouTube affiche ses commandes du démarrage, et avant la fin du délai ; la
+    // page, qui ne le voit pas, continue de lire la vidéo (une vidéo cachée dans la page n'était jamais lancée).
+    var ready by remember { mutableStateOf(false) }
+    val visible = ready && delayPassed
     val alpha by animateFloatAsState(if (visible) 1f else 0f, tween(800), label = "trailer")
     val shown by rememberUpdatedState(onShown)
     val finished by rememberUpdatedState(onFinished)
@@ -132,14 +143,15 @@ private fun TrailerPage(
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }
     }
-    // Son coupé ou rendu en cours de lecture (bouton du bandeau).
-    LaunchedEffect(view, muted) { view?.evaluateJavascript("setMuted(${if (muted) "true" else "false"})", null) }
+    // Son coupé ou rendu en cours de lecture (bouton du bandeau) ; jamais de son tant qu'elle est cachée.
+    LaunchedEffect(view, muted, delayPassed) { view?.evaluateJavascript("setMuted(${if (muted || !delayPassed) "true" else "false"})", null) }
+    LaunchedEffect(visible) { shown(visible) }
     AndroidView(
         factory = { context ->
             trailerView(
-                context, key, captions, width, height, muted,
-                onVisible = { visible = it; shown(it) },
-                onFinished = { visible = false; shown(false); finished() },
+                context, key, captions, width, height, muted || !delayPassed,
+                onVisible = { ready = it },
+                onFinished = { ready = false; shown(false); finished() },
             ).also { view = it }
         },
         update = { web -> web.alpha = alpha },
@@ -283,6 +295,17 @@ private const val REVEAL_DELAY_MILLIS = 3_500
 
 /** Temps passé sur la même affiche avant que sa bande-annonce démarre (réglable). */
 internal const val TRAILER_DELAY_MILLIS = 3_000L
+
+/** Préparation du lecteur (caché, muet) après ce temps sur le même contenu, pendant le délai. */
+private const val PRELOAD_AFTER_MILLIS = 600L
+
+/**
+ * Prépare le navigateur intégré (la première page web de l'appli met plusieurs secondes à s'ouvrir sur la
+ * Fire TV) : à appeler une fois, à l'arrivée sur un écran qui lira des bandes-annonces.
+ */
+internal fun warmUpWebView(context: android.content.Context) {
+    runCatching { WebView(context).destroy() }
+}
 
 /** Lecture qui ne démarre pas (réseau, page bloquée) : abandonnée au bout de ce temps. */
 private const val START_TIMEOUT_MILLIS = 20_000

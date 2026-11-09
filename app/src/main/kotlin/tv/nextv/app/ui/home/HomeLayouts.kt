@@ -180,7 +180,7 @@ internal fun StreamingHome(
     val section = content.section
     val padding = if (window.isWide) 28.dp else window.horizontalPadding
     val listState = rememberSaveable(section, saver = LazyListState.Saver) { LazyListState() }
-    // Grand écran : la recherche est en haut du bandeau (pas dans la liste) ; ailleurs, en tête des rangées.
+    // Grand écran : pas de recherche de section (« Recherche Globale » du menu) ; ailleurs, en tête des rangées.
     val searchInList = !window.isWide
     val scrolled by remember(searchInList) { derivedStateOf { listState.firstVisibleItemIndex > if (searchInList) 1 else 0 } }
     val hero = window.isWide && section != HomeSection.TV
@@ -218,6 +218,13 @@ internal fun StreamingHome(
         else -> HERO_BROWSE_HEIGHT
     }
     val billboardHeight by animateDpAsState(heroHeight, animationSpec = tween(320), label = "billboard")
+    // Bandes-annonces : le navigateur intégré est préparé dès l'arrivée (la première ouverture est lente).
+    val context = LocalContext.current
+    LaunchedEffect(hero && trailers.autoplay) {
+        if (!hero || !trailers.autoplay || webViewWarmed) return@LaunchedEffect
+        webViewWarmed = true
+        warmUpWebView(context)
+    }
     val heroFocus = remember { FocusRequester() }
     // ↑ depuis la première rangée : le bandeau vedette revient, la sélection va sur « Regarder » dès qu'il est là.
     var heroFocusRequest by remember { mutableIntStateOf(0) }
@@ -266,13 +273,6 @@ internal fun StreamingHome(
                         onTrailerFinished = { finishedTrailer = trailerKey },
                         onOpenTrailer = { key, language -> fullTrailer = key to language },
                         onFocusInside = { if (it) onHero = true },
-                    )
-                    // Recherche en haut de la page, sur le bandeau (↑ depuis les boutons).
-                    SearchField(
-                        query,
-                        searchHint(section),
-                        actions.onQuery,
-                        Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = padding).width(380.dp),
                     )
                 }
             }
@@ -1125,6 +1125,9 @@ private val HERO_FEATURED_HEIGHT = 340.dp
 
 /** Bandeau pendant le parcours des rangées : l'affiche choisie, la rangée entière dessous. */
 private val HERO_BROWSE_HEIGHT = 260.dp
+
+/** Navigateur intégré déjà préparé (une fois par lancement de l'appli). */
+private var webViewWarmed = false
 
 /** Contenus mis en avant dans le bandeau vedette. */
 private const val FEATURED_COUNT = 6

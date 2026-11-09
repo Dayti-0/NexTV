@@ -399,7 +399,10 @@ class HomeViewModel(
                         rows.filter { it.itemKey !in watched }.take(ROW_SIZE)
                     }.getOrDefault(emptyList())
                 }
-                Discover(trending = trending(id, kind), newest = newest, recommended = recommended, recommendedFrom = lastWatched?.title?.takeIf { recommended.isNotEmpty() })
+                val trending = trending(id, kind)
+                // Streaming : fiches TMDB des contenus mis en avant lues d'avance (bande-annonce connue tout de suite).
+                if (layout == HomeLayout.STREAMING) prefetchDetails(trending.ifEmpty { newest }.take(PREFETCH_COUNT))
+                Discover(trending = trending, newest = newest, recommended = recommended, recommendedFrom = lastWatched?.title?.takeIf { recommended.isNotEmpty() })
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), Discover())
 
@@ -453,6 +456,19 @@ class HomeViewModel(
             emit((state as? MetadataState.Available)?.let { Spotlight(item, it.details) } ?: Spotlight(item))
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** Fiches TMDB lues en arrière-plan, l'une après l'autre (mises en cache pour le bandeau). */
+    private fun prefetchDetails(items: List<PosterItem>) {
+        if (items.isEmpty() || !container.hasTmdbKey()) return
+        viewModelScope.launch {
+            for (item in items) {
+                val type = if (item.kind == ContentKind.SERIES) MediaType.SERIES else MediaType.MOVIE
+                val key = metadataCacheKey(item.itemKey)
+                if (runCatching { container.metadata.cachedDetails(key, type) }.getOrNull() != null) continue
+                runCatching { container.metadata.details(key, type, item.title, item.year) }
+            }
+        }
+    }
 
     fun onPosterFocused(item: PosterItem) {
         if (spotlightTarget.value?.itemKey != item.itemKey) spotlightTarget.value = item
@@ -623,5 +639,8 @@ class HomeViewModel(
         const val PREVIEW_PROGRAMMES = 6
         const val ROW_SIZE = HomeRows.ROW_SIZE
         const val SPOTLIGHT_DELAY_MILLIS = 350L
+
+        /** Contenus mis en avant dont la fiche TMDB est lue d'avance. */
+        const val PREFETCH_COUNT = 6
     }
 }
