@@ -163,6 +163,9 @@ fun QuickSetupContent(
     BackHandler { previous() }
     // Chaque étape s'ouvre sur son choix principal (ou sur « Suivant »).
     val main = remember(step) { FocusRequester() }
+    // Choix fait (OK sur une interface, une palette, une qualité) : la sélection passe à « Suivant ».
+    val nextFocus = remember { FocusRequester() }
+    val toNext = { runCatching { nextFocus.requestFocus() } }
     LaunchedEffect(step) { runCatching { main.requestFocus() } }
 
     Row(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -199,7 +202,8 @@ fun QuickSetupContent(
             Box(Modifier.weight(1f).fillMaxWidth()) {
             FadingBottom({ scroll.canScrollForward }, { scroll.canScrollBackward }, ends = scroll) { fade ->
             Column(
-                Modifier.fillMaxSize().then(fade).verticalScroll(scroll),
+                // Marge tout autour : la carte choisie, agrandie et encadrée, n'est pas coupée aux bords.
+                Modifier.fillMaxSize().then(fade).verticalScroll(scroll).padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 when (step) {
@@ -211,7 +215,7 @@ fun QuickSetupContent(
                                 LayoutCard(
                                     option,
                                     selected = option == layout,
-                                    onClick = { onLayout(option) },
+                                    onClick = { onLayout(option); toNext() },
                                     modifier = Modifier.weight(1f).then(if (option == layout) Modifier.focusRequester(main) else Modifier),
                                     lines = 6,
                                 )
@@ -240,7 +244,7 @@ fun QuickSetupContent(
                                         maxLines = 1,
                                     )
                                     Box(if (style == theme) Modifier.focusRequester(main) else Modifier) {
-                                        PaletteCard(style, current = style == theme, onClick = { onTheme(style) })
+                                        PaletteCard(style, current = style == theme, onClick = { onTheme(style); toNext() })
                                     }
                                 }
                             }
@@ -254,7 +258,7 @@ fun QuickSetupContent(
                                 QualityTile(
                                     target,
                                     selected = target == quality,
-                                    onClick = { onQuality(target) },
+                                    onClick = { onQuality(target); toNext() },
                                     modifier = Modifier.weight(1f).then(if (target == quality) Modifier.focusRequester(main) else Modifier),
                                 )
                             }
@@ -299,7 +303,7 @@ fun QuickSetupContent(
                     { next() },
                     icon = if (last) Icons.Filled.Check else Icons.AutoMirrored.Filled.KeyboardArrowRight,
                     style = PillStyle.Primary,
-                    modifier = if (mainButton) Modifier.focusRequester(main) else Modifier,
+                    modifier = Modifier.focusRequester(nextFocus).then(if (mainButton) Modifier.focusRequester(main) else Modifier),
                 )
             }
         }

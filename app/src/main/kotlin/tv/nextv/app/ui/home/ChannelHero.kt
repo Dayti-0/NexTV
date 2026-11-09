@@ -186,7 +186,16 @@ internal fun PreviewVideo(player: Player, modifier: Modifier = Modifier, zoom: B
                 descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
             }
         },
-        update = { view -> view.player = player },
+        update = { view ->
+            if (view.player !== player) {
+                // L'aperçu jouait déjà sans image (retour d'un autre menu : le son continuait) : avec ce nouvel
+                // écran, le décodeur attendrait la prochaine image complète du flux, parfois plusieurs secondes.
+                // On repart au direct : l'image revient aussitôt, comme en ouvrant la chaîne.
+                val running = player.playbackState == Player.STATE_READY && player.playWhenReady
+                view.player = player
+                if (running) player.seekToDefaultPosition()
+            }
+        },
         onRelease = { view -> view.player = null },
         modifier = modifier,
     )

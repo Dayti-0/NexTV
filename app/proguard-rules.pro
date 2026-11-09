@@ -4,3 +4,8 @@
 # Décodeur FFmpeg du son : chargé par réflexion par Media3 (DefaultRenderersFactory).
 -keep class androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer { <init>(...); }
 -keep class androidx.media3.decoder.ffmpeg.FfmpegLibrary { *; }
+
+# Bande-annonce : la page du lecteur YouTube appelle NixTv.show(...) (méthodes @JavascriptInterface).
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}

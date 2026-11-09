@@ -5,6 +5,8 @@ import android.graphics.Color as AndroidColor
 import android.view.View
 import android.webkit.WebChromeClient
 import android.webkit.WebView
+import androidx.compose.animation.core.animateFloatAsState
+import android.webkit.JavascriptInterface
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -61,6 +63,10 @@ internal fun TrailerBackdrop(key: String, language: String?, modifier: Modifier 
 @Composable
 private fun TrailerPage(key: String, captions: Captions, width: Int, height: Int) {
     var view by remember { mutableStateOf<WebView?>(null) }
+    // Vue cachée (alpha) tant que YouTube affiche ses commandes du démarrage ; la page, qui ne le voit pas,
+    // continue de lire la vidéo (une vidéo cachée dans la page elle-même n'était jamais lancée).
+    var visible by remember { mutableStateOf(false) }
+    val alpha by animateFloatAsState(if (visible) 1f else 0f, tween(800), label = "trailer")
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle, view) {
         val web = view
@@ -76,14 +82,34 @@ private fun TrailerPage(key: String, captions: Captions, width: Int, height: Int
         onDispose { lifecycle.removeObserver(observer) }
     }
     AndroidView(
-        factory = { context -> trailerView(context, key, captions, width, height).also { view = it } },
+        factory = { context -> trailerView(context, key, captions, width, height) { visible = it }.also { view = it } },
+        update = { web -> web.alpha = alpha },
         onRelease = { web -> web.destroy() },
         modifier = Modifier.fillMaxSize(),
     )
 }
 
 @SuppressLint("SetJavaScriptEnabled")
-private fun trailerView(context: android.content.Context, key: String, captions: Captions, width: Int, height: Int): WebView = WebView(context).apply {
+private fun trailerView(
+    context: android.content.Context,
+    key: String,
+    captions: Captions,
+    width: Int,
+    height: Int,
+    onVisible: (Boolean) -> Unit,
+): WebView = WebView(context).apply {
+    alpha = 0f
+    // La page signale quand montrer la vidéo (commandes YouTube parties) ou la cacher (reprise, boucle).
+    val web = this
+    addJavascriptInterface(
+        object {
+            @JavascriptInterface
+            fun show(value: Boolean) {
+                web.post { onVisible(value) }
+            }
+        },
+        "NixTv",
+    )
     isFocusable = false
     isFocusableInTouchMode = false
     importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
@@ -99,7 +125,7 @@ private fun trailerView(context: android.content.Context, key: String, captions:
     val html = """
         <html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>
         html,body{margin:0;width:${width}px;height:${height}px;background:transparent;overflow:hidden}
-        iframe{position:absolute;top:0;left:0;width:${width}px;height:${height}px;border:0;pointer-events:none;opacity:0;transition:opacity .8s}
+        iframe{position:absolute;top:0;left:0;width:${width}px;height:${height}px;border:0;pointer-events:none}
         </style></head><body>
         <iframe id="player" width="$width" height="$height" src="https://www.youtube-nocookie.com/embed/$key?autoplay=1&mute=1&controls=0&loop=1&playlist=$key&modestbranding=1&rel=0&playsinline=1&iv_load_policy=3&disablekb=1&fs=0&hl=fr&cc_load_policy=${captions.loadPolicy}&enablejsapi=1&origin=https%3A%2F%2Fnixtv.app"
         allow="autoplay; encrypted-media" referrerpolicy="strict-origin-when-cross-origin"></iframe>
@@ -109,13 +135,13 @@ private fun trailerView(context: android.content.Context, key: String, captions:
         // son titre, sa chaîne et ses boutons. Elle apparaît (avec le son) une fois ces commandes parties.
         var hidden=true;
         var revealTimer=null;
-        function frame(){return document.getElementById('player');}
-        function hide(){hidden=true;clearTimeout(revealTimer);frame().style.opacity=0;call(function(){player.mute();});}
+        function show(v){call(function(){NixTv.show(v);});}
+        function hide(){hidden=true;clearTimeout(revealTimer);show(false);call(function(){player.mute();});}
         function revealSoon(p){
           clearTimeout(revealTimer);
           revealTimer=setTimeout(function(){
             hidden=false;
-            frame().style.opacity=1;
+            show(true);
             call(function(){p.unMute();p.setVolume(100);});
           },${REVEAL_DELAY_MILLIS});
         }

@@ -541,7 +541,6 @@
     <string name="settings_dns">DNS (résolution des adresses)</string>
     <string name="settings_dns_system">Celui de l’appareil (fournisseur d’accès)</string>
     <string name="settings_dns_public">%1$s (%2$s), chiffré</string>
-    <string name="settings_dns_help">OK pour changer. Si une playlist charge en 4G mais pas sur la box, le DNS du fournisseur d’accès la bloque peut-être : choisissez Quad9. Le DNS choisi sert à tout (playlists, guide, chaînes, images).</string>
     <string name="settings_proxy_configure">Configurer le proxy</string>
     <string name="settings_version">NixTV version %1$s</string>
     <string name="settings_update">Mise à jour</string>

@@ -4,6 +4,12 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.71
+- Streaming : la bande-annonce derrière la grande affiche est de retour (elle ne se lançait plus), toujours sans l’affichage YouTube du début
+- Aperçu des chaînes : en revenant d’un autre menu, l’image arrive aussitôt avec le son (elle mettait parfois plusieurs secondes)
+- Configuration rapide : les cartes choisies ne sont plus coupées aux bords ; après un choix, la sélection passe à « Suivant »
+- Réglages, DNS : description retirée
+
 ## 0.2.70
 - Streaming, chaînes : les catégories passent dans le volet, comme pour les films et séries (la liste et l’aperçu ont toute la place)
 - Streaming : ← au bord des rangées ou de la liste ouvre le volet des catégories, un second ← ouvre le menu
