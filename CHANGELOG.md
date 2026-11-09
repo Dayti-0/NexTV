@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.83
+- Bande-annonce automatique : elle démarre au tout début (0 s). Elle se prépare en pause sur sa première image pendant l’attente, puis repart de 0 en apparaissant (le titre YouTube peut se voir quelques secondes)
+
 ## 0.2.82
 - Films qui ne se lançaient pas (« Codec non pris en charge ») : le lecteur réessaie tout seul (autre piste son, sans sous-titres, autre décodeur, autre version du même film dans la playlist) ; sinon le message dit exactement ce que l’appareil ne sait pas lire (par exemple « Vidéo HEVC 10 bits HDR »)
 - Recherche et Recherche Globale sans accents : « a la derive » trouve « À la dérive »

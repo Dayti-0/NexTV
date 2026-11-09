@@ -122,11 +122,12 @@ private fun TrailerPage(
     onFinished: () -> Unit,
 ) {
     var view by remember { mutableStateOf<WebView?>(null) }
-    // Vue cachée (alpha) tant que YouTube affiche ses commandes du démarrage, et avant la fin du délai ; la
-    // page, qui ne le voit pas, continue de lire la vidéo (une vidéo cachée dans la page n'était jamais lancée).
+    // Vue cachée (alpha) avant la fin du délai : la page y prépare la vidéo (une vidéo cachée dans la page
+    // n'était jamais lancée), puis la signale prête quand elle joue depuis son début.
     var ready by remember { mutableStateOf(false) }
     val visible = ready && delayPassed
-    val alpha by animateFloatAsState(if (visible) 1f else 0f, tween(800), label = "trailer")
+    // Fondu court : le début de la vidéo se voit (un fondu long en cachait la première seconde).
+    val alpha by animateFloatAsState(if (visible) 1f else 0f, tween(250), label = "trailer")
     val shown by rememberUpdatedState(onShown)
     val finished by rememberUpdatedState(onFinished)
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -145,11 +146,13 @@ private fun TrailerPage(
     }
     // Son coupé ou rendu en cours de lecture (bouton du bandeau) ; jamais de son tant qu'elle est cachée.
     LaunchedEffect(view, muted, delayPassed) { view?.evaluateJavascript("setMuted(${if (muted || !delayPassed) "true" else "false"})", null) }
+    // Délai écoulé : la vidéo préparée repart de 0 et apparaît.
+    LaunchedEffect(view, delayPassed) { if (delayPassed) view?.evaluateJavascript("allow()", null) }
     LaunchedEffect(visible) { shown(visible) }
     AndroidView(
         factory = { context ->
             trailerView(
-                context, key, captions, width, height, muted || !delayPassed,
+                context, key, captions, width, height, muted || !delayPassed, delayPassed,
                 onVisible = { ready = it },
                 onFinished = { ready = false; shown(false); finished() },
             ).also { view = it }
@@ -168,11 +171,13 @@ private fun trailerView(
     width: Int,
     height: Int,
     startMuted: Boolean,
+    /** Délai d'attente déjà écoulé : la vidéo apparaît dès qu'elle démarre. */
+    startAllowed: Boolean,
     onVisible: (Boolean) -> Unit,
     onFinished: () -> Unit,
 ): WebView = WebView(context).apply {
     alpha = 0f
-    // La page signale quand montrer la vidéo (commandes YouTube parties), la cacher (reprise), et la fin.
+    // La page signale quand montrer la vidéo (elle joue depuis son début), la cacher, et la fin.
     val web = this
     addJavascriptInterface(
         object {
@@ -191,7 +196,7 @@ private fun trailerView(
     isFocusable = false
     isFocusableInTouchMode = false
     importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
-    // Transparente tant que la vidéo est cachée (commandes YouTube du démarrage) : l'image reste visible dessous.
+    // Transparente tant que la vidéo est cachée (pendant le délai) : l'image reste visible dessous.
     setBackgroundColor(AndroidColor.TRANSPARENT)
     settings.javaScriptEnabled = true
     settings.mediaPlaybackRequiresUserGesture = false
@@ -211,26 +216,30 @@ private fun trailerView(
         var player=null;
         // Son voulu (bouton du bandeau, réglage) ; la lecture démarre toujours muette (lecture automatique).
         var muted=${if (startMuted) "true" else "false"};
-        // Vidéo cachée au démarrage et à la reprise : YouTube y affiche quelques secondes son titre, sa chaîne
-        // et ses boutons. Elle apparaît (avec le son s'il est voulu) une fois ces commandes parties.
+        // Vidéo cachée tant que le délai d'attente n'est pas écoulé : elle se prépare (chargée, en pause sur sa
+        // première image), puis repart de 0 et apparaît aussitôt (le titre YouTube du début peut se voir).
         var hidden=true;
+        var allowed=${if (startAllowed) "true" else "false"};
+        var primed=false;
         var done=false;
-        var revealTimer=null;
+        var startTimer=null;
         function call(f){try{f();}catch(e){}}
         function show(v){call(function(){NixTv.show(v);});}
-        function finish(){if(done)return;done=true;clearTimeout(revealTimer);call(function(){NixTv.finished();});}
+        function finish(){if(done)return;done=true;clearTimeout(startTimer);call(function(){NixTv.finished();});}
         function applySound(){call(function(){if(muted||hidden){player.mute();}else{player.unMute();player.setVolume(100);}});}
         function setMuted(m){muted=m;applySound();}
-        function hide(){hidden=true;clearTimeout(revealTimer);show(false);applySound();}
-        // Pendant l'attente (cachée), la vidéo avance au ralenti : elle apparaît à peine 1 s après son début au
-        // lieu de 3,5 s. Revenir au début n'est pas possible : YouTube réaffiche alors ses commandes.
-        function revealSoon(p){
-          clearTimeout(revealTimer);
-          call(function(){p.setPlaybackRate($HIDDEN_RATE);});
-          revealTimer=setTimeout(function(){call(function(){p.setPlaybackRate(1);});hidden=false;show(true);applySound();},$REVEAL_DELAY_MILLIS);
+        function reveal(){clearTimeout(startTimer);hidden=false;show(true);applySound();}
+        // Rien ne démarre (réseau, page bloquée) : on abandonne, l'image reste.
+        function watchStart(){clearTimeout(startTimer);startTimer=setTimeout(function(){if(hidden&&!done)finish();},$START_TIMEOUT_MILLIS);}
+        // Délai écoulé : lecture depuis le début.
+        function allow(){
+          if(allowed||done)return;
+          allowed=true;
+          watchStart();
+          if(primed)call(function(){player.seekTo(0,true);player.playVideo();});
         }
         function pause(){call(function(){player.pauseVideo();});}
-        function resume(){if(done)return;hide();call(function(){player.playVideo();});}
+        function resume(){if(done||!allowed)return;call(function(){player.playVideo();});}
         var captions='${captions.name}';
         var captionsSet=false;
         function track(list,lang){return list.filter(function(t){return (t.languageCode||'').indexOf(lang)==0;})[0];}
@@ -251,20 +260,23 @@ private fun trailerView(
           var i=setInterval(function(){applyCaptions(p);},1000);
           setTimeout(function(){clearInterval(i);},12000);
         }
-        // Rien ne démarre (réseau, page bloquée) : on abandonne, l'image reste.
-        setTimeout(function(){if(hidden&&!done)finish();},$START_TIMEOUT_MILLIS);
+        watchStart();
         function onYouTubeIframeAPIReady(){
           player=new YT.Player('player',{
             events:{
               onReady:function(e){applyCaptions(e.target);watchCaptions(e.target);},
               onApiChange:function(e){applyCaptions(e.target);},
-              // Lecture (1) : la vidéo apparaît après les commandes du démarrage ; fin (0) : terminée.
+              // Lecture (1) : avant la fin du délai, arrêt sur la première image (prête) ; après, la vidéo apparaît.
+              // Fin (0) : terminée.
               onStateChange:function(e){
-                if(e.data==1&&hidden)revealSoon(e.target);
-                if(e.data==0){hide();finish();}
+                if(e.data==1&&hidden){
+                  if(allowed){reveal();}
+                  else{primed=true;clearTimeout(startTimer);call(function(){e.target.pauseVideo();e.target.seekTo(0,true);});}
+                }
+                if(e.data==0){hidden=true;show(false);finish();}
               },
               // Lecture intégrée refusée par la vidéo (101, 150), vidéo introuvable… : l'image reste.
-              onError:function(){hide();finish();}
+              onError:function(){hidden=true;show(false);finish();}
             }
           });
         }
@@ -292,12 +304,6 @@ private fun captions(language: String?): Captions = when {
     language.startsWith("fr") -> Captions.OFF
     else -> Captions.FRENCH
 }
-
-/** Attente après le début de la lecture avant de montrer la vidéo : le temps que les commandes YouTube disparaissent. */
-private const val REVEAL_DELAY_MILLIS = 3_500
-
-/** Vitesse de la vidéo pendant qu'elle est cachée (la plus lente permise par YouTube) : son début n'est presque pas sauté. */
-private const val HIDDEN_RATE = 0.25
 
 /** Temps passé sur la même affiche avant que sa bande-annonce démarre (réglable). */
 internal const val TRAILER_DELAY_MILLIS = 3_000L
