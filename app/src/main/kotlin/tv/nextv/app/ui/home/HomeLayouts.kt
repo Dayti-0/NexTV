@@ -176,7 +176,9 @@ internal fun StreamingHome(
     val padding = if (window.isWide) 28.dp else window.horizontalPadding
     val listState = rememberSaveable(section, saver = LazyListState.Saver) { LazyListState() }
     // Rangées parcourues : la bannière se réduit pour en montrer davantage, et reprend sa taille en haut.
-    val scrolled by remember { derivedStateOf { listState.firstVisibleItemIndex > 1 } }
+    // Grand écran : la recherche est en haut de la bannière (pas dans la liste) ; ailleurs, en tête des rangées.
+    val searchInList = !window.isWide
+    val scrolled by remember(searchInList) { derivedStateOf { listState.firstVisibleItemIndex > if (searchInList) 1 else 0 } }
     val billboardHeight by animateDpAsState(
         when {
             // Films et séries : titre sur deux lignes et résumé, sans boutons (OK sur une affiche suffit).
@@ -196,14 +198,21 @@ internal fun StreamingHome(
                     // Avant toute sélection : la première tendance de la semaine.
                     SpotlightBillboard(section, spotlight ?: content.discover.trending.firstOrNull()?.let { Spotlight(it) }, padding, compact = scrolled, trailer = trailers)
                 }
+                // Recherche en haut de la page, sur la bannière (↑ depuis la première rangée).
+                SearchField(
+                    query,
+                    searchHint(section),
+                    actions.onQuery,
+                    Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = padding).width(380.dp),
+                )
             }
         }
         val sizes = ShelfSizes.of(window)
         PreloadRows(content)
         val shelves = shelfList(content)
-        RestoreRow(listState, lastOpened, listOf("search") + shelves.map { it.key })
-        // La recherche précède les rangées dans la liste.
-        RowJumpEffect(LocalRowJump.current, listState, content, shelves, offset = 1, onOpen = actions.onCategory)
+        RestoreRow(listState, lastOpened, (if (searchInList) listOf("search") else emptyList()) + shelves.map { it.key })
+        // Petit écran : la recherche précède les rangées dans la liste.
+        RowJumpEffect(LocalRowJump.current, listState, content, shelves, offset = if (searchInList) 1 else 0, onOpen = actions.onCategory)
         AnchoredRows(peekBelow = STREAMING_NEXT_ROW_PEEK) { anchor ->
             LazyColumn(
                 Modifier.weight(1f),
@@ -211,9 +220,11 @@ internal fun StreamingHome(
                 contentPadding = PaddingValues(top = 4.dp, bottom = 40.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                // Recherche en tête des rangées : elle défile avec elles (et garde le clavier pendant la saisie).
-                item(key = "search") {
-                    SearchField(query, searchHint(section), actions.onQuery, Modifier.padding(horizontal = padding).widthIn(max = 460.dp))
+                // Petit écran : recherche en tête des rangées, elle défile avec elles (et garde le clavier pendant la saisie).
+                if (searchInList) {
+                    item(key = "search") {
+                        SearchField(query, searchHint(section), actions.onQuery, Modifier.padding(horizontal = padding).widthIn(max = 460.dp))
+                    }
                 }
                 if (query.isNotEmpty()) {
                     item(key = "results") {

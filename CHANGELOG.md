@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.75
+- Streaming, films et séries : « Rechercher un film / une série » passe en haut de la page, sur la grande affiche (↑ depuis la première rangée)
+
 ## 0.2.74
 - Lecteur, direct : ← recule de 10 s (plusieurs appuis s’additionnent, maintenu : en continu) ; → ou OK long revient au direct. Les dernières secondes du direct sont gardées en mémoire, sans couper ni recharger la chaîne
 - Pause du direct : la reprise ne recharge plus la chaîne (la même connexion enregistre la suite)
