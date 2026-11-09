@@ -126,4 +126,46 @@ class StreamingDetailFocusTest {
         press(Key.DirectionCenter)
         assertEquals(1, toggles)
     }
+
+    @Test
+    fun backToTheButtonsShowsTheWholeTop() {
+        val movie = SampleData.movieDetail.copy(
+            similar = SampleData.movies.take(8).map { tv.nextv.app.ui.home.PosterItem(it.id, ContentKind.MOVIE, it.itemKey, it.title, it.year, it.logoUrl) },
+            cast = listOf("Camille Martin", "Hugo Bernard", "Inès Petit", "Louis Moreau", "Jeanne Laurent").map { tv.nextv.core.meta.CastMember(it, null, null) },
+        )
+        val title = (movie.metadata as tv.nextv.app.data.catalog.MetadataState.Available).details.title
+        compose.setContent {
+            NexTvTheme(ThemeStyle.NIGHT) {
+                StreamingDetailContent(
+                    state = movie,
+                    kind = ContentKind.MOVIE,
+                    window = rememberWindowInfo(),
+                    trailers = TrailerSettings(),
+                    onPlay = {},
+                    onResume = {},
+                    onRestart = {},
+                    onToggleFavorite = {},
+                    onSelectSeason = {},
+                    onOpenItem = {},
+                )
+            }
+        }
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
+        // Haut de la fiche : le plus haut des éléments qui portent le titre (titre, affiche).
+        fun titleTop() = compose.onAllNodes(androidx.compose.ui.test.hasText(title), useUnmergedTree = true).fetchSemanticsNodes().minOf { it.positionInRoot.y }
+        val start = titleTop()
+        // ↓ ↓ : distribution puis titres similaires ; ↑ ↑ : retour aux boutons.
+        press(Key.DirectionDown)
+        press(Key.DirectionDown)
+        println("En bas sur ${focusedText()} : titre à ${titleTop()} (départ $start)")
+        press(Key.DirectionUp)
+        press(Key.DirectionUp)
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
+        println("Remonté sur ${focusedText()} : titre à ${titleTop()} (départ $start)")
+        assertEquals(start, titleTop(), 1f)
+        // Et dès l'ouverture, le haut n'est pas coupé.
+        assertTrue("Haut coupé : $start", start >= 0f)
+    }
 }

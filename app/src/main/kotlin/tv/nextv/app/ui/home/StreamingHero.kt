@@ -68,7 +68,7 @@ import tv.nextv.core.model.ContentKind
  *
  * - [featured] (la sélection est sur le bandeau, ou aucune rangée encore parcourue) : bandeau haut, avec
  *   les boutons « Regarder » / « Reprendre », « Bande-annonce », « Plus d'infos » et le son de la
- *   bande-annonce ; les contenus mis en avant défilent d'eux-mêmes ([featuredCount], [featuredIndex]).
+ *   bande-annonce ; les contenus mis en avant défilent d'eux-mêmes.
  * - Sinon : le contenu de l'affiche choisie dans les rangées, sans boutons.
  *
  * La bande-annonce ([trailers]) remplace peu à peu le visuel après le délai réglé, muette ou non
@@ -80,8 +80,6 @@ internal fun StreamingHero(
     section: HomeSection,
     spotlight: Spotlight?,
     featured: Boolean,
-    featuredCount: Int,
-    featuredIndex: Int,
     frameHeight: Dp,
     padding: Dp,
     progress: ProgressEntity?,
@@ -122,6 +120,7 @@ internal fun StreamingHero(
                     muted = muted,
                     onShown = onTrailerShown,
                     onFinished = onTrailerFinished,
+                    zoom = TRAILER_FILL_ZOOM,
                 )
             }
             HeroFade(background)
@@ -227,22 +226,6 @@ internal fun StreamingHero(
                     }
                 }
             }
-            // Contenus mis en avant : un point par contenu, le courant allongé.
-            if (featured && featuredCount > 1) {
-                Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    repeat(featuredCount) { i ->
-                        val current = i == featuredIndex
-                        val width by animateFloatAsState(if (current) 18f else 6f, tween(300), label = "dot")
-                        Box(
-                            Modifier
-                                .height(6.dp)
-                                .width(width.dp)
-                                .clip(RoundedCornerShape(3.dp))
-                                .background(if (current) colors.primary else colors.onSurface.copy(alpha = 0.35f)),
-                        )
-                    }
-                }
-            }
         }
     }
 }
@@ -288,6 +271,21 @@ internal fun StreamingPoster(
                 PosterImage(title, imageUrl, Modifier.fillMaxSize(), compact = width < COMPACT_POSTER_WIDTH)
                 if (isFavorite) FavoriteStar(Modifier.align(Alignment.TopEnd).padding(6.dp).size(18.dp))
                 if (watched) WatchedBadge(Modifier.align(Alignment.TopStart).padding(6.dp))
+                // Détail (épisode, temps restant) en bas de l'image : toutes les rangées gardent la même hauteur.
+                detail?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .fillMaxWidth()
+                            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f))))
+                            .padding(start = 8.dp, end = 8.dp, top = 14.dp, bottom = if (progress != null) 8.dp else 6.dp),
+                    )
+                }
                 if (progress != null) {
                     Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp).background(Color.Black.copy(alpha = 0.45f))) {
                         Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).fillMaxHeight().background(MaterialTheme.colorScheme.primary))
@@ -295,11 +293,9 @@ internal fun StreamingPoster(
                 }
             }
         }
-        // Titre sous l'affiche (sinon il faut deviner le film d'après l'image).
-        Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        detail?.let {
-            Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
+        // Titre sous l'affiche (sinon il faut deviner le film d'après l'image), sur une ligne : la rangée garde
+        // sa hauteur, le titre de la rangée suivante reste visible dessous.
+        Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 

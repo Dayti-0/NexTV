@@ -56,6 +56,11 @@ internal fun TrailerBackdrop(
     muted: Boolean = true,
     onShown: (Boolean) -> Unit = {},
     onFinished: () -> Unit = {},
+    /**
+     * Agrandissement de la vidéo dans le cadre (bords rognés) : les bandes-annonces au format cinéma ont des
+     * bandes noires en haut et en bas, qui la faisaient paraître petite. 1 : vidéo entière (plein écran).
+     */
+    zoom: Float = 1f,
 ) {
     // Le lecteur se prépare dès [PRELOAD_AFTER_MILLIS] (caché, muet), pendant le délai : la bande-annonce
     // apparaît au bout du délai si elle est prête (le chargement de YouTube prend plusieurs secondes sur
@@ -80,7 +85,7 @@ internal fun TrailerBackdrop(
         val height = maxHeight.value.roundToInt()
         if (width > 0 && height > 0) {
             androidx.compose.runtime.key(key, width, height) {
-                TrailerPage(key, captions(language), width, height, muted, delayPassed, onShown, onFinished)
+                TrailerPage(key, captions(language), width, height, zoom, muted, delayPassed, onShown, onFinished)
             }
         }
     }
@@ -115,6 +120,7 @@ private fun TrailerPage(
     captions: Captions,
     width: Int,
     height: Int,
+    zoom: Float,
     muted: Boolean,
     /** Délai d'attente écoulé : la vidéo peut apparaître (avant, elle se prépare cachée et muette). */
     delayPassed: Boolean,
@@ -152,7 +158,7 @@ private fun TrailerPage(
     AndroidView(
         factory = { context ->
             trailerView(
-                context, key, captions, width, height, muted || !delayPassed, delayPassed,
+                context, key, captions, width, height, zoom, muted || !delayPassed, delayPassed,
                 onVisible = { ready = it },
                 onFinished = { ready = false; shown(false); finished() },
             ).also { view = it }
@@ -170,6 +176,7 @@ private fun trailerView(
     captions: Captions,
     width: Int,
     height: Int,
+    zoom: Float,
     startMuted: Boolean,
     /** Délai d'attente déjà écoulé : la vidéo apparaît dès qu'elle démarre. */
     startAllowed: Boolean,
@@ -202,15 +209,20 @@ private fun trailerView(
     settings.mediaPlaybackRequiresUserGesture = false
     settings.domStorageEnabled = true
     webChromeClient = WebChromeClient()
+    // Lecteur agrandi de [zoom] et centré : ce qui dépasse du cadre est rogné.
+    val playerWidth = (width * zoom).roundToInt()
+    val playerHeight = (height * zoom).roundToInt()
+    val left = (width - playerWidth) / 2
+    val top = (height - playerHeight) / 2
     // Page avec le lecteur intégré, à la taille exacte du cadre : son adresse de base sert d'origine
     // (YouTube refuse un lecteur sans). L'API YouTube se branche sur ce lecteur pour le son, la pause,
     // la fin et les sous-titres. Lue une fois (pas de boucle).
     val html = """
         <html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>
         html,body{margin:0;width:${width}px;height:${height}px;background:transparent;overflow:hidden}
-        iframe{position:absolute;top:0;left:0;width:${width}px;height:${height}px;border:0;pointer-events:none}
+        iframe{position:absolute;top:${top}px;left:${left}px;width:${playerWidth}px;height:${playerHeight}px;border:0;pointer-events:none}
         </style></head><body>
-        <iframe id="player" width="$width" height="$height" src="https://www.youtube-nocookie.com/embed/$key?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0&playsinline=1&iv_load_policy=3&disablekb=1&fs=0&hl=fr&cc_load_policy=${captions.loadPolicy}&enablejsapi=1&origin=https%3A%2F%2Fnixtv.app"
+        <iframe id="player" width="$playerWidth" height="$playerHeight" src="https://www.youtube-nocookie.com/embed/$key?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0&playsinline=1&iv_load_policy=3&disablekb=1&fs=0&hl=fr&cc_load_policy=${captions.loadPolicy}&enablejsapi=1&origin=https%3A%2F%2Fnixtv.app"
         allow="autoplay; encrypted-media" referrerpolicy="strict-origin-when-cross-origin"></iframe>
         <script>
         var player=null;
@@ -304,6 +316,9 @@ private fun captions(language: String?): Captions = when {
     language.startsWith("fr") -> Captions.OFF
     else -> Captions.FRENCH
 }
+
+/** Agrandissement des bandes-annonces du bandeau et des fiches (bandes noires du format cinéma rognées). */
+internal const val TRAILER_FILL_ZOOM = 1.25f
 
 /** Temps passé sur la même affiche avant que sa bande-annonce démarre (réglable). */
 internal const val TRAILER_DELAY_MILLIS = 3_000L

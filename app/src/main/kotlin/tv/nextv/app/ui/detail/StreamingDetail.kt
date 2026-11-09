@@ -7,6 +7,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -79,6 +81,7 @@ import tv.nextv.app.ui.guide.formatDuration
 import tv.nextv.app.ui.home.PosterImage
 import tv.nextv.app.ui.home.PosterItem
 import tv.nextv.app.ui.home.StreamingPoster
+import tv.nextv.app.ui.home.TRAILER_FILL_ZOOM
 import tv.nextv.app.ui.home.TrailerBackdrop
 import tv.nextv.app.ui.home.TrailerFullScreen
 import tv.nextv.app.ui.home.TrailerSettings
@@ -118,6 +121,7 @@ internal fun StreamingDetailContent(
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val playFocus = remember { FocusRequester() }
+    val headerInView = remember { BringIntoViewRequester() }
     var focusDone by remember { mutableStateOf(false) }
     // La sélection sur « Reprendre » (connu juste après la fiche) ou « Regarder ».
     LaunchedEffect(item != null, state.progress != null) {
@@ -154,6 +158,7 @@ internal fun StreamingDetailContent(
                     muted = muted,
                     onShown = { trailerShown = it },
                     onFinished = { trailerDone = true },
+                    zoom = TRAILER_FILL_ZOOM,
                 )
             }
             Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to background, 0.35f to background.copy(alpha = 0.55f), 0.7f to Color.Transparent)))
@@ -166,8 +171,10 @@ internal fun StreamingDetailContent(
                     Modifier
                         .fillMaxWidth()
                         .heightIn(min = frameHeight - 20.dp)
-                        // Retour sur les boutons : la page remonte tout en haut (le titre restait coupé).
-                        .onFocusChanged { if (it.hasFocus && listState.firstVisibleItemScrollOffset + listState.firstVisibleItemIndex > 0) scope.launch { listState.animateScrollToItem(0) } }
+                        // Boutons choisis (à l'ouverture, ou en remontant) : tout le haut de la fiche est montré. La
+                        // télé place sinon l'élément choisi au tiers de l'écran, et le titre restait coupé.
+                        .bringIntoViewRequester(headerInView)
+                        .onFocusChanged { if (it.hasFocus) scope.launch { headerInView.bringIntoView() } }
                         .padding(start = padding, end = padding, top = window.topPadding),
                     horizontalArrangement = Arrangement.spacedBy(28.dp),
                     verticalAlignment = Alignment.CenterVertically,

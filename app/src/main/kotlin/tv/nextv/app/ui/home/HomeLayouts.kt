@@ -194,9 +194,23 @@ internal fun StreamingHome(
     }
     var featuredIndex by rememberSaveable(section) { mutableIntStateOf(0) }
     val featuredMode = hero && onHero && query.isEmpty()
+    // Sélection passée par les rangées : en remontant au bandeau, il garde l'affiche qui était choisie.
+    var fromRows by remember { mutableStateOf(false) }
     // Contenu mis en avant : sa fiche TMDB est lue comme pour une affiche choisie (visuel, bande-annonce).
     LaunchedEffect(featuredMode, featuredIndex, featuredItems) {
-        if (featuredMode && featuredItems.isNotEmpty()) actions.onPosterFocus(featuredItems[featuredIndex % featuredItems.size])
+        if (!featuredMode || featuredItems.isEmpty()) return@LaunchedEffect
+        if (fromRows) {
+            fromRows = false
+            // Retour des rangées (n°4 du Top 10…) : le bandeau reste sur ce contenu, la rotation reprend après lui.
+            val kept = spotlight?.item?.itemKey
+            val index = featuredItems.indexOfFirst { it.itemKey == kept }
+            if (index >= 0) {
+                if (index != featuredIndex % featuredItems.size) featuredIndex = index
+                return@LaunchedEffect
+            }
+            if (kept != null) return@LaunchedEffect
+        }
+        actions.onPosterFocus(featuredItems[featuredIndex % featuredItems.size])
     }
     val shown = spotlight ?: featuredItems.firstOrNull()?.let { Spotlight(it) } ?: content.discover.trending.firstOrNull()?.let { Spotlight(it) }
     // Bande-annonce : une seule (celle du bandeau), terminée une fois pour le contenu affiché.
@@ -260,8 +274,6 @@ internal fun StreamingHome(
                         section = section,
                         spotlight = shown,
                         featured = featuredMode,
-                        featuredCount = featuredItems.size,
-                        featuredIndex = featuredIndex % featuredItems.size.coerceAtLeast(1),
                         frameHeight = heroHeight,
                         padding = padding,
                         progress = shown?.item?.itemKey?.let { key -> content.continueItems.firstOrNull { it.itemKey == key } },
@@ -286,12 +298,17 @@ internal fun StreamingHome(
         RestoreRow(listState, lastOpened, (if (searchInList) listOf("search") else emptyList()) + shelves.map { it.key })
         // Petit écran : la recherche précède les rangées dans la liste.
         RowJumpEffect(LocalRowJump.current, listState, content, shelves, offset = if (searchInList) 1 else 0, onOpen = actions.onCategory)
-        AnchoredRows(peekBelow = STREAMING_NEXT_ROW_PEEK) { anchor ->
+        AnchoredRows(peekBelow = STREAMING_NEXT_ROW_PEEK, listState = listState) { anchor ->
             LazyColumn(
                 Modifier
                     .weight(1f)
                     // Sélection dans les rangées : le bandeau montre l'affiche choisie.
-                    .onFocusChanged { if (it.hasFocus) onHero = false }
+                    .onFocusChanged {
+                        if (it.hasFocus) {
+                            onHero = false
+                            fromRows = true
+                        }
+                    }
                     .onPreviewKeyEvent { event ->
                         val firstRow = anchor.focusedRow != null && anchor.focusedRow == shelves.firstOrNull()?.key
                         if (!hero || query.isNotEmpty() || !firstRow || event.key != Key.DirectionUp || event.type != KeyEventType.KeyDown) {
@@ -519,17 +536,26 @@ internal fun AnchoredRows(
      * (le titre de la rangée suivante, ses affiches cachées). `null` : rangée calée en haut (Cinéma Premium).
      */
     peekBelow: Dp? = null,
+    /** Liste des rangées : avec [peekBelow], c'est le bas de la rangée entière (titres sous les affiches compris) qui est calé. */
+    listState: LazyListState? = null,
     content: @Composable (RowAnchor) -> Unit,
 ) {
     val default = LocalBringIntoViewSpec.current
     val anchor = remember { RowAnchor() }
     val peekPx = with(LocalDensity.current) { peekBelow?.toPx() }
-    val spec = remember(anchor, default, peekPx) {
+    val spec = remember(anchor, default, peekPx, listState) {
         object : BringIntoViewSpec {
             override val scrollAnimationSpec get() = default.scrollAnimationSpec
 
             override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
-                if (peekPx != null) return offset + size - (containerSize - peekPx)
+                if (peekPx != null) {
+                    // Bas de la rangée choisie (et non de la vignette : le titre écrit dessous en fait partie)
+                    // juste au-dessus de la place laissée au titre de la rangée suivante.
+                    val info = listState?.layoutInfo
+                    val row = info?.visibleItemsInfo?.firstOrNull { it.key == anchor.focusedRow }
+                    if (info != null && row != null) return row.offset + row.size - (info.viewportEndOffset - peekPx)
+                    return offset + size - (containerSize - peekPx)
+                }
                 val top = anchor.cardTopPx
                 // Avant la première mesure des rangées : défilement habituel.
                 return if (top <= 0f) default.calculateScrollDistance(offset, size, containerSize) else offset - top
@@ -1171,7 +1197,7 @@ private val COMPACT_BILLBOARD_HEIGHT = 104.dp
 private val HERO_FEATURED_HEIGHT = 340.dp
 
 /** Bandeau pendant le parcours des rangées : l'affiche choisie, la rangée entière dessous. */
-private val HERO_BROWSE_HEIGHT = 260.dp
+private val HERO_BROWSE_HEIGHT = 244.dp
 
 /** Navigateur intégré déjà préparé (une fois par lancement de l'appli). */
 private var webViewWarmed = false

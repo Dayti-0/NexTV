@@ -4,6 +4,13 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.84
+- Streaming : la rangée choisie est de nouveau bien placée (le titre sous les affiches la rendait plus haute) : le nom de la catégorie du dessous se voit, et plus de reste de texte de la rangée du dessus. Titre des affiches sur une ligne ; « Reprendre la lecture » : l’épisode et le temps restant passent sur l’image
+- Fiches Streaming : tout le haut (titre, note) est visible à l’ouverture et en remontant sur les boutons
+- Bandeau Streaming : en remontant depuis une affiche (par exemple le n°4 du Top 10), le bandeau reste sur elle au lieu de revenir au n°1
+- Bandeau Streaming : les petits points sous les boutons sont supprimés
+- Bandes-annonces automatiques plus grandes : la vidéo remplit le cadre (bandes noires du format cinéma rognées)
+
 ## 0.2.83
 - Bande-annonce automatique : elle démarre au tout début (0 s). Elle se prépare en pause sur sa première image pendant l’attente, puis repart de 0 en apparaissant (le titre YouTube peut se voir quelques secondes)
 

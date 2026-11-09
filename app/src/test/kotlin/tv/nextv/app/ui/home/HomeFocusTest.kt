@@ -468,6 +468,37 @@ class HomeFocusTest {
     }
 
     /**
+     * Streaming : sous la rangée choisie, le titre de la suivante en entier (et pas ses affiches) ; au-dessus,
+     * rien de la rangée précédente (ni affiches, ni titres écrits sous les affiches).
+     */
+    @Test
+    fun streamingRowShowsTheNextTitleAndNothingAbove() {
+        val focused = mutableListOf<String>()
+        compose.setContent { Home(HomeLayout.STREAMING, HomeActions(onPosterFocus = { focused += it.title }), HomeSection.MOVIES) }
+        compose.waitForIdle()
+        enterStreamingContent()
+        var checked = 0
+        repeat(5) {
+            press(Key.DirectionDown)
+            val group = focused.lastOrNull()?.substringBefore(" · ")?.removePrefix("Groupe ")?.toIntOrNull() ?: return@repeat
+            val list = compose.onAllNodes(hasScrollAction() and hasAnyDescendant(isFocused())).fetchSemanticsNodes()
+                .map { Rect(it.positionInRoot, it.size.toSize()) }.maxBy { it.height }
+            fun rects(text: String) = compose.onAllNodesWithText(text, useUnmergedTree = true).fetchSemanticsNodes()
+                .map { Rect(it.positionInRoot, it.size.toSize()) }
+            val title = rects("Groupe $group").single()
+            val next = rects("Groupe ${group + 1}").singleOrNull()
+            // Tout ce qui porte le nom d'une affiche de la rangée précédente (image, titre dessous).
+            val above = (0..5).flatMap { rects("Groupe ${group - 1} · $it") }.filter { it.bottom > list.top + 1f && it.top < list.bottom }
+            println("Streaming, Groupe $group : liste ${list.top}..${list.bottom}, titre ${title.top}..${title.bottom}, suivante ${next?.top}..${next?.bottom}, précédente visible : ${above.map { "${it.top}..${it.bottom}" }}")
+            assertTrue("Groupe $group : titre coupé en haut (${title.top} < ${list.top})", title.top >= list.top - 0.5f)
+            if (next != null) assertTrue("Groupe $group : titre de la rangée suivante coupé (${next.bottom} > ${list.bottom})", next.bottom <= list.bottom + 0.5f)
+            assertTrue("Groupe $group : la rangée précédente se voit au-dessus : $above", above.isEmpty())
+            checked++
+        }
+        assertTrue("rangées vérifiées : $checked", checked >= 3)
+    }
+
+    /**
      * Rangée choisie entière : titre et vignettes (texte compris) au-dessus de la marge de sécurité
      * du bas des TV, rien de la rangée précédente au-dessus.
      */
