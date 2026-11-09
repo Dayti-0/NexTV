@@ -1601,6 +1601,7 @@ internal fun gridPadding(window: WindowInfo, end: Dp = window.horizontalPadding,
 /** Place laissée autour de la catégorie choisie (son ombre) dans la colonne des catégories. */
 internal val RAIL_FOCUS_ROOM = 6.dp
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun CategoryItem(
     name: String,
@@ -1611,6 +1612,7 @@ internal fun CategoryItem(
     dense: Boolean = false,
     onClick: () -> Unit,
 ) {
+    var focused by remember { mutableStateOf(false) }
     FocusSurface(
         onClick = onClick,
         onLongClick = onLongClick,
@@ -1619,18 +1621,20 @@ internal fun CategoryItem(
         color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
         // Pas d'agrandissement : le texte de la catégorie choisie resterait légèrement flou.
         focusScale = 1f,
+        onFocusChange = { focused = it },
     ) {
         Row(Modifier.padding(horizontal = 14.dp, vertical = if (dense) 7.dp else 11.dp), verticalAlignment = Alignment.CenterVertically) {
             if (star) {
                 Icon(Icons.Filled.Star, contentDescription = null, tint = NexTvColors.Warning, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
             }
+            // Nom trop long : il défile quand la catégorie est sélectionnée, tronqué sinon.
             Text(
                 name,
                 style = if (dense) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
+                overflow = if (focused) TextOverflow.Clip else TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).then(if (focused) Modifier.basicMarquee(initialDelayMillis = 600) else Modifier),
             )
             Text(count.toString(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }

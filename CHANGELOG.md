@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.66
+- Catégories : un nom trop long défile quand la catégorie est sélectionnée
+
 ## 0.2.65
 - Cinéma Premium : le Top 10 de la semaine change de forme (affiches ordinaires avec un petit rang doré « N°1 », « N°2 »… dans le coin, au lieu des grands chiffres de Streaming)
 - Chaînes en Streaming et Cinéma Premium : le cadre de sélection du panneau de droite suit ses coins arrondis (ils étaient coupés)
