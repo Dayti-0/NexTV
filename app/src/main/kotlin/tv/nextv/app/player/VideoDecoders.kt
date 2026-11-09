@@ -29,10 +29,14 @@ object VideoDecoders {
     fun isHardware(mimeType: String?, decoderName: String): Boolean? =
         mimeType?.let { list(it) }?.firstOrNull { it.name == decoderName }?.hardware
 
-    /** Place le décodeur choisi en tête : le lecteur l'essaie d'abord, puis les autres en repli. */
-    fun selector(preferred: Map<String, String>): MediaCodecSelector =
+    /**
+     * Place le décodeur choisi en tête : le lecteur l'essaie d'abord, puis les autres en repli. [excluded] :
+     * décodeurs qui ont échoué sur le flux en cours, écartés (sauf s'il ne restait plus qu'eux).
+     */
+    fun selector(preferred: Map<String, String>, excluded: Set<String> = emptySet()): MediaCodecSelector =
         MediaCodecSelector { mimeType, requiresSecureDecoder, requiresTunnelingDecoder ->
-            val infos = MediaCodecSelector.DEFAULT.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder)
+            val all = MediaCodecSelector.DEFAULT.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder)
+            val infos = all.filter { it.name !in excluded }.ifEmpty { all }
             val name = preferred[mimeType] ?: return@MediaCodecSelector infos
             val (chosen, others) = infos.partition { it.name == name }
             chosen + others

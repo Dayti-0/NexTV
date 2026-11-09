@@ -78,7 +78,7 @@ data class PlayerUiState(
     val watchedAt: Long? = null,
     /** Saut demandé (secondes), appliqué quand les appuis s'arrêtent. */
     val pendingJumpSeconds: Int = 0,
-    /** Durée d'un appui sur ← → : 30 s quand on peut se déplacer dans l'enregistrement, sinon une minute. */
+    /** Durée d'un appui sur ← → : 10 s quand on peut se déplacer dans l'enregistrement, sinon une minute. */
     val jumpStepSeconds: Int = 60,
     /** Avance (1) ou retour (−1) rapide x2 en cours (← → maintenu), 0 sinon. */
     val fastSeek: Int = 0,

@@ -173,7 +173,12 @@ data class Spotlight(
     val details: MediaDetails? = null,
     /** Fiche TMDB en cours de lecture : l'image de fond attend la sienne (pas d'affiche entre-temps). */
     val pending: Boolean = false,
+    /** Saisons de la série dans la playlist (TMDB peut en compter moins ou plus que ce qui est proposé). */
+    val playlistSeasons: Int? = null,
 ) {
+    /** Nombre de saisons affiché : celles de la playlist, sinon celui de TMDB. */
+    val seasonCount: Int? get() = playlistSeasons ?: details?.seasonCount
+
     val backdropUrl: String? get() = details?.backdropUrl ?: item.backdropUrl
     val overview: String? get() = details?.overview ?: item.overview
     /** Note TMDB, seulement quand assez de votes la rendent parlante (pas de « 10,0 » sur 2 votes). */
@@ -426,7 +431,8 @@ class HomeViewModel(
         }.getOrDefault(emptyList()).distinctBy { it.itemKey }
         return found.mapNotNull { item ->
             val trend = keys[item.itemKey] ?: return@mapNotNull null
-            item.copy(backdropUrl = trend.backdropUrl, overview = trend.overview, rating = trend.rating, imageUrl = item.imageUrl ?: trend.posterUrl)
+            // Affiche TMDB d'abord : celles des playlists sont souvent des images en largeur recadrées, floues ou absentes.
+            item.copy(backdropUrl = trend.backdropUrl, overview = trend.overview, rating = trend.rating, imageUrl = trend.posterUrl ?: item.imageUrl)
         }.sortedBy { item -> titles.indexOf(keys[item.itemKey]) }
     }
 
@@ -442,23 +448,28 @@ class HomeViewModel(
                 emit(null)
                 return@transformLatest
             }
+            val seasons = if (item.kind == ContentKind.SERIES) {
+                sourceId.value?.let { id -> runCatching { dao.seasonCount(id, item.itemKey) }.getOrNull() }?.takeIf { it > 0 }
+            } else {
+                null
+            }
             if (!container.hasTmdbKey()) {
-                emit(Spotlight(item))
+                emit(Spotlight(item, playlistSeasons = seasons))
                 return@transformLatest
             }
             val type = if (item.kind == ContentKind.SERIES) MediaType.SERIES else MediaType.MOVIE
             val key = metadataCacheKey(item.itemKey)
             // Fiche déjà lue : son image tout de suite, sans passer par l'affiche de la liste.
             runCatching { container.metadata.cachedDetails(key, type) }.getOrNull()?.let {
-                emit(Spotlight(item, it))
+                emit(Spotlight(item, it, playlistSeasons = seasons))
                 return@transformLatest
             }
             // Sinon l'image de fond précédente reste jusqu'à la bonne (l'affiche puis l'image TMDB, une demi-seconde
             // après, faisaient deux changements d'image).
-            emit(Spotlight(item, pending = item.backdropUrl == null))
+            emit(Spotlight(item, pending = item.backdropUrl == null, playlistSeasons = seasons))
             delay(SPOTLIGHT_DELAY_MILLIS)
             val state = runCatching { container.metadata.details(key, type, item.title, item.year) }.getOrNull()
-            emit((state as? MetadataState.Available)?.let { Spotlight(item, it.details) } ?: Spotlight(item))
+            emit(Spotlight(item, (state as? MetadataState.Available)?.details, playlistSeasons = seasons))
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 

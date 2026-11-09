@@ -73,7 +73,7 @@ private const val LISTED =
  * Liste des chaînes avec le programme en cours ([ChannelDao.pageChannels]). Requête brute : les
  * paramètres nommés deviennent des paramètres numérotés (`?1`… dans l'ordre de [PAGE_CHANNELS_PARAMETERS]).
  */
-private val PAGE_CHANNELS_PARAMETERS = listOf("sourceId", "filterGroup", "group", "query", "now")
+private val PAGE_CHANNELS_PARAMETERS = listOf("sourceId", "filterGroup", "group", "query", "now", "key")
 
 internal val PAGE_CHANNELS: String = numberParameters(
     """
@@ -88,11 +88,18 @@ internal val PAGE_CHANNELS: String = numberParameters(
         ORDER BY p2.startMillis DESC LIMIT 1
     )
     WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND $LISTED
-      AND (:query = '' OR c.name LIKE '%' || :query || '%' ESCAPE '\')
+      AND (:query = '' OR c.name LIKE '%' || :query || '%' ESCAPE '\'
+        OR (:key != '' AND c.itemKey LIKE 'live:%' || :key || '%'))
     ORDER BY c.position
     """.trimIndent(),
     PAGE_CHANNELS_PARAMETERS,
 )
+
+/**
+ * Texte recherché tel qu'il est écrit dans les clés des titres ([ItemKeys.normalize]) : minuscules, sans
+ * accents, mots séparés par une espace. Ne contient ni `%` ni `_` (rien à échapper pour LIKE).
+ */
+internal fun searchKey(query: String): String = ItemKeys.normalize(query)
 
 /** Remplace `:nom` par `?n`, n étant la place du nom dans [names] (à partir de 1). */
 internal fun numberParameters(sql: String, names: List<String>): String =
@@ -303,6 +310,23 @@ interface ChannelDao {
     @Query("SELECT * FROM channels WHERE id = :id")
     suspend fun get(id: Long): ChannelEntity?
 
+    /**
+     * Autres copies du même film (ou du même épisode) dans la playlist, avec un autre flux : essayées quand
+     * celle-ci ne peut pas être décodée. Celles de qualité égale ou inférieure d'abord (une version 4K ou 10
+     * bits illisible a souvent une version HD qui passe).
+     */
+    @Query(
+        """
+        SELECT * FROM channels
+        WHERE sourceId = :sourceId AND kind = :kind AND itemKey = :itemKey AND itemKey != ''
+          AND IFNULL(season, -1) = IFNULL(:season, -1) AND IFNULL(episode, -1) = IFNULL(:episode, -1)
+          AND id != :id AND streamUrl != :streamUrl
+        ORDER BY (qualityRank > :rank), qualityRank DESC, position + 0
+        LIMIT 5
+        """,
+    )
+    suspend fun otherCopies(sourceId: Long, kind: String, itemKey: String, season: Int?, episode: Int?, id: Long, streamUrl: String, rank: Int): List<ChannelEntity>
+
     /** Chaînes, films ou séries (une ligne par série : son premier épisode). */
     @Query("SELECT COUNT(*) FROM channels WHERE sourceId = :sourceId AND kind = :kind AND isPrimary = 1")
     suspend fun count(sourceId: Long, kind: String): Int
@@ -347,10 +371,11 @@ interface ChannelDao {
      * nouveaux programmes ne deviennent visibles qu'à la validation de l'import, qui modifie les
      * chaînes et la playlist (tables observées).
      * @param filterGroup 1 pour ne garder que [group] (`''` = sans groupe), 0 pour tout afficher.
-     * @param query texte recherché, déjà échappé pour LIKE (caractère d'échappement `\`).
+     * @param query texte recherché, déjà échappé pour LIKE (caractère d'échappement `\`). Cherché tel
+     *   quel dans le nom, et sans accents ni ponctuation dans la clé de la chaîne ([searchKey]).
      */
     fun pageChannels(sourceId: Long, filterGroup: Int, group: String, query: String, now: Long): PagingSource<Int, ChannelListRow> =
-        pageChannels(SimpleSQLiteQuery(PAGE_CHANNELS, arrayOf(sourceId, filterGroup, group, query, now)))
+        pageChannels(SimpleSQLiteQuery(PAGE_CHANNELS, arrayOf(sourceId, filterGroup, group, query, now, searchKey(query))))
 
     @RawQuery(observedEntities = [ChannelEntity::class, SourceEntity::class, HiddenGroupEntity::class])
     fun pageChannels(query: SupportSQLiteQuery): PagingSource<Int, ChannelListRow>
@@ -469,11 +494,16 @@ interface ChannelDao {
         WHERE sourceId = :sourceId AND kind = 'MOVIE'
           AND IFNULL(groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'MOVIE')
           AND (:filterGroup = 0 OR IFNULL(groupTitle, '') = :group)
-          AND (:query = '' OR title LIKE '%' || :query || '%' ESCAPE '\')
+          AND (:query = '' OR title LIKE '%' || :query || '%' ESCAPE '\'
+            OR (:key != '' AND itemKey LIKE 'movie:%' || :key || '%'))
         ORDER BY position
         """,
     )
-    fun pageMovies(sourceId: Long, filterGroup: Int, group: String, query: String): PagingSource<Int, MovieRow>
+    fun pageMovies(sourceId: Long, filterGroup: Int, group: String, query: String, key: String): PagingSource<Int, MovieRow>
+
+    /** Films de la catégorie : [query] cherché dans le titre, et sans accents dans la clé du film (« a la derive » trouve « À la dérive »). */
+    fun pageMovies(sourceId: Long, filterGroup: Int, group: String, query: String): PagingSource<Int, MovieRow> =
+        pageMovies(sourceId, filterGroup, group, query, searchKey(query))
 
     @Query(
         """
@@ -497,11 +527,16 @@ interface ChannelDao {
         WHERE sourceId = :sourceId AND kind = 'SERIES' AND isPrimary = 1 AND seriesName IS NOT NULL
           AND IFNULL(groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'SERIES')
           AND (:filterGroup = 0 OR IFNULL(groupTitle, '') = :group)
-          AND (:query = '' OR seriesName LIKE '%' || :query || '%' ESCAPE '\')
+          AND (:query = '' OR seriesName LIKE '%' || :query || '%' ESCAPE '\'
+            OR (:key != '' AND itemKey LIKE 'series:%' || :key || '%'))
         ORDER BY position
         """,
     )
-    fun pageSeries(sourceId: Long, filterGroup: Int, group: String, query: String): PagingSource<Int, SeriesRow>
+    fun pageSeries(sourceId: Long, filterGroup: Int, group: String, query: String, key: String): PagingSource<Int, SeriesRow>
+
+    /** Séries de la catégorie : [query] cherché dans le nom, et sans accents dans la clé de la série. */
+    fun pageSeries(sourceId: Long, filterGroup: Int, group: String, query: String): PagingSource<Int, SeriesRow> =
+        pageSeries(sourceId, filterGroup, group, query, searchKey(query))
 
     @Query(
         """
@@ -513,6 +548,10 @@ interface ChannelDao {
         """,
     )
     fun observeFavoriteSeries(sourceId: Long): Flow<List<SeriesRow>>
+
+    /** Saisons d'une série présentes dans la playlist (0 : épisodes sans numéro de saison). */
+    @Query("SELECT COUNT(DISTINCT season) FROM channels WHERE sourceId = :sourceId AND kind = 'SERIES' AND itemKey = :itemKey")
+    suspend fun seasonCount(sourceId: Long, itemKey: String): Int
 
     @Query(
         """

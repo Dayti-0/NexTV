@@ -60,7 +60,13 @@ internal class PlayerEngine(
 
     /** Le lecteur, gardé d'un flux à l'autre ; réglages avec lesquels il a été créé (son direct, décodeurs). */
     private var exoPlayer: ExoPlayer? = null
-    private var exoPlayerConfig: Pair<Boolean, Map<String, String>>? = null
+    private var exoPlayerConfig: Triple<Boolean, Map<String, String>, Set<String>>? = null
+
+    /** Décodeurs vidéo qui ont échoué sur le film ou la chaîne en cours : le lecteur est recréé sans eux. */
+    private var excludedDecoders: Set<String> = emptySet()
+
+    /** Son coupé faute d'en savoir lire une piste : signalé (« son illisible ») tant que dure ce flux. */
+    private var audioGivenUp = false
 
     private val mutablePlayer = MutableStateFlow<ExoPlayer?>(null)
 
@@ -236,6 +242,7 @@ internal class PlayerEngine(
         adVolume.newStream()
         receivedRate.reset()
         state.update { it.copy(error = null, info = PlaybackInfo(), audioProblem = null, receivedMbps = null) }
+        audioGivenUp = false
         player.setPlaybackSpeed(1f)
         player.resetTrackSelection()
         // Position de départ seulement pour ce flux (reprise) ; sinon position par défaut.
@@ -247,10 +254,10 @@ internal class PlayerEngine(
 
     /** Le lecteur actuel, ou un nouveau si le réglage du son direct ou du décodeur préféré a changé. */
     private fun reusablePlayer(): ExoPlayer {
-        val config = audioPassthrough to preferredDecoders
+        val config = Triple(audioPassthrough, preferredDecoders, excludedDecoders)
         exoPlayer?.takeIf { exoPlayerConfig == config }?.let { return it }
         release()
-        return container.playerFactory.create(bandwidthMeter, preferredDecoders, adVolume, passthrough = audioPassthrough).apply {
+        return container.playerFactory.create(bandwidthMeter, preferredDecoders, adVolume, passthrough = audioPassthrough, excludedDecoders = excludedDecoders).apply {
             addListener(listener)
             addAnalyticsListener(analytics)
             exoPlayer = this
@@ -340,6 +347,7 @@ internal class PlayerEngine(
      * pistes ne sont connues qu'une fois l'image arrivée (vidéo présente).
      */
     private fun audioProblemOf(tracks: Tracks): AudioProblem? {
+        if (audioGivenUp) return AudioProblem.UNSUPPORTED
         if (tracks.isEmpty || !tracks.containsType(C.TRACK_TYPE_VIDEO)) return null
         val audio = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
         return when {
@@ -413,6 +421,58 @@ internal class PlayerEngine(
         player.trackSelectionParameters = builder.build()
         subtitleLanguage = choice?.language
         scope.launch { container.settings.setSubtitleLanguage(choice?.language) }
+    }
+
+    // --- Reprise après un échec de décodage ----------------------------------------------------------
+
+    /**
+     * Décodeur vidéo suivant pour [mimeType], une fois [failed] écarté : `null` s'il n'y en a pas d'autre.
+     * Il est alors écarté pour le film ou la chaîne en cours (le lecteur sera recréé sans lui).
+     */
+    fun excludeDecoder(mimeType: String?, failed: String?): String? {
+        val decoders = mimeType?.let { VideoDecoders.list(it) }.orEmpty().map { it.name }.filter { it !in excludedDecoders }
+        // Décodeur en cause inconnu : celui que le lecteur prend en premier.
+        val culprit = failed ?: preferredDecoders[mimeType]?.takeIf { it in decoders } ?: decoders.firstOrNull() ?: return null
+        val next = decoders.firstOrNull { it != culprit } ?: return null
+        excludedDecoders = excludedDecoders + culprit
+        return next
+    }
+
+    /** Nouveau film ou nouvelle chaîne : tous les décodeurs sont de nouveau essayés. */
+    fun resetExcludedDecoders() {
+        excludedDecoders = emptySet()
+    }
+
+    /**
+     * La piste son [failed] ne peut pas être lue : une autre piste son lisible est choisie ; s'il n'y en a
+     * pas, le son est coupé (l'image continue, « son illisible » est signalé). @return vrai si une autre
+     * piste est choisie.
+     */
+    fun skipAudioTrack(failed: Format?): Boolean {
+        val player = exoPlayer ?: return false
+        val groups = player.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+        for (group in groups) {
+            for (index in 0 until group.length) {
+                val format = group.getTrackFormat(index)
+                val same = failed != null && (format.id == failed.id || format.sampleMimeType == failed.sampleMimeType)
+                if (!same && group.isTrackSupported(index)) {
+                    player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                        .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, index))
+                        .build()
+                    return true
+                }
+            }
+        }
+        audioGivenUp = true
+        player.setAudioDisabled(true)
+        state.update { it.copy(audioProblem = AudioProblem.UNSUPPORTED) }
+        return false
+    }
+
+    /** Sous-titres illisibles : coupés pour ce flux. */
+    fun disableSubtitles() {
+        val player = exoPlayer ?: return
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
     }
 
     private companion object {

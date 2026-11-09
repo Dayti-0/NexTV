@@ -37,6 +37,9 @@ class MetadataRepository(
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<CastMember>>?) = size > CAST_CACHE_SIZE
     }
 
+    /** Titres recommandés par TMDB pour une fiche trouvée (vide en cas d'échec). */
+    suspend fun recommendations(details: MediaDetails): List<TrendingTitle> = client.recommendations(details.type, details.tmdbId)
+
     /** Distribution d'une fiche trouvée (vide si TMDB ne la donne pas ou en cas d'échec). */
     suspend fun credits(details: MediaDetails): List<CastMember> {
         val key = "${details.type}:${details.tmdbId}"

@@ -394,18 +394,19 @@ internal fun shelfList(content: ShelfContent): List<ShelfSpec> = buildList {
             if (content.recentChannels.isNotEmpty()) add(ShelfSpec.Channels("recent", R.string.home_recent, content.recentChannels))
         }
         HomeSection.MOVIES, HomeSection.SERIES -> {
-            if (content.continueItems.isNotEmpty()) add(ShelfSpec.Continue("continue", content.continueItems))
             val discover = content.discover
-            // Assez de tendances : un Top 10 à rangs, sinon la rangée ordinaire.
+            // Assez de tendances : un Top 10 à rangs, sinon la rangée ordinaire. Tout en haut, avant « Reprendre la lecture ».
             if (discover.trending.size >= TOP10_MIN) {
                 add(ShelfSpec.Top10("top10", discover.trending.take(10)))
             } else if (discover.trending.isNotEmpty()) {
                 add(ShelfSpec.Posters("trending", R.string.home_rows_trending, discover.trending))
             }
-            if (discover.newest.isNotEmpty()) add(ShelfSpec.Posters("newest", R.string.home_rows_newest, discover.newest))
-            if (discover.recommended.isNotEmpty()) add(ShelfSpec.Posters("recommended", R.string.home_rows_recommended, discover.recommended, discover.recommendedFrom))
+            if (content.continueItems.isNotEmpty()) add(ShelfSpec.Continue("continue", content.continueItems))
+            // Favoris juste après : ajoutés par la fiche ou l'appui long, ils se retrouvent tout de suite.
             val favorites = if (content.section == HomeSection.MOVIES) content.favoriteMovies.map { it.toPoster() } else content.favoriteSeries.map { it.toPoster() }
             if (favorites.isNotEmpty()) add(ShelfSpec.Posters("favorites", R.string.home_favorites, favorites))
+            if (discover.newest.isNotEmpty()) add(ShelfSpec.Posters("newest", R.string.home_rows_newest, discover.newest))
+            if (discover.recommended.isNotEmpty()) add(ShelfSpec.Posters("recommended", R.string.home_rows_recommended, discover.recommended, discover.recommendedFrom))
         }
         HomeSection.GUIDE, HomeSection.FOOTBALL -> Unit
     }
@@ -1130,7 +1131,7 @@ internal fun MetaLine(spotlight: Spotlight, color: Color = MaterialTheme.colorSc
         (details?.year ?: spotlight.item.year)?.toString(),
         details?.genres?.take(2)?.joinToString(", ")?.takeIf { it.isNotEmpty() },
         details?.runtimeMinutes?.let { formatDuration(it * 60_000L) },
-        details?.seasonCount?.let { LocalContext.current.resources.getQuantityString(R.plurals.seasons_count, it, it) },
+        spotlight.seasonCount?.let { LocalContext.current.resources.getQuantityString(R.plurals.seasons_count, it, it) },
     )
     // Note en tête ; ligne trop longue (volet étroit) : la suite passe dessous, rien n'est écrasé ni coupé.
     FlowRow(

@@ -131,7 +131,7 @@ internal fun StreamingHero(
             Modifier.fillMaxSize().drawBehind {
                 drawRect(Brush.radialGradient(listOf(glow, Color.Transparent), center = Offset(size.width * 0.3f, size.height * 0.5f), radius = size.width * 0.5f))
                 // Bas du bandeau fondu vers le fond sur toute sa largeur : aucun bord avec les rangées.
-                drawRect(Brush.verticalGradient(0.72f to Color.Transparent, 1f to background, startY = 0f, endY = size.height))
+                drawRect(Brush.verticalGradient(0.84f to Color.Transparent, 1f to background, startY = 0f, endY = size.height))
             },
         )
         // Texte, à gauche, par-dessus le fondu.
@@ -247,11 +247,14 @@ internal fun StreamingHero(
     }
 }
 
-/** Fondu du visuel vers le fond : large à gauche (texte lisible), en bas (rangées), léger en haut. */
+/**
+ * Fondu du visuel vers le fond, étroit pour garder l'aperçu net : un peu à gauche (raccord avec le texte),
+ * en bas (rangées), à peine en haut.
+ */
 @Composable
 private fun HeroFade(background: Color) {
-    Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to background, 0.3f to background.copy(alpha = 0.6f), 0.6f to Color.Transparent)))
-    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to background.copy(alpha = 0.35f), 0.2f to Color.Transparent, 0.7f to Color.Transparent, 1f to background)))
+    Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to background, 0.15f to background.copy(alpha = 0.75f), 0.38f to Color.Transparent)))
+    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to background.copy(alpha = 0.2f), 0.08f to Color.Transparent, 0.84f to Color.Transparent, 1f to background)))
 }
 
 /**
@@ -292,6 +295,8 @@ internal fun StreamingPoster(
                 }
             }
         }
+        // Titre sous l'affiche (sinon il faut deviner le film d'après l'image).
+        Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
         detail?.let {
             Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }

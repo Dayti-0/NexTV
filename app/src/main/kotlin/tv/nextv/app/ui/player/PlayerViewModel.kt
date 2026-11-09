@@ -22,6 +22,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import tv.nextv.app.player.CodecFailure
+import tv.nextv.app.player.describeCodecFailure
+import androidx.media3.common.C
 import tv.nextv.app.AppContainer
 import tv.nextv.app.ui.football.eventMatchOnAir
 import tv.nextv.app.R
@@ -275,6 +278,9 @@ class PlayerViewModel(
 
     private fun load(id: Long) {
         delayed.beforeLoad(otherChannel = id != channelId)
+        // Nouveau titre : les essais après un échec de décodage repartent de zéro.
+        codecTries = CodecTries()
+        engine.resetExcludedDecoders()
         engine.startZapTimer()
         channelId = id
         handle[ARG_CHANNEL_ID] = id
@@ -489,11 +495,83 @@ class PlayerViewModel(
             return
         }
         container.logger.warn(TAG, "Lecture impossible (${error.errorCodeName}) : ${playbackRequest.stream.url}", error)
+        // Décodage impossible : autre piste son, sans sous-titres, autre décodeur ou autre copie du titre.
+        val failure = CodecFailure.of(error)
+        if (failure != null && recoverFromCodecFailure(failure, player)) return
         // Autre version de la même chaîne, de qualité inférieure, si elle existe.
         if (quality.onError()) return
         val viaProxy = container.httpClients.usesProxy(RequestPurpose.STREAM) &&
             format != StreamFormat.RTSP && format != StreamFormat.UDP
-        mutableState.update { it.copy(buffering = false, error = resources.describePlaybackError(error, viaProxy)) }
+        val message = failure?.let { resources.describeCodecFailure(it) } ?: resources.describePlaybackError(error, viaProxy)
+        mutableState.update { it.copy(buffering = false, error = message) }
+    }
+
+    /** Essais faits sur le titre en cours après des échecs de décodage. */
+    private class CodecTries {
+        var audio = 0
+        var subtitles = false
+        var decoders = 0
+        val copies = mutableSetOf<Long>()
+    }
+
+    private var codecTries = CodecTries()
+
+    /**
+     * Reprise après un échec de décodage, sans quitter le lecteur :
+     * - son illisible : autre piste son, sinon l'image sans le son ;
+     * - sous-titres illisibles : coupés ;
+     * - vidéo illisible : autre décodeur de l'appareil (logiciel compris), puis autre copie du même titre
+     *   dans la playlist (version HD d'un film 4K…).
+     * @return vrai si une reprise est lancée (sinon le message d'erreur s'affiche).
+     */
+    private fun recoverFromCodecFailure(failure: CodecFailure, player: ExoPlayer): Boolean {
+        val format = failure.format
+        container.logger.warn(TAG, "Décodage impossible : ${failure.trackType} ${format?.sampleMimeType} ${format?.codecs} ${format?.width}x${format?.height} (${failure.decoderName})")
+        when (failure.trackType) {
+            C.TRACK_TYPE_AUDIO -> if (codecTries.audio < MAX_AUDIO_TRIES) {
+                codecTries.audio++
+                engine.skipAudioTrack(format)
+                player.prepare()
+                return true
+            }
+            C.TRACK_TYPE_TEXT -> if (!codecTries.subtitles) {
+                codecTries.subtitles = true
+                engine.disableSubtitles()
+                player.prepare()
+                return true
+            }
+            else -> {
+                val restartAt = if (state.value.isLive) 0L else player.currentPosition.coerceAtLeast(0)
+                // Autre décodeur (pas quand aucun n'a pu démarrer : le lecteur les a déjà tous essayés).
+                if (!failure.initFailed && codecTries.decoders < MAX_DECODER_TRIES && engine.excludeDecoder(format?.sampleMimeType, failure.decoderName) != null) {
+                    codecTries.decoders++
+                    session.startPositionMs = restartAt
+                    mutableState.update { it.copy(qualityNotice = resources.getString(R.string.player_other_decoder)) }
+                    start(forceHls = session.playingAsHls)
+                    return true
+                }
+                // Autre copie du titre (film en double dans la playlist, autre qualité).
+                val playing = session.playing ?: return false
+                if (playing.kind == ContentKind.LIVE.name || codecTries.copies.size >= MAX_COPY_TRIES) return false
+                codecTries.copies += playing.id
+                viewModelScope.launch {
+                    val copy = container.channelDao.otherCopies(
+                        playing.sourceId, playing.kind, playing.itemKey, playing.season, playing.episode, playing.id, playing.streamUrl, playing.qualityRank,
+                    ).firstOrNull { it.id !in codecTries.copies }
+                    if (copy == null) {
+                        val message = resources.describeCodecFailure(failure) ?: resources.getString(R.string.player_error_codec)
+                        mutableState.update { it.copy(buffering = false, error = message) }
+                        return@launch
+                    }
+                    container.logger.info(TAG, "Autre copie du titre essayée : ${copy.id}")
+                    engine.resetExcludedDecoders()
+                    session.startPositionMs = restartAt
+                    playVariant(copy, resources.getString(R.string.player_other_copy))
+                }
+                return true
+            }
+        }
+        return false
     }
 
     /** Le flux joue : son serveur sert de départ aux chaînes suivantes de la playlist. */
@@ -637,6 +715,11 @@ class PlayerViewModel(
         private const val TAG = "Player"
         private const val PROGRAMME_REFRESH_MILLIS = 30_000L
         private const val MATCH_REFRESH_MILLIS = 15_000L
+
+        /** Échecs de décodage : pistes son, décodeurs vidéo et copies du titre essayés au plus. */
+        private const val MAX_AUDIO_TRIES = 3
+        private const val MAX_DECODER_TRIES = 2
+        private const val MAX_COPY_TRIES = 3
 
         /** Même période que la section Foot : la réponse de football-data.org est partagée. */
         private const val FOOTBALL_WINDOW_MILLIS = 8 * 24 * 60 * 60_000L

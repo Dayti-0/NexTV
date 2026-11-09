@@ -21,6 +21,8 @@ import tv.nextv.app.data.db.EpisodeRow
 import tv.nextv.core.catalog.ContentClassifier
 import tv.nextv.core.meta.CastMember
 import tv.nextv.core.meta.MediaType
+import tv.nextv.app.data.db.ItemKeys
+import tv.nextv.core.meta.MediaDetails
 import tv.nextv.core.meta.TmdbError
 import tv.nextv.core.model.ContentKind
 
@@ -97,17 +99,6 @@ class DetailViewModel(
                 mutableState.update { it.copy(watched = keys) }
             }
         }
-        // Titres similaires : la même catégorie de la playlist, sans celui-ci.
-        viewModelScope.launch {
-            val similar = runCatching {
-                if (kind == ContentKind.SERIES) {
-                    container.channelDao.seriesRow(entity.sourceId, entity.groupTitle, SIMILAR_COUNT + 1).map { it.toPoster() }
-                } else {
-                    container.channelDao.movieRow(entity.sourceId, entity.groupTitle, SIMILAR_COUNT + 1).map { it.toPoster() }
-                }
-            }.getOrDefault(emptyList()).filter { it.itemKey != entity.itemKey }.take(SIMILAR_COUNT)
-            mutableState.update { it.copy(similar = similar) }
-        }
         viewModelScope.launch {
             container.favorites.observeKeys(entity.sourceId).collect { keys ->
                 mutableState.update { it.copy(isFavorite = entity.itemKey in keys) }
@@ -126,8 +117,12 @@ class DetailViewModel(
             )
         }
         mutableState.update { it.copy(metadata = metadata) }
-        // Distribution : lue après la fiche (elle ne retarde ni le titre ni le résumé).
+        // Distribution et titres similaires : lus après la fiche (ils ne retardent ni le titre ni le résumé).
         (metadata as? MetadataState.Available)?.details?.let { details ->
+            viewModelScope.launch {
+                val similar = runCatching { similarInPlaylist(entity.sourceId, entity.itemKey, details) }.getOrDefault(emptyList())
+                mutableState.update { it.copy(similar = similar) }
+            }
             val cast = runCatching { container.metadata.credits(details) }.getOrDefault(emptyList())
             mutableState.update { it.copy(cast = cast) }
         }
@@ -144,6 +139,33 @@ class DetailViewModel(
         container.settings.trailerDelaySeconds,
     ) { autoplay, sound, delay -> TrailerSettings(autoplay, sound, delay * 1_000L) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, TrailerSettings())
+
+    /**
+     * Titres similaires : ceux que TMDB recommande pour ce film ou cette série (mêmes genres, même public),
+     * retrouvés dans la playlist par leur titre (et leur année pour un film), dans l'ordre de TMDB. Aucun
+     * trouvé : pas de rangée (pas de remplissage avec la simple catégorie de la playlist).
+     */
+    private suspend fun similarInPlaylist(sourceId: Long, itemKey: String, details: MediaDetails): List<PosterItem> {
+        val titles = container.metadata.recommendations(details)
+        if (titles.isEmpty()) return emptyList()
+        val movie = kind == ContentKind.MOVIE
+        fun keyOf(title: String, year: Int?) = if (movie) "movie:${ItemKeys.normalize(title)}:${year ?: ""}" else "series:${ItemKeys.normalize(title)}"
+        val rank = HashMap<String, Int>()
+        titles.forEachIndexed { index, title ->
+            rank.putIfAbsent(keyOf(title.title, title.year), index)
+            title.originalTitle?.let { rank.putIfAbsent(keyOf(it, title.year), index) }
+        }
+        val poster = { key: String -> rank[key]?.let { titles[it].posterUrl } }
+        val keys = rank.keys.filter { it != itemKey }
+        val found = if (movie) {
+            keys.chunked(KEYS_PER_QUERY).flatMap { container.channelDao.moviesByKey(sourceId, it) }.map { it.toPoster() }
+        } else {
+            keys.chunked(KEYS_PER_QUERY).flatMap { container.channelDao.seriesByKey(sourceId, it) }.map { it.toPoster() }
+        }
+        // Affiche TMDB d'abord (celles des playlists sont souvent recadrées ou floues).
+        return found.distinctBy { it.itemKey }.sortedBy { rank[it.itemKey] ?: Int.MAX_VALUE }.take(SIMILAR_COUNT)
+            .map { item -> poster(item.itemKey)?.let { item.copy(imageUrl = it) } ?: item }
+    }
 
     fun selectSeason(index: Int) {
         mutableState.update { it.copy(selectedSeason = index) }
@@ -167,3 +189,6 @@ internal fun metadataCacheKey(itemKey: String): String = "v3|$itemKey"
 
 /** Titres similaires affichés sur la fiche Streaming. */
 private const val SIMILAR_COUNT = 20
+
+/** Clés de titres par requête SQL (limite de variables de SQLite). */
+private const val KEYS_PER_QUERY = 400

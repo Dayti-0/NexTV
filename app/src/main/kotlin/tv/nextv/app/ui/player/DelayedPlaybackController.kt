@@ -93,6 +93,15 @@ internal class DelayedPlaybackController(
     /** Replay lu en HLS : on s'y déplace à la seconde près (sinon, l'enregistrement est relu à la minute). */
     private var replayHls = false
 
+    /** Adresse HLS de l'enregistrement entre deux heures (`null` : serveur sans compte Xtream). */
+    private var hlsUrlBetween: ((Long, Long) -> String?)? = null
+
+    /**
+     * « Depuis le début » en HLS : fin de la partie déjà enregistrée qui est lue. Arrivé là, la suite est
+     * relue (nouvelle partie enregistrée entre-temps, ou flux continu près du direct).
+     */
+    private var hlsStop = 0L
+
     /** Avance (1) ou retour (−1) rapide en cours, tant que la touche est maintenue. */
     private var fastDirection = 0
     private var fastJob: Job? = null
@@ -221,9 +230,17 @@ internal class DelayedPlaybackController(
         }
         replayUrlFrom = urlFrom
         segmentStart = start
-        // Programme passé : d'abord en HLS (on s'y déplace finement), sauf si ce serveur l'a déjà refusé.
-        val hlsUrl = if (!restart && account != null && timeZone != null && recorded.sourceId !in hlsReplayRefused) {
-            Catchup.xtreamUrl(recorded.streamUrl, account, start, stop, timeZone, extension = "m3u8")
+        hlsUrlBetween = if (account != null && timeZone != null) {
+            val between: (Long, Long) -> String? = { from, to -> Catchup.xtreamUrl(recorded.streamUrl, account, from, to, timeZone, extension = "m3u8") }
+            between
+        } else {
+            null
+        }
+        // D'abord en HLS (on s'y déplace à la seconde : ← → de 10 s), sauf si ce serveur l'a déjà refusé.
+        // « Depuis le début » : la partie déjà enregistrée, si elle est assez longue (près du direct : flux continu).
+        hlsStop = if (restart) latestRecorded() else stop
+        val hlsUrl = if (recorded.sourceId !in hlsReplayRefused && (!restart || hlsStop - start >= MIN_HLS_PART_MILLIS)) {
+            hlsUrlBetween?.invoke(start, hlsStop)
         } else {
             null
         }
@@ -249,6 +266,33 @@ internal class DelayedPlaybackController(
         )
         session.triedHlsFallback = true
         host.start(forceHls = false)
+    }
+
+    /** Heure jusqu'à laquelle le serveur a sûrement enregistré la chaîne (à la minute, avec une marge). */
+    private fun latestRecorded(): Long = (System.currentTimeMillis() / MINUTE_MILLIS) * MINUTE_MILLIS - RECORDING_LAG_MILLIS
+
+    /**
+     * « Depuis le début » en HLS, fin de la partie lue : la suite enregistrée entre-temps, en HLS si elle est
+     * assez longue, sinon en flux continu (près du direct). @return faux si ce n'est pas ce cas.
+     */
+    private fun continueRestart(): Boolean {
+        if (!restarting || !replayHls) return false
+        val playback = session.request ?: return false
+        val from = hlsStop
+        val to = latestRecorded()
+        val hls = if (to - from >= MIN_HLS_PART_MILLIS) hlsUrlBetween?.invoke(from, to) else null
+        val url = hls ?: replayUrlFrom?.invoke(from) ?: return false
+        if (hls != null) {
+            hlsStop = to
+        } else {
+            replayHls = false
+            state.update { it.copy(jumpStepSeconds = MINUTE_SECONDS) }
+        }
+        segmentStart = from
+        session.request = playback.copy(stream = playback.stream.copy(url = url, format = if (hls != null) StreamFormat.HLS else StreamFormat.PROGRESSIVE))
+        session.backupUrls = Mirrors.alternatives(url, session.serverRoots)
+        host.start(forceHls = false)
+        return true
     }
 
     /** L'enregistrement HLS n'est pas proposé par ce serveur : même programme en flux continu (pas d'une minute). */
@@ -451,6 +495,7 @@ internal class DelayedPlaybackController(
         handle[PlayerViewModel.ARG_REPLAY_START] = 0L
         handle[PlayerViewModel.ARG_REPLAY_STOP] = 0L
         replayHls = false
+        hlsUrlBetween = null
         state.update { it.copy(replay = null, seekable = false, watchedAt = null, pendingJumpSeconds = 0) }
     }
 
@@ -459,7 +504,7 @@ internal class DelayedPlaybackController(
 
     /**
      * Replay ou « Depuis le début » : recule ou avance de [steps] pas (passer la pub avant le
-     * programme). Un pas vaut 30 s quand on peut se déplacer dans l'enregistrement (HLS), sinon une
+     * programme). Un pas vaut 10 s quand on peut se déplacer dans l'enregistrement (HLS), sinon une
      * minute : l'enregistrement est alors relu à partir de la nouvelle minute (le serveur ne permet
      * pas d'avancer dans le flux continu). Les appuis rapprochés s'additionnent.
      */
@@ -482,19 +527,24 @@ internal class DelayedPlaybackController(
         state.update { it.copy(pendingJumpSeconds = 0) }
         if (seconds == 0) return
         val player = engine.current
-        // HLS : déplacement dans l'enregistrement, à la seconde près.
-        if (replayHls && player != null && player.isCurrentMediaItemSeekable) {
-            val duration = player.duration.takeIf { it > 0 } ?: (programme.second - segmentStart)
-            val position = (player.currentPosition + seconds * 1_000L).coerceIn(0, (duration - 5_000).coerceAtLeast(0))
-            player.seekTo(position)
-            state.update { it.copy(watchedAt = segmentStart + position) }
-            return
-        }
         val now = System.currentTimeMillis()
         val wanted = watchedAt() + seconds * 1_000L
         // « Depuis le début » : avancer jusqu'au direct, c'est le rejoindre.
         if (restarting && wanted >= now - MINUTE_MILLIS) {
             backToLive()
+            return
+        }
+        // HLS : déplacement dans l'enregistrement, à la seconde près.
+        if (replayHls && player != null && player.isCurrentMediaItemSeekable) {
+            val duration = player.duration.takeIf { it > 0 } ?: ((if (restarting) hlsStop else programme.second) - segmentStart)
+            val position = (player.currentPosition + seconds * 1_000L).coerceIn(0, (duration - 5_000).coerceAtLeast(0))
+            player.seekTo(position)
+            state.update {
+                it.copy(
+                    watchedAt = segmentStart + position,
+                    liveDelayMs = if (restarting) (now - segmentStart - position).coerceAtLeast(0) else it.liveDelayMs,
+                )
+            }
             return
         }
         val latest = if (restarting) now - MINUTE_MILLIS else programme.second - MINUTE_MILLIS
@@ -662,6 +712,8 @@ internal class DelayedPlaybackController(
 
     /** Fin du flux. @return vrai si c'était un enregistrement (différé, « Depuis le début ») : retour au direct. */
     fun onEnded(): Boolean {
+        // « Depuis le début » en HLS : fin de la partie enregistrée, la suite est relue.
+        if (continueRestart()) return true
         // « Depuis le début » : l'enregistrement a rattrapé le direct.
         if (playingTimeshift || restarting) {
             // Fin de l'enregistrement (limite atteinte ou flux arrêté) : retour au direct.
@@ -685,8 +737,14 @@ internal class DelayedPlaybackController(
         /** Appuis sur ← rapprochés : additionnés, appliqués une fois. */
         const val REWIND_DEBOUNCE_MILLIS = 450L
 
-        /** Pas de ← → dans un replay où l'on peut se déplacer (HLS). */
-        const val FINE_JUMP_SECONDS = 30
+        /** Pas de ← → dans un replay ou un différé où l'on peut se déplacer (HLS). */
+        const val FINE_JUMP_SECONDS = 10
+
+        /** Enregistrement du serveur : la dernière minute n'est pas encore forcément disponible. */
+        const val RECORDING_LAG_MILLIS = 60_000L
+
+        /** Partie enregistrée lue en HLS : au moins ce temps (moins, près du direct : flux continu). */
+        const val MIN_HLS_PART_MILLIS = 5 * 60_000L
 
         /** Serveurs (playlists) qui ne proposent pas le replay en HLS : pas de nouvel essai jusqu'au redémarrage. */
         val hlsReplayRefused: MutableSet<Long> = java.util.Collections.synchronizedSet(HashSet<Long>())

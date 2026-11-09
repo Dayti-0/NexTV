@@ -156,20 +156,49 @@ class TmdbClient(
                 logger.warn(TAG, "Tendances TMDB indisponibles", e)
                 break
             }
-            json.optJSONArray("results").objects().mapNotNullTo(titles) { item ->
-                val title = item.optStringOrNull(if (type == MediaType.MOVIE) "title" else "name") ?: return@mapNotNullTo null
-                TrendingTitle(
-                    title = title,
-                    originalTitle = item.optStringOrNull(if (type == MediaType.MOVIE) "original_title" else "original_name"),
-                    year = item.optStringOrNull(if (type == MediaType.MOVIE) "release_date" else "first_air_date")?.take(4)?.toIntOrNull(),
-                    overview = item.optStringOrNull("overview"),
-                    rating = item.optDouble("vote_average").takeIf { !it.isNaN() && it > 0 },
-                    posterUrl = item.optStringOrNull("poster_path")?.let { "${imageBaseUrl}w500$it" },
-                    backdropUrl = item.optStringOrNull("backdrop_path")?.let { "${imageBaseUrl}w1280$it" },
-                )
-            }
+            json.optJSONArray("results").objects().mapNotNullTo(titles) { item -> titleOf(type, item) }
         }
         return titles
+    }
+
+    /**
+     * Titres recommandés par TMDB pour le film ou la série [tmdbId] (proches par le genre, le ton, le public :
+     * ceux que regardent les mêmes spectateurs), deux pages au plus. Vide sans clé ou en cas d'échec.
+     */
+    suspend fun recommendations(type: MediaType, tmdbId: Long, pages: Int = 2): List<TrendingTitle> {
+        val key = apiKey()?.trim()?.takeIf { it.isNotEmpty() } ?: fallbackApiKey()?.trim()?.takeIf { it.isNotEmpty() } ?: return emptyList()
+        val path = if (type == MediaType.MOVIE) "movie/$tmdbId/recommendations" else "tv/$tmdbId/recommendations"
+        val titles = mutableListOf<TrendingTitle>()
+        for (page in 1..pages) {
+            val url = baseUrl.newBuilder().addPathSegments(path)
+                .addQueryParameter("language", language)
+                .addQueryParameter("page", page.toString())
+                .build()
+            val json = try {
+                get(key, url)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.warn(TAG, "Recommandations TMDB indisponibles", e)
+                break
+            }
+            json.optJSONArray("results").objects().mapNotNullTo(titles) { item -> titleOf(type, item) }
+            if (page >= json.optInt("total_pages", 1)) break
+        }
+        return titles
+    }
+
+    private fun titleOf(type: MediaType, item: JSONObject): TrendingTitle? {
+        val title = item.optStringOrNull(if (type == MediaType.MOVIE) "title" else "name") ?: return null
+        return TrendingTitle(
+            title = title,
+            originalTitle = item.optStringOrNull(if (type == MediaType.MOVIE) "original_title" else "original_name"),
+            year = item.optStringOrNull(if (type == MediaType.MOVIE) "release_date" else "first_air_date")?.take(4)?.toIntOrNull(),
+            overview = item.optStringOrNull("overview"),
+            rating = item.optDouble("vote_average").takeIf { !it.isNaN() && it > 0 },
+            posterUrl = item.optStringOrNull("poster_path")?.let { "${imageBaseUrl}w500$it" },
+            backdropUrl = item.optStringOrNull("backdrop_path")?.let { "${imageBaseUrl}w1280$it" },
+        )
     }
 
     private suspend fun lookupWith(key: String, type: MediaType, title: String, year: Int?, exact: Boolean = false): TmdbResult {

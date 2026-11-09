@@ -95,4 +95,35 @@ class StreamingDetailFocusTest {
         println("↑↑ : ${focusedText()}")
         assertTrue("↑↑ : ${focusedText()}", focusedText()?.contains("Reprendre") == true || focusedText()?.contains("Lire") == true)
     }
+
+    @Test
+    fun favoriteButtonWithTheRemote() {
+        var toggles = 0
+        compose.setContent {
+            NexTvTheme(ThemeStyle.NIGHT) {
+                StreamingDetailContent(
+                    state = SampleData.movieDetail,
+                    kind = ContentKind.MOVIE,
+                    window = rememberWindowInfo(),
+                    trailers = TrailerSettings(),
+                    onPlay = {},
+                    onResume = {},
+                    onRestart = {},
+                    onToggleFavorite = { toggles++ },
+                    onSelectSeason = {},
+                    onOpenItem = {},
+                )
+            }
+        }
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
+        println("Départ : ${focusedText()}")
+        repeat(4) {
+            if (focusedText()?.contains("favoris") != true) press(Key.DirectionRight)
+        }
+        println("Bouton : ${focusedText()}")
+        assertTrue("Bouton : ${focusedText()}", focusedText()?.contains("favoris") == true)
+        press(Key.DirectionCenter)
+        assertEquals(1, toggles)
+    }
 }

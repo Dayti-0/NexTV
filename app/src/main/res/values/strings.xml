@@ -349,6 +349,10 @@
     <string name="player_error_format_unsupported">Format de flux non pris en charge.</string>
     <string name="player_error_malformed">Flux invalide ou corrompu.</string>
     <string name="player_error_codec">Codec vidéo ou audio non pris en charge par cet appareil.</string>
+    <string name="player_error_video_codec">Vidéo %1$s : cet appareil ne sait pas la décoder, et aucune autre version de ce titre n’a pu être lue.</string>
+    <string name="player_error_audio_codec">Son %1$s : cet appareil ne sait pas le lire.</string>
+    <string name="player_other_decoder">Autre décodeur vidéo essayé</string>
+    <string name="player_other_copy">Autre version de ce titre</string>
     <string name="player_error_audio">Erreur de sortie audio.</string>
     <string name="player_error_generic">Erreur de lecture (%1$s).</string>
 

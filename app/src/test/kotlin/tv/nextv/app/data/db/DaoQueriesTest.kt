@@ -110,14 +110,46 @@ class DaoQueriesTest {
     @Test
     fun `numbered parameters replace every named parameter`() {
         assertEquals("a = ?1 AND b = ?2 OR a = ?1", numberParameters("a = :sourceId AND b = :now OR a = :sourceId", listOf("sourceId", "now")))
-        assertEquals(false, PAGE_CHANNELS.contains(':'))
+        assertEquals(false, Regex(":\\w").containsMatchIn(PAGE_CHANNELS))
         // La requête brute est valide telle quelle (comptage fait par la pagination).
-        val count = db.query(SimpleSQLiteQuery("SELECT COUNT(*) FROM ( $PAGE_CHANNELS )", arrayOf(sourceId, 0, "", "", 1_500L))).use {
+        val count = db.query(SimpleSQLiteQuery("SELECT COUNT(*) FROM ( $PAGE_CHANNELS )", arrayOf(sourceId, 0, "", "", 1_500L, ""))).use {
             it.moveToFirst()
             it.getInt(0)
         }
         assertEquals(3, count)
     }
+
+    @Test
+    fun `search ignores accents and punctuation`() = runBlocking {
+        fun movie(title: String) = Channel(
+            position = 100, name = title, stream = StreamDescriptor("http://example.com/movie/${title.length}.mkv"),
+            groupTitle = "Films", kind = ContentKind.MOVIE, title = title, year = 2024,
+        )
+        val other = db.sourceDao().insert(
+            SourceEntity(
+                name = "Q", type = "m3u", locationKind = "remote", location = "http://example.com/q.m3u", locationName = null,
+                epgLocationKind = null, epgLocation = null, epgLocationName = null, epgUseHeaderUrls = false,
+                userAgent = null, hasCredentials = false, createdAt = 0, updatedAt = 0, epgGeneration = 1,
+            ),
+        )
+        RoomPlaylistStore(db).replaceChannels(
+            other,
+            listOf(movie("À la dérive"), movie("L'Été dernier"), movie("Arrival"), episodeOf("Les Têtes brûlées")),
+        ) {}
+        val dao = db.channelDao()
+        assertEquals(listOf("À la dérive"), dao.pageMovies(other, 0, "", "a la derive").all().map { it.title })
+        assertEquals(listOf("À la dérive"), dao.pageMovies(other, 0, "", "À LA DÉRIVE").all().map { it.title })
+        assertEquals(listOf("L'Été dernier"), dao.pageMovies(other, 0, "", "l ete").all().map { it.title })
+        assertEquals(listOf("Les Têtes brûlées"), dao.pageSeries(other, 0, "", "tetes brulees").all().map { it.title })
+        // Les préfixes des clés (« movie: ») ne sont pas cherchés.
+        assertEquals(emptyList<String>(), dao.pageMovies(other, 0, "", "movie").all().map { it.title })
+        assertEquals(listOf("Arte"), dao.pageChannels(sourceId, 0, "", "arté", 1_500).all().map { it.name })
+    }
+
+    private fun episodeOf(series: String) = Channel(
+        position = 200, name = "$series S01E01", stream = StreamDescriptor("http://example.com/series/t.mkv"),
+        groupTitle = "Séries", kind = ContentKind.SERIES, title = series, episode = EpisodeInfo(series, 1, 1),
+    )
 
     @Test
     fun `series are listed once with their episode count`() {

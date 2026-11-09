@@ -48,6 +48,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.launch
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.text.style.TextAlign
 import tv.nextv.core.meta.CastMember
 import androidx.compose.ui.draw.clip
@@ -113,6 +116,7 @@ internal fun StreamingDetailContent(
     val title = details?.title?.takeIf { it.isNotBlank() } ?: item?.title.orEmpty()
     val padding = if (window.isWide) 48.dp else window.horizontalPadding
     val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
     val playFocus = remember { FocusRequester() }
     var focusDone by remember { mutableStateOf(false) }
     // La sélection sur « Reprendre » (connu juste après la fiche) ou « Regarder ».
@@ -159,7 +163,12 @@ internal fun StreamingDetailContent(
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 48.dp)) {
             item(key = "header") {
                 Row(
-                    Modifier.fillMaxWidth().heightIn(min = frameHeight - 20.dp).padding(start = padding, end = padding, top = window.topPadding),
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = frameHeight - 20.dp)
+                        // Retour sur les boutons : la page remonte tout en haut (le titre restait coupé).
+                        .onFocusChanged { if (it.hasFocus && listState.firstVisibleItemScrollOffset + listState.firstVisibleItemIndex > 0) scope.launch { listState.animateScrollToItem(0) } }
+                        .padding(start = padding, end = padding, top = window.topPadding),
                     horizontalArrangement = Arrangement.spacedBy(28.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -292,7 +301,8 @@ private fun DetailMeta(state: DetailUiState, kind: ContentKind) {
         (details?.year ?: state.item?.year)?.let { add(it.toString()) }
         details?.genres?.takeIf { it.isNotEmpty() }?.let { add(it.take(3).joinToString(", ")) }
         if (kind == ContentKind.SERIES) {
-            val seasons = details?.seasonCount ?: state.seasons.size.takeIf { it > 0 }
+            // Saisons proposées par la playlist d'abord : TMDB en compte parfois moins (Lupin : 3 au lieu de 4).
+            val seasons = state.seasons.count { it.number != null }.takeIf { it > 0 } ?: details?.seasonCount
             seasons?.let { add(resources.getQuantityString(R.plurals.seasons_count, it, it)) }
         } else {
             details?.runtimeMinutes?.let { add(formatDuration(it * 60_000L)) }
@@ -466,7 +476,7 @@ internal fun CastLine(cast: List<CastMember>, modifier: Modifier = Modifier) {
  * télécommande parcourt la distribution, et la page défile jusqu'à elle.
  */
 @Composable
-private fun CastCard(person: CastMember) {
+internal fun CastCard(person: CastMember) {
     val colors = MaterialTheme.colorScheme
     Column(Modifier.width(CAST_WIDTH), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         FocusSurface(

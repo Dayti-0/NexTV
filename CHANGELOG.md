@@ -4,6 +4,20 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.82
+- Films qui ne se lançaient pas (« Codec non pris en charge ») : le lecteur réessaie tout seul (autre piste son, sans sous-titres, autre décodeur, autre version du même film dans la playlist) ; sinon le message dit exactement ce que l’appareil ne sait pas lire (par exemple « Vidéo HEVC 10 bits HDR »)
+- Recherche et Recherche Globale sans accents : « a la derive » trouve « À la dérive »
+- Streaming : le titre est écrit sous chaque affiche des rangées
+- Streaming : « Top 10 de la semaine » tout en haut, puis « Reprendre la lecture » et les favoris
+- Top 10 et titres similaires : vraies affiches (TMDB) au lieu des images floues ou recadrées de la playlist
+- Bandeau Streaming : moins de flou autour de l’aperçu
+- Bande-annonce automatique : elle apparaît à 1 s de son début au lieu de 3,5 s (le début n’est presque plus sauté)
+- Fiches : on remonte jusqu’en haut après être descendu
+- Fiches Cinéma Premium et Live Center : la distribution (photos, noms, rôles)
+- « Titres similaires » : vraies recommandations TMDB trouvées dans la playlist (la rangée disparaît s’il n’y en a pas), au lieu des titres de la même catégorie
+- Séries : le nombre de saisons est celui de la playlist (Lupin : 4 saisons, et non 3)
+- « Depuis le début » (différé) : ← → reculent ou avancent de 10 s au lieu d’une minute (replay : 10 s au lieu de 30 s)
+
 ## 0.2.81
 - Fiches films et séries : la distribution (TMDB). « Avec … » et les têtes d’affiche sous le résumé ; dans l’interface Streaming, une rangée « Distribution » avec photo, nom et rôle (rôle principal sur toutes les saisons pour une série)
 

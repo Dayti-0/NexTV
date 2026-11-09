@@ -222,9 +222,12 @@ private fun trailerView(
         function applySound(){call(function(){if(muted||hidden){player.mute();}else{player.unMute();player.setVolume(100);}});}
         function setMuted(m){muted=m;applySound();}
         function hide(){hidden=true;clearTimeout(revealTimer);show(false);applySound();}
+        // Pendant l'attente (cachée), la vidéo avance au ralenti : elle apparaît à peine 1 s après son début au
+        // lieu de 3,5 s. Revenir au début n'est pas possible : YouTube réaffiche alors ses commandes.
         function revealSoon(p){
           clearTimeout(revealTimer);
-          revealTimer=setTimeout(function(){hidden=false;show(true);applySound();},$REVEAL_DELAY_MILLIS);
+          call(function(){p.setPlaybackRate($HIDDEN_RATE);});
+          revealTimer=setTimeout(function(){call(function(){p.setPlaybackRate(1);});hidden=false;show(true);applySound();},$REVEAL_DELAY_MILLIS);
         }
         function pause(){call(function(){player.pauseVideo();});}
         function resume(){if(done)return;hide();call(function(){player.playVideo();});}
@@ -292,6 +295,9 @@ private fun captions(language: String?): Captions = when {
 
 /** Attente après le début de la lecture avant de montrer la vidéo : le temps que les commandes YouTube disparaissent. */
 private const val REVEAL_DELAY_MILLIS = 3_500
+
+/** Vitesse de la vidéo pendant qu'elle est cachée (la plus lente permise par YouTube) : son début n'est presque pas sauté. */
+private const val HIDDEN_RATE = 0.25
 
 /** Temps passé sur la même affiche avant que sa bande-annonce démarre (réglable). */
 internal const val TRAILER_DELAY_MILLIS = 3_000L

@@ -213,7 +213,7 @@ fun DetailContent(
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                             )
-                            MetaLine(details, item, kind)
+                            MetaLine(details, item, kind, state.seasons.count { it.number != null })
                             details?.stars?.let { Rating(it, details) }
                             details?.tagline?.let {
                                 Text(it, style = MaterialTheme.typography.titleMedium, fontStyle = FontStyle.Italic, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f))
@@ -313,6 +313,25 @@ fun DetailContent(
                         )
                     }
                 }
+                // Distribution (TMDB) : photo, nom et rôle.
+                if (state.cast.isNotEmpty()) {
+                    item {
+                        Column(Modifier.padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                stringResource(R.string.detail_cast),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onBackground,
+                                modifier = Modifier.padding(horizontal = window.horizontalPadding),
+                            )
+                            LazyRow(
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = window.horizontalPadding, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(18.dp),
+                            ) {
+                                itemsIndexed(state.cast) { _, person -> CastCard(person) }
+                            }
+                        }
+                    }
+                }
                 item { Spacer(Modifier.height(32.dp)) }
             }
         }
@@ -349,14 +368,15 @@ private fun Backdrop(imageUrl: String?) {
 }
 
 @Composable
-private fun MetaLine(details: MediaDetails?, item: PlaylistItem?, kind: ContentKind) {
+private fun MetaLine(details: MediaDetails?, item: PlaylistItem?, kind: ContentKind, playlistSeasons: Int) {
     val resources = LocalContext.current.resources
     val parts = buildList {
         (details?.year ?: item?.year)?.let { add(it.toString()) }
         details?.genres?.takeIf { it.isNotEmpty() }?.let { add(it.take(3).joinToString(", ")) }
         details?.runtimeMinutes?.let { add(formatDuration(it * 60_000L)) }
         if (kind == ContentKind.SERIES) {
-            details?.seasonCount?.let { add(resources.getQuantityString(R.plurals.seasons_count, it, it)) }
+            // Saisons de la playlist d'abord : TMDB en compte parfois moins que ce qui est proposé.
+            (playlistSeasons.takeIf { it > 0 } ?: details?.seasonCount)?.let { add(resources.getQuantityString(R.plurals.seasons_count, it, it)) }
         }
     }
     if (parts.isNotEmpty()) {

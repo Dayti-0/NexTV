@@ -81,6 +81,8 @@ class PlayerFactory(
         adVolume: AdVolumeControl? = null,
         preview: Boolean = false,
         passthrough: Boolean = false,
+        /** Décodeurs vidéo qui ont échoué sur le flux en cours : écartés. */
+        excludedDecoders: Set<String> = emptySet(),
     ): ExoPlayer {
         // Repli automatique sur un autre décodeur si le premier ne démarre pas (box aux décodeurs capricieux).
         val renderers = object : DefaultRenderersFactory(context) {
@@ -92,7 +94,7 @@ class PlayerFactory(
                     .build()
         }
             .setEnableDecoderFallback(true)
-            .setMediaCodecSelector(VideoDecoders.selector(preferredDecoders))
+            .setMediaCodecSelector(VideoDecoders.selector(preferredDecoders, excludedDecoders))
             // Son : décodeurs de l'appareil d'abord, FFmpeg pour les formats qu'il ne sait pas lire.
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
         val builder = ExoPlayer.Builder(context, renderers)

@@ -54,6 +54,10 @@ class TmdbClientTest {
                         {"name":"Sam Worthington","character":"Jake Sully","order":0,"profile_path":"/sam.jpg"},
                         {"name":"Inconnu","character":"","order":2,"profile_path":null}]}""",
                     )
+                    path.endsWith("/movie/19995/recommendations") -> json(
+                        """{"page":1,"total_pages":1,"results":[{"title":"Titanic","original_title":"Titanic","release_date":"1997-12-19","poster_path":"/t.jpg"},
+                        {"title":"Aliens, le retour","original_title":"Aliens","release_date":"1986-07-18"}]}""",
+                    )
                     path.endsWith("/tv/42/aggregate_credits") -> json(
                         """{"cast":[{"name":"Pedro Pascal","order":0,"roles":[{"character":"Joel","episode_count":9},{"character":"Invité","episode_count":1}]}]}""",
                     )
@@ -106,6 +110,17 @@ class TmdbClientTest {
         assertEquals("Joel", series.single().character)
         // Fiche inconnue : pas de distribution, sans erreur.
         assertEquals(emptyList<CastMember>(), client.credits(MediaType.MOVIE, 7))
+    }
+
+    @Test
+    fun `reads recommended titles`() = runBlocking {
+        val titles = client.recommendations(MediaType.MOVIE, 19995)
+        assertEquals(listOf("Titanic", "Aliens, le retour"), titles.map { it.title })
+        assertEquals(1997, titles[0].year)
+        assertEquals("Aliens", titles[1].originalTitle)
+        // Une seule page annoncée : pas de deuxième requête.
+        assertEquals(1, requests.count { it.url.encodedPath.endsWith("/recommendations") })
+        assertEquals(emptyList<TrendingTitle>(), client.recommendations(MediaType.MOVIE, 7))
     }
 
     @Test
