@@ -161,14 +161,10 @@
     <string name="settings_trailer_autoplay">Bande-annonce en fond</string>
     <string name="settings_trailer_autoplay_help">Interface Streaming : la bande-annonce du film choisi démarre avec le son derrière la grande affiche. Consomme plus de connexion et peut ralentir l’appareil.</string>
     <string name="nav_categories">Catégories</string>
-    <string name="hero_play">Lecture</string>
-    <string name="hero_episodes">Épisodes</string>
-    <string name="hero_info">Plus d’infos</string>
     <string name="home_rows_top10">Top 10 de la semaine</string>
-    <string name="search_everywhere">Rechercher partout</string>
+    <string name="search_everywhere">Recherche Globale</string>
     <string name="search_everywhere_channels">Chaînes</string>
     <string name="search_everywhere_hint">Chaîne, film ou série…</string>
-    <string name="search_everywhere_empty">Tapez un nom : les chaînes, les films et les séries qui correspondent s’affichent ici.</string>
     <string name="search_everywhere_none">Rien ne correspond à « %1$s ».</string>
     <string name="football_all">Tous les matchs</string>
     <string name="football_today">Aujourd’hui</string>

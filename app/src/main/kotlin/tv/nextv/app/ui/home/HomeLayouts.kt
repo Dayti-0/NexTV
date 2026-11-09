@@ -172,7 +172,7 @@ internal fun StreamingHome(
     val scrolled by remember { derivedStateOf { listState.firstVisibleItemIndex > 1 } }
     val billboardHeight by animateDpAsState(
         when {
-            // Films et séries : place des boutons « Lecture » et « Plus d'infos » (sans onglets en haut).
+            // Films et séries : titre sur deux lignes et résumé, sans boutons (OK sur une affiche suffit).
             !scrolled -> if (section == HomeSection.TV) STREAMING_BILLBOARD_HEIGHT else STREAMING_HERO_HEIGHT
             section == HomeSection.TV -> COMPACT_BILLBOARD_HEIGHT
             else -> SLIM_BILLBOARD_HEIGHT
@@ -187,7 +187,7 @@ internal fun StreamingHome(
                     ChannelBillboard(preview, previewPlayer, content.now, padding, compact = scrolled)
                 } else {
                     // Avant toute sélection : la première tendance de la semaine.
-                    SpotlightBillboard(section, spotlight ?: content.discover.trending.firstOrNull()?.let { Spotlight(it) }, padding, compact = scrolled, actions = actions, trailer = trailers)
+                    SpotlightBillboard(section, spotlight ?: content.discover.trending.firstOrNull()?.let { Spotlight(it) }, padding, compact = scrolled, trailer = trailers)
                 }
             }
         }
@@ -890,8 +890,6 @@ internal fun SpotlightBillboard(
     spotlight: Spotlight?,
     padding: Dp,
     compact: Boolean = false,
-    /** Boutons « Lecture » (film) ou « Épisodes » (série) et « Plus d'infos », sous le résumé. */
-    actions: HomeActions? = null,
     /** Bande-annonce en fond après quelques secondes (réglages), quand TMDB en a une. */
     trailer: Boolean = false,
 ) {
@@ -939,23 +937,6 @@ internal fun SpotlightBillboard(
             if (!compact) {
                 spotlight?.overview?.let { overview ->
                     Text(overview, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                }
-                val item = spotlight?.item
-                if (actions != null && item != null) {
-                    Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        val series = item.kind == ContentKind.SERIES
-                        PillButton(
-                            stringResource(if (series) R.string.hero_episodes else R.string.hero_play),
-                            { if (series) actions.onOpenSeries(item.id) else actions.onPlayChannel(item.id) },
-                            icon = Icons.Filled.PlayArrow,
-                            style = PillStyle.Primary,
-                        )
-                        PillButton(
-                            stringResource(R.string.hero_info),
-                            { if (series) actions.onOpenSeries(item.id) else actions.onOpenMovie(item.id) },
-                            icon = Icons.Filled.Info,
-                        )
-                    }
                 }
             }
         }
@@ -1011,7 +992,7 @@ internal fun shortTime(millis: Long): String = DateFormat.getTimeInstance(DateFo
 
 /** Bannière pleine : la première rangée tient en entier dessous, au-dessus de la marge de sécurité du bas des TV. */
 private val STREAMING_BILLBOARD_HEIGHT = 200.dp
-private val STREAMING_HERO_HEIGHT = 260.dp
+private val STREAMING_HERO_HEIGHT = 215.dp
 private val COMPACT_BILLBOARD_HEIGHT = 104.dp
 private val SLIM_BILLBOARD_HEIGHT = 72.dp
 private val SEE_ALL_MIN_WIDTH = 104.dp

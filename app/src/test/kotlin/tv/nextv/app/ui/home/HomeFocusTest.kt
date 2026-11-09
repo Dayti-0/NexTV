@@ -132,6 +132,35 @@ class HomeFocusTest {
         assertTrue("Catégorie : $categories", categories.lastOrNull() != null)
     }
 
+    /** Volet ouvert : ↑ tout en haut, ← ou ↓ très bas ne font pas sortir le focus vers les affiches derrière. */
+    @Test
+    fun streamingDrawerKeepsTheFocus() = assertDrawerKeepsFocus(HomeLayout.STREAMING)
+
+    @Test
+    fun premiumDrawerKeepsTheFocus() = assertDrawerKeepsFocus(HomeLayout.PREMIUM)
+
+    private fun assertDrawerKeepsFocus(layout: HomeLayout) {
+        val categories = mutableListOf<Category>()
+        compose.setContent { Home(layout, HomeActions(onCategory = { categories += it })) }
+        compose.waitForIdle()
+        if (layout == HomeLayout.STREAMING) enterStreamingContent()
+        repeat(3) { press(Key.DirectionDown) }
+        repeat(2) { press(Key.DirectionLeft) }
+        if (layout == HomeLayout.STREAMING) {
+            repeat(5) { press(Key.DirectionDown) }
+            press(Key.DirectionCenter)
+        }
+        compose.onNodeWithText("Groupe 1").assertExists()
+        // Tout en haut, puis au-delà ; puis ← : le focus doit rester dans le volet.
+        repeat(12) { press(Key.DirectionUp) }
+        repeat(3) { press(Key.DirectionLeft) }
+        compose.onNodeWithText("Groupe 1").assertExists()
+        repeat(4) { press(Key.DirectionDown) }
+        press(Key.DirectionCenter)
+        println("$layout, volet après ↑ et ← : $categories")
+        assertTrue("Catégorie : $categories", categories.lastOrNull() != null)
+    }
+
     @Test
     fun liveCenterCategoriesCanBeReachedWithDown() {
         val categories = mutableListOf<Category>()

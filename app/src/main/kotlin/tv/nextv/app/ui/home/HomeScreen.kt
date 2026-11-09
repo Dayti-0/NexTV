@@ -497,6 +497,10 @@ fun HomeContent(
             actions = actions,
             modifier = railModifier,
             dense = true,
+            containerColor = Color.Transparent,
+            // Une catégorie choisie referme le volet : sinon il se rouvrait au retour sur « Toutes les séries »,
+            // le focus resté derrière, sur les affiches.
+            onCategory = { drawerOpen.value = false; actions.onCategory(it) },
         )
     }
     // Barre des onglets de l'interface choisie, la même dans toutes les sections (Guide TV et Foot compris).
@@ -514,7 +518,7 @@ fun HomeContent(
         CompositionLocalProvider(LocalTabsFocused provides { tabsFocused.value }) {
             // Cinéma Premium : la sélection occupe tout l'écran, onglets compris.
             if (catalog && layout == HomeLayout.PREMIUM && category == Category.All) {
-                CategoryDrawer(drawerRail, Modifier.padding(padding)) {
+                CategoryDrawer(drawerRail, Modifier.padding(padding), drawerOpen) {
                 PremiumHome(
                     content = shelfContent,
                     window = window,
@@ -584,6 +588,10 @@ fun HomeContent(
                         lastOpened = lastOpened,
                         focused = focused,
                         modifier = Modifier.weight(1f),
+                        // Streaming et Cinéma Premium : catégories dans le volet (←, ou « Catégories » du menu),
+                        // comme sur l'accueil, au lieu d'une colonne fixe.
+                        drawerRail = drawerRail.takeIf { layout != HomeLayout.LIVE_CENTER },
+                        drawerOpen = drawerOpen,
                     )
                 }
             }
@@ -593,7 +601,7 @@ fun HomeContent(
                     window = window,
                     onSection = actions.onSection,
                     onSearch = onSearch,
-                    onCategories = if (catalog && category == Category.All) ({ drawerOpen.value = true }) else null,
+                    onCategories = if (catalog) ({ drawerOpen.value = true }) else null,
                     onSettings = actions.onSettings,
                     onFocusChange = { tabsFocused.value = it },
                     modifier = Modifier.align(Alignment.CenterStart),
@@ -638,6 +646,9 @@ private fun CatalogBody(
     lastOpened: MutableState<OpenedItem?>,
     focused: MutableState<FocusedItem?>,
     modifier: Modifier,
+    /** Volet des catégories (écran large) ; `null` : colonne des catégories fixe. */
+    drawerRail: (@Composable (Modifier) -> Unit)? = null,
+    drawerOpen: MutableState<Boolean>? = null,
 ) {
     val favoritesCount = when (section) {
         HomeSection.TV -> favoriteChannels.size
@@ -718,6 +729,8 @@ private fun CatalogBody(
         gridColumns = gridColumns,
         focusedItem = focused.value,
         body = body,
+        drawerRail = drawerRail,
+        drawerOpen = drawerOpen,
     )
 }
 
@@ -942,10 +955,17 @@ private fun CatalogSection(
     gridColumns: GridColumns,
     focusedItem: FocusedItem?,
     body: @Composable (grid: GridLayout) -> Unit,
+    drawerRail: (@Composable (Modifier) -> Unit)? = null,
+    drawerOpen: MutableState<Boolean>? = null,
 ) {
     // Chaînes : appui long sur une catégorie pour la masquer.
     val hide: (String) -> (() -> Unit)? = { title -> if (section.kind() != null) ({ actions.onHideCategory(title) }) else null }
-    if (window.isWide) {
+    if (window.isWide && drawerRail != null && drawerOpen != null) {
+        // Toute la largeur pour la grille ; les catégories s'ouvrent par-dessus (← au bord gauche).
+        CategoryDrawer(drawerRail, modifier, drawerOpen, initialFocus = window.isTv) {
+            SectionBody(section, category, groups, allCount, favoritesCount, resumeCount ?: 0, recentCount ?: 0, hero, reorder, window, actions, Modifier.fillMaxSize(), gridColumns, focusedItem, body)
+        }
+    } else if (window.isWide) {
         Row(modifier.fillMaxSize()) {
             CategoryRail(section, window, groups, recentCount, allCount, category, query, favoritesCount, resumeCount, actions, Modifier.width(290.dp))
             SectionBody(section, category, groups, allCount, favoritesCount, resumeCount ?: 0, recentCount ?: 0, hero, reorder, window, actions, Modifier.weight(1f), gridColumns, focusedItem, body)
@@ -997,6 +1017,10 @@ internal fun CategoryRail(
     modifier: Modifier = Modifier,
     /** Catégories plus serrées (interface « Box TV ») : davantage visibles à la fois. */
     dense: Boolean = false,
+    /** Fond de la colonne ; transparent dans le volet, qui dessine le sien (translucide). */
+    containerColor: Color = MaterialTheme.colorScheme.surfaceContainerLow,
+    /** Choix d'une catégorie (le volet se referme en plus). */
+    onCategory: (Category) -> Unit = actions.onCategory,
 ) {
     // Appui long sur une catégorie pour la masquer.
     val hide: (String) -> (() -> Unit)? = { title -> if (section.kind() != null) ({ actions.onHideCategory(title) }) else null }
@@ -1005,7 +1029,7 @@ internal fun CategoryRail(
     Column(
         modifier
             .fillMaxHeight()
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .background(containerColor)
             .padding(start = (window.horizontalPadding - 16.dp - RAIL_FOCUS_ROOM).coerceAtLeast(0.dp), end = 12.dp - RAIL_FOCUS_ROOM, top = 12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp - RAIL_FOCUS_ROOM),
     ) {
@@ -1020,24 +1044,24 @@ internal fun CategoryRail(
             ) {
                 item {
                     CategoryItem(stringResource(R.string.home_favorites), favoritesCount, category == Category.Favorites, star = true, dense = dense) {
-                        actions.onCategory(Category.Favorites)
+                        onCategory(Category.Favorites)
                     }
                 }
                 if (recentCount != null) {
                     item {
                         CategoryItem(stringResource(R.string.home_recent), recentCount, category == Category.Recent, dense = dense) {
-                            actions.onCategory(Category.Recent)
+                            onCategory(Category.Recent)
                         }
                     }
                 }
                 if (resumeCount != null) {
                     item {
                         CategoryItem(stringResource(R.string.home_continue), resumeCount, category == Category.ContinueWatching, dense = dense) {
-                            actions.onCategory(Category.ContinueWatching)
+                            onCategory(Category.ContinueWatching)
                         }
                     }
                 }
-                item { CategoryItem(allLabel(section), allCount, category == Category.All, dense = dense) { actions.onCategory(Category.All) } }
+                item { CategoryItem(allLabel(section), allCount, category == Category.All, dense = dense) { onCategory(Category.All) } }
                 items(groups, key = { it.title ?: NO_GROUP_KEY }) { group ->
                     val title = group.title.orEmpty()
                     CategoryItem(
@@ -1047,7 +1071,7 @@ internal fun CategoryRail(
                         onLongClick = hide(title),
                         dense = dense,
                     ) {
-                        actions.onCategory(Category.Group(title))
+                        onCategory(Category.Group(title))
                     }
                 }
             }

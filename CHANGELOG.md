@@ -4,6 +4,13 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.59
+- Streaming, films et séries : les boutons « Épisodes » / « Lecture » et « Plus d’infos » de la bannière sont retirés (OK sur une affiche suffit)
+- Volet des catégories refait : fond translucide (on devine l’écran derrière), titre « Catégories », ouverture plus douce
+- Volet des catégories : le focus ne peut plus en sortir vers les affiches derrière ; une catégorie choisie le referme, et il ne se rouvre plus tout seul au retour sur « Toutes les séries »
+- Streaming et Cinéma Premium : une catégorie ouverte garde le même fonctionnement (volet par ← ou « Catégories » du menu) au lieu d’une colonne de catégories fixe
+- « Rechercher partout » devient « Recherche Globale », sans le texte d’aide sous le champ
+
 ## 0.2.58
 - Streaming, menu de gauche : « Réglages » tout en bas s'affiche en entier et lisible (il était écrasé)
 

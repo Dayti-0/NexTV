@@ -74,12 +74,8 @@ internal fun GlobalSearch(
         val loading = listOf(channels, movies, series).any { it.loadState.refresh is LoadState.Loading }
         val empty = channels.itemCount == 0 && movies.itemCount == 0 && series.itemCount == 0
         when {
-            query.isBlank() -> Text(
-                stringResource(R.string.search_everywhere_empty),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = padding),
-            )
+            // Rien de tapé : pas de texte d'aide, le champ suffit.
+            query.isBlank() -> Unit
             empty && !loading -> Text(
                 stringResource(R.string.search_everywhere_none, query),
                 style = MaterialTheme.typography.bodyLarge,
