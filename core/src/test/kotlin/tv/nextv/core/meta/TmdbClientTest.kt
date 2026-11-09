@@ -58,6 +58,10 @@ class TmdbClientTest {
                         """{"page":1,"total_pages":1,"results":[{"title":"Titanic","original_title":"Titanic","release_date":"1997-12-19","poster_path":"/t.jpg"},
                         {"title":"Aliens, le retour","original_title":"Aliens","release_date":"1986-07-18"}]}""",
                     )
+                    path.endsWith("/tv/42/season/4/videos") -> json(
+                        """{"results":[{"site":"YouTube","type":"Teaser","key":"s4-teaser","iso_639_1":"en"},
+                        {"site":"YouTube","type":"Trailer","key":"s4-trailer","iso_639_1":"fr","name":"Saison 4 (VF)"}]}""",
+                    )
                     path.endsWith("/tv/42/aggregate_credits") -> json(
                         """{"cast":[{"name":"Pedro Pascal","order":0,"roles":[{"character":"Joel","episode_count":9},{"character":"Invité","episode_count":1}]}]}""",
                     )
@@ -95,6 +99,13 @@ class TmdbClientTest {
         assertEquals("2009", search.url.queryParameter("year"))
         assertEquals("fr-FR", search.url.queryParameter("language"))
         assertEquals("abc123", search.url.queryParameter("api_key"))
+    }
+
+    @Test
+    fun `reads the trailer of a season`() = runBlocking {
+        assertEquals("s4-trailer" to "fr", client.seasonTrailer(42, 4))
+        // Saison inconnue de TMDB : pas de bande-annonce (celle de la série reste).
+        assertNull(client.seasonTrailer(42, 9))
     }
 
     @Test

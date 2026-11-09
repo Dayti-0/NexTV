@@ -539,7 +539,11 @@ fun PlayerScreen(onBack: () -> Unit) {
             modifier = Modifier.align(Alignment.TopEnd).padding(24.dp),
         ) {
             StatusPill(
-                stringResource(if (audioProblem == AudioProblem.UNSUPPORTED) R.string.player_audio_unsupported else R.string.player_no_audio),
+                when {
+                    audioProblem != AudioProblem.UNSUPPORTED -> stringResource(R.string.player_no_audio)
+                    state.unsupportedAudio != null -> stringResource(R.string.player_audio_unsupported_codec, state.unsupportedAudio.orEmpty())
+                    else -> stringResource(R.string.player_audio_unsupported)
+                },
                 NexTvColors.Warning,
             )
         }

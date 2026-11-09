@@ -5,6 +5,7 @@ import android.os.SystemClock
 import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.Format
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
@@ -35,6 +36,7 @@ import tv.nextv.app.player.LiveRecording
 import tv.nextv.core.model.StreamFormat
 import tv.nextv.app.player.TimeshiftBuffer
 import tv.nextv.app.player.VideoDecoders
+import tv.nextv.app.player.codecName
 
 /**
  * Lecteur ExoPlayer de l'écran du lecteur : un seul pour tous les flux (chaînes, qualités, repli HLS,
@@ -60,7 +62,21 @@ internal class PlayerEngine(
 
     /** Le lecteur, gardé d'un flux à l'autre ; réglages avec lesquels il a été créé (son direct, décodeurs). */
     private var exoPlayer: ExoPlayer? = null
-    private var exoPlayerConfig: Triple<Boolean, Map<String, String>, Set<String>>? = null
+    private var exoPlayerConfig: PlayerConfig? = null
+
+    /** Réglages avec lesquels le lecteur a été créé : changés, il est recréé. */
+    private data class PlayerConfig(
+        val passthrough: Boolean,
+        val preferredDecoders: Map<String, String>,
+        val excludedDecoders: Set<String>,
+        val softwareAudio: Boolean,
+    )
+
+    /** Son décodé par l'appli d'abord (après une erreur de décodage du son sur le flux en cours). */
+    private var softwareAudio = false
+
+    /** Format du son illisible trouvé dans les pistes du flux (message « aucun son »). */
+    private var unsupportedAudio: String? = null
 
     /** Décodeurs vidéo qui ont échoué sur le film ou la chaîne en cours : le lecteur est recréé sans eux. */
     private var excludedDecoders: Set<String> = emptySet()
@@ -126,7 +142,9 @@ internal class PlayerEngine(
         override fun onPlayerError(error: PlaybackException) = events.onError(error)
 
         override fun onTracksChanged(tracks: Tracks) {
-            state.update { it.copy(tracks = describeTracks(tracks), audioProblem = audioProblemOf(tracks)) }
+            unsupportedAudio = null
+            val problem = audioProblemOf(tracks)
+            state.update { it.copy(tracks = describeTracks(tracks), audioProblem = problem, unsupportedAudio = unsupportedAudio ?: it.unsupportedAudio.takeIf { problem != null }) }
         }
 
         override fun onRenderedFirstFrame() {
@@ -241,7 +259,7 @@ internal class PlayerEngine(
         generation++
         adVolume.newStream()
         receivedRate.reset()
-        state.update { it.copy(error = null, info = PlaybackInfo(), audioProblem = null, receivedMbps = null) }
+        state.update { it.copy(error = null, info = PlaybackInfo(), audioProblem = null, unsupportedAudio = null, receivedMbps = null) }
         audioGivenUp = false
         player.setPlaybackSpeed(1f)
         player.resetTrackSelection()
@@ -254,10 +272,12 @@ internal class PlayerEngine(
 
     /** Le lecteur actuel, ou un nouveau si le réglage du son direct ou du décodeur préféré a changé. */
     private fun reusablePlayer(): ExoPlayer {
-        val config = Triple(audioPassthrough, preferredDecoders, excludedDecoders)
+        val config = PlayerConfig(audioPassthrough, preferredDecoders, excludedDecoders, softwareAudio)
         exoPlayer?.takeIf { exoPlayerConfig == config }?.let { return it }
         release()
-        return container.playerFactory.create(bandwidthMeter, preferredDecoders, adVolume, passthrough = audioPassthrough, excludedDecoders = excludedDecoders).apply {
+        return container.playerFactory.create(
+            bandwidthMeter, preferredDecoders, adVolume, passthrough = audioPassthrough, excludedDecoders = excludedDecoders, softwareAudio = softwareAudio,
+        ).apply {
             addListener(listener)
             addAnalyticsListener(analytics)
             exoPlayer = this
@@ -355,6 +375,7 @@ internal class PlayerEngine(
             audio.none { group -> (0 until group.length).any(group::isTrackSupported) } -> {
                 val formats = audio.flatMap { group -> (0 until group.length).map { group.getTrackFormat(it).sampleMimeType } }
                 container.logger.warn(TAG, "Son illisible par l'appareil : ${formats.distinct()}")
+                unsupportedAudio = formats.firstNotNullOfOrNull { codecName(it) }
                 AudioProblem.UNSUPPORTED
             }
             else -> null
@@ -394,7 +415,9 @@ internal class PlayerEngine(
             else -> null
         }
         val title = listOfNotNull(languageName, name).joinToString(" · ").ifEmpty { resources.getString(R.string.player_track, position) }
-        return listOfNotNull(title, channels).joinToString(" · ")
+        // Son : son format (« MP2 », « Dolby Digital (AC3) ») aide à comprendre une piste muette.
+        val codec = format.sampleMimeType?.takeIf { MimeTypes.isAudio(it) }?.let { codecName(it) }
+        return listOfNotNull(title, channels, codec).joinToString(" · ")
     }
 
     fun selectAudio(choice: TrackChoice) {
@@ -441,6 +464,17 @@ internal class PlayerEngine(
     /** Nouveau film ou nouvelle chaîne : tous les décodeurs sont de nouveau essayés. */
     fun resetExcludedDecoders() {
         excludedDecoders = emptySet()
+        softwareAudio = false
+    }
+
+    /**
+     * Erreur de décodage du son : le lecteur sera recréé avec le son décodé par l'appli d'abord (MPEG audio,
+     * FFmpeg), pour le film ou la chaîne en cours. @return faux si c'est déjà le cas.
+     */
+    fun preferSoftwareAudio(): Boolean {
+        if (softwareAudio) return false
+        softwareAudio = true
+        return true
     }
 
     /**
@@ -465,7 +499,7 @@ internal class PlayerEngine(
         }
         audioGivenUp = true
         player.setAudioDisabled(true)
-        state.update { it.copy(audioProblem = AudioProblem.UNSUPPORTED) }
+        state.update { it.copy(audioProblem = AudioProblem.UNSUPPORTED, unsupportedAudio = codecName(failed?.sampleMimeType) ?: it.unsupportedAudio) }
         return false
     }
 

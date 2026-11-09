@@ -12,6 +12,12 @@ import androidx.compose.ui.unit.dp
  */
 object NexTvIcons {
 
+    /** Étoile vide (titre pas en favori). */
+    val StarBorder: ImageVector = icon(
+        "StarBorder",
+        "M22,9.24l-7.19,-0.62L12,2 9.19,8.63 2,9.24l5.46,4.73L5.82,21 12,17.27 18.18,21l-1.63,-7.03L22,9.24zM12,15.4l-3.76,2.27 1,-4.28 -3.32,-2.88 4.38,-0.38L12,6.1l1.71,4.04 4.38,0.38 -3.32,2.88 1,4.28L12,15.4z",
+    )
+
     val Tv: ImageVector = icon(
         "Tv",
         "M21,3H3c-1.1,0 -2,0.9 -2,2v12c0,1.1 0.9,2 2,2h5v2h8v-2h5c1.1,0 1.99,-0.9 1.99,-2L23,5c0,-1.1 -0.9,-2 -2,-2zM21,17H3V5h18v12z",

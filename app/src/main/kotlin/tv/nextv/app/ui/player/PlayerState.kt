@@ -88,6 +88,8 @@ data class PlayerUiState(
     val adMuted: Boolean = false,
     /** Le flux n'a pas de son, ou dans un format que l'appareil ne lit pas. */
     val audioProblem: AudioProblem? = null,
+    /** Format du son illisible (« MP2 », « DTS-HD »), pour le dire dans le message. */
+    val unsupportedAudio: String? = null,
     /** Film ou épisode : titre, épisode, affiche et épisode suivant (commandes du lecteur). */
     val vod: VodInfo? = null,
     /** Épisode terminé : le suivant est proposé (lancé seul après un court décompte). */

@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -49,6 +50,7 @@ import tv.nextv.core.model.ContentKind
 import tv.nextv.app.data.catalog.MetadataState
 import tv.nextv.core.meta.MediaType
 import tv.nextv.core.meta.MediaDetails
+import tv.nextv.app.ui.detail.itemKeyOfCache
 import tv.nextv.app.ui.detail.metadataCacheKey
 import tv.nextv.app.data.db.ItemKeys
 import kotlinx.coroutines.flow.transformLatest
@@ -486,6 +488,64 @@ class HomeViewModel(
         }
     }
 
+    // --- Affiches TMDB des rangées ---------------------------------------------------------------
+
+    /** Affiches TMDB connues, par clé de titre, et titres sans affiche TMDB. */
+    private val posterArt = MutableStateFlow(emptyMap<String, String>() to emptySet<String>())
+    val posters: StateFlow<Pair<Map<String, String>, Set<String>>> = posterArt.asStateFlow()
+
+    /** Titres à chercher sur TMDB (les plus récemment affichés d'abord), et ceux déjà demandés. */
+    private val posterQueue = ArrayDeque<PosterItem>()
+    private val posterAsked = HashSet<String>()
+    private val posterSignal = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.CONFLATED)
+
+    init {
+        // Affiches des fiches déjà lues (base de l'appli) : tout de suite, sans réseau.
+        viewModelScope.launch {
+            val cached = runCatching { container.metadata.cachedPosters() }.getOrDefault(emptyMap())
+            val posters = HashMap<String, String>()
+            val missing = HashSet<String>()
+            for ((cacheKey, url) in cached) {
+                val itemKey = itemKeyOfCache(cacheKey) ?: continue
+                if (url != null) posters[itemKey] = url else missing += itemKey
+            }
+            posterArt.update { (known, absent) -> (posters + known) to (missing - known.keys + absent) }
+        }
+        // Recherche sur TMDB des titres affichés, quelques-uns à la fois.
+        repeat(POSTER_WORKERS) {
+            viewModelScope.launch {
+                while (true) {
+                    val item = synchronized(posterQueue) { posterQueue.removeLastOrNull() }
+                    if (item == null) {
+                        posterSignal.receive()
+                        continue
+                    }
+                    val type = if (item.kind == ContentKind.SERIES) MediaType.SERIES else MediaType.MOVIE
+                    val state = runCatching { container.metadata.details(metadataCacheKey(item.itemKey), type, item.title, item.year) }.getOrNull()
+                    val url = (state as? MetadataState.Available)?.details?.posterUrl
+                    posterArt.update { (known, absent) -> if (url != null) (known + (item.itemKey to url)) to absent else known to (absent + item.itemKey) }
+                }
+            }
+        }
+    }
+
+    /** Affiche d'un film ou d'une série qui s'affiche dans une rangée : cherchée sur TMDB si elle n'est pas connue. */
+    fun requestPoster(item: PosterItem) {
+        if (item.kind == ContentKind.LIVE || !container.hasTmdbKey()) {
+            posterArt.update { (known, absent) -> known to (absent + item.itemKey) }
+            return
+        }
+        val (known, absent) = posterArt.value
+        if (item.itemKey in known || item.itemKey in absent) return
+        synchronized(posterQueue) {
+            if (!posterAsked.add(item.itemKey)) return
+            posterQueue.addLast(item)
+            // Défilement rapide : les titres passés depuis longtemps ne sont plus cherchés.
+            while (posterQueue.size > POSTER_QUEUE_SIZE) posterQueue.removeFirst()?.let { posterAsked.remove(it.itemKey) }
+        }
+        posterSignal.trySend(Unit)
+    }
+
     fun onPosterFocused(item: PosterItem) {
         if (spotlightTarget.value?.itemKey != item.itemKey) spotlightTarget.value = item
     }
@@ -648,6 +708,10 @@ class HomeViewModel(
     private fun escapeLike(text: String) = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
     private companion object {
+        /** Affiches TMDB cherchées en même temps, et titres en attente au plus. */
+        const val POSTER_WORKERS = 4
+        const val POSTER_QUEUE_SIZE = 40
+
         const val PAGE_SIZE = 60
         const val SEARCH_DEBOUNCE_MILLIS = 300L
         const val NOW_REFRESH_MILLIS = 30_000L

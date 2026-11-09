@@ -130,6 +130,8 @@ dependencies {
     implementation(libs.androidx.media3.ui)
     // Son que l'appareil ne sait pas décoder (licence GPL v3, voir LICENSE).
     implementation(libs.media3.ffmpeg.decoder)
+    // Son MPEG audio couche I et II (MP2 des enregistrements de la TNT), absent de FFmpeg et des appareils (licence LGPL).
+    implementation(libs.jlayer)
 
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)

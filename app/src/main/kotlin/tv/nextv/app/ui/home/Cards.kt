@@ -380,6 +380,20 @@ fun PosterImage(title: String, imageUrl: String?, modifier: Modifier = Modifier,
 /** Films et épisodes déjà vus (clés), pour le badge « Déjà vu » des affiches de l'accueil. */
 internal val LocalWatchedKeys = androidx.compose.runtime.staticCompositionLocalOf<Set<String>> { emptySet() }
 
+/**
+ * Affiches TMDB des films et séries (celles des fiches) à la place des images de la playlist, souvent des
+ * images en largeur recadrées ou floues. [posters] : par clé de titre ; [missing] : titres sans affiche TMDB
+ * (image de la playlist tout de suite) ; [request] : affiche à chercher pour un titre qui s'affiche.
+ */
+@androidx.compose.runtime.Immutable
+internal data class PosterArt(
+    val posters: Map<String, String>,
+    val missing: Set<String>,
+    val request: (PosterItem) -> Unit,
+)
+
+internal val LocalPosterArt = androidx.compose.runtime.compositionLocalOf<PosterArt?> { null }
+
 /** Badge « Déjà vu » : coche et libellé sur fond sombre, en haut à gauche d'une affiche ou d'une vignette. */
 @Composable
 internal fun WatchedBadge(modifier: Modifier = Modifier, compact: Boolean = false) {

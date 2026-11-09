@@ -9,3 +9,10 @@
 -keepclassmembers class * {
     @android.webkit.JavascriptInterface <methods>;
 }
+
+# Son MP2 (JLayer) : ses tables (sfd.ser…) sont lues par Class.getResourceAsStream relatif à ses classes,
+# qui gardent donc leur nom et leur paquet. Le lecteur audio de JLayer (javax.sound, applets) n'est pas utilisé.
+-keep class javazoom.jl.decoder.** { *; }
+-dontwarn javazoom.jl.player.**
+-dontwarn javazoom.jl.converter.**
+-dontwarn javax.sound.**

@@ -528,11 +528,19 @@ class PlayerViewModel(
         val format = failure.format
         container.logger.warn(TAG, "Décodage impossible : ${failure.trackType} ${format?.sampleMimeType} ${format?.codecs} ${format?.width}x${format?.height} (${failure.decoderName})")
         when (failure.trackType) {
-            C.TRACK_TYPE_AUDIO -> if (codecTries.audio < MAX_AUDIO_TRIES) {
-                codecTries.audio++
-                engine.skipAudioTrack(format)
-                player.prepare()
-                return true
+            C.TRACK_TYPE_AUDIO -> {
+                // D'abord le son décodé par l'appli (MP2, FFmpeg) au même endroit, puis une autre piste son.
+                if (engine.preferSoftwareAudio()) {
+                    session.startPositionMs = if (state.value.isLive) 0L else player.currentPosition.coerceAtLeast(0)
+                    start(forceHls = session.playingAsHls)
+                    return true
+                }
+                if (codecTries.audio < MAX_AUDIO_TRIES) {
+                    codecTries.audio++
+                    engine.skipAudioTrack(format)
+                    player.prepare()
+                    return true
+                }
             }
             C.TRACK_TYPE_TEXT -> if (!codecTries.subtitles) {
                 codecTries.subtitles = true

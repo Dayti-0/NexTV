@@ -85,6 +85,8 @@ fun codecName(mimeType: String?): String? = when (mimeType) {
     MimeTypes.AUDIO_AC4 -> "Dolby AC-4"
     MimeTypes.AUDIO_AAC -> "AAC"
     MimeTypes.AUDIO_MPEG -> "MP3"
+    MimeTypes.AUDIO_MPEG_L2 -> "MP2"
+    MimeTypes.AUDIO_MPEG_L1 -> "MP1"
     MimeTypes.AUDIO_OPUS -> "Opus"
     MimeTypes.AUDIO_FLAC -> "FLAC"
     else -> mimeType.substringAfter('/').uppercase()

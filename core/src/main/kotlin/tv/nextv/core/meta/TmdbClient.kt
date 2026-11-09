@@ -136,6 +136,28 @@ class TmdbClient(
     }
 
     /**
+     * Bande-annonce d'une saison de série (TMDB en a une par saison pour beaucoup de séries) : identifiant
+     * YouTube et langue, ou `null` (pas de clé, saison sans bande-annonce, échec).
+     */
+    suspend fun seasonTrailer(tmdbId: Long, season: Int): Pair<String, String>? {
+        val key = apiKey()?.trim()?.takeIf { it.isNotEmpty() } ?: fallbackApiKey()?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val url = baseUrl.newBuilder().addPathSegments("tv/$tmdbId/season/$season/videos")
+            .addQueryParameter("language", language)
+            .addQueryParameter("include_video_language", "${language.substringBefore('-')},en,null")
+            .build()
+        val json = try {
+            get(key, url)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Saison inconnue de TMDB (404) ou réseau : la bande-annonce de la série reste.
+            return null
+        }
+        val trailer = trailer(json.optJSONArray("results")) ?: return null
+        return trailer.optString("key") to trailer.optStringOrNull("iso_639_1").orEmpty()
+    }
+
+    /**
      * Films ou séries les plus regardés de la semaine (deux pages, une quarantaine de titres) ;
      * liste vide sans clé ou en cas d'échec.
      */

@@ -4,6 +4,13 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.85
+- Films avec l’image mais sans le son : le son MP2 (celui des enregistrements de la TNT), que l’appareil et le décodeur intégré ne savaient pas lire, est maintenant décodé par l’appli. Après une erreur de son, le lecteur réessaie avec le décodage de l’appli avant de couper le son
+- Son illisible : le message et le menu des pistes disent le format (par exemple « MP2 », « Dolby Digital (AC3) »)
+- Rangées Streaming et Cinéma Premium : les affiches sont celles des fiches (TMDB) au lieu des images floues ou recadrées de la playlist
+- Fiches des séries : « Lire S4 E1 » pour la saison choisie, et la bande-annonce est celle de cette saison quand TMDB en a une
+- Fiches Streaming : boutons sur une seule ligne ; favoris en étoile (pleine et dorée si le titre est en favori), le texte apparaît quand elle est sélectionnée
+
 ## 0.2.84
 - Streaming : la rangée choisie est de nouveau bien placée (le titre sous les affiches la rendait plus haute) : le nom de la catégorie du dessous se voit, et plus de reste de texte de la rangée du dessus. Titre des affiches sur une ligne ; « Reprendre la lecture » : l’épisode et le temps restant passent sur l’image
 - Fiches Streaming : tout le haut (titre, note) est visible à l’ouverture et en remontant sur les boutons

@@ -49,6 +49,12 @@ class MetadataRepository(
         return cast
     }
 
+    /** Affiches des fiches en cache, par clé de cache (`null` : titre introuvable sur TMDB). */
+    suspend fun cachedPosters(): Map<String, String?> = dao.posters().associate { it.cacheKey to it.posterUrl }
+
+    /** Bande-annonce d'une saison de série (identifiant YouTube, langue), `null` si TMDB n'en a pas. */
+    suspend fun seasonTrailer(details: MediaDetails, season: Int): Pair<String, String>? = client.seasonTrailer(details.tmdbId, season)
+
     /** Fiche déjà en cache et encore valable, sans appel réseau (`null` sinon). */
     suspend fun cachedDetails(cacheKey: String, type: MediaType): MediaDetails? {
         val cached = dao.get(cacheKey)?.takeIf { it.found } ?: return null

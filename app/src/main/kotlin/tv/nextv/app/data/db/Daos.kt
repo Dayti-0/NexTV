@@ -819,10 +819,17 @@ interface GuideOnlyChannelDao {
     suspend fun list(sourceId: Long): List<GuideOnlyChannelEntity>
 }
 
+/** Affiche TMDB en cache d'un titre (`null` : TMDB ne le connaît pas, ou sans affiche). */
+data class CachedPoster(val cacheKey: String, val posterUrl: String?)
+
 @Dao
 interface TmdbDao {
     @Query("SELECT * FROM tmdb_cache WHERE cacheKey = :cacheKey")
     suspend fun get(cacheKey: String): TmdbCacheEntity?
+
+    /** Affiches des fiches en cache (et titres que TMDB ne connaît pas : [CachedPoster.posterUrl] vide). */
+    @Query("SELECT cacheKey, CASE WHEN found = 1 THEN posterUrl ELSE NULL END AS posterUrl FROM tmdb_cache")
+    suspend fun posters(): List<CachedPoster>
 
     @Upsert
     suspend fun put(entry: TmdbCacheEntity)

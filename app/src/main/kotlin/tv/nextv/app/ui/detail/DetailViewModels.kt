@@ -53,7 +53,18 @@ data class DetailUiState(
     val similar: List<PosterItem> = emptyList(),
     /** Distribution (TMDB), par ordre d'importance. */
     val cast: List<CastMember> = emptyList(),
-)
+    /** Bandes-annonces des saisons lues sur TMDB (numéro de saison → identifiant YouTube, langue ; `null` : aucune). */
+    val seasonTrailers: Map<Int, Pair<String, String>?> = emptyMap(),
+) {
+    /** Bande-annonce du bouton : celle de la saison choisie si TMDB en a une, sinon celle du film ou de la série. */
+    val trailer: Pair<String, String?>?
+        get() {
+            val season = seasons.getOrNull(selectedSeason)?.number
+            seasonTrailers[season]?.let { return it }
+            val details = (metadata as? MetadataState.Available)?.details ?: return null
+            return details.trailerYoutubeKey?.let { it to details.trailerLanguage }
+        }
+}
 
 /** Fiche d'un film ou d'une série : données de la playlist, enrichies par TMDB si possible. */
 class DetailViewModel(
@@ -123,8 +134,21 @@ class DetailViewModel(
                 val similar = runCatching { similarInPlaylist(entity.sourceId, entity.itemKey, details) }.getOrDefault(emptyList())
                 mutableState.update { it.copy(similar = similar) }
             }
+            loadSeasonTrailer(state.value.selectedSeason)
             val cast = runCatching { container.metadata.credits(details) }.getOrDefault(emptyList())
             mutableState.update { it.copy(cast = cast) }
+        }
+    }
+
+    /** Série : bande-annonce de la saison [index] (une fois par saison). */
+    private fun loadSeasonTrailer(index: Int) {
+        if (kind != ContentKind.SERIES) return
+        val details = (state.value.metadata as? MetadataState.Available)?.details ?: return
+        val number = state.value.seasons.getOrNull(index)?.number ?: return
+        if (number in state.value.seasonTrailers) return
+        viewModelScope.launch {
+            val trailer = runCatching { container.metadata.seasonTrailer(details, number) }.getOrNull()
+            mutableState.update { it.copy(seasonTrailers = it.seasonTrailers + (number to trailer)) }
         }
     }
 
@@ -169,6 +193,7 @@ class DetailViewModel(
 
     fun selectSeason(index: Int) {
         mutableState.update { it.copy(selectedSeason = index) }
+        loadSeasonTrailer(index)
     }
 
 
@@ -185,7 +210,12 @@ class DetailViewModel(
  * Clé de la fiche TMDB d'un film ou d'une série, partagée par la fiche et l'accueil. Version de la
  * recherche : les « introuvables » enregistrés avant son amélioration sont ignorés.
  */
-internal fun metadataCacheKey(itemKey: String): String = "v3|$itemKey"
+internal fun metadataCacheKey(itemKey: String): String = METADATA_CACHE_PREFIX + itemKey
+
+/** Clé du titre d'une fiche en cache ([metadataCacheKey] inverse) ; `null` pour une fiche d'une ancienne version. */
+internal fun itemKeyOfCache(cacheKey: String): String? = cacheKey.takeIf { it.startsWith(METADATA_CACHE_PREFIX) }?.removePrefix(METADATA_CACHE_PREFIX)
+
+private const val METADATA_CACHE_PREFIX = "v3|"
 
 /** Titres similaires affichés sur la fiche Streaming. */
 private const val SIMILAR_COUNT = 20

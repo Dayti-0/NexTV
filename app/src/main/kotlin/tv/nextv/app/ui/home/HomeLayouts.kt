@@ -723,7 +723,7 @@ private fun GroupShelf(
             value = loadSafely { content.rows.freshPosters(section, title, version, limit) } ?: value.orEmpty()
         }
         val list = posters.orEmpty()
-        Shelf(name, count, padding, null, sizes.poster, POSTER_RATIO, spec.key, list.size, lastOpened, loading = posters == null, style = style, onNearEnd = loadMore(list.size), prefetch = remember(list) { list.map { it.imageUrl } }) {
+        Shelf(name, count, padding, null, sizes.poster, POSTER_RATIO, spec.key, list.size, lastOpened, loading = posters == null, style = style, onNearEnd = loadMore(list.size), prefetch = posterPrefetch(list)) {
             itemsIndexed(list, key = { _, it -> it.itemKey }) { index, item ->
                 ShelfPoster(item, index, spec.key, sizes.poster, content.favoriteKeys, lastOpened, actions, style)
             }
@@ -995,6 +995,36 @@ internal fun posterDetail(item: PosterItem): String? =
         item.year?.toString()
     }
 
+/**
+ * Image d'une affiche des rangées : l'affiche TMDB (celle de la fiche) si elle est connue. Pas encore
+ * cherchée : elle l'est, et l'emplacement reste vide un court instant plutôt que de montrer l'image de la
+ * playlist puis de la remplacer (deux images de suite). Sans réponse à temps, ou sans affiche TMDB :
+ * l'image de la playlist.
+ */
+@Composable
+private fun posterImage(item: PosterItem): String? {
+    val art = LocalPosterArt.current ?: return item.imageUrl
+    art.posters[item.itemKey]?.let { return it }
+    if (item.itemKey in art.missing) return item.imageUrl
+    var waited by remember(item.itemKey) { mutableStateOf(false) }
+    LaunchedEffect(item.itemKey) {
+        art.request(item)
+        delay(POSTER_WAIT_MILLIS)
+        waited = true
+    }
+    return if (waited) item.imageUrl else null
+}
+
+/** Images à télécharger d'avance pour une rangée d'affiches : les affiches TMDB connues, sinon celles de la playlist. */
+@Composable
+private fun posterPrefetch(items: List<PosterItem>): List<String?> {
+    val known = LocalPosterArt.current?.posters
+    return remember(items, known) { items.map { known?.get(it.itemKey) ?: it.imageUrl } }
+}
+
+/** Attente de l'affiche TMDB d'un titre jamais affiché, avant de montrer l'image de la playlist. */
+private const val POSTER_WAIT_MILLIS = 1_500L
+
 @Composable
 internal fun ShelfPoster(
     item: PosterItem,
@@ -1019,11 +1049,12 @@ internal fun ShelfPoster(
         .restoreFocus(item.itemKey, lastOpened)
         .onFocusChanged { if (it.isFocused) actions.onPosterFocus(item) }
     val watched = item.kind == ContentKind.MOVIE && item.itemKey in LocalWatchedKeys.current
+    val image = posterImage(item)
     if (style == ShelfStyle.PREMIUM) {
-        PremiumPoster(item.title, item.imageUrl, item.itemKey in favoriteKeys, onClick, onLongClick, modifier, watched = watched)
+        PremiumPoster(item.title, image, item.itemKey in favoriteKeys, onClick, onLongClick, modifier, watched = watched)
     } else {
         // Streaming : l'affiche seule, ses informations sont dans le bandeau.
-        StreamingPoster(item.title, item.imageUrl, item.itemKey in favoriteKeys, onClick, onLongClick, modifier, width, watched = watched)
+        StreamingPoster(item.title, image, item.itemKey in favoriteKeys, onClick, onLongClick, modifier, width, watched = watched)
     }
 }
 

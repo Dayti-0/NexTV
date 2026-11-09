@@ -344,7 +344,11 @@ fun HomeScreen(
 
     // Films et épisodes déjà vus : badge « Déjà vu » sur leurs affiches.
     val watchedKeys by viewModel.watchedKeys.collectAsStateWithLifecycle()
-    CompositionLocalProvider(LocalWatchedKeys provides watchedKeys) {
+    // Affiches TMDB (celles des fiches) dans les rangées.
+    val posters by viewModel.posters.collectAsStateWithLifecycle()
+    val requestPoster = remember(viewModel) { { item: PosterItem -> viewModel.requestPoster(item) } }
+    val posterArt = remember(posters) { PosterArt(posters.first, posters.second, requestPoster) }
+    CompositionLocalProvider(LocalWatchedKeys provides watchedKeys, LocalPosterArt provides posterArt) {
         HomeContent(
             onMenu = if (layout == HomeLayout.PREMIUM) ({ premiumMenu = true }) else null,
             section = section,

@@ -43,6 +43,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.animation.animateContentSize
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -206,7 +208,7 @@ internal fun StreamingDetailContent(
                         CastLine(state.cast)
                         DetailButtons(
                             state, kind, playFocus,
-                            trailerKey = details?.trailerYoutubeKey,
+                            trailerKey = state.trailer?.first,
                             trailerShown = trailerShown,
                             muted = muted,
                             onPlay = onPlay,
@@ -295,7 +297,8 @@ internal fun StreamingDetailContent(
         }
     }
     if (fullTrailer) {
-        details?.trailerYoutubeKey?.let { key -> TrailerFullScreen(key, details.trailerLanguage) { fullTrailer = false } }
+        // Série : bande-annonce de la saison choisie si TMDB en a une.
+        state.trailer?.let { (key, language) -> TrailerFullScreen(key, language) { fullTrailer = false } }
     }
 }
 
@@ -337,9 +340,10 @@ private fun DetailButtons(
     onToggleSound: () -> Unit,
 ) {
     val progress = state.progress
-    val firstEpisode = state.seasons.getOrNull(state.selectedSeason)?.episodes?.firstOrNull()?.id
-    val playTarget = if (kind == ContentKind.SERIES) firstEpisode else state.item?.firstId
-    // Retour à la ligne si les boutons ne tiennent pas (libellés longs, « Reprendre S02E03 à 12:30 »).
+    val firstEpisode = state.seasons.getOrNull(state.selectedSeason)?.episodes?.firstOrNull()
+    val playTarget = if (kind == ContentKind.SERIES) firstEpisode?.id else state.item?.firstId
+    // Sur une ligne : libellés courts (« Lire S4 E1 »), favoris en étoile dont le texte n'apparaît que sélectionnée.
+    // Retour à la ligne seulement s'ils ne tiennent pas (« Reprendre S02E03 à 12:30 » sur un petit écran).
     FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         if (progress != null) {
             PillButton(
@@ -356,14 +360,14 @@ private fun DetailButtons(
         }
         // Film commencé : « Depuis le début ». Série : premier épisode de la saison choisie.
         val restartMovie = progress != null && kind == ContentKind.MOVIE
+        val episodeNumbers = firstEpisode?.let { episode -> episode.season?.let { season -> episode.episode?.let { season to it } } }
         PillButton(
-            stringResource(
-                when {
-                    restartMovie -> R.string.player_restart
-                    kind == ContentKind.SERIES -> R.string.detail_play_episode
-                    else -> R.string.hero_watch
-                },
-            ),
+            when {
+                restartMovie -> stringResource(R.string.player_restart)
+                kind == ContentKind.SERIES && episodeNumbers != null -> stringResource(R.string.detail_play_season_episode, episodeNumbers.first, episodeNumbers.second)
+                kind == ContentKind.SERIES -> stringResource(R.string.detail_play_episode)
+                else -> stringResource(R.string.hero_watch)
+            },
             { playTarget?.let(if (restartMovie) onRestart else onPlay) },
             icon = if (restartMovie) Icons.Filled.Refresh else Icons.Filled.PlayArrow,
             style = if (progress == null) PillStyle.Primary else PillStyle.Secondary,
@@ -371,11 +375,7 @@ private fun DetailButtons(
             modifier = if (progress == null) Modifier.focusRequester(playFocus) else Modifier,
         )
         trailerKey?.let { PillButton(stringResource(R.string.hero_trailer), onTrailer, icon = NexTvIcons.Movie) }
-        PillButton(
-            stringResource(if (state.isFavorite) R.string.detail_unfavorite else R.string.detail_favorite),
-            onToggleFavorite,
-            icon = Icons.Filled.Star,
-        )
+        FavoriteButton(state.isFavorite, onToggleFavorite)
         AnimatedVisibility(trailerShown, enter = fadeIn(), exit = fadeOut()) {
             FocusSurface(
                 onClick = onToggleSound,
@@ -390,6 +390,40 @@ private fun DetailButtons(
                     contentDescription = stringResource(if (muted) R.string.hero_sound_on else R.string.hero_sound_off),
                     modifier = Modifier.padding(10.dp).size(22.dp),
                 )
+            }
+        }
+    }
+}
+
+/**
+ * Favoris : une étoile (pleine et dorée si le titre est en favori, vide sinon) ; sélectionnée, elle dit ce
+ * que fait OK (« Ajouter aux favoris », « Retirer des favoris »).
+ */
+@Composable
+private fun FavoriteButton(isFavorite: Boolean, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val label = stringResource(if (isFavorite) R.string.detail_unfavorite else R.string.detail_favorite)
+    FocusSurface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        focusedColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        focusScale = 1.06f,
+        onFocusChange = { focused = it },
+    ) {
+        Row(
+            Modifier.padding(horizontal = 11.dp, vertical = 10.dp).animateContentSize(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                if (isFavorite) Icons.Filled.Star else NexTvIcons.StarBorder,
+                contentDescription = label,
+                tint = if (isFavorite) NexTvColors.Warning else LocalContentColor.current,
+                modifier = Modifier.size(20.dp),
+            )
+            if (focused) {
+                Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1, modifier = Modifier.padding(start = 8.dp, end = 6.dp))
             }
         }
     }

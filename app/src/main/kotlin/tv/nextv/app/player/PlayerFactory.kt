@@ -1,6 +1,7 @@
 package tv.nextv.app.player
 
 import android.content.Context
+import android.os.Handler
 import android.hardware.display.DisplayManager
 import android.view.Display
 import androidx.annotation.OptIn
@@ -21,6 +22,9 @@ import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.Renderer
+import androidx.media3.exoplayer.audio.AudioRendererEventListener
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
@@ -83,6 +87,11 @@ class PlayerFactory(
         passthrough: Boolean = false,
         /** Décodeurs vidéo qui ont échoué sur le flux en cours : écartés. */
         excludedDecoders: Set<String> = emptySet(),
+        /**
+         * Son décodé par l'appli d'abord (MPEG audio, puis FFmpeg), avant les décodeurs de l'appareil : après
+         * une erreur de décodage du son sur le flux en cours.
+         */
+        softwareAudio: Boolean = false,
     ): ExoPlayer {
         // Repli automatique sur un autre décodeur si le premier ne démarre pas (box aux décodeurs capricieux).
         val renderers = object : DefaultRenderersFactory(context) {
@@ -92,11 +101,29 @@ class PlayerFactory(
                     .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
                     .setAudioProcessors(listOfNotNull<AudioProcessor>(adVolume?.let(::AdVolumeAudioProcessor)).toTypedArray())
                     .build()
+
+            // MP2 (couches I et II du MPEG audio) : décodé dans l'appli, en dernier recours (ni l'appareil ni FFmpeg
+            // ne le lisent) ; en premier après une erreur de décodage du son.
+            override fun buildAudioRenderers(
+                context: Context,
+                extensionRendererMode: Int,
+                mediaCodecSelector: MediaCodecSelector,
+                enableDecoderFallback: Boolean,
+                audioSink: AudioSink,
+                eventHandler: Handler,
+                eventListener: AudioRendererEventListener,
+                out: ArrayList<Renderer>,
+            ) {
+                super.buildAudioRenderers(context, extensionRendererMode, mediaCodecSelector, enableDecoderFallback, audioSink, eventHandler, eventListener, out)
+                val mpeg = MpegAudioRenderer(eventHandler, eventListener, audioSink)
+                if (softwareAudio) out.add(0, mpeg) else out.add(mpeg)
+            }
         }
             .setEnableDecoderFallback(true)
             .setMediaCodecSelector(VideoDecoders.selector(preferredDecoders, excludedDecoders))
-            // Son : décodeurs de l'appareil d'abord, FFmpeg pour les formats qu'il ne sait pas lire.
-            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+            // Son : décodeurs de l'appareil d'abord, FFmpeg pour les formats qu'il ne sait pas lire (l'inverse
+            // après une erreur de décodage du son).
+            .setExtensionRendererMode(if (softwareAudio) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER else DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
         val builder = ExoPlayer.Builder(context, renderers)
             // Flux donné sans sa source (setMediaItem) : client « flux » quand même (proxy), sans identifiants.
             .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(context, OkHttpDataSource.Factory(clients.client(RequestPurpose.STREAM)))))
