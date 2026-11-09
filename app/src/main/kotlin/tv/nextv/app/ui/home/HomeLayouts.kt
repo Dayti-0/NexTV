@@ -67,6 +67,9 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import kotlin.math.roundToInt
+import coil3.request.ImageRequest
+import coil3.imageLoader
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.KeyEventType
@@ -278,7 +281,7 @@ internal fun StreamingHome(
             }
         }
         val sizes = ShelfSizes.of(window)
-        PreloadRows(content)
+        PreloadRows(content, posterWidth = sizes.poster.takeIf { section != HomeSection.TV })
         val shelves = shelfList(content)
         RestoreRow(listState, lastOpened, (if (searchInList) listOf("search") else emptyList()) + shelves.map { it.key })
         // Petit écran : la recherche précède les rangées dans la liste.
@@ -546,7 +549,8 @@ internal fun LazyListScope.shelfItems(
     actions: HomeActions,
     style: ShelfStyle,
 ) {
-    items(shelves, key = { it.key }) { spec ->
+    // Type de rangée : la liste réutilise une rangée du même genre en défilant (moins de travail par rangée).
+    items(shelves, key = { it.key }, contentType = { it::class }) { spec ->
         when (spec) {
             is ShelfSpec.Channels -> Shelf(
                 title = stringResource(spec.title),
@@ -682,7 +686,7 @@ private fun GroupShelf(
             value = loadSafely { content.rows.fresh<ChannelListRow>(section, title, version, limit) } ?: value.orEmpty()
         }
         val list = channels.orEmpty()
-        Shelf(name, count, padding, null, sizes.channel, CHANNEL_RATIO, spec.key, list.size, lastOpened, loading = channels == null, style = style, onNearEnd = loadMore(list.size)) {
+        Shelf(name, count, padding, null, sizes.channel, CHANNEL_RATIO, spec.key, list.size, lastOpened, loading = channels == null, style = style, onNearEnd = loadMore(list.size), prefetch = remember(list) { list.map { it.logoUrl } }) {
             itemsIndexed(list, key = { _, it -> it.id }) { index, channel ->
                 ShelfChannel(channel, index, spec.key, sizes.channel, content, lastOpened, actions, style)
             }
@@ -692,7 +696,7 @@ private fun GroupShelf(
             value = loadSafely { content.rows.freshPosters(section, title, version, limit) } ?: value.orEmpty()
         }
         val list = posters.orEmpty()
-        Shelf(name, count, padding, null, sizes.poster, POSTER_RATIO, spec.key, list.size, lastOpened, loading = posters == null, style = style, onNearEnd = loadMore(list.size)) {
+        Shelf(name, count, padding, null, sizes.poster, POSTER_RATIO, spec.key, list.size, lastOpened, loading = posters == null, style = style, onNearEnd = loadMore(list.size), prefetch = remember(list) { list.map { it.imageUrl } }) {
             itemsIndexed(list, key = { _, it -> it.itemKey }) { index, item ->
                 ShelfPoster(item, index, spec.key, sizes.poster, content.favoriteKeys, lastOpened, actions, style)
             }
@@ -717,12 +721,36 @@ private suspend fun HomeRows.freshPosters(section: HomeSection, group: String, v
  * que sur une rangée déjà remplie (une rangée en chargement n'a rien à sélectionner, « bas » resterait bloqué).
  */
 @Composable
-internal fun PreloadRows(content: ShelfContent) {
+internal fun PreloadRows(content: ShelfContent, posterWidth: Dp? = null) {
     val nowBucket = content.now / ROW_REFRESH_MILLIS
+    val context = LocalContext.current
+    val widthPx = posterWidth?.let { with(LocalDensity.current) { it.roundToPx() } }
     LaunchedEffect(content.section, content.groups, nowBucket) {
-        for (group in content.groups) {
-            loadSafely { content.rows.fresh<Any>(content.section, group.title.orEmpty(), rowVersion(content.section, group, nowBucket)) }
+        content.groups.forEachIndexed { index, group ->
+            val rows = loadSafely { content.rows.fresh<Any>(content.section, group.title.orEmpty(), rowVersion(content.section, group, nowBucket)) }
+            // Affiches des premières rangées téléchargées d'avance (premières affiches seulement) : elles sont
+            // là quand on y descend, même vite. Pas toutes : la mémoire et la connexion des petites box.
+            if (widthPx != null && index < PREFETCH_ROWS && rows != null) {
+                prefetchImages(context, rows.take(PREFETCH_FIRST_POSTERS).map(::imageOf), widthPx, (widthPx / POSTER_RATIO).roundToInt())
+            }
         }
+    }
+}
+
+/** Affiche ou logo d'une ligne de rangée. */
+private fun imageOf(row: Any): String? = when (row) {
+    is MovieRow -> row.logoUrl
+    is SeriesRow -> row.logoUrl
+    is ChannelListRow -> row.logoUrl
+    else -> null
+}
+
+/** Télécharge et met en cache ces images, à la taille où elles seront affichées. */
+private fun prefetchImages(context: android.content.Context, urls: List<String?>, widthPx: Int, heightPx: Int) {
+    val loader = context.imageLoader
+    urls.forEach { url ->
+        if (url.isNullOrBlank()) return@forEach
+        loader.enqueue(ImageRequest.Builder(context).data(url).size(widthPx, heightPx).build())
     }
 }
 
@@ -772,9 +800,26 @@ internal fun Shelf(
     style: ShelfStyle = ShelfStyle.STREAMING,
     /** Suite à lire : appelé quand les dernières vignettes arrivent à l'écran (`null` : rangée complète). */
     onNearEnd: (() -> Unit)? = null,
+    /** Images des vignettes, dans l'ordre : les suivantes sont téléchargées d'avance en avançant. */
+    prefetch: List<String?> = emptyList(),
     content: LazyListScope.() -> Unit,
 ) {
     val rowState = rememberSaveable(rowKey, saver = LazyListState.Saver) { LazyListState() }
+    // Vignettes à venir (à droite de l'écran) téléchargées d'avance : pas d'affiche vide en avançant vite.
+    if (prefetch.isNotEmpty()) {
+        val context = LocalContext.current
+        val widthPx = with(LocalDensity.current) { itemWidth.roundToPx() }
+        val heightPx = (widthPx / imageRatio).roundToInt()
+        LaunchedEffect(rowState, prefetch) {
+            var fetched = -1
+            snapshotFlow { rowState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }.collect { last ->
+                val until = minOf(prefetch.size, last + 1 + PREFETCH_AHEAD)
+                val from = maxOf(fetched + 1, last + 1)
+                if (from < until) prefetchImages(context, prefetch.subList(from, until), widthPx, heightPx)
+                fetched = maxOf(fetched, until - 1)
+            }
+        }
+    }
     val nearEnd by rememberUpdatedState(onNearEnd)
     LaunchedEffect(rowState, itemCount, onNearEnd != null) {
         if (onNearEnd == null || itemCount == 0) return@LaunchedEffect
@@ -1148,6 +1193,13 @@ private const val TOP10_MIN = 5
 /** Place du rang à gauche de chaque affiche du Top 10. */
 /** Streaming : sous la rangée choisie, juste la place du titre de la suivante. */
 private val STREAMING_NEXT_ROW_PEEK = 46.dp
+
+/** Vignettes téléchargées d'avance à droite de l'écran, dans une rangée. */
+private const val PREFETCH_AHEAD = 8
+
+/** Rangées dont les premières affiches sont téléchargées d'avance, et combien. */
+private const val PREFETCH_ROWS = 8
+private const val PREFETCH_FIRST_POSTERS = 7
 
 /** Vignettes restantes avant le bout de la rangée quand la suite est demandée. */
 private const val NEAR_END_ITEMS = 6

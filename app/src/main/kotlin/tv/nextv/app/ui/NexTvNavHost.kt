@@ -2,6 +2,11 @@ package tv.nextv.app.ui
 
 import androidx.activity.compose.LocalActivity
 import androidx.compose.runtime.Composable
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.EnterTransition
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -66,6 +71,10 @@ private object Routes {
 }
 
 private const val ARG_ITEM = "itemId"
+
+/** Fondu d'entrée et de sortie des écrans. */
+private const val PAGE_FADE_IN_MILLIS = 240
+private const val PAGE_FADE_OUT_MILLIS = 160
 private const val ARG_KIND = "kind"
 
 /**
@@ -97,7 +106,16 @@ fun NexTvNavHost() {
 private fun AppNavHost(navController: NavHostController) {
     val container = appContainer()
     val scope = rememberCoroutineScope()
-    NavHost(navController = navController, startDestination = Routes.STARTUP) {
+    // Transitions courtes entre les écrans (0,7 s par défaut : l'appli paraissait lente à réagir). Le lecteur
+    // s'ouvre et se ferme sans fondu (image noire tout de suite, retour immédiat à l'écran d'avant).
+    NavHost(
+        navController = navController,
+        startDestination = Routes.STARTUP,
+        enterTransition = { if (targetState.destination.route == Routes.PLAYER) EnterTransition.None else fadeIn(tween(PAGE_FADE_IN_MILLIS)) },
+        exitTransition = { if (targetState.destination.route == Routes.PLAYER) ExitTransition.None else fadeOut(tween(PAGE_FADE_OUT_MILLIS)) },
+        popEnterTransition = { if (initialState.destination.route == Routes.PLAYER) EnterTransition.None else fadeIn(tween(PAGE_FADE_IN_MILLIS)) },
+        popExitTransition = { if (initialState.destination.route == Routes.PLAYER) ExitTransition.None else fadeOut(tween(PAGE_FADE_OUT_MILLIS)) },
+    ) {
         composable(
             Routes.STARTUP,
             arguments = listOf(

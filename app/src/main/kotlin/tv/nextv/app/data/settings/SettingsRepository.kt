@@ -33,6 +33,13 @@ class SettingsRepository(
 ) {
     private val dataStore = context.applicationContext.settingsDataStore
 
+    /**
+     * Appareil à petite mémoire : les bandes-annonces automatiques (un navigateur en arrière-plan) sont
+     * désactivées par défaut ; elles restent activables dans les réglages.
+     */
+    private val lowMemoryDevice: Boolean = context.getSystemService(android.app.ActivityManager::class.java)
+        ?.let { it.isLowRamDevice || it.memoryClass <= 128 } ?: false
+
     val proxySettings: Flow<ProxySettings> = dataStore.data
         .map { prefs ->
             ProxySettings(
@@ -264,7 +271,7 @@ class SettingsRepository(
     }
 
     /** Bande-annonce en fond de la grande affiche (Streaming) : plus de connexion, peut ralentir l'appareil. */
-    val trailerAutoplay: Flow<Boolean> = dataStore.data.map { it[TRAILER_AUTOPLAY] ?: true }.distinctUntilChanged()
+    val trailerAutoplay: Flow<Boolean> = dataStore.data.map { it[TRAILER_AUTOPLAY] ?: !lowMemoryDevice }.distinctUntilChanged()
 
     suspend fun setTrailerAutoplay(enabled: Boolean) {
         dataStore.edit { it[TRAILER_AUTOPLAY] = enabled }

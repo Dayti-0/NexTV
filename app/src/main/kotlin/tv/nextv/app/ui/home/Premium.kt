@@ -108,7 +108,7 @@ internal fun PremiumHome(
                 if (section == HomeSection.TV) PremiumLiveInfo(preview, content.now) else PremiumInfo(section, spotlight)
             }
             val sizes = ShelfSizes.premium(window)
-            PreloadRows(content)
+            PreloadRows(content, posterWidth = POSTER_COLUMN_WIDTH.takeIf { section != HomeSection.TV })
             val shelves = shelfList(content)
             val listState = rememberSaveable(section, saver = LazyListState.Saver) { LazyListState() }
             RestoreRow(listState, lastOpened, shelves.map { it.key })

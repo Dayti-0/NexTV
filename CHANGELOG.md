@@ -4,6 +4,11 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.80
+- Plus réactif : passage d’un écran à l’autre en un quart de seconde (au lieu de 0,7 s), le lecteur s’ouvre et se ferme sans fondu
+- Affiches et visuels apparaissent en fondu ; les affiches suivantes d’une rangée, et les premières des rangées du dessous, sont téléchargées d’avance (moins d’affiches vides en défilant vite)
+- Images gardées en cache sur l’appareil (rechargées sans réseau) ; sur les box à petite mémoire, cache plus léger et bandes-annonces automatiques désactivées par défaut (activables dans les réglages)
+
 ## 0.2.79
 - Streaming : nouvelle fiche des films et séries, plein écran : grand visuel avec sa bande-annonce (muette selon les réglages, bouton « Son »), affiche, titre, note, année, genres, durée, accroche et résumé, boutons « Reprendre », « Depuis le début », « Bande-annonce » (plein écran) et « Favoris », puis les titres similaires
 - Séries (Streaming) : saisons en onglets (la saison change dès qu’on passe dessus), épisodes en vignettes avec l’épisode en cours et sa progression ; OK reprend l’épisode en cours ou lance celui choisi
