@@ -4,6 +4,10 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.65
+- Cinéma Premium : le Top 10 de la semaine change de forme (affiches ordinaires avec un petit rang doré « N°1 », « N°2 »… dans le coin, au lieu des grands chiffres de Streaming)
+- Chaînes en Streaming et Cinéma Premium : le cadre de sélection du panneau de droite suit ses coins arrondis (ils étaient coupés)
+
 ## 0.2.64
 - Bande-annonce derrière la grande affiche : l’affichage YouTube du début (titre, chaîne, boutons) n’apparaît plus ; la vidéo arrive en fondu une fois ces commandes parties, avec le son à ce moment-là
 

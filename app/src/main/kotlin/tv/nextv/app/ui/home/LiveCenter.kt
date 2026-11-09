@@ -39,6 +39,8 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusDirection
@@ -133,7 +135,7 @@ internal fun LiveCenterSection(
         }
     }
     val colors = MaterialTheme.colorScheme
-    val panel = RoundedCornerShape(22.dp)
+    val panel = LIVE_PANEL_SHAPE
     Row(
         modifier
             .fillMaxSize()
@@ -197,6 +199,9 @@ internal fun LiveCenterSection(
 }
 
 private val LIVE_BANNER_HEIGHT = 196.dp
+
+/** Coins des panneaux translucides (Streaming, Cinéma Premium). */
+private val LIVE_PANEL_SHAPE = RoundedCornerShape(22.dp)
 
 /**
  * Bandeau du direct, à l'horizontale (mosaïque) : la vidéo à gauche ; à côté, en grand, le numéro et le
@@ -263,7 +268,7 @@ internal fun LivePane(
     glass: Boolean = false,
 ) {
     val container = MaterialTheme.colorScheme.surfaceContainerLow.let { if (glass) it.copy(alpha = 0.62f) else it }
-    ScrollingPane(preview?.channel?.id, modifier, container) {
+    ScrollingPane(preview?.channel?.id, modifier, container, shape = if (glass) LIVE_PANEL_SHAPE else RectangleShape) {
         Box(
             Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(MaterialTheme.shapes.large).background(Color.Black),
             contentAlignment = Alignment.Center,
@@ -316,6 +321,8 @@ private fun ScrollingPane(
     resetKey: Any?,
     modifier: Modifier,
     container: Color = MaterialTheme.colorScheme.surfaceContainerLow,
+    /** Forme du volet : le cadre de sélection la suit (coins arrondis des panneaux, pas coupés). */
+    shape: Shape = RectangleShape,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val scroll = rememberScrollState()
@@ -326,7 +333,7 @@ private fun ScrollingPane(
     Column(
         modifier
             .background(container)
-            .then(if (focused) Modifier.border(2.dp, MaterialTheme.colorScheme.primary) else Modifier)
+            .then(if (focused) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, shape) else Modifier)
             .onFocusChanged { focused = it.isFocused }
             .onKeyEvent { event -> event.type == KeyEventType.KeyDown && scrollPane(scroll, event.key, step) { scope.launch { it() } } }
             .focusable(enabled = scroll.maxValue > 0)

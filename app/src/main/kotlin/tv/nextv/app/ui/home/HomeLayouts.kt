@@ -64,6 +64,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
@@ -350,6 +351,22 @@ internal class RowJump {
 
 internal val LocalRowJump = staticCompositionLocalOf<RowJump?> { null }
 
+/** Rang du Top 10 de Cinéma Premium : « N°1 » doré, discret, dans le coin de l'affiche. */
+@Composable
+private fun RankBadge(rank: Int, modifier: Modifier = Modifier) {
+    Text(
+        "N°$rank",
+        style = MaterialTheme.typography.labelLarge,
+        fontWeight = FontWeight.Bold,
+        color = Color(0xFF2A1E00),
+        maxLines = 1,
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(Brush.linearGradient(listOf(Color(0xFFF5D77A), Color(0xFFD4A537))))
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+    )
+}
+
 /** Clé de la rangée d'une catégorie dans [shelves] (`null` : pas de rangée pour elle). */
 internal fun rowKeyOf(category: Category, content: ShelfContent, shelves: List<ShelfSpec>): String? {
     val key = when (category) {
@@ -470,7 +487,26 @@ internal fun LazyListScope.shelfItems(
                 }
             }
             is ShelfSpec.Group -> GroupShelf(spec, content, sizes, padding, lastOpened, actions, style)
-            is ShelfSpec.Top10 -> Shelf(
+            // Cinéma Premium : affiches ordinaires avec un petit rang doré dans le coin (pas les grands chiffres de Streaming).
+            is ShelfSpec.Top10 -> if (style == ShelfStyle.PREMIUM) Shelf(
+                title = stringResource(R.string.home_rows_top10),
+                count = null,
+                padding = padding,
+                onMore = null,
+                itemWidth = sizes.poster,
+                imageRatio = POSTER_RATIO,
+                rowKey = spec.key,
+                itemCount = spec.items.size,
+                lastOpened = lastOpened,
+                style = style,
+            ) {
+                itemsIndexed(spec.items, key = { _, it -> it.itemKey }) { index, item ->
+                    Box {
+                        ShelfPoster(item, index, spec.key, sizes.poster, content.favoriteKeys, lastOpened, actions, style)
+                        RankBadge(index + 1, Modifier.align(Alignment.TopStart).padding(7.dp))
+                    }
+                }
+            } else Shelf(
                 title = stringResource(R.string.home_rows_top10),
                 count = null,
                 padding = padding,
