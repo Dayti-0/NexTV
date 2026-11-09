@@ -141,6 +141,8 @@ internal data class ShelfContent(
     val discover: Discover,
     val favoriteKeys: Set<String>,
     val now: Long,
+    /** Catégorie ouverte : sa seule rangée, qui défile de gauche à droite (« Toutes » : toutes les rangées). */
+    val category: Category = Category.All,
 )
 
 /**
@@ -168,7 +170,7 @@ internal fun StreamingHome(
 ) {
     val section = content.section
     val padding = if (window.isWide) 28.dp else window.horizontalPadding
-    val listState = rememberSaveable(section, saver = LazyListState.Saver) { LazyListState() }
+    val listState = rememberSaveable(section, content.category, saver = LazyListState.Saver) { LazyListState() }
     // Rangées parcourues : la bannière se réduit pour en montrer davantage, et reprend sa taille en haut.
     val scrolled by remember { derivedStateOf { listState.firstVisibleItemIndex > 1 } }
     val billboardHeight by animateDpAsState(
@@ -282,7 +284,31 @@ internal sealed interface ShelfSpec {
 }
 
 /** Rangées dans l'ordre de l'écran ; celles qui sont vides n'apparaissent pas. */
-internal fun shelfList(content: ShelfContent): List<ShelfSpec> = buildList {
+internal fun shelfList(content: ShelfContent): List<ShelfSpec> {
+    if (content.category != Category.All) return categoryShelf(content)
+    return homeShelves(content)
+}
+
+/** Catégorie ouverte : une seule rangée, la sienne, au même dessin que l'accueil (« Voir plus » au bout). */
+private fun categoryShelf(content: ShelfContent): List<ShelfSpec> = buildList {
+    val tv = content.section == HomeSection.TV
+    when (val category = content.category) {
+        Category.All -> Unit
+        Category.Favorites -> if (tv) {
+            add(ShelfSpec.Channels("favorites", R.string.home_favorites, content.favoriteChannels))
+        } else {
+            val favorites = if (content.section == HomeSection.MOVIES) content.favoriteMovies.map { it.toPoster() } else content.favoriteSeries.map { it.toPoster() }
+            add(ShelfSpec.Posters("favorites", R.string.home_favorites, favorites))
+        }
+        Category.Recent -> add(ShelfSpec.Channels("recent", R.string.home_recent, content.recentChannels))
+        Category.ContinueWatching -> add(ShelfSpec.Continue("continue", content.continueItems))
+        is Category.Group -> content.groups.firstOrNull { it.title.orEmpty() == category.title }?.let {
+            add(ShelfSpec.Group("group:" + (it.title ?: NO_GROUP_KEY), it))
+        }
+    }
+}
+
+private fun homeShelves(content: ShelfContent): List<ShelfSpec> = buildList {
     when (content.section) {
         HomeSection.TV -> {
             if (content.favoriteChannels.isNotEmpty()) add(ShelfSpec.Channels("favorites", R.string.home_favorites, content.favoriteChannels))

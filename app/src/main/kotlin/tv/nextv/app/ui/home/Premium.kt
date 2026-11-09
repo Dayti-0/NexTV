@@ -110,7 +110,7 @@ internal fun PremiumHome(
             val sizes = ShelfSizes.premium(window)
             PreloadRows(content)
             val shelves = shelfList(content)
-            val listState = rememberSaveable(section, saver = LazyListState.Saver) { LazyListState() }
+            val listState = rememberSaveable(section, content.category, saver = LazyListState.Saver) { LazyListState() }
             RestoreRow(listState, lastOpened, shelves.map { it.key })
             AnchoredRows { anchor ->
                 LazyColumn(
@@ -140,9 +140,10 @@ private fun PremiumInfo(section: HomeSection, spotlight: Spotlight?) {
     Column(Modifier.fillMaxWidth(0.58f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically)) {
         Text(
             spotlight?.item?.title ?: allLabel(section),
-            style = MaterialTheme.typography.displaySmall.copy(fontSize = 40.sp, lineHeight = 44.sp, letterSpacing = (-0.5).sp),
+            style = MaterialTheme.typography.displaySmall.copy(fontSize = 38.sp, lineHeight = 42.sp, letterSpacing = (-0.5).sp),
             fontWeight = FontWeight.Bold,
-            maxLines = 2,
+            // Une ligne : la zone du titre reste basse, la rangée choisie remonte et celle du dessous se voit.
+            maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
         spotlight?.let { MetaLine(it, MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f)) }
@@ -287,6 +288,7 @@ internal fun PremiumChannelTile(
 }
 
 private val PREMIUM_SHAPE = RoundedCornerShape(14.dp)
-private val PREMIUM_INFO_HEIGHT = 184.dp
+/** Hauteur du titre et du résumé au-dessus des rangées (assez basse pour voir la rangée suivante). */
+private val PREMIUM_INFO_HEIGHT = 140.dp
 private val POSTER_COLUMN_WIDTH: Dp = 116.dp
 private val CHANNEL_COLUMN_WIDTH: Dp = 200.dp

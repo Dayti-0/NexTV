@@ -476,6 +476,7 @@ fun HomeContent(
         discover = discover,
         favoriteKeys = favoriteKeys,
         now = now,
+        category = category,
     )
     // Volet des catégories des interfaces à rangées : toutes les catégories de la section, à un appui sur ←
     // (Streaming : bouton « Catégories » du menu de gauche).
@@ -521,7 +522,8 @@ fun HomeContent(
             // Streaming et Cinéma Premium sur grand écran : les chaînes en liste avec l'aperçu (comme Live Center),
             // pas en rangées : « Toutes les chaînes » en tête des catégories, ↑ ↓ pour changer de chaîne.
             val liveList = section == HomeSection.TV && window.isWide && layout != HomeLayout.LIVE_CENTER
-            if (catalog && layout == HomeLayout.PREMIUM && category == Category.All && !liveList) {
+            // Catégorie ouverte (grand écran) : même dessin, sa seule rangée défile de gauche à droite.
+            if (catalog && layout == HomeLayout.PREMIUM && !liveList && (category == Category.All || window.isWide)) {
                 CategoryDrawer(drawerRail, Modifier.padding(padding), drawerOpen) {
                 PremiumHome(
                     content = shelfContent,
@@ -548,7 +550,7 @@ fun HomeContent(
                 when {
                     section == HomeSection.GUIDE -> guide(Modifier.weight(1f))
                     section == HomeSection.FOOTBALL -> football(Modifier.weight(1f))
-                    layout == HomeLayout.STREAMING && category == Category.All && !liveList -> CategoryDrawer(drawerRail, Modifier.weight(1f), drawerOpen, initialFocus = streamingNav && window.isTv) {
+                    layout == HomeLayout.STREAMING && !liveList && (category == Category.All || window.isWide) -> CategoryDrawer(drawerRail, Modifier.weight(1f), drawerOpen, initialFocus = streamingNav && window.isTv) {
                         StreamingHome(
                         content = shelfContent,
                         window = window,

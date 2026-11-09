@@ -210,6 +210,16 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
+    fun premiumMovieCategory() = capture("05p_premium_categorie_films") {
+        Home(HomeSection.MOVIES, Category.Group(SampleData.movieGroups[0].title.orEmpty()), layout = HomeLayout.PREMIUM)
+    }
+
+    @Test
+    fun streamingMovieCategory() = capture("05q_streaming_categorie_films", ThemeStyle.CINEMA) {
+        Home(HomeSection.MOVIES, Category.Group(SampleData.movieGroups[0].title.orEmpty()), layout = HomeLayout.STREAMING)
+    }
+
+    @Test
     fun homePremiumTv() = capture("05j_accueil_premium_tv", ThemeStyle.MIDNIGHT) {
         Home(HomeSection.TV, Category.All, preview = true, layout = HomeLayout.PREMIUM)
     }
