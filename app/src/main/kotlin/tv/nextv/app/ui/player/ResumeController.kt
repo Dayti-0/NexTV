@@ -1,6 +1,6 @@
 package tv.nextv.app.ui.player
 
-import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.common.Player
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
@@ -25,7 +25,7 @@ internal class ResumeController(
     private val state: MutableStateFlow<PlayerUiState>,
     private val session: PlaybackSession,
     initialMode: String,
-    private val player: () -> ExoPlayer?,
+    private val player: () -> Player?,
     private val host: Host,
 ) {
     /** Ce que la reprise demande à l'écran du lecteur. */

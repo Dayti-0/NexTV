@@ -101,6 +101,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.abs
 import tv.nextv.app.R
+import org.videolan.libvlc.util.VLCVideoLayout
 import tv.nextv.app.data.db.ChannelListRow
 import tv.nextv.app.data.db.GroupRow
 import tv.nextv.app.data.settings.AspectMode
@@ -149,6 +150,9 @@ fun PlayerScreen(onBack: () -> Unit) {
     var bannerVisible by remember { mutableStateOf(true) }
     var infoVisible by rememberSaveable { mutableStateOf(false) }
     var optionsVisible by rememberSaveable { mutableStateOf(false) }
+    // Moteur VLC (son ou vidéo que le lecteur de l'appli ne sait pas lire) : même écran, même commandes.
+    val vlc by viewModel.vlcPlayback.collectAsStateWithLifecycle()
+    val activePlayer: Player? = vlc?.player ?: player
     val aspect by viewModel.aspectMode.collectAsStateWithLifecycle()
     val qualityTarget by viewModel.qualityTarget.collectAsStateWithLifecycle()
     val rootFocus = remember { FocusRequester() }
@@ -164,9 +168,9 @@ fun PlayerScreen(onBack: () -> Unit) {
     val bannerMode = state.isLive || state.replay != null
 
     // Lecture en pause (direct, replay, film…) : icône au centre de l'écran.
-    var playWhenReady by remember(player) { mutableStateOf(player?.playWhenReady ?: true) }
-    DisposableEffect(player) {
-        val current = player
+    var playWhenReady by remember(activePlayer) { mutableStateOf(activePlayer?.playWhenReady ?: true) }
+    DisposableEffect(activePlayer) {
+        val current = activePlayer
         val listener = object : Player.Listener {
             override fun onPlayWhenReadyChanged(ready: Boolean, reason: Int) {
                 playWhenReady = ready
@@ -420,10 +424,30 @@ fun PlayerScreen(onBack: () -> Unit) {
             modifier = Modifier.fillMaxSize(),
         )
 
+        // Moteur VLC : son image, par-dessus (le lecteur de l'appli est arrêté).
+        vlc?.let { playback ->
+            AndroidView(
+                factory = { viewContext ->
+                    VLCVideoLayout(viewContext).apply {
+                        keepScreenOn = true
+                        isFocusable = false
+                        descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+                        setBackgroundColor(android.graphics.Color.BLACK)
+                    }
+                },
+                update = { layout ->
+                    playback.attach(layout)
+                    playback.setScale(fill = aspect == AspectMode.FILL, zoom = aspect == AspectMode.ZOOM)
+                },
+                onRelease = { layout -> playback.detach(layout) },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
         // Film ou épisode : commandes NixTV.
         if (film) {
             FilmControls(
-                player = player,
+                player = activePlayer,
                 state = state,
                 visible = filmControls && !menu.open && !optionsVisible && state.resumePrompt == null && state.upNext == null && state.error == null,
                 onInteraction = { filmTouch++ },
@@ -498,6 +522,14 @@ fun PlayerScreen(onBack: () -> Unit) {
             },
             onDismiss = { optionsVisible = false },
             modifier = Modifier.align(Alignment.TopEnd),
+            onVlc = if (vlc == null) {
+                {
+                    optionsVisible = false
+                    viewModel.useVlc()
+                }
+            } else {
+                null
+            },
             lowerAdVolume = state.lowerAdVolume,
             onLowerAdVolume = viewModel::setLowerAdVolume,
             qualityTarget = qualityTarget,
@@ -538,14 +570,33 @@ fun PlayerScreen(onBack: () -> Unit) {
             exit = fadeOut(),
             modifier = Modifier.align(Alignment.TopEnd).padding(24.dp),
         ) {
-            StatusPill(
-                when {
-                    audioProblem != AudioProblem.UNSUPPORTED -> stringResource(R.string.player_no_audio)
-                    state.unsupportedAudio != null -> stringResource(R.string.player_audio_unsupported_codec, state.unsupportedAudio.orEmpty())
-                    else -> stringResource(R.string.player_audio_unsupported)
-                },
-                NexTvColors.Warning,
-            )
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                StatusPill(
+                    when {
+                        audioProblem != AudioProblem.UNSUPPORTED -> stringResource(R.string.player_no_audio)
+                        state.unsupportedAudio != null -> stringResource(R.string.player_audio_unsupported_codec, state.unsupportedAudio.orEmpty())
+                        else -> stringResource(R.string.player_audio_unsupported)
+                    },
+                    NexTvColors.Warning,
+                )
+            }
+        }
+
+        // Moteur VLC : dit quelques secondes que c'est lui qui lit (le son, illisible autrement, revient).
+        var vlcNoticeShown by remember(state.engineVlc, state.channelVersion) { mutableStateOf(state.engineVlc) }
+        LaunchedEffect(state.engineVlc, state.channelVersion) {
+            if (state.engineVlc) {
+                delay(AUDIO_NOTICE_MILLIS)
+                vlcNoticeShown = false
+            }
+        }
+        AnimatedVisibility(
+            visible = state.engineVlc && state.audioProblem == null && (vlcNoticeShown || bannerVisible) && !menu.open,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.TopEnd).padding(24.dp),
+        ) {
+            StatusPill(stringResource(R.string.player_vlc_engine), NexTvColors.Primary)
         }
 
         state.resumePrompt?.let { prompt ->
@@ -601,6 +652,8 @@ fun PlayerOptionsPanel(
     lowerAdVolume: Boolean = false,
     onLowerAdVolume: (Boolean) -> Unit = {},
     onBackToLive: (() -> Unit)? = null,
+    /** « Lire avec le moteur VLC » (son ou image que le lecteur de l'appli lit mal). */
+    onVlc: (() -> Unit)? = null,
     qualityTarget: QualityTarget = QualityTarget.BEST,
     playingQuality: String? = null,
     onQualityTarget: ((QualityTarget) -> Unit)? = null,
@@ -697,6 +750,7 @@ fun PlayerOptionsPanel(
                 if (isLive) OptionRow(stringResource(R.string.player_last_channel), selected = false, onClick = onPreviousChannel)
                 if (isLive) OptionRow(stringResource(R.string.player_lower_ads), selected = lowerAdVolume) { onLowerAdVolume(!lowerAdVolume) }
                 OptionRow(stringResource(R.string.player_info_title), selected = infoVisible, onClick = onToggleInfo)
+                onVlc?.let { OptionRow(stringResource(R.string.player_use_vlc), selected = false, onClick = it) }
             }
         }
     }
@@ -747,6 +801,7 @@ private fun OptionRow(
 }
 
 /** Bandeau d'information, indicateur de chargement et carte d'erreur, sans dépendance au lecteur. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PlayerOverlay(
     state: PlayerUiState,
@@ -825,7 +880,7 @@ fun PlayerOverlay(
                         Text(stringResource(R.string.player_error_title), style = MaterialTheme.typography.titleLarge)
                     }
                     Text(message, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         PillButton(stringResource(R.string.action_retry), onRetry, icon = Icons.Filled.Refresh, style = PillStyle.Primary)
                         if (state.isLive) PillButton(stringResource(R.string.player_next_channel), { onZap(+1) }, icon = Icons.Filled.KeyboardArrowUp)
                         PillButton(stringResource(R.string.action_back), onBack, style = PillStyle.Ghost)

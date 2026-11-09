@@ -16,3 +16,7 @@
 -dontwarn javazoom.jl.player.**
 -dontwarn javazoom.jl.converter.**
 -dontwarn javax.sound.**
+
+# Moteur VLC (libVLC) : classes appelées depuis le code natif (JNI).
+-keep class org.videolan.libvlc.** { *; }
+-dontwarn org.videolan.libvlc.**

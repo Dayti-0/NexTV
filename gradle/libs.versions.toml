@@ -18,6 +18,7 @@ media3 = "1.8.0"
 # Décodeur FFmpeg du son (AC3, E-AC3, DTS…), compilé par Jellyfin pour la même version de Media3.
 media3Ffmpeg = "1.8.0+1"
 jlayer = "1.0.1"
+libvlc = "3.7.7"
 room = "2.7.2"
 paging = "3.3.6"
 datastore = "1.1.7"
@@ -57,6 +58,7 @@ androidx-media3-datasource-okhttp = { module = "androidx.media3:media3-datasourc
 androidx-media3-ui = { module = "androidx.media3:media3-ui", version.ref = "media3" }
 media3-ffmpeg-decoder = { module = "org.jellyfin.media3:media3-ffmpeg-decoder", version.ref = "media3Ffmpeg" }
 jlayer = { module = "javazoom:jlayer", version.ref = "jlayer" }
+libvlc = { module = "org.videolan.android:libvlc-all", version.ref = "libvlc" }
 androidx-room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 androidx-room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 androidx-room-paging = { module = "androidx.room:room-paging", version.ref = "room" }

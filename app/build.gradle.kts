@@ -24,6 +24,8 @@ android {
         targetSdk = 36
         versionCode = providers.gradleProperty("nextv.versionCode").orNull?.toIntOrNull() ?: 1
         versionName = providers.gradleProperty("nextv.versionName").orNull ?: "0.2.0"
+        // Processeurs ARM seulement (Fire TV, téléviseurs, box) : le moteur VLC pèse ~40 Mo par processeur.
+        ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
 
         // Clé TMDB optionnelle fournie à la compilation (secret CI) ; l'utilisateur peut aussi la saisir.
         val tmdbKey = providers.environmentVariable("NEXTV_TMDB_API_KEY").orNull.orEmpty()
@@ -89,6 +91,10 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+        // Bibliothèques natives compressées dans l'APK (moteur VLC) : téléchargement de la mise à jour deux fois plus léger.
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
 }
 
@@ -132,6 +138,8 @@ dependencies {
     implementation(libs.media3.ffmpeg.decoder)
     // Son MPEG audio couche I et II (MP2 des enregistrements de la TNT), absent de FFmpeg et des appareils (licence LGPL).
     implementation(libs.jlayer)
+    // Moteur de VLC (libVLC, licence LGPL) : lit les sons et vidéos que le lecteur de l'appli ne sait pas lire.
+    implementation(libs.libvlc)
 
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)

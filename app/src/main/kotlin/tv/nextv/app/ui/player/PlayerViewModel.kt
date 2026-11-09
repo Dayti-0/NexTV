@@ -18,13 +18,18 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import tv.nextv.app.player.CodecFailure
+import tv.nextv.app.player.VlcPlayback
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import tv.nextv.app.player.describeCodecFailure
 import androidx.media3.common.C
+import androidx.media3.common.Player
 import tv.nextv.app.AppContainer
 import tv.nextv.app.ui.football.eventMatchOnAir
 import tv.nextv.app.R
@@ -85,6 +90,17 @@ class PlayerViewModel(
     fun focusMenuChannel(row: ChannelListRow) = channelMenu.focus(row)
 
     private var resumeOnStart = true
+
+    /** Moteur VLC (son ou image que le lecteur de l'appli ne sait pas lire), pour le titre en cours. */
+    private var vlc: VlcPlayback? = null
+    private val mutableVlc = MutableStateFlow<VlcPlayback?>(null)
+    val vlcPlayback: StateFlow<VlcPlayback?> = mutableVlc.asStateFlow()
+
+    /** VLC déjà essayé pour ce titre (pas de nouvel essai s'il échoue lui aussi). */
+    private var vlcTried = false
+
+    /** Lecteur qui lit : celui de l'appli, ou le moteur VLC. */
+    private fun currentPlayer(): Player? = vlc?.player ?: engine.current
     private var multicastLock: WifiManager.MulticastLock? = null
     private var loadJob: Job? = null
 
@@ -163,7 +179,7 @@ class PlayerViewModel(
         state = mutableState,
         session = session,
         initialMode = handle.get<String>(ARG_RESUME) ?: RESUME_ASK,
-        player = { engine.current },
+        player = { currentPlayer() },
         host = object : ResumeController.Host {
             override suspend fun playVariant(variant: ChannelEntity) = this@PlayerViewModel.playVariant(variant, notice = null)
             override fun load(id: Long) = this@PlayerViewModel.load(id)
@@ -189,9 +205,15 @@ class PlayerViewModel(
                 val adMuted = engine.adVolume.enabled && engine.adVolume.attenuating
                 if (state.value.adMuted != adMuted) mutableState.update { it.copy(adMuted = adMuted) }
                 val dropped = engine.newDroppedFrames()
-                // Pause ou différé : changer de version ramènerait au direct.
-                if (delayed.recording || state.value.paused || state.value.liveDelayMs > 0) continue
+                // Pause ou différé : changer de version ramènerait au direct. Moteur VLC : le lecteur de l'appli est arrêté.
+                if (vlc != null || delayed.recording || state.value.paused || state.value.liveDelayMs > 0) continue
                 quality.check(dropped)
+            }
+        }
+        // Son illisible par le lecteur de l'appli (ou introuvable dans un film) : le moteur VLC prend la suite.
+        viewModelScope.launch {
+            mutableState.map { it.audioProblem to it.isLive }.distinctUntilChanged().collect { (problem, live) ->
+                if (problem == AudioProblem.UNSUPPORTED || (problem == AudioProblem.NO_TRACK && !live)) switchToVlc()
             }
         }
         // Position des films et épisodes, pour la reprise de lecture.
@@ -203,10 +225,99 @@ class PlayerViewModel(
         }
     }
 
-    fun selectAudio(choice: TrackChoice) = engine.selectAudio(choice)
+    fun selectAudio(choice: TrackChoice) {
+        val playback = vlc ?: return engine.selectAudio(choice)
+        playback.selectAudio(choice.trackIndex)
+        mutableState.update { it.copy(tracks = vlcTracks(playback)) }
+    }
 
     /** [choice] `null` : sous-titres désactivés. */
-    fun selectSubtitles(choice: TrackChoice?) = engine.selectSubtitles(choice)
+    fun selectSubtitles(choice: TrackChoice?) {
+        val playback = vlc ?: return engine.selectSubtitles(choice)
+        playback.selectSubtitles(choice?.trackIndex ?: -1)
+        mutableState.update { it.copy(tracks = vlcTracks(playback)) }
+    }
+
+    // --- Moteur VLC ---------------------------------------------------------------------------------
+
+    /** « Lire avec le moteur VLC » (options du lecteur). */
+    fun useVlc() {
+        vlcTried = false
+        switchToVlc()
+    }
+
+    /**
+     * Le moteur VLC lit le titre en cours, au même endroit, dans le même écran : le lecteur de l'appli s'arrête
+     * (une seule connexion au fournisseur). @return faux s'il lit déjà, ou s'il a déjà échoué sur ce titre.
+     */
+    private fun switchToVlc(): Boolean {
+        if (vlc != null || vlcTried) return false
+        val request = session.request ?: return false
+        vlcTried = true
+        val live = state.value.isLive
+        val position = if (live) 0L else (engine.current?.currentPosition?.takeIf { it > 0 } ?: session.startPositionMs).coerceAtLeast(0)
+        container.logger.info(TAG, "Moteur VLC : son ${state.value.unsupportedAudio ?: "?"}, problème ${state.value.audioProblem}")
+        val playback = try {
+            VlcPlayback(context, vlcListener)
+        } catch (e: Throwable) {
+            // Bibliothèque absente pour ce processeur : le lecteur de l'appli continue, avec le message habituel.
+            container.logger.warn(TAG, "Moteur VLC indisponible", e)
+            return false
+        }
+        engine.stop()
+        delayed.stopTimeshift()
+        vlc = playback
+        mutableVlc.value = playback
+        mutableState.update {
+            it.copy(engineVlc = true, audioProblem = null, unsupportedAudio = null, error = null, buffering = true, paused = false, tracks = PlayerTracks(emptyList(), emptyList()))
+        }
+        playback.play(urlWithCredentials(request), request.userAgent, position)
+        return true
+    }
+
+    private fun releaseVlc() {
+        val playback = vlc ?: return
+        vlc = null
+        mutableVlc.value = null
+        playback.release()
+        mutableState.update { it.copy(engineVlc = false) }
+    }
+
+    private val vlcListener = object : VlcPlayback.Listener {
+        override fun onPlaying() {
+            mutableState.update { it.copy(buffering = false, error = null) }
+        }
+
+        override fun onBuffering(buffering: Boolean) {
+            if (state.value.buffering != buffering) mutableState.update { it.copy(buffering = buffering) }
+        }
+
+        override fun onEnded() = this@PlayerViewModel.onEnded()
+
+        override fun onError() {
+            container.logger.warn(TAG, "Moteur VLC : lecture impossible")
+            mutableState.update { it.copy(buffering = false, error = resources.getString(R.string.player_error_vlc)) }
+        }
+
+        override fun onTracksChanged() {
+            val playback = vlc ?: return
+            mutableState.update { it.copy(tracks = vlcTracks(playback)) }
+        }
+    }
+
+    /** Pistes son et sous-titres lues par VLC, pour le menu des options. */
+    private fun vlcTracks(playback: VlcPlayback): PlayerTracks {
+        val audio = playback.audioTracks().map { (id, name) -> TrackChoice(-1, id, name, null, id == playback.audioTrack) }
+        val subtitles = playback.subtitleTracks().map { (id, name) -> TrackChoice(-1, id, name, null, id == playback.subtitleTrack) }
+        return PlayerTracks(audio, subtitles)
+    }
+
+    /** Adresse du flux, identifiants compris s'il en faut (le moteur VLC n'a pas l'authentification du lecteur). */
+    private fun urlWithCredentials(request: PlaybackRequest): String {
+        val credentials = request.credentials ?: return request.stream.url
+        return request.stream.url.toHttpUrlOrNull()?.newBuilder()?.username(credentials.username)?.password(credentials.password)?.build()?.toString()
+            ?: request.stream.url
+    }
 
     fun setLowerAdVolume(enabled: Boolean) {
         viewModelScope.launch { container.settings.setLowerAdVolume(enabled) }
@@ -277,6 +388,9 @@ class PlayerViewModel(
     }
 
     private fun load(id: Long) {
+        // Autre titre (ou nouvel essai) : de nouveau le lecteur de l'appli, VLC seulement s'il le faut.
+        releaseVlc()
+        vlcTried = false
         delayed.beforeLoad(otherChannel = id != channelId)
         // Nouveau titre : les essais après un échec de décodage repartent de zéro.
         codecTries = CodecTries()
@@ -560,13 +674,15 @@ class PlayerViewModel(
                 }
                 // Autre copie du titre (film en double dans la playlist, autre qualité).
                 val playing = session.playing ?: return false
-                if (playing.kind == ContentKind.LIVE.name || codecTries.copies.size >= MAX_COPY_TRIES) return false
+                if (playing.kind == ContentKind.LIVE.name || codecTries.copies.size >= MAX_COPY_TRIES) return switchToVlc()
                 codecTries.copies += playing.id
                 viewModelScope.launch {
                     val copy = container.channelDao.otherCopies(
                         playing.sourceId, playing.kind, playing.itemKey, playing.season, playing.episode, playing.id, playing.streamUrl, playing.qualityRank,
                     ).firstOrNull { it.id !in codecTries.copies }
                     if (copy == null) {
+                        // Aucune autre version : le moteur VLC essaie avant le message.
+                        if (switchToVlc()) return@launch
                         val message = resources.describeCodecFailure(failure) ?: resources.getString(R.string.player_error_codec)
                         mutableState.update { it.copy(buffering = false, error = message) }
                         return@launch
@@ -603,6 +719,10 @@ class PlayerViewModel(
     }
 
     fun onStart() {
+        vlc?.let { playback ->
+            if (resumeOnStart) playback.player.play()
+            return
+        }
         val player = engine.current ?: return
         if (resumeOnStart) {
             // Flux en direct : on reprend au direct plutôt qu'à la position mise en pause.
@@ -612,7 +732,7 @@ class PlayerViewModel(
     }
 
     fun onStop() {
-        val player = engine.current ?: return
+        val player = currentPlayer() ?: return
         resumeOnStart = player.playWhenReady
         player.pause()
         viewModelScope.launch { resume.save() }
@@ -620,6 +740,13 @@ class PlayerViewModel(
 
     /** Pause / lecture. En direct, la pause crée un différé ; le retard sur le direct est affiché. */
     fun togglePause() {
+        vlc?.let { playback ->
+            val player = playback.player
+            player.playWhenReady = !player.playWhenReady
+            // Direct : « Pause » affichée dans le bandeau.
+            if (state.value.isLive) mutableState.update { it.copy(paused = !player.playWhenReady) }
+            return
+        }
         quality.onUserRestart()
         delayed.togglePause()
     }
@@ -661,7 +788,7 @@ class PlayerViewModel(
 
     /** Film ou épisode : avance ou recul de [deltaMs] dans la vidéo. */
     fun seekBy(deltaMs: Long) {
-        val player = engine.current ?: return
+        val player = currentPlayer() ?: return
         if (state.value.isLive) return
         val duration = player.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
         quality.onUserRestart()
@@ -670,7 +797,7 @@ class PlayerViewModel(
 
     /** Film ou épisode : position choisie sur la barre de progression. */
     fun seekTo(positionMs: Long) {
-        val player = engine.current ?: return
+        val player = currentPlayer() ?: return
         if (state.value.isLive) return
         quality.onUserRestart()
         player.seekTo(positionMs.coerceAtLeast(0))
@@ -697,6 +824,7 @@ class PlayerViewModel(
 
     override fun onCleared() {
         resume.saveBeforeClose()
+        releaseVlc()
         delayed.stopTimeshift()
         engine.release()
         releaseMulticastLock()

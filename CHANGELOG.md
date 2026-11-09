@@ -4,6 +4,11 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.86
+- Son (ou image) que le lecteur ne sait pas lire : le moteur de VLC prend le relais tout seul, au même endroit du film, dans le même écran et avec les mêmes commandes (pause, avance, reprise, épisode suivant). « Son et image lus par le moteur VLC » s’affiche quelques secondes
+- Options du lecteur : « Lire avec le moteur VLC » pour le choisir soi-même
+- L’appli est plus lourde (environ 50 Mo) : elle contient le moteur de VLC
+
 ## 0.2.85
 - Films avec l’image mais sans le son : le son MP2 (celui des enregistrements de la TNT), que l’appareil et le décodeur intégré ne savaient pas lire, est maintenant décodé par l’appli. Après une erreur de son, le lecteur réessaie avec le décodage de l’appli avant de couper le son
 - Son illisible : le message et le menu des pistes disent le format (par exemple « MP2 », « Dolby Digital (AC3) »)
