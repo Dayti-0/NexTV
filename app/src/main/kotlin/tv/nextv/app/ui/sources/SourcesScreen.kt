@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
@@ -75,6 +76,7 @@ import tv.nextv.core.repository.RefreshResult
 fun SourcesScreen(
     onBack: () -> Unit,
     onAdd: () -> Unit,
+    onAddFromPhone: () -> Unit = {},
     onEdit: (Long) -> Unit,
     onReload: () -> Unit,
 ) {
@@ -109,6 +111,7 @@ fun SourcesScreen(
         snackbarHostState = snackbar,
         onBack = onBack,
         onAdd = onAdd,
+        onAddFromPhone = onAddFromPhone,
         onActivate = viewModel::activate,
         onRefresh = viewModel::refresh,
         onRefreshAll = viewModel::refreshAll,
@@ -148,6 +151,7 @@ fun SourcesContent(
     snackbarHostState: SnackbarHostState,
     onBack: () -> Unit,
     onAdd: () -> Unit,
+    onAddFromPhone: () -> Unit = {},
     onActivate: (Long) -> Unit,
     onRefresh: (Long) -> Unit,
     onRefreshAll: () -> Unit,
@@ -175,6 +179,7 @@ fun SourcesContent(
                         }
                     }
                     if (window.isWide) {
+                        PillButton(stringResource(R.string.action_add_from_phone), onAddFromPhone, icon = Icons.Filled.Phone)
                         PillButton(stringResource(R.string.action_add_source), onAdd, icon = Icons.Filled.Add, style = PillStyle.Primary)
                     } else {
                         IconAction(Icons.Filled.Add, stringResource(R.string.action_add_source), onAdd, tint = MaterialTheme.colorScheme.primary)

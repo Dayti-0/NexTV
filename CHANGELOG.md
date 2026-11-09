@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.73
+- Nouveau : ajouter une playlist depuis le téléphone (bouton « Depuis le téléphone », à l’accueil sans playlist et dans la liste des playlists). La télé affiche un QR code ; sur le téléphone (même Wi-Fi), saisissez le compte Xtream ou le lien M3U, puis « Envoyer à la télé » : l’ajout s’ouvre prérempli, il ne reste qu’à confirmer. Rien ne passe par Internet, et la page ne fonctionne que tant que le QR code est affiché
+
 ## 0.2.72
 - Rangées : plus de « Voir plus », la suite se charge d’elle-même en approchant du bout (seules les affiches à l’écran sont gardées en mémoire)
 - Streaming : la rangée choisie est au milieu de l’écran ; en dessous, on voit juste le titre de la rangée suivante

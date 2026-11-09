@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,7 +41,7 @@ import tv.nextv.app.ui.theme.NexTvColors
 
 /** Premier lancement (aucune playlist) : présentation et ajout de la première playlist. */
 @Composable
-fun WelcomeScreen(onAdd: () -> Unit, animate: Boolean = true) {
+fun WelcomeScreen(onAdd: () -> Unit, animate: Boolean = true, onAddFromPhone: (() -> Unit)? = null) {
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focusRequester.requestFocus() } }
     Box(
@@ -70,13 +71,17 @@ fun WelcomeScreen(onAdd: () -> Unit, animate: Boolean = true) {
                 WelcomeStep(3, stringResource(R.string.welcome_step_remote))
             }
             Spacer(Modifier.height(32.dp))
-            PillButton(
-                stringResource(R.string.action_add_first_source),
-                onAdd,
-                icon = Icons.Filled.Add,
-                style = PillStyle.Primary,
-                modifier = Modifier.focusRequester(focusRequester),
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                PillButton(
+                    stringResource(R.string.action_add_first_source),
+                    onAdd,
+                    icon = Icons.Filled.Add,
+                    style = PillStyle.Primary,
+                    modifier = Modifier.focusRequester(focusRequester),
+                )
+                // Saisie au clavier du téléphone (QR code) plutôt qu'à la télécommande.
+                onAddFromPhone?.let { PillButton(stringResource(R.string.action_add_from_phone), it, icon = Icons.Filled.Phone) }
+            }
         }
     }
 }

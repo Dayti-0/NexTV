@@ -107,6 +107,8 @@ dependencies {
     implementation("tv.nextv:core:1.0")
 
     implementation(libs.kotlinx.coroutines.android)
+    // QR code de la configuration depuis le téléphone.
+    implementation(libs.zxing.core)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)

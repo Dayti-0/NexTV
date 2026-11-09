@@ -6,6 +6,13 @@
     <string name="action_add_first_source">Ajouter une playlist</string>
     <string name="action_add_source">Ajouter</string>
     <string name="action_back">Retour</string>
+    <string name="action_add_from_phone">Depuis le téléphone</string>
+    <string name="phone_setup_title">Configurer depuis le téléphone</string>
+    <string name="phone_setup_step_wifi">Connectez le téléphone au même Wi-Fi que la télé.</string>
+    <string name="phone_setup_step_scan">Scannez le QR code avec l’appareil photo du téléphone.</string>
+    <string name="phone_setup_step_send">Saisissez le compte Xtream ou le lien M3U, puis « Envoyer à la télé ».</string>
+    <string name="phone_setup_or_type">Ou tapez cette adresse dans le navigateur du téléphone :</string>
+    <string name="phone_setup_no_network">La télé n’est connectée à aucun réseau local (Wi-Fi ou câble) : impossible de recevoir la playlist du téléphone.</string>
     <string name="action_cancel">Annuler</string>
     <string name="action_close">Fermer</string>
     <string name="action_delete">Supprimer</string>

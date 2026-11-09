@@ -21,6 +21,7 @@ import tv.nextv.app.ui.detail.DetailScreen
 import tv.nextv.app.ui.editor.SourceEditorScreen
 import tv.nextv.app.ui.editor.SourceEditorViewModel
 import tv.nextv.app.ui.home.HomeScreen
+import tv.nextv.app.ui.phonesetup.PhoneSetupScreen
 import tv.nextv.app.ui.player.PlayerScreen
 import tv.nextv.app.ui.player.PlayerViewModel
 import tv.nextv.app.ui.settings.ChannelGroupsScreen
@@ -50,6 +51,7 @@ private object Routes {
     const val SETUP = "setup"
     const val PROXY = "proxy"
     const val GROUPS = "groups/{$ARG_KIND}"
+    const val PHONE_SETUP = "phone-setup"
 
     fun startup(reload: Boolean = false) = "startup?${StartupViewModel.ARG_RELOAD}=$reload"
     fun editor(sourceId: Long? = null) = "editor?${SourceEditorViewModel.ARG_SOURCE_ID}=${sourceId ?: -1}"
@@ -127,7 +129,7 @@ private fun AppNavHost(navController: NavHostController) {
             )
         }
         composable(Routes.WELCOME) {
-            WelcomeScreen(onAdd = { navController.navigate(Routes.editor()) })
+            WelcomeScreen(onAdd = { navController.navigate(Routes.editor()) }, onAddFromPhone = { navController.navigate(Routes.PHONE_SETUP) })
         }
         composable(Routes.HOME) {
             HomeScreen(
@@ -207,6 +209,7 @@ private fun AppNavHost(navController: NavHostController) {
             SourcesScreen(
                 onBack = { navController.popBackStack() },
                 onAdd = { navController.navigate(Routes.editor()) },
+                onAddFromPhone = { navController.navigate(Routes.PHONE_SETUP) },
                 onEdit = { navController.navigate(Routes.editor(it)) },
                 onReload = { navController.restartAt(Routes.startup()) },
             )
@@ -224,6 +227,9 @@ private fun AppNavHost(navController: NavHostController) {
                 onClose = { navController.popBackStack() },
                 onReload = { navController.restartAt(Routes.startup(reload = true)) },
             )
+        }
+        composable(Routes.PHONE_SETUP) {
+            PhoneSetupScreen(onBack = { navController.popBackStack() })
         }
         composable(Routes.PROXY) {
             ProxySettingsScreen(onBack = { navController.popBackStack() })

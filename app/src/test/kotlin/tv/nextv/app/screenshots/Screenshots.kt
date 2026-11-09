@@ -221,6 +221,11 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
+    fun phoneSetup() = capture("17_configuration_telephone") {
+        tv.nextv.app.ui.phonesetup.PhoneSetupContent(address = "http://192.168.1.20:41234/abcd23efgh", noNetwork = false, onBack = {})
+    }
+
+    @Test
     fun homePremiumTv() = capture("05j_accueil_premium_tv", ThemeStyle.MIDNIGHT) {
         Home(HomeSection.TV, Category.All, preview = true, layout = HomeLayout.PREMIUM)
     }
