@@ -4,6 +4,10 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.72
+- Rangées : plus de « Voir plus », la suite se charge d’elle-même en approchant du bout (seules les affiches à l’écran sont gardées en mémoire)
+- Streaming : la rangée choisie est au milieu de l’écran ; en dessous, on voit juste le titre de la rangée suivante
+
 ## 0.2.71
 - Streaming : la bande-annonce derrière la grande affiche est de retour (elle ne se lançait plus), toujours sans l’affichage YouTube du début
 - Aperçu des chaînes : en revenant d’un autre menu, l’image arrive aussitôt avec le son (elle mettait parfois plusieurs secondes)

@@ -45,6 +45,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import kotlinx.coroutines.flow.first
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.CompositionLocalProvider
@@ -201,9 +204,9 @@ internal fun StreamingHome(
         RestoreRow(listState, lastOpened, listOf("search") + shelves.map { it.key })
         // La recherche précède les rangées dans la liste.
         RowJumpEffect(LocalRowJump.current, listState, content, shelves, offset = 1, onOpen = actions.onCategory)
-        AnchoredRows { anchor ->
+        AnchoredRows(peekBelow = STREAMING_NEXT_ROW_PEEK) { anchor ->
             LazyColumn(
-                Modifier.weight(1f).bottomFade({ listState.canScrollForward }, maxPx = { anchor.spaceBelowFocusedRow(listState) }),
+                Modifier.weight(1f),
                 state = listState,
                 contentPadding = PaddingValues(top = 4.dp, bottom = 40.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -412,14 +415,23 @@ internal val LocalRowDefaultSpec = staticCompositionLocalOf<BringIntoViewSpec?> 
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-internal fun AnchoredRows(content: @Composable (RowAnchor) -> Unit) {
+internal fun AnchoredRows(
+    /**
+     * Streaming : la rangée choisie est calée vers le bas, de sorte qu'il ne reste en dessous que cette hauteur
+     * (le titre de la rangée suivante, ses affiches cachées). `null` : rangée calée en haut (Cinéma Premium).
+     */
+    peekBelow: Dp? = null,
+    content: @Composable (RowAnchor) -> Unit,
+) {
     val default = LocalBringIntoViewSpec.current
     val anchor = remember { RowAnchor() }
-    val spec = remember(anchor, default) {
+    val peekPx = with(LocalDensity.current) { peekBelow?.toPx() }
+    val spec = remember(anchor, default, peekPx) {
         object : BringIntoViewSpec {
             override val scrollAnimationSpec get() = default.scrollAnimationSpec
 
             override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+                if (peekPx != null) return offset + size - (containerSize - peekPx)
                 val top = anchor.cardTopPx
                 // Avant la première mesure des rangées : défilement habituel.
                 return if (top <= 0f) default.calculateScrollDistance(offset, size, containerSize) else offset - top
@@ -562,15 +574,11 @@ private fun GroupShelf(
     val name = group.title ?: stringResource(R.string.channels_no_group)
     val count = itemCount(section, group.count)
     val version = rowVersion(section, group, content.now / ROW_REFRESH_MILLIS)
-    // « Voir plus » : la rangée s'allonge sur place, dans la même interface.
+    // Suite de la rangée lue d'elle-même en approchant du bout (plus de « Voir plus »). La rangée ne dessine
+    // que les vignettes à l'écran : celles qui sont passées sont libérées en défilant.
     var limit by rememberSaveable(spec.key) { mutableIntStateOf(HomeRows.ROW_SIZE) }
-    val more = remember(spec.key) { MoreFocus() }
-    // Pendant la lecture de la suite, « Voir plus » reste là (et choisi) jusqu'à l'arrivée des nouveaux éléments.
-    fun onMore(shown: Int): (() -> Unit)? = if (shown < group.count && (shown >= limit || more.index == shown)) {
-        {
-            more.index = shown
-            limit = shown + HomeRows.MORE_SIZE
-        }
+    fun loadMore(shown: Int): (() -> Unit)? = if (shown < group.count && shown >= limit) {
+        { limit = shown + HomeRows.MORE_SIZE }
     } else {
         null
     }
@@ -580,10 +588,9 @@ private fun GroupShelf(
             value = loadSafely { content.rows.fresh<ChannelListRow>(section, title, version, limit) } ?: value.orEmpty()
         }
         val list = channels.orEmpty()
-        LaunchedEffect(list.size) { more.focusNewItem(list.size) }
-        Shelf(name, count, padding, onMore(list.size), sizes.channel, CHANNEL_RATIO, spec.key, list.size, lastOpened, loading = channels == null, style = style) {
+        Shelf(name, count, padding, null, sizes.channel, CHANNEL_RATIO, spec.key, list.size, lastOpened, loading = channels == null, style = style, onNearEnd = loadMore(list.size)) {
             itemsIndexed(list, key = { _, it -> it.id }) { index, channel ->
-                ShelfChannel(channel, index, spec.key, sizes.channel, content, lastOpened, actions, style, more.requesterFor(index))
+                ShelfChannel(channel, index, spec.key, sizes.channel, content, lastOpened, actions, style)
             }
         }
     } else {
@@ -591,39 +598,14 @@ private fun GroupShelf(
             value = loadSafely { content.rows.freshPosters(section, title, version, limit) } ?: value.orEmpty()
         }
         val list = posters.orEmpty()
-        LaunchedEffect(list.size) { more.focusNewItem(list.size) }
-        Shelf(name, count, padding, onMore(list.size), sizes.poster, POSTER_RATIO, spec.key, list.size, lastOpened, loading = posters == null, style = style) {
+        Shelf(name, count, padding, null, sizes.poster, POSTER_RATIO, spec.key, list.size, lastOpened, loading = posters == null, style = style, onNearEnd = loadMore(list.size)) {
             itemsIndexed(list, key = { _, it -> it.itemKey }) { index, item ->
-                ShelfPoster(item, index, spec.key, sizes.poster, content.favoriteKeys, lastOpened, actions, style, more.requesterFor(index))
+                ShelfPoster(item, index, spec.key, sizes.poster, content.favoriteKeys, lastOpened, actions, style)
             }
         }
     }
 }
 
-/** « Voir plus » : une fois la rangée allongée, la sélection passe au premier élément ajouté ([index]). */
-private class MoreFocus {
-    private val requester = FocusRequester()
-    var index by mutableIntStateOf(-1)
-
-    fun requesterFor(item: Int): FocusRequester? = requester.takeIf { item == index }
-
-    suspend fun focusNewItem(size: Int) {
-        if (index !in 0 until size) return
-        // L'élément est créé par la rangée à l'image suivante.
-        repeat(FOCUS_TRIES) {
-            withFrameNanos { }
-            if (runCatching { requester.requestFocus() }.isSuccess) {
-                index = -1
-                return
-            }
-        }
-        index = -1
-    }
-
-    private companion object {
-        const val FOCUS_TRIES = 10
-    }
-}
 
 /** Films ou séries d'une rangée de catégorie, en affiches. */
 private fun HomeRows.cachedPosters(section: HomeSection, group: String): List<PosterItem>? = when (section) {
@@ -693,9 +675,18 @@ internal fun Shelf(
     lastOpened: MutableState<OpenedItem?>,
     loading: Boolean = false,
     style: ShelfStyle = ShelfStyle.STREAMING,
+    /** Suite à lire : appelé quand les dernières vignettes arrivent à l'écran (`null` : rangée complète). */
+    onNearEnd: (() -> Unit)? = null,
     content: LazyListScope.() -> Unit,
 ) {
     val rowState = rememberSaveable(rowKey, saver = LazyListState.Saver) { LazyListState() }
+    val nearEnd by rememberUpdatedState(onNearEnd)
+    LaunchedEffect(rowState, itemCount, onNearEnd != null) {
+        if (onNearEnd == null || itemCount == 0) return@LaunchedEffect
+        snapshotFlow { (rowState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1) >= itemCount - NEAR_END_ITEMS }
+            .first { it }
+        nearEnd?.invoke()
+    }
     RestoreScroll(rowState, lastOpened, itemCount, row = rowKey)
     // Saut à cette rangée depuis le volet des catégories : la sélection se pose sur sa première vignette visible.
     val jump = LocalRowJump.current
@@ -1134,4 +1125,10 @@ private const val ROW_REFRESH_MILLIS = 5 * 60_000L
 private const val TOP10_MIN = 5
 
 /** Place du rang à gauche de chaque affiche du Top 10. */
+/** Streaming : sous la rangée choisie, juste la place du titre de la suivante. */
+private val STREAMING_NEXT_ROW_PEEK = 46.dp
+
+/** Vignettes restantes avant le bout de la rangée quand la suite est demandée. */
+private const val NEAR_END_ITEMS = 6
+
 private val TOP10_NUMBER_WIDTH = 84.dp

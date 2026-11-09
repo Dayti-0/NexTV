@@ -398,7 +398,11 @@ class HomeFocusTest {
         val visible = runCatching { compose.onNodeWithText(previous).isDisplayed() }.getOrDefault(false)
         println("$layout${if (quick) " (rapide)" else ""} : rangée Groupe $group, « $previous » visible : $visible")
         assertTrue("Groupe $group", group >= 2)
-        assertTrue("$layout : « $previous » encore visible au-dessus de la rangée choisie", !visible)
+        if (layout == HomeLayout.STREAMING) {
+            assertNextRowPeeks(group)
+        } else {
+            assertTrue("$layout : « $previous » encore visible au-dessus de la rangée choisie", !visible)
+        }
         // Le titre de la rangée choisie reste entier, en haut.
         assertTrue("$layout : titre « Groupe $group » caché", compose.onNodeWithText("Groupe $group").isDisplayed())
     }
@@ -460,7 +464,11 @@ class HomeFocusTest {
             println("$layout $section, Groupe $group : vignette ${card.top}..${card.bottom} (limite $safeBottom), précédente visible : $previous")
             assertTrue("$layout $section, Groupe $group : vignette coupée en bas (${card.bottom} > $safeBottom)", card.bottom <= safeBottom)
             assertTrue("$layout $section, Groupe $group : titre caché", compose.onNodeWithText("Groupe $group").isDisplayed())
-            assertTrue("$layout $section, Groupe $group : rangée précédente visible au-dessus", !previous)
+            if (layout == HomeLayout.STREAMING) {
+                assertNextRowPeeks(group)
+            } else {
+                assertTrue("$layout $section, Groupe $group : rangée précédente visible au-dessus", !previous)
+            }
             checked++
         }
         assertTrue("$layout $section : rangées vérifiées : $checked", checked >= 4)
@@ -585,11 +593,11 @@ class HomeFocusTest {
     }
 
     /**
-     * « Voir plus » au bout d'une rangée : elle s'allonge sur place, dans la même interface (pas de
-     * passage à l'affichage classique), et la sélection passe au premier élément ajouté.
+     * Bout d'une rangée : la suite se charge d'elle-même (plus de « Voir plus »), dans la même interface,
+     * et la sélection continue sans s'arrêter.
      */
     @Test
-    fun voirPlusExtendsTheRowInPlace() {
+    fun rowLoadsMoreByItself() {
         val focused = mutableListOf<String>()
         val categories = mutableListOf<Category>()
         compose.setContent { Home(HomeLayout.PREMIUM, HomeActions(onPosterFocus = { focused += it.title }, onCategory = { categories += it }), HomeSection.MOVIES) }
@@ -597,19 +605,14 @@ class HomeFocusTest {
         // Onglets, puis la première rangée.
         repeat(3) { if (focused.isEmpty()) press(Key.DirectionDown) }
         val group = focused.last().substringBefore(" · ")
-        repeat(HomeRows.ROW_SIZE) { press(Key.DirectionRight) }
-        compose.onNodeWithText("Voir plus").assertIsFocused()
-        press(Key.DirectionCenter)
-        // Pendant la lecture de la suite : « Voir plus » reste choisi.
-        compose.onNodeWithText("Voir plus").assertIsFocused()
+        repeat(HomeRows.ROW_SIZE + 4) { press(Key.DirectionRight) }
         compose.mainClock.advanceTimeBy(1_000)
         compose.waitForIdle()
-        println("Voir plus : ${focused.last()}, catégories ouvertes : $categories")
-        assertEquals("$group · ${HomeRows.ROW_SIZE}", focused.last())
-        assertTrue("Affichage classique ouvert : $categories", categories.isEmpty())
-        // 60 éléments, tous affichés : plus de « Voir plus ».
-        repeat(3) { press(Key.DirectionRight) }
+        println("Rangée : ${focused.last()}, catégories ouvertes : $categories")
         assertTrue("« Voir plus » encore là", compose.onAllNodesWithText("Voir plus").fetchSemanticsNodes().isEmpty())
+        val index = focused.last().substringAfter(" · ").toInt()
+        assertTrue("Sélection arrêtée à ${focused.last()}", focused.last().startsWith("$group · ") && index > HomeRows.ROW_SIZE)
+        assertTrue("Affichage classique ouvert : $categories", categories.isEmpty())
     }
 
     /**
@@ -697,6 +700,17 @@ class HomeFocusTest {
      * Streaming : au premier appui (télécommande), le focus se pose dans le menu de gauche ; → entre dans
      * le contenu (sur la télé, le contenu a le focus d'office).
      */
+    /**
+     * Streaming : la rangée choisie est au milieu ; en dessous, seul le titre de la suivante se voit (pas ses
+     * affiches). Rien à vérifier pour la dernière rangée.
+     */
+    private fun assertNextRowPeeks(group: Int) {
+        if (compose.onAllNodesWithText("Groupe ${group + 1}").fetchSemanticsNodes().isEmpty()) return
+        assertTrue("Titre « Groupe ${group + 1} » caché sous la rangée choisie", compose.onNodeWithText("Groupe ${group + 1}").isDisplayed())
+        val card = runCatching { compose.onNodeWithText("Groupe ${group + 1} · 0").isDisplayed() }.getOrDefault(false)
+        assertTrue("Affiches de « Groupe ${group + 1} » visibles sous la rangée choisie", !card)
+    }
+
     /** ← jusqu'à l'ouverture du volet des catégories (bord gauche de la rangée ou de la liste). */
     private fun openDrawerWithLeft() {
         repeat(10) {
