@@ -4,6 +4,13 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.62
+- Streaming et Cinéma Premium, films et séries : choisir une catégorie dans le volet saute à sa rangée, toutes les autres restent affichées
+- Volet des catégories : ← le ferme et ouvre le menu de gauche (Streaming)
+- Chaînes en Streaming et Cinéma Premium : espaces réduits entre les catégories, la liste et l’aperçu, plus de place pour les chaînes
+- Chaînes en Streaming et Cinéma Premium : affichage en mosaïque possible (Réglages › Interface et couleurs)
+- Réglages : la description de « Qualité automatique » indique qu’elle descend et remonte selon la connexion
+
 ## 0.2.61
 - Streaming et Cinéma Premium, films et séries : une catégorie ouverte garde le même dessin que l’accueil (grande affiche en haut, une seule rangée qui défile de gauche à droite, « Voir plus » au bout) au lieu d’une grille
 - Cinéma Premium : la rangée choisie est plus haute, la rangée du dessous se voit mieux (titre de la sélection sur une ligne)

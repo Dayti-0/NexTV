@@ -69,6 +69,8 @@ internal fun CategoryDrawer(
     openState: MutableState<Boolean> = rememberSaveable { mutableStateOf(false) },
     /** Focus de départ dans le contenu (premier affichage sur la télé), au lieu du menu. */
     initialFocus: Boolean = false,
+    /** ← dans le volet : il se ferme et la sélection va au menu de gauche (`null` : retour aux rangées). */
+    onExitLeft: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     var open by openState
@@ -153,9 +155,17 @@ internal fun CategoryDrawer(
                             1f to colors.surfaceContainerLow.copy(alpha = 0.55f),
                         ),
                     )
+                    // → : retour aux rangées ; ← : le menu de gauche (ou les rangées, sans menu). Le volet se ferme.
                     .onPreviewKeyEvent { event ->
-                        if (event.key != Key.DirectionRight || event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                        open = false
+                        if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                        when (event.key) {
+                            Key.DirectionRight -> open = false
+                            Key.DirectionLeft -> {
+                                open = false
+                                onExitLeft?.invoke()
+                            }
+                            else -> return@onPreviewKeyEvent false
+                        }
                         true
                     }
                     .onFocusChanged { railFocused = it.hasFocus }

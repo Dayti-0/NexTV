@@ -139,20 +139,21 @@ internal fun LiveCenterSection(
                         .drawBehind {
                             drawRect(Brush.radialGradient(listOf(colors.primary.copy(alpha = 0.14f), Color.Transparent), center = Offset(size.width, size.height), radius = size.height * 0.95f))
                         }
-                        .padding(start = 16.dp, end = 24.dp, top = 8.dp, bottom = 20.dp)
+                        .padding(start = 4.dp, end = 20.dp, top = 8.dp, bottom = 20.dp)
                 } else {
                     Modifier
                 },
             )
             .then(if (paneShortcut) Modifier.onPreviewKeyEvent { menuKey(it, paneFocused, focusManager, paneFocus) } else Modifier),
-        horizontalArrangement = Arrangement.spacedBy(if (glass) 18.dp else 0.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (glass) 10.dp else 0.dp),
     ) {
         if (glass) {
             CategoryRail(
                 section, window, groups, recentCount, allCount, category, query, favoritesCount, resumeCount, actions,
-                Modifier.width(272.dp).clip(panel).background(colors.surfaceContainerLow.copy(alpha = 0.62f)).padding(top = 6.dp),
+                Modifier.width(264.dp).clip(panel).background(colors.surfaceContainerLow.copy(alpha = 0.62f)).padding(top = 6.dp),
                 dense = true,
                 containerColor = Color.Transparent,
+                startPadding = 6.dp,
             )
         } else {
             CategoryRail(section, window, groups, recentCount, allCount, category, query, favoritesCount, resumeCount, actions, Modifier.width(230.dp), dense = true)

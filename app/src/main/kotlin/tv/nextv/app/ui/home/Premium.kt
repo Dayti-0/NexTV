@@ -110,8 +110,9 @@ internal fun PremiumHome(
             val sizes = ShelfSizes.premium(window)
             PreloadRows(content)
             val shelves = shelfList(content)
-            val listState = rememberSaveable(section, content.category, saver = LazyListState.Saver) { LazyListState() }
+            val listState = rememberSaveable(section, saver = LazyListState.Saver) { LazyListState() }
             RestoreRow(listState, lastOpened, shelves.map { it.key })
+            RowJumpEffect(LocalRowJump.current, listState, content, shelves, offset = 0, onOpen = actions.onCategory)
             AnchoredRows { anchor ->
                 LazyColumn(
                     Modifier.weight(1f).bottomFade({ listState.canScrollForward }, maxPx = { anchor.spaceBelowFocusedRow(listState) }),

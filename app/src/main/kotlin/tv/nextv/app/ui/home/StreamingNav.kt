@@ -73,10 +73,11 @@ internal fun StreamingNav(
     onSettings: () -> Unit,
     onFocusChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
+    /** Section affichée, dans le menu : de quoi y poser la sélection de l'extérieur (← depuis le volet des catégories). */
+    current: FocusRequester = remember { FocusRequester() },
 ) {
     var open by remember { mutableStateOf(false) }
     val width by animateDpAsState(if (open) STREAMING_NAV_OPEN_WIDTH else STREAMING_NAV_WIDTH, tween(200), label = "nav")
-    val current = remember { FocusRequester() }
     val background = MaterialTheme.colorScheme.background
     Column(
         modifier

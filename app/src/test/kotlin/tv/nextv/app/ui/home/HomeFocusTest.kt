@@ -113,7 +113,8 @@ class HomeFocusTest {
 
     private fun assertDrawerOpensWithLeft(layout: HomeLayout) {
         val categories = mutableListOf<Category>()
-        compose.setContent { Home(layout, HomeActions(onCategory = { categories += it }), HomeSection.MOVIES) }
+        val focused = mutableListOf<String>()
+        compose.setContent { Home(layout, HomeActions(onCategory = { categories += it }, onPosterFocus = { focused += it.title }), HomeSection.MOVIES) }
         compose.waitForIdle()
         if (layout == HomeLayout.STREAMING) enterStreamingContent()
         // Dans les rangées (première vignette), puis ← : volet ouvert, focus sur ses catégories.
@@ -127,14 +128,19 @@ class HomeFocusTest {
             press(Key.DirectionCenter)
         }
         compose.onNodeWithText("Groupe 1").assertExists()
-        // Descente jusqu'à une catégorie, OK : elle s'ouvre.
+        // Recherche, Favoris, Reprendre, Tous les films, puis Groupe 1, 2, 3 ; OK : saut à la rangée « Groupe 3 »,
+        // toutes les rangées restent (aucune catégorie ouverte).
         repeat(6) { press(Key.DirectionDown) }
         press(Key.DirectionCenter)
-        println("$layout, catégorie choisie : $categories")
-        assertTrue("Catégorie : $categories", categories.lastOrNull() != null)
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
+        println("$layout, saut : ${focused.lastOrNull()}, catégories ouvertes : $categories")
+        assertTrue("Catégorie ouverte au lieu du saut : $categories", categories.isEmpty())
+        assertTrue("Sélection : ${focused.lastOrNull()}", focused.lastOrNull()?.startsWith("Groupe 3 · ") == true)
+        compose.onNodeWithText("Groupe 4").assertExists()
     }
 
-    /** Volet ouvert : ↑ tout en haut, ← ou ↓ très bas ne font pas sortir le focus vers les affiches derrière. */
+    /** Volet ouvert : ↑ tout en haut ne fait pas sortir le focus vers les affiches derrière. */
     @Test
     fun streamingDrawerKeepsTheFocus() = assertDrawerKeepsFocus(HomeLayout.STREAMING)
 
@@ -143,7 +149,8 @@ class HomeFocusTest {
 
     private fun assertDrawerKeepsFocus(layout: HomeLayout) {
         val categories = mutableListOf<Category>()
-        compose.setContent { Home(layout, HomeActions(onCategory = { categories += it }), HomeSection.MOVIES) }
+        val focused = mutableListOf<String>()
+        compose.setContent { Home(layout, HomeActions(onCategory = { categories += it }, onPosterFocus = { focused += it.title }), HomeSection.MOVIES) }
         compose.waitForIdle()
         if (layout == HomeLayout.STREAMING) enterStreamingContent()
         repeat(3) { press(Key.DirectionDown) }
@@ -155,14 +162,15 @@ class HomeFocusTest {
             press(Key.DirectionCenter)
         }
         compose.onNodeWithText("Groupe 1").assertExists()
-        // Tout en haut, puis au-delà ; puis ← : le focus doit rester dans le volet.
+        // Tout en haut, puis au-delà : le focus doit rester dans le volet (← le ferme : test à part).
         repeat(12) { press(Key.DirectionUp) }
-        repeat(3) { press(Key.DirectionLeft) }
         compose.onNodeWithText("Groupe 1").assertExists()
         repeat(4) { press(Key.DirectionDown) }
         press(Key.DirectionCenter)
-        println("$layout, volet après ↑ et ← : $categories")
-        assertTrue("Catégorie : $categories", categories.lastOrNull() != null)
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
+        println("$layout, volet après ↑ et ← : ${focused.lastOrNull()}")
+        assertTrue("Sélection : ${focused.lastOrNull()}", focused.lastOrNull()?.startsWith("Groupe 1 · ") == true)
     }
 
     /**
@@ -202,6 +210,25 @@ class HomeFocusTest {
         val seen = focused.map { it.id }.distinct()
         println("Premium, chaînes parcourues : ${focused.map { it.title }.distinct()}")
         assertTrue("Chaînes parcourues : $seen", seen.size >= 8)
+    }
+
+    /** Streaming, volet ouvert : ← le ferme et la sélection passe au menu de gauche. */
+    @Test
+    fun leftInTheDrawerGoesToTheMenu() {
+        compose.setContent { Home(HomeLayout.STREAMING, HomeActions(), HomeSection.MOVIES) }
+        compose.waitForIdle()
+        enterStreamingContent()
+        repeat(3) { press(Key.DirectionDown) }
+        repeat(6) { press(Key.DirectionLeft) }
+        repeat(4) { press(Key.DirectionDown) }
+        press(Key.DirectionCenter)
+        compose.onNodeWithText("CATÉGORIES").assertExists()
+        repeat(2) { press(Key.DirectionDown) }
+        press(Key.DirectionLeft)
+        val focusedLeft = compose.onNode(isFocused()).getBoundsInRoot().left
+        println("← dans le volet : sélection à $focusedLeft")
+        assertTrue("Volet encore ouvert", compose.onAllNodesWithText("CATÉGORIES").fetchSemanticsNodes().isEmpty())
+        assertTrue("Sélection hors du menu : $focusedLeft", focusedLeft < 100.dp)
     }
 
     @Test

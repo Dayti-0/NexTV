@@ -476,11 +476,15 @@ fun HomeContent(
         discover = discover,
         favoriteKeys = favoriteKeys,
         now = now,
-        category = category,
     )
     // Volet des catégories des interfaces à rangées : toutes les catégories de la section, à un appui sur ←
     // (Streaming : bouton « Catégories » du menu de gauche).
     val drawerOpen = rememberSaveable(section) { mutableStateOf(false) }
+    val rowJump = remember(section) { RowJump() }
+    // Section affichée dans le menu de gauche de Streaming (← depuis le volet des catégories).
+    val navFocus = remember { FocusRequester() }
+    // Accueil à rangées : Streaming et Cinéma Premium, sauf les chaînes sur grand écran (liste avec aperçu).
+    val rowsHome = layout != HomeLayout.LIVE_CENTER && !(section == HomeSection.TV && window.isWide)
     val drawerRail: @Composable (Modifier) -> Unit = { railModifier ->
         CategoryRail(
             section = section,
@@ -500,9 +504,13 @@ fun HomeContent(
             modifier = railModifier,
             dense = true,
             containerColor = Color.Transparent,
-            // Une catégorie choisie referme le volet : sinon il se rouvrait au retour sur « Toutes les séries »,
-            // le focus resté derrière, sur les affiches.
-            onCategory = { drawerOpen.value = false; actions.onCategory(it) },
+            // Une catégorie choisie referme le volet (sinon il se rouvrait au retour, le focus resté derrière).
+            // Accueil à rangées (Streaming, Cinéma Premium) : saut à la rangée de la catégorie, toutes les
+            // autres restent ; ailleurs, la catégorie s'ouvre.
+            onCategory = { chosen ->
+                drawerOpen.value = false
+                if (rowsHome && category == Category.All) rowJump.target = chosen else actions.onCategory(chosen)
+            },
         )
     }
     // Barre des onglets de l'interface choisie, la même dans toutes les sections (Guide TV et Foot compris).
@@ -517,13 +525,12 @@ fun HomeContent(
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
-        CompositionLocalProvider(LocalTabsFocused provides { tabsFocused.value }) {
+        CompositionLocalProvider(LocalTabsFocused provides { tabsFocused.value }, LocalRowJump provides rowJump) {
             // Cinéma Premium : la sélection occupe tout l'écran, onglets compris.
             // Streaming et Cinéma Premium sur grand écran : les chaînes en liste avec l'aperçu (comme Live Center),
             // pas en rangées : « Toutes les chaînes » en tête des catégories, ↑ ↓ pour changer de chaîne.
             val liveList = section == HomeSection.TV && window.isWide && layout != HomeLayout.LIVE_CENTER
-            // Catégorie ouverte (grand écran) : même dessin, sa seule rangée défile de gauche à droite.
-            if (catalog && layout == HomeLayout.PREMIUM && !liveList && (category == Category.All || window.isWide)) {
+            if (catalog && layout == HomeLayout.PREMIUM && category == Category.All && !liveList) {
                 CategoryDrawer(drawerRail, Modifier.padding(padding), drawerOpen) {
                 PremiumHome(
                     content = shelfContent,
@@ -550,7 +557,13 @@ fun HomeContent(
                 when {
                     section == HomeSection.GUIDE -> guide(Modifier.weight(1f))
                     section == HomeSection.FOOTBALL -> football(Modifier.weight(1f))
-                    layout == HomeLayout.STREAMING && !liveList && (category == Category.All || window.isWide) -> CategoryDrawer(drawerRail, Modifier.weight(1f), drawerOpen, initialFocus = streamingNav && window.isTv) {
+                    layout == HomeLayout.STREAMING && category == Category.All && !liveList -> CategoryDrawer(
+                        drawerRail,
+                        Modifier.weight(1f),
+                        drawerOpen,
+                        initialFocus = streamingNav && window.isTv,
+                        onExitLeft = if (streamingNav) ({ runCatching { navFocus.requestFocus() } }) else null,
+                    ) {
                         StreamingHome(
                         content = shelfContent,
                         window = window,
@@ -613,6 +626,7 @@ fun HomeContent(
                     onSettings = actions.onSettings,
                     onFocusChange = { tabsFocused.value = it },
                     modifier = Modifier.align(Alignment.CenterStart),
+                    current = navFocus,
                 )
             }
             }
@@ -718,7 +732,13 @@ private fun CatalogBody(
             // Chaînes : une par ligne avec leur programme, ou en mosaïque (réglages) ; films et séries : affiches.
             val channelList = section == HomeSection.TV && !gridColumns.liveCenterMosaic
             // Volet à droite : pas de marge de bord d'écran de ce côté, la place va aux vignettes.
-            CatalogGrid(section, window, gridColumns.perRow, list = channelList, endPadding = LIVE_CENTER_GRID_END, body = body)
+            // Chaînes de Streaming / Cinéma Premium : marges réduites entre les panneaux, la place va aux chaînes.
+            CatalogGrid(
+                section, window, gridColumns.perRow, list = channelList,
+                endPadding = if (liveList) LIVE_LIST_GAP else LIVE_CENTER_GRID_END,
+                startPadding = if (liveList) LIVE_LIST_GAP else null,
+                body = body,
+            )
         }
         return
     }
@@ -1038,6 +1058,8 @@ internal fun CategoryRail(
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainerLow,
     /** Choix d'une catégorie (le volet se referme en plus). */
     onCategory: (Category) -> Unit = actions.onCategory,
+    /** Marge de gauche des catégories (`null` : d'après celle de l'écran). */
+    startPadding: Dp? = null,
 ) {
     // Appui long sur une catégorie pour la masquer.
     val hide: (String) -> (() -> Unit)? = { title -> if (section.kind() != null) ({ actions.onHideCategory(title) }) else null }
@@ -1047,7 +1069,7 @@ internal fun CategoryRail(
         modifier
             .fillMaxHeight()
             .background(containerColor)
-            .padding(start = (window.horizontalPadding - 16.dp - RAIL_FOCUS_ROOM).coerceAtLeast(0.dp), end = 12.dp - RAIL_FOCUS_ROOM, top = 12.dp),
+            .padding(start = startPadding ?: (window.horizontalPadding - 16.dp - RAIL_FOCUS_ROOM).coerceAtLeast(0.dp), end = 12.dp - RAIL_FOCUS_ROOM, top = 12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp - RAIL_FOCUS_ROOM),
     ) {
         SearchField(query, searchHint(section), actions.onQuery, Modifier.padding(horizontal = RAIL_FOCUS_ROOM))
@@ -1175,10 +1197,12 @@ internal fun CatalogGrid(
     perRow: Int,
     list: Boolean,
     endPadding: Dp = window.horizontalPadding,
+    /** Marge de gauche (`null` : celle de l'écran). */
+    startPadding: Dp? = null,
     body: @Composable (grid: GridLayout) -> Unit,
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val start = if (window.isWide) 28.dp else window.horizontalPadding
+        val start = startPadding ?: if (window.isWide) 28.dp else window.horizontalPadding
         val usable = maxWidth - start - endPadding
         val columns = if (list) {
             // Disposition « liste » (réglages) : une chaîne par ligne avec son programme.
@@ -1193,7 +1217,7 @@ internal fun CatalogGrid(
             maxOf(1, ((usable + GRID_SPACING) / (minCell + GRID_SPACING)).toInt())
         }
         val spacing = gridSpacing(columns)
-        body(GridLayout(columns, (usable - spacing * (columns - 1)) / columns, spacing, gridPadding(window, endPadding)))
+        body(GridLayout(columns, (usable - spacing * (columns - 1)) / columns, spacing, gridPadding(window, endPadding, startPadding)))
     }
 }
 
@@ -1561,8 +1585,8 @@ internal fun FocusedItemLabel(item: FocusedItem, modifier: Modifier = Modifier) 
  * Marges des grilles : en haut, de quoi voir en entier une carte de la première ligne agrandie au focus
  * (affiche ×1,07, petite vignette ×1,1) ; la grille la couperait à son bord.
  */
-internal fun gridPadding(window: WindowInfo, end: Dp = window.horizontalPadding) = PaddingValues(
-    start = if (window.isWide) 28.dp else window.horizontalPadding,
+internal fun gridPadding(window: WindowInfo, end: Dp = window.horizontalPadding, start: Dp? = null) = PaddingValues(
+    start = start ?: if (window.isWide) 28.dp else window.horizontalPadding,
     end = end,
     top = 12.dp,
     bottom = 32.dp,
@@ -1652,6 +1676,9 @@ private val GRID_SPACING = 16.dp
 
 /** Live Center : marge entre la grille et le volet de droite. */
 private val LIVE_CENTER_GRID_END = 16.dp
+
+/** Marge de la liste des chaînes entre ses panneaux (Streaming, Cinéma Premium). */
+private val LIVE_LIST_GAP = 6.dp
 
 /** Vignette la plus étroite acceptée, quel que soit le réglage. */
 private val MIN_CELL = 56.dp

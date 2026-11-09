@@ -502,7 +502,7 @@
     <string name="quality_target_hd_help">Les chaînes s’ouvrent au plus en HD, même si une version FHD ou 4K existe : image nette, connexion moins sollicitée.</string>
     <string name="quality_target_eco_help">Les chaînes s’ouvrent en SD (ou LOW) quand cette version existe, sinon en HD : pour une connexion lente ou limitée.</string>
     <string name="settings_auto_quality">Qualité automatique</string>
-    <string name="settings_auto_quality_help">Passe en qualité inférieure (FHD → HD → SD → LOW) si la connexion faiblit, puis remonte jusqu’à la qualité visée dès que possible. Seules les versions de la même chaîne présentes dans la playlist sont utilisées.</string>
+    <string name="settings_auto_quality_help">S’adapte à la connexion dans les deux sens : descend (FHD → HD → SD → LOW) quand elle faiblit, et remonte (LOW → SD → HD → FHD) dès qu’elle le permet, jusqu’à la qualité visée. Seules les versions de la même chaîne présentes dans la playlist sont utilisées.</string>
     <string name="settings_decoder_hevc">Décodeur H.265 / HEVC (4K)</string>
     <string name="settings_decoder_avc">Décodeur H.264 / AVC</string>
     <string name="settings_decoder_auto">Automatique (matériel en priorité, repli si échec)</string>

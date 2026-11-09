@@ -45,6 +45,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
@@ -141,8 +142,6 @@ internal data class ShelfContent(
     val discover: Discover,
     val favoriteKeys: Set<String>,
     val now: Long,
-    /** Catégorie ouverte : sa seule rangée, qui défile de gauche à droite (« Toutes » : toutes les rangées). */
-    val category: Category = Category.All,
 )
 
 /**
@@ -170,7 +169,7 @@ internal fun StreamingHome(
 ) {
     val section = content.section
     val padding = if (window.isWide) 28.dp else window.horizontalPadding
-    val listState = rememberSaveable(section, content.category, saver = LazyListState.Saver) { LazyListState() }
+    val listState = rememberSaveable(section, saver = LazyListState.Saver) { LazyListState() }
     // Rangées parcourues : la bannière se réduit pour en montrer davantage, et reprend sa taille en haut.
     val scrolled by remember { derivedStateOf { listState.firstVisibleItemIndex > 1 } }
     val billboardHeight by animateDpAsState(
@@ -198,6 +197,8 @@ internal fun StreamingHome(
         PreloadRows(content)
         val shelves = shelfList(content)
         RestoreRow(listState, lastOpened, listOf("search") + shelves.map { it.key })
+        // La recherche précède les rangées dans la liste.
+        RowJumpEffect(LocalRowJump.current, listState, content, shelves, offset = 1, onOpen = actions.onCategory)
         AnchoredRows { anchor ->
             LazyColumn(
                 Modifier.weight(1f).bottomFade({ listState.canScrollForward }, maxPx = { anchor.spaceBelowFocusedRow(listState) }),
@@ -284,31 +285,7 @@ internal sealed interface ShelfSpec {
 }
 
 /** Rangées dans l'ordre de l'écran ; celles qui sont vides n'apparaissent pas. */
-internal fun shelfList(content: ShelfContent): List<ShelfSpec> {
-    if (content.category != Category.All) return categoryShelf(content)
-    return homeShelves(content)
-}
-
-/** Catégorie ouverte : une seule rangée, la sienne, au même dessin que l'accueil (« Voir plus » au bout). */
-private fun categoryShelf(content: ShelfContent): List<ShelfSpec> = buildList {
-    val tv = content.section == HomeSection.TV
-    when (val category = content.category) {
-        Category.All -> Unit
-        Category.Favorites -> if (tv) {
-            add(ShelfSpec.Channels("favorites", R.string.home_favorites, content.favoriteChannels))
-        } else {
-            val favorites = if (content.section == HomeSection.MOVIES) content.favoriteMovies.map { it.toPoster() } else content.favoriteSeries.map { it.toPoster() }
-            add(ShelfSpec.Posters("favorites", R.string.home_favorites, favorites))
-        }
-        Category.Recent -> add(ShelfSpec.Channels("recent", R.string.home_recent, content.recentChannels))
-        Category.ContinueWatching -> add(ShelfSpec.Continue("continue", content.continueItems))
-        is Category.Group -> content.groups.firstOrNull { it.title.orEmpty() == category.title }?.let {
-            add(ShelfSpec.Group("group:" + (it.title ?: NO_GROUP_KEY), it))
-        }
-    }
-}
-
-private fun homeShelves(content: ShelfContent): List<ShelfSpec> = buildList {
+internal fun shelfList(content: ShelfContent): List<ShelfSpec> = buildList {
     when (content.section) {
         HomeSection.TV -> {
             if (content.favoriteChannels.isNotEmpty()) add(ShelfSpec.Channels("favorites", R.string.home_favorites, content.favoriteChannels))
@@ -358,6 +335,56 @@ internal class RowAnchor {
 }
 
 internal val LocalRowAnchor = staticCompositionLocalOf<RowAnchor?> { null }
+
+/**
+ * Saut à la rangée d'une catégorie (volet des catégories de Streaming et Cinéma Premium) : toutes les rangées
+ * restent, la liste défile jusqu'à celle de la catégorie et la sélection s'y pose.
+ */
+internal class RowJump {
+    /** Catégorie demandée, en attente du saut. */
+    var target by mutableStateOf<Category?>(null)
+
+    /** Rangées affichées, par clé : de quoi y poser la sélection. */
+    val rows = HashMap<String, FocusRequester>()
+}
+
+internal val LocalRowJump = staticCompositionLocalOf<RowJump?> { null }
+
+/** Clé de la rangée d'une catégorie dans [shelves] (`null` : pas de rangée pour elle). */
+internal fun rowKeyOf(category: Category, content: ShelfContent, shelves: List<ShelfSpec>): String? {
+    val key = when (category) {
+        Category.All -> shelves.firstOrNull()?.key
+        Category.Favorites -> "favorites"
+        Category.Recent -> "recent"
+        Category.ContinueWatching -> "continue"
+        is Category.Group -> content.groups.firstOrNull { it.title.orEmpty() == category.title }?.let { "group:" + (it.title ?: NO_GROUP_KEY) }
+    }
+    return key?.takeIf { k -> shelves.any { it.key == k } }
+}
+
+/**
+ * Exécute le saut demandé : défilement jusqu'à la rangée ([offset] : éléments avant les rangées dans la liste),
+ * puis sélection sur elle. Catégorie sans rangée (favoris vides…) : elle s'ouvre comme avant.
+ */
+@Composable
+internal fun RowJumpEffect(jump: RowJump?, listState: LazyListState, content: ShelfContent, shelves: List<ShelfSpec>, offset: Int, onOpen: (Category) -> Unit) {
+    val target = jump?.target ?: return
+    LaunchedEffect(target) {
+        val key = rowKeyOf(target, content, shelves)
+        if (key == null) {
+            jump.target = null
+            onOpen(target)
+            return@LaunchedEffect
+        }
+        runCatching { listState.scrollToItem(shelves.indexOfFirst { it.key == key } + offset) }
+        // La rangée et ses vignettes arrivent à l'image suivante (rangée encore en lecture : un peu plus tard).
+        for (attempt in 1..30) {
+            withFrameNanos { }
+            if (runCatching { jump.rows[key]?.requestFocus() }.getOrNull() == true) break
+        }
+        jump.target = null
+    }
+}
 
 /** Défilement habituel, rendu aux rangées horizontales : l'ancrage ne vaut que pour la liste des rangées. */
 internal val LocalRowDefaultSpec = staticCompositionLocalOf<BringIntoViewSpec?> { null }
@@ -630,6 +657,15 @@ internal fun Shelf(
 ) {
     val rowState = rememberSaveable(rowKey, saver = LazyListState.Saver) { LazyListState() }
     RestoreScroll(rowState, lastOpened, itemCount, row = rowKey)
+    // Saut à cette rangée depuis le volet des catégories : la sélection se pose sur sa première vignette visible.
+    val jump = LocalRowJump.current
+    val jumpFocus = remember { FocusRequester() }
+    if (jump != null) {
+        DisposableEffect(jump, rowKey) {
+            jump.rows[rowKey] = jumpFocus
+            onDispose { if (jump.rows[rowKey] === jumpFocus) jump.rows.remove(rowKey) }
+        }
+    }
     val premium = style == ShelfStyle.PREMIUM
     val spacing = if (premium) 0.dp else 2.dp
     val rowPadding = if (premium) 12.dp else 8.dp
@@ -667,6 +703,7 @@ internal fun Shelf(
         }
         CompositionLocalProvider(LocalBringIntoViewSpec provides (LocalRowDefaultSpec.current ?: LocalBringIntoViewSpec.current)) {
             LazyRow(
+                modifier = Modifier.focusRequester(jumpFocus),
                 state = rowState,
                 // Marge verticale : les vignettes grossissent sous le focus.
                 contentPadding = PaddingValues(horizontal = padding, vertical = rowPadding),
