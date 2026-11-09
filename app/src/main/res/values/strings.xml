@@ -291,6 +291,7 @@
     <string name="player_paused">En pause</string>
     <string name="player_delay">Différé −%1$s</string>
     <string name="player_back_to_live">Revenir au direct</string>
+    <string name="player_hold_ok_for_live">OK long pour revenir au direct</string>
     <string name="player_fast_speed">x2</string>
     <string name="player_jump_forward">+%1$s</string>
     <string name="player_jump_back">−%1$s</string>

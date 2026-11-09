@@ -4,6 +4,12 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.74
+- Lecteur, direct : ← recule de 10 s (plusieurs appuis s’additionnent, maintenu : en continu) ; → ou OK long revient au direct. Les dernières secondes du direct sont gardées en mémoire, sans couper ni recharger la chaîne
+- Pause du direct : la reprise ne recharge plus la chaîne (la même connexion enregistre la suite)
+- En pause ou en différé, « OK long pour revenir au direct » est affiché
+- Streaming : en ouvrant le volet des catégories avec ←, le menu de gauche ne s’ouvre plus une fraction de seconde
+
 ## 0.2.73
 - Nouveau : ajouter une playlist depuis le téléphone (bouton « Depuis le téléphone », à l’accueil sans playlist et dans la liste des playlists). La télé affiche un QR code ; sur le téléphone (même Wi-Fi), saisissez le compte Xtream ou le lien M3U, puis « Envoyer à la télé » : l’ajout s’ouvre prérempli, il ne reste qu’à confirmer. Rien ne passe par Internet, et la page ne fonctionne que tant que le QR code est affiché
 

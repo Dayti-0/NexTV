@@ -336,7 +336,15 @@ fun PlayerScreen(onBack: () -> Unit) {
                                     viewModel.fastSeek(direction)
                                 }
                             }
-                            // Différé (pause du direct) : → retour au direct.
+                            // Direct : ← recule de 10 s (maintenu : 10 s de plus régulièrement) ; → en différé : retour au direct.
+                            direction < 0 && state.isLive -> true.also {
+                                if (repeat == 0 || repeat % LIVE_REWIND_REPEATS == 0) {
+                                    if (viewModel.rewindLive(LIVE_REWIND_SECONDS)) {
+                                        filmJump -= LIVE_REWIND_SECONDS
+                                        bannerTrigger++
+                                    }
+                                }
+                            }
                             else -> (direction > 0 && state.isLive && delayed).also { if (it) viewModel.backToLive() }
                         }
                     }
@@ -840,6 +848,15 @@ private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Mo
                 if (state.paused) StatusPill(stringResource(R.string.player_paused), NexTvColors.Warning, Modifier.align(Alignment.CenterVertically))
                 if (delay >= 1_000) {
                     StatusPill(stringResource(R.string.player_delay, formatClock(delay)), NexTvColors.Warning, Modifier.align(Alignment.CenterVertically))
+                }
+                // En pause ou en différé : comment rattraper le direct.
+                if (state.paused || delay >= 1_000) {
+                    Text(
+                        stringResource(R.string.player_hold_ok_for_live),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = Color.White.copy(alpha = 0.8f),
+                        modifier = Modifier.align(Alignment.CenterVertically),
+                    )
                 }
             }
             if (state.replay != null) StatusPill(stringResource(R.string.player_replay), NexTvColors.Primary, Modifier.align(Alignment.CenterVertically))
@@ -1509,3 +1526,9 @@ private suspend fun LazyListState.pinToStart(index: Int) {
     if (index < 0) return
     runCatching { scrollToItem(index) }
 }
+
+/** ← en direct : recul de 10 s par appui. */
+private const val LIVE_REWIND_SECONDS = 10
+
+/** ← maintenu en direct : 10 s de plus toutes les … répétitions de la touche (environ une demi-seconde). */
+private const val LIVE_REWIND_REPEATS = 10

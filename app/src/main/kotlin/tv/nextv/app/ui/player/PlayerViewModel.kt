@@ -450,7 +450,9 @@ class PlayerViewModel(
         val playbackRequest = session.request ?: return
         session.playingAsHls = forceHls || playbackRequest.stream.format == StreamFormat.HLS
         // Position de départ seulement pour une reprise : un direct démarre au plus près du direct.
-        engine.play(playbackRequest, forceHls, session.startPositionMs)
+        // Direct : les dernières secondes sont gardées pour revenir en arrière (←).
+        val live = state.value.isLive && delayed.replay == null && !delayed.restarting
+        engine.play(playbackRequest, forceHls, session.startPositionMs, record = live)
         mutableState.update { it.copy(buffering = true) }
     }
 
@@ -525,6 +527,9 @@ class PlayerViewModel(
 
     /** Retour au direct : fin du différé, de « Depuis le début » ou du replay. */
     fun backToLive() = delayed.backToLive()
+
+    /** ← en direct : recule de [seconds]. @return faux si ce n'est pas possible sur cette chaîne. */
+    fun rewindLive(seconds: Int): Boolean = delayed.rewindLive(seconds)
 
     /** Replay ou « Depuis le début » : recule ou avance de [steps] pas (voir [DelayedPlaybackController.jump]). */
     fun jump(steps: Int) = delayed.jump(steps)

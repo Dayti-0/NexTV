@@ -142,15 +142,6 @@ internal fun CategoryDrawer(
             Modifier
                 .fillMaxSize()
                 .focusRequester(contentFocus)
-                // ← qui sortirait du contenu (vers le menu de gauche) : le volet s'ouvre à la place.
-                .focusProperties {
-                    onExit = {
-                        if (leftOpensDrawer && !open && requestedFocusDirection == FocusDirection.Left) {
-                            cancelFocusChange()
-                            open = true
-                        }
-                    }
-                }
                 .focusRestorer()
                 // Le focus est sur les rangées alors que le volet est ouvert : on le referme.
                 .onFocusChanged {
@@ -161,8 +152,16 @@ internal fun CategoryDrawer(
                 // garde ses flèches (il consomme la touche avant).
                 .onKeyEvent { event ->
                     if (event.key != Key.DirectionLeft || event.type != KeyEventType.KeyDown) return@onKeyEvent false
-                    // Rien à gauche : le volet s'ouvre (vers le menu, c'est la sortie du contenu qui l'ouvre).
-                    if (!focusManager.moveFocus(FocusDirection.Left)) open = true
+                    val moved = focusManager.moveFocus(FocusDirection.Left)
+                    if (!moved) {
+                        // Rien à gauche : le volet s'ouvre.
+                        open = true
+                    } else if (leftOpensDrawer && !contentFocused) {
+                        // La sélection est passée au menu de gauche : elle revient aussitôt (avant que l'écran ne
+                        // soit redessiné, le menu ne s'ouvre pas), et c'est le volet qui s'ouvre.
+                        runCatching { contentFocus.requestFocus() }
+                        open = true
+                    }
                     true
                 },
         ) { content() }

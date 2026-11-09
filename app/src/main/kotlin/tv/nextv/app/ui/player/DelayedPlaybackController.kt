@@ -113,7 +113,16 @@ internal class DelayedPlaybackController(
         private set
 
     /** Le direct est enregistré pour le différé (pause, puis lecture décalée). */
-    val recording: Boolean get() = timeshift != null
+    val recording: Boolean get() = timeshift != null || liveShift != null
+
+    /**
+     * Retour en arrière dans le direct en cours ([PlayerEngine.liveRecording]) : l'heure d'arrivée de ce qui
+     * a été relu en premier. `null` : pas de lecture décalée de ce genre.
+     */
+    private var liveShift: Long? = null
+    private var liveShiftRecording: tv.nextv.app.player.LiveRecording? = null
+    private var pendingRewindSeconds = 0
+    private var rewindJob: Job? = null
 
     /** Programme passé revu (pas « Depuis le début ») : le programme du direct n'est pas affiché. */
     val replayingPast: Boolean get() = replay != null && !restarting
@@ -300,6 +309,13 @@ internal class DelayedPlaybackController(
     }
 
     private fun pauseLive(player: ExoPlayer) {
+        // Direct gardé en mémoire : la même connexion enregistre la suite, rien n'est reperdu à la reprise.
+        if (liveShift == null && !restarting && replay == null && engine.liveRecording != null) {
+            if (shiftLive(extraSeconds = 0, play = false)) {
+                state.update { it.copy(paused = true, pausedAtMillis = System.currentTimeMillis()) }
+                return
+            }
+        }
         player.pause()
         val now = System.currentTimeMillis()
         val playback = session.request
@@ -336,6 +352,68 @@ internal class DelayedPlaybackController(
         engine.playTimeshift(buffer)
     }
 
+    // --- Retour en arrière dans le direct (←) ---------------------------------------------------------
+
+    /**
+     * ← en direct : recule de [seconds] (les appuis rapprochés s'additionnent). Direct continu : relu
+     * depuis ce qui a été gardé ; HLS : dans la fenêtre du serveur. @return faux si impossible.
+     */
+    fun rewindLive(seconds: Int): Boolean {
+        if (!state.value.isLive || replay != null || restarting) return false
+        val player = engine.current ?: return false
+        if (liveShift == null && engine.liveRecording == null) {
+            // HLS : le serveur garde les dernières minutes, on s'y déplace directement.
+            if (!player.isCurrentMediaItemLive || !player.isCurrentMediaItemSeekable) return false
+            val target = (player.currentPosition - seconds * 1_000L).coerceAtLeast(0)
+            val moved = player.currentPosition - target
+            if (moved <= 0) return false
+            player.seekTo(target)
+            state.update { it.copy(liveDelayMs = it.liveDelayMs + moved) }
+            return true
+        }
+        pendingRewindSeconds += seconds
+        rewindJob?.cancel()
+        rewindJob = scope.launch {
+            delay(REWIND_DEBOUNCE_MILLIS)
+            val total = pendingRewindSeconds
+            pendingRewindSeconds = 0
+            shiftLive(total, play = !state.value.paused)
+        }
+        return true
+    }
+
+    /**
+     * Relit le direct gardé [extraSeconds] avant ce qui est à l'écran : à la première fois, la connexion
+     * continue d'enregistrer la suite sur le disque. [play] faux : prêt, en pause.
+     */
+    private fun shiftLive(extraSeconds: Int, play: Boolean): Boolean {
+        val recording = liveShiftRecording ?: engine.liveRecording ?: return false
+        val player = engine.current ?: return false
+        val now = SystemClock.elapsedRealtime()
+        // Heure d'arrivée de ce qui est à l'écran : en direct, ce qui est arrivé il y a « tampon d'avance » ;
+        // en différé, le début de la relecture plus la position atteinte.
+        val shown = liveShift?.let { it + player.currentPosition }
+            ?: (now - (player.bufferedPosition - player.currentPosition).coerceAtLeast(0))
+        // Un peu plus loin : l'image ne reprend qu'à la prochaine image complète du flux.
+        val wanted = shown - extraSeconds * 1_000L - if (extraSeconds > 0) KEYFRAME_MARGIN_MILLIS else 0
+        if (recording.disk == null) {
+            recording.startDisk(File(context.cacheDir, TIMESHIFT_FILE), timeshiftLimit())
+            recording.requestTakeOver()
+        }
+        val position = recording.positionAt(wanted)
+        val arrival = recording.timeAt(position)
+        liveShift = arrival
+        liveShiftRecording = recording
+        playingTimeshift = true
+        engine.playLiveRecording(recording, position, play)
+        val delayMs = (now - arrival).coerceAtLeast(0)
+        state.update {
+            val pausedFor = it.pausedAtMillis?.let { at -> (System.currentTimeMillis() - at).coerceAtLeast(0) } ?: 0
+            it.copy(liveDelayMs = (delayMs - pausedFor).coerceAtLeast(0))
+        }
+        return true
+    }
+
     /** Retour au direct : fin du différé, de « Depuis le début » ou du replay. */
     fun backToLive() {
         if (restarting || replay != null) {
@@ -344,7 +422,7 @@ internal class DelayedPlaybackController(
             return
         }
         val wasDelayed = state.value.liveDelayMs > 0 || state.value.paused
-        val hadRecording = timeshift != null
+        val hadRecording = timeshift != null || liveShift != null
         stopTimeshift()
         if (!wasDelayed && !hadRecording) return
         val player = engine.current
@@ -567,6 +645,11 @@ internal class DelayedPlaybackController(
         recorder = null
         timeshift?.release()
         timeshift = null
+        rewindJob?.cancel()
+        pendingRewindSeconds = 0
+        liveShiftRecording?.stop()
+        liveShiftRecording = null
+        liveShift = null
         playingTimeshift = false
         state.update { it.copy(paused = false, pausedAtMillis = null, liveDelayMs = 0) }
     }
@@ -591,6 +674,12 @@ internal class DelayedPlaybackController(
         val RECORDABLE_FORMATS = setOf(StreamFormat.PROGRESSIVE, StreamFormat.UNKNOWN)
         const val MINUTE_MILLIS = 60_000L
         const val MINUTE_SECONDS = 60
+
+        /** Retour en arrière dans le direct : un peu plus loin, l'image ne reprenant qu'à une image complète. */
+        const val KEYFRAME_MARGIN_MILLIS = 1_000L
+
+        /** Appuis sur ← rapprochés : additionnés, appliqués une fois. */
+        const val REWIND_DEBOUNCE_MILLIS = 450L
 
         /** Pas de ← → dans un replay où l'on peut se déplacer (HLS). */
         const val FINE_JUMP_SECONDS = 30

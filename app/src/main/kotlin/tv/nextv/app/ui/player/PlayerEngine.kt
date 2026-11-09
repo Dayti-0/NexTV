@@ -31,6 +31,8 @@ import tv.nextv.app.R
 import tv.nextv.app.player.AdVolumeControl
 import tv.nextv.app.player.PlaybackRequest
 import tv.nextv.app.player.ReceivedRate
+import tv.nextv.app.player.LiveRecording
+import tv.nextv.core.model.StreamFormat
 import tv.nextv.app.player.TimeshiftBuffer
 import tv.nextv.app.player.VideoDecoders
 
@@ -199,8 +201,25 @@ internal class PlayerEngine(
      * @param forceHls traiter le flux comme du HLS (seconde tentative pour une URL sans extension).
      * @param startPositionMs position de départ d'une reprise (0 : un direct démarre au plus près du direct).
      */
-    fun play(request: PlaybackRequest, forceHls: Boolean, startPositionMs: Long) {
-        open(container.playerFactory.mediaSource(request, forceHls, received), startPositionMs)
+    fun play(request: PlaybackRequest, forceHls: Boolean, startPositionMs: Long, record: Boolean = false) {
+        // Direct continu (MPEG-TS…) : les dernières secondes sont gardées en mémoire pour revenir en arrière.
+        val recording = if (record && !forceHls && request.stream.format in RECORDABLE_FORMATS) LiveRecording(LIVE_TAIL_BYTES) else null
+        liveRecording = recording
+        open(container.playerFactory.mediaSource(request, forceHls, received, recording), startPositionMs)
+    }
+
+    /** Direct en cours gardé pour revenir en arrière (`null` : pas un direct continu). */
+    var liveRecording: LiveRecording? = null
+        private set
+
+    /**
+     * Relit le direct gardé ([recording], déjà passé sur le disque) à partir de [position] (octets du flux).
+     * [play] faux : prêt, en pause (mise en pause du direct).
+     */
+    fun playLiveRecording(recording: LiveRecording, position: Long, play: Boolean) {
+        val disk = recording.disk ?: return
+        open(container.playerFactory.timeshiftSource(disk, (position - recording.diskBase).coerceAtLeast(0)), startPositionMs = 0)
+        if (!play) exoPlayer?.playWhenReady = false
     }
 
     /** Lit l'enregistrement du différé [buffer]. */
@@ -405,3 +424,9 @@ internal class PlayerEngine(
 internal fun ExoPlayer.setAudioDisabled(disabled: Boolean) {
     trackSelectionParameters = trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, disabled).build()
 }
+
+/** Flux du direct qu'on peut garder pour revenir en arrière (continus ; le HLS se recule dans sa fenêtre). */
+private val RECORDABLE_FORMATS = setOf(StreamFormat.PROGRESSIVE, StreamFormat.UNKNOWN)
+
+/** Dernières secondes du direct gardées en mémoire : 32 Mo (une trentaine de secondes en HD). */
+private const val LIVE_TAIL_BYTES = 32 * 1024 * 1024

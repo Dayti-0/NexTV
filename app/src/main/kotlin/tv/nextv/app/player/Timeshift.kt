@@ -137,9 +137,12 @@ class TimeshiftRecorder(private val call: Call, private val buffer: TimeshiftBuf
     }
 }
 
-/** Source de données du lecteur : lit l'enregistrement du différé au fur et à mesure. */
+/**
+ * Source de données du lecteur : lit l'enregistrement du différé au fur et à mesure, à partir de
+ * [startOffset] (retour en arrière dans le direct : quelques secondes avant ce qui était à l'écran).
+ */
 @OptIn(UnstableApi::class)
-class TimeshiftDataSource(private val buffer: TimeshiftBuffer) : BaseDataSource(/* isNetwork = */ false) {
+class TimeshiftDataSource(private val buffer: TimeshiftBuffer, private val startOffset: Long = 0) : BaseDataSource(/* isNetwork = */ false) {
 
     private var input: RandomAccessFile? = null
     private var position = 0L
@@ -148,7 +151,7 @@ class TimeshiftDataSource(private val buffer: TimeshiftBuffer) : BaseDataSource(
     override fun open(dataSpec: DataSpec): Long {
         transferInitializing(dataSpec)
         uri = dataSpec.uri
-        position = dataSpec.position
+        position = dataSpec.position + startOffset
         input = buffer.openReader()
         transferStarted(dataSpec)
         return C.LENGTH_UNSET.toLong()
@@ -171,5 +174,213 @@ class TimeshiftDataSource(private val buffer: TimeshiftBuffer) : BaseDataSource(
         if (input != null) transferEnded()
         input = null
         uri = null
+    }
+}
+
+/**
+ * Direct en cours, gardé pour revenir en arrière (← dans le lecteur) : les dernières secondes reçues en
+ * mémoire ([tailBytes], en anneau, rien sur le disque) et l'heure d'arrivée de chaque morceau.
+ *
+ * Au premier retour en arrière (ou à la pause), [startDisk] recopie ces secondes dans un enregistrement
+ * sur le disque ([TimeshiftBuffer]) ; la même connexion continue d'y écrire la suite ([takeOver] : rien
+ * n'est perdu ni rechargé), et le lecteur relit l'enregistrement à partir du moment voulu.
+ *
+ * Les positions sont comptées depuis le début du flux (octets reçus).
+ */
+class LiveRecording(tailBytes: Int) {
+    private val ring = ByteArray(tailBytes)
+    private val lock = Any()
+
+    /** Octets reçus depuis le début du flux. */
+    @Volatile
+    var total: Long = 0
+        private set
+
+    /** Enregistrement sur le disque, et position du flux de son premier octet. */
+    @Volatile
+    var disk: TimeshiftBuffer? = null
+        private set
+
+    @Volatile
+    var diskBase: Long = 0
+        private set
+
+    // Heure d'arrivée (SystemClock.elapsedRealtime) des positions, toutes les SAMPLE_MILLIS.
+    private val sampleTimes = LongArray(SAMPLES)
+    private val samplePositions = LongArray(SAMPLES)
+    private var sampleCount = 0
+    private var lastSample = 0L
+
+    @Volatile
+    private var takeOverRequested = false
+    private var pump: Thread? = null
+
+    @Volatile
+    private var stopped = false
+
+    /** Morceau reçu du direct. */
+    fun append(bytes: ByteArray, offset: Int, length: Int, now: Long = android.os.SystemClock.elapsedRealtime()) {
+        if (length <= 0) return
+        synchronized(lock) {
+            val diskBuffer = disk
+            if (diskBuffer == null) {
+                // En mémoire seulement (anneau) tant qu'on regarde le direct.
+                var copied = 0
+                while (copied < length) {
+                    val at = ((total + copied) % ring.size).toInt()
+                    val n = minOf(length - copied, ring.size - at)
+                    System.arraycopy(bytes, offset + copied, ring, at, n)
+                    copied += n
+                }
+            } else if (!diskBuffer.append(if (offset == 0) bytes else bytes.copyOfRange(offset, offset + length), length)) {
+                stopped = true
+            }
+            total += length
+            if (now - lastSample >= SAMPLE_MILLIS || sampleCount == 0) {
+                val i = sampleCount % SAMPLES
+                sampleTimes[i] = now
+                samplePositions[i] = total
+                sampleCount++
+                lastSample = now
+            }
+        }
+    }
+
+    /** Position la plus ancienne encore disponible (début de l'enregistrement, ou de l'anneau). */
+    fun oldest(): Long = if (disk != null) diskBase else maxOf(0, total - ring.size)
+
+    /** Position du flux arrivée à l'heure [time] (elapsedRealtime), dans ce qui est encore disponible. */
+    fun positionAt(time: Long): Long = synchronized(lock) {
+        val count = minOf(sampleCount, SAMPLES)
+        if (count == 0) return oldest()
+        var position = samplePositions[(sampleCount - 1) % SAMPLES]
+        // Du plus récent au plus ancien : le dernier repère arrivé avant l'heure voulue.
+        for (k in 1..count) {
+            val i = (sampleCount - k) % SAMPLES
+            if (sampleTimes[i] <= time) {
+                position = samplePositions[i]
+                break
+            }
+            position = samplePositions[i]
+        }
+        position.coerceIn(oldest(), total)
+    }
+
+    /** Heure d'arrivée de la position [position] (elapsedRealtime). */
+    fun timeAt(position: Long): Long = synchronized(lock) {
+        val count = minOf(sampleCount, SAMPLES)
+        if (count == 0) return android.os.SystemClock.elapsedRealtime()
+        var time = sampleTimes[(sampleCount - count) % SAMPLES]
+        for (k in count downTo 1) {
+            val i = (sampleCount - k) % SAMPLES
+            if (samplePositions[i] <= position) time = sampleTimes[i] else break
+        }
+        time
+    }
+
+    /**
+     * Passe à l'enregistrement sur le disque ([file], au plus [maxBytes]) : les secondes en mémoire y sont
+     * recopiées, puis tout ce qui arrive y est écrit.
+     */
+    fun startDisk(file: File, maxBytes: Long): TimeshiftBuffer = synchronized(lock) {
+        disk?.let { return it }
+        val buffer = TimeshiftBuffer(file, maxBytes)
+        val from = oldest()
+        var position = from
+        val chunk = ByteArray(CHUNK)
+        while (position < total) {
+            val n = minOf((total - position).toInt(), CHUNK)
+            var copied = 0
+            while (copied < n) {
+                val at = ((position + copied) % ring.size).toInt()
+                val m = minOf(n - copied, ring.size - at)
+                System.arraycopy(ring, at, chunk, copied, m)
+                copied += m
+            }
+            buffer.append(chunk, n)
+            position += n
+        }
+        diskBase = from
+        disk = buffer
+        buffer
+    }
+
+    /** À la fermeture de sa source par le lecteur, la connexion du direct continue d'écrire ici ([takeOver]). */
+    fun requestTakeOver() {
+        takeOverRequested = true
+    }
+
+    /**
+     * Reprise demandée : le lecteur qui s'arrête ne lit plus la connexion. Son fil de lecture est interrompu
+     * à l'arrêt, et une lecture faite après l'interruption fermerait la connexion avant sa reprise.
+     */
+    val handingOver: Boolean get() = takeOverRequested
+
+    /** Appelé par [LiveRecordingDataSource.close] : reprend la connexion si demandé (sinon `false`). */
+    @OptIn(UnstableApi::class)
+    internal fun takeOver(upstream: androidx.media3.datasource.DataSource): Boolean {
+        if (!takeOverRequested || stopped) return false
+        takeOverRequested = false
+        pump = Thread({
+            val chunk = ByteArray(CHUNK)
+            var error: IOException? = null
+            try {
+                while (!stopped && !Thread.currentThread().isInterrupted) {
+                    val n = upstream.read(chunk, 0, chunk.size)
+                    if (n == C.RESULT_END_OF_INPUT) break
+                    if (n > 0) append(chunk, 0, n)
+                }
+            } catch (e: IOException) {
+                if (!stopped) error = e
+            } finally {
+                runCatching { upstream.close() }
+                disk?.finish(error)
+            }
+        }, "nextv-live-rewind").apply {
+            isDaemon = true
+            start()
+        }
+        return true
+    }
+
+    /** Fin du différé : la connexion est fermée et l'enregistrement supprimé. */
+    fun stop() {
+        stopped = true
+        pump?.interrupt()
+        disk?.release()
+    }
+
+    private companion object {
+        const val SAMPLES = 8_192
+        const val SAMPLE_MILLIS = 250L
+        const val CHUNK = 64 * 1024
+    }
+}
+
+/** Source réseau du direct qui garde aussi ce qu'elle reçoit dans [recording] (retour en arrière). */
+@OptIn(UnstableApi::class)
+class LiveRecordingDataSource(
+    private val upstream: androidx.media3.datasource.DataSource,
+    private val recording: LiveRecording,
+) : androidx.media3.datasource.DataSource by upstream {
+    private var opened = false
+
+    override fun open(dataSpec: DataSpec): Long = upstream.open(dataSpec).also { opened = true }
+
+    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+        if (recording.handingOver) return C.RESULT_END_OF_INPUT
+        val n = upstream.read(buffer, offset, length)
+        if (n > 0) recording.append(buffer, offset, n)
+        return n
+    }
+
+    override fun close() {
+        // Retour en arrière, pause : la connexion n'est pas fermée, elle continue d'enregistrer la suite.
+        if (opened && recording.takeOver(upstream)) {
+            opened = false
+            return
+        }
+        opened = false
+        upstream.close()
     }
 }

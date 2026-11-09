@@ -164,12 +164,23 @@ class PlayerFactory(
      *
      * @param forceHls traiter le flux comme du HLS (seconde tentative pour une URL sans extension).
      */
-    fun mediaSource(request: PlaybackRequest, forceHls: Boolean = false, transferListener: TransferListener? = null): MediaSource {
+    fun mediaSource(
+        request: PlaybackRequest,
+        forceHls: Boolean = false,
+        transferListener: TransferListener? = null,
+        /** Direct continu : ce qui est reçu y est gardé, pour revenir en arrière. */
+        recording: LiveRecording? = null,
+    ): MediaSource {
         val httpFactory = OkHttpDataSource.Factory(httpClient(request))
             .setUserAgent(userAgent(request))
             .setDefaultRequestProperties(request.stream.headers - "User-Agent")
             .setTransferListener(transferListener)
-        val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
+        val networkFactory: DataSource.Factory = if (recording != null) {
+            DataSource.Factory { LiveRecordingDataSource(httpFactory.createDataSource(), recording) }
+        } else {
+            httpFactory
+        }
+        val dataSourceFactory = DefaultDataSource.Factory(context, networkFactory)
         return DefaultMediaSourceFactory(dataSourceFactory).createMediaSource(mediaItem(request.stream, forceHls))
     }
 
@@ -181,8 +192,8 @@ class PlayerFactory(
     }
 
     /** Source du lecteur pour l'enregistrement du différé. */
-    fun timeshiftSource(buffer: TimeshiftBuffer): MediaSource =
-        ProgressiveMediaSource.Factory(DataSource.Factory { TimeshiftDataSource(buffer) })
+    fun timeshiftSource(buffer: TimeshiftBuffer, startOffset: Long = 0): MediaSource =
+        ProgressiveMediaSource.Factory(DataSource.Factory { TimeshiftDataSource(buffer, startOffset) })
             .createMediaSource(MediaItem.fromUri("timeshift://live"))
 
     private fun httpClient(request: PlaybackRequest): OkHttpClient {
