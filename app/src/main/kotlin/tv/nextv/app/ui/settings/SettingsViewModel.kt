@@ -75,6 +75,10 @@ data class SettingsUiState(
     val channelPreview: Boolean = true,
     /** Bande-annonce en fond de la grande affiche (Streaming). */
     val trailerAutoplay: Boolean = true,
+    /** Bande-annonce avec le son dès son lancement. */
+    val trailerSound: Boolean = false,
+    /** Délai avant la bande-annonce, en secondes. */
+    val trailerDelaySeconds: Int = 3,
     /** Lecture directe de la dernière chaîne regardée à l'ouverture. */
     val startOnLastChannel: Boolean = false,
     /** Son baissé pendant les publicités. */
@@ -201,15 +205,18 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         val france3Region: String?,
         val france3Regions: List<FranceRegions.Region>,
         val trailerAutoplay: Boolean,
+        val trailerSound: Boolean,
+        val trailerDelaySeconds: Int,
     )
 
     /** Réglages ajoutés depuis : son de l'aperçu, fréquence de mise à jour, dernier plantage, filtres des chaînes. */
     private val extras = combine(
         combine(settings.previewVolume, settings.playlistRefresh, lastCrash, ::Triple),
         combine(settings.hideUhd, settings.audioPassthrough, settings.trailerAutoplay, ::Triple),
-        combine(settings.france3Region, france3Regions, ::Pair),
-    ) { (volume, refresh, crash), (hideUhd, passthrough, trailers), (region, regions) ->
-        Extras(volume, refresh, crash, hideUhd, passthrough, region, regions, trailers)
+        combine(settings.france3Region, france3Regions, settings.trailerSound, settings.trailerDelaySeconds) { region, regions, sound, delay -> listOf(region, regions, sound, delay) },
+    ) { (volume, refresh, crash), (hideUhd, passthrough, trailers), more ->
+        @Suppress("UNCHECKED_CAST")
+        Extras(volume, refresh, crash, hideUhd, passthrough, more[0] as String?, more[1] as List<FranceRegions.Region>, trailers, more[2] as Boolean, more[3] as Int)
     }
 
     val state: StateFlow<SettingsUiState> = combine(
@@ -253,6 +260,8 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             france3Region = extra.france3Region,
             france3Regions = extra.france3Regions,
             trailerAutoplay = extra.trailerAutoplay,
+            trailerSound = extra.trailerSound,
+            trailerDelaySeconds = extra.trailerDelaySeconds,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
@@ -375,6 +384,14 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     fun setTrailerAutoplay(enabled: Boolean) {
         viewModelScope.launch { settings.setTrailerAutoplay(enabled) }
+    }
+
+    fun setTrailerSound(enabled: Boolean) {
+        viewModelScope.launch { settings.setTrailerSound(enabled) }
+    }
+
+    fun cycleTrailerDelay() {
+        viewModelScope.launch { settings.cycleTrailerDelay() }
     }
 
 

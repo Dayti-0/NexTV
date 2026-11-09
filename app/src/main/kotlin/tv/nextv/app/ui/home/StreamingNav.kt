@@ -1,6 +1,7 @@
 package tv.nextv.app.ui.home
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -77,7 +78,8 @@ internal fun StreamingNav(
     current: FocusRequester = remember { FocusRequester() },
 ) {
     var open by remember { mutableStateOf(false) }
-    val width by animateDpAsState(if (open) STREAMING_NAV_OPEN_WIDTH else STREAMING_NAV_WIDTH, tween(200), label = "nav")
+    // Déploiement doux (accélère puis ralentit), sans décaler le contenu : le menu ouvert passe par-dessus.
+    val width by animateDpAsState(if (open) STREAMING_NAV_OPEN_WIDTH else STREAMING_NAV_WIDTH, tween(260, easing = FastOutSlowInEasing), label = "nav")
     val background = MaterialTheme.colorScheme.background
     Column(
         modifier
@@ -85,9 +87,10 @@ internal fun StreamingNav(
             .fillMaxHeight()
             .background(
                 if (open) {
-                    Brush.horizontalGradient(0f to background, 0.75f to background.copy(alpha = 0.97f), 1f to background.copy(alpha = 0.85f))
+                    Brush.horizontalGradient(0f to background, 0.7f to background.copy(alpha = 0.95f), 1f to background.copy(alpha = 0.82f))
                 } else {
-                    Brush.horizontalGradient(listOf(background, background.copy(alpha = 0.92f)))
+                    // Replié : à peine plus sombre que le fond, il ne coupe pas le bandeau.
+                    Brush.horizontalGradient(0f to background.copy(alpha = 0.96f), 1f to background.copy(alpha = 0.7f))
                 },
             )
             .onFocusChanged {
@@ -140,8 +143,9 @@ private fun NavItem(icon: ImageVector, label: String, open: Boolean, selected: B
         onClick = onClick,
         modifier = modifier.fillMaxWidth(),
         shape = CircleShape,
-        color = Color.Transparent,
-        focusedColor = colors.surfaceContainerHighest,
+        // Section affichée : légère teinte de la palette, menu ouvert ; sélection : pastille lumineuse.
+        color = if (selected && open) colors.primary.copy(alpha = 0.12f) else Color.Transparent,
+        focusedColor = colors.primary.copy(alpha = 0.30f),
         contentColor = if (selected) colors.primary else colors.onSurfaceVariant,
         focusScale = 1f,
     ) {

@@ -270,6 +270,24 @@ class SettingsRepository(
         dataStore.edit { it[TRAILER_AUTOPLAY] = enabled }
     }
 
+    /** Bande-annonce automatique avec le son (sinon muette, le bouton du bandeau rend le son). */
+    val trailerSound: Flow<Boolean> = dataStore.data.map { it[TRAILER_SOUND] ?: false }.distinctUntilChanged()
+
+    suspend fun setTrailerSound(enabled: Boolean) {
+        dataStore.edit { it[TRAILER_SOUND] = enabled }
+    }
+
+    /** Temps passé sur un même contenu avant que sa bande-annonce démarre (secondes). */
+    val trailerDelaySeconds: Flow<Int> = dataStore.data.map { it[TRAILER_DELAY] ?: TRAILER_DELAY_DEFAULT }.distinctUntilChanged()
+
+    /** Délai suivant : 2, 3, puis 5 secondes. */
+    suspend fun cycleTrailerDelay() {
+        dataStore.edit {
+            val current = it[TRAILER_DELAY] ?: TRAILER_DELAY_DEFAULT
+            it[TRAILER_DELAY] = TRAILER_DELAYS.getOrElse(TRAILER_DELAYS.indexOf(current) + 1) { TRAILER_DELAYS.first() }
+        }
+    }
+
     /**
      * Configuration rapide déjà proposée : une seule fois, à la première ouverture (y compris pour qui
      * avait l'application avant qu'elle existe), puis seulement depuis les réglages.
@@ -430,6 +448,10 @@ class SettingsRepository(
         val DNS_PROVIDER = stringPreferencesKey("dns_provider")
         val CHANNEL_PREVIEW = booleanPreferencesKey("channel_preview")
         val TRAILER_AUTOPLAY = booleanPreferencesKey("trailer_autoplay")
+        val TRAILER_SOUND = booleanPreferencesKey("trailer_sound")
+        val TRAILER_DELAY = intPreferencesKey("trailer_delay")
+        const val TRAILER_DELAY_DEFAULT = 3
+        val TRAILER_DELAYS = listOf(2, 3, 5)
         val QUICK_SETUP_DONE = booleanPreferencesKey("quick_setup_done")
         val ASPECT_MODE = stringPreferencesKey("aspect_mode")
         val AUDIO_LANGUAGE = stringPreferencesKey("audio_language")

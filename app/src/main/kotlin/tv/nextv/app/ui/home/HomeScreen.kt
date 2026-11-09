@@ -67,6 +67,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.AnimatedVisibility
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.first
 import androidx.compose.runtime.snapshotFlow
@@ -465,7 +470,7 @@ fun HomeContent(
     /** Recherche de partout (chaînes, films et séries), bouton de la barre du haut. */
     onSearch: (() -> Unit)? = null,
     /** Bande-annonce en fond de la grande affiche de Streaming (réglages). */
-    trailers: Boolean = false,
+    trailers: TrailerSettings = TrailerSettings(),
 ) {
     val window = rememberWindowInfo()
     // Dernier élément ouvert : sa liste revient à sa place et il reprend le focus au retour sur l'accueil.
@@ -659,6 +664,10 @@ fun HomeContent(
                 }
             }
             if (streamingNav) {
+                // Menu ouvert : le contenu s'assombrit derrière lui, vers la gauche.
+                AnimatedVisibility(tabsFocused.value, enter = fadeIn(tween(260)), exit = fadeOut(tween(200))) {
+                    Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to Color.Black.copy(alpha = 0.6f), 0.55f to Color.Black.copy(alpha = 0.25f), 1f to Color.Transparent)))
+                }
                 StreamingNav(
                     section = section,
                     window = window,

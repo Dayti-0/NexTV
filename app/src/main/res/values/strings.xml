@@ -135,6 +135,12 @@
     <string name="home_guide">Guide TV</string>
     <string name="home_favorites">Favoris</string>
     <string name="home_continue">Reprendre la lecture</string>
+    <string name="hero_watch">Regarder</string>
+    <string name="hero_resume">Reprendre</string>
+    <string name="hero_trailer">Bande-annonce</string>
+    <string name="hero_more_info">Plus d’infos</string>
+    <string name="hero_sound_on">Activer le son</string>
+    <string name="hero_sound_off">Couper le son</string>
     <string name="resume_empty_movies">Aucun film en cours</string>
     <string name="resume_empty_series">Aucune série en cours</string>
     <string name="resume_clear_hint">Appui long sur une affiche pour la retirer de la liste</string>
@@ -169,7 +175,11 @@
     <string name="menu_subscription">Abonnement jusqu’au %1$s</string>
     <string name="menu_back">Menu</string>
     <string name="settings_trailer_autoplay">Bande-annonce en fond</string>
-    <string name="settings_trailer_autoplay_help">Interface Streaming : la bande-annonce du film choisi démarre avec le son derrière la grande affiche. Consomme plus de connexion et peut ralentir l’appareil.</string>
+    <string name="settings_trailer_autoplay_help">Interface Streaming : la bande-annonce du film ou de la série choisi démarre dans le bandeau après quelques secondes. Consomme plus de connexion et peut ralentir l’appareil.</string>
+    <string name="settings_trailer_sound">Son des bandes-annonces</string>
+    <string name="settings_trailer_sound_help">Avec le son dès qu’elles démarrent. Sinon muettes : le bouton « Son » du bandeau le rend.</string>
+    <string name="settings_trailer_delay">Délai avant la bande-annonce</string>
+    <string name="settings_trailer_delay_value">%1$d s</string>
     <string name="nav_categories">Catégories</string>
     <string name="home_rows_top10">Top 10 de la semaine</string>
     <string name="search_everywhere">Recherche Globale</string>

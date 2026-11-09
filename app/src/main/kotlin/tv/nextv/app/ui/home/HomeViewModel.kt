@@ -162,6 +162,10 @@ data class Discover(
     val recommendedFrom: String? = null,
 )
 
+/** Bandes-annonces du bandeau de Streaming : lecture automatique, avec le son ou non, délai avant le lancement. */
+@Immutable
+data class TrailerSettings(val autoplay: Boolean = false, val sound: Boolean = false, val delayMillis: Long = 3_000L)
+
 /** Affiche sélectionnée, puis sa fiche TMDB (visuel plein écran, résumé, genres, note) une fois lue. */
 @Immutable
 data class Spotlight(
@@ -202,9 +206,13 @@ class HomeViewModel(
     val sourceId: StateFlow<Long?> = container.settings.activePlaylistId
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    /** Bande-annonce en fond de la grande affiche de Streaming (réglages). */
-    val trailers: StateFlow<Boolean> = container.settings.trailerAutoplay
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+    /** Bandes-annonces du bandeau de Streaming (réglages) : lecture automatique, son, délai. */
+    val trailers: StateFlow<TrailerSettings> = combine(
+        container.settings.trailerAutoplay,
+        container.settings.trailerSound,
+        container.settings.trailerDelaySeconds,
+    ) { autoplay, sound, delay -> TrailerSettings(autoplay, sound, delay * 1_000L) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TrailerSettings())
 
     val section = MutableStateFlow(HomeSection.TV)
 

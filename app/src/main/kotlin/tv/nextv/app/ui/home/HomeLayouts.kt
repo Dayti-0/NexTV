@@ -67,6 +67,11 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
@@ -150,10 +155,10 @@ internal data class ShelfContent(
 )
 
 /**
- * Interface « Streaming » : grande bannière de la sélection (aperçu vidéo pour une chaîne, visuel
- * TMDB pour un film ou une série), puis la recherche et les rangées : reprises, tendances,
- * nouveautés, recommandations, favoris et une rangée par catégorie, chacune avec « Tout voir ».
- * Une recherche remplace les rangées par celle de ses résultats.
+ * Interface « Streaming » : grand bandeau (aperçu vidéo pour une chaîne ; pour un film ou une série, le
+ * bandeau vedette [StreamingHero] avec sa bande-annonce), puis les rangées : reprises, tendances,
+ * nouveautés, recommandations, favoris et une rangée par catégorie. Une recherche remplace les rangées
+ * par celle de ses résultats.
  */
 @Composable
 internal fun StreamingHome(
@@ -169,42 +174,107 @@ internal fun StreamingHome(
     lastOpened: MutableState<OpenedItem?>,
     actions: HomeActions,
     modifier: Modifier = Modifier,
-    /** Bande-annonce en fond de la grande affiche (réglages). */
-    trailers: Boolean = false,
+    /** Bandes-annonces du bandeau (réglages). */
+    trailers: TrailerSettings = TrailerSettings(),
 ) {
     val section = content.section
     val padding = if (window.isWide) 28.dp else window.horizontalPadding
     val listState = rememberSaveable(section, saver = LazyListState.Saver) { LazyListState() }
-    // Rangées parcourues : la bannière se réduit pour en montrer davantage, et reprend sa taille en haut.
-    // Grand écran : la recherche est en haut de la bannière (pas dans la liste) ; ailleurs, en tête des rangées.
+    // Grand écran : la recherche est en haut du bandeau (pas dans la liste) ; ailleurs, en tête des rangées.
     val searchInList = !window.isWide
     val scrolled by remember(searchInList) { derivedStateOf { listState.firstVisibleItemIndex > if (searchInList) 1 else 0 } }
-    val billboardHeight by animateDpAsState(
-        when {
-            // Films et séries : titre sur deux lignes et résumé, sans boutons (OK sur une affiche suffit).
-            !scrolled -> if (section == HomeSection.TV) STREAMING_BILLBOARD_HEIGHT else STREAMING_HERO_HEIGHT
-            section == HomeSection.TV -> COMPACT_BILLBOARD_HEIGHT
-            else -> SLIM_BILLBOARD_HEIGHT
-        },
-        animationSpec = tween(260),
-        label = "billboard",
-    )
+    val hero = window.isWide && section != HomeSection.TV
+    // Bandeau vedette : tant que la sélection est sur le bandeau (et à l'ouverture), pas sur les rangées.
+    var onHero by rememberSaveable(section) { mutableStateOf(true) }
+    val featuredItems = remember(content.discover) {
+        content.discover.trending.ifEmpty { content.discover.newest }.take(FEATURED_COUNT)
+    }
+    var featuredIndex by rememberSaveable(section) { mutableIntStateOf(0) }
+    val featuredMode = hero && onHero && query.isEmpty()
+    // Contenu mis en avant : sa fiche TMDB est lue comme pour une affiche choisie (visuel, bande-annonce).
+    LaunchedEffect(featuredMode, featuredIndex, featuredItems) {
+        if (featuredMode && featuredItems.isNotEmpty()) actions.onPosterFocus(featuredItems[featuredIndex % featuredItems.size])
+    }
+    val shown = spotlight ?: featuredItems.firstOrNull()?.let { Spotlight(it) } ?: content.discover.trending.firstOrNull()?.let { Spotlight(it) }
+    // Bande-annonce : une seule (celle du bandeau), terminée une fois pour le contenu affiché.
+    var finishedTrailer by remember { mutableStateOf<String?>(null) }
+    var trailerShown by remember { mutableStateOf(false) }
+    var muted by remember(trailers.sound) { mutableStateOf(!trailers.sound) }
+    var fullTrailer by remember { mutableStateOf<Pair<String, String?>?>(null) }
+    val trailerKey = shown?.details?.trailerYoutubeKey
+    val trailerDone = trailerKey != null && trailerKey == finishedTrailer
+    // Rotation des contenus mis en avant : après la bande-annonce (si elle se lit), sinon toutes les 9 s.
+    LaunchedEffect(featuredMode, featuredIndex, featuredItems.size, trailerKey, trailerDone, trailers.autoplay, fullTrailer) {
+        if (!featuredMode || featuredItems.size < 2 || fullTrailer != null) return@LaunchedEffect
+        val trailerWillPlay = trailers.autoplay && trailerKey != null && !trailerDone
+        if (trailerWillPlay) return@LaunchedEffect
+        delay(if (trailerDone) FEATURED_AFTER_TRAILER_MILLIS else FEATURED_ROTATE_MILLIS)
+        featuredIndex = (featuredIndex + 1) % featuredItems.size
+    }
+    val heroHeight = when {
+        !window.isWide -> 0.dp
+        section == HomeSection.TV -> if (scrolled) COMPACT_BILLBOARD_HEIGHT else STREAMING_BILLBOARD_HEIGHT
+        featuredMode -> HERO_FEATURED_HEIGHT
+        else -> HERO_BROWSE_HEIGHT
+    }
+    val billboardHeight by animateDpAsState(heroHeight, animationSpec = tween(320), label = "billboard")
+    val heroFocus = remember { FocusRequester() }
+    // ↑ depuis la première rangée : le bandeau vedette revient, la sélection va sur « Regarder » dès qu'il est là.
+    var heroFocusRequest by remember { mutableIntStateOf(0) }
+    LaunchedEffect(heroFocusRequest) {
+        if (heroFocusRequest == 0) return@LaunchedEffect
+        for (attempt in 1..30) {
+            withFrameNanos { }
+            if (runCatching { heroFocus.requestFocus() }.getOrDefault(false)) break
+        }
+    }
+    // Première ouverture sur la télé : la sélection sur « Regarder », comme sur les plateformes de streaming.
+    var heroFocusDone by rememberSaveable(section) { mutableStateOf(false) }
+    if (hero && window.isTv && !heroFocusDone && lastOpened.value == null) {
+        LaunchedEffect(shown?.item?.itemKey != null) {
+            if (shown?.item == null) return@LaunchedEffect
+            for (attempt in 1..30) {
+                withFrameNanos { }
+                if (runCatching { heroFocus.requestFocus() }.getOrDefault(false)) break
+            }
+            heroFocusDone = true
+        }
+    }
     Column(modifier.fillMaxSize()) {
         if (window.isWide) {
             Box(Modifier.fillMaxWidth().height(billboardHeight).clipToBounds()) {
                 if (section == HomeSection.TV) {
                     ChannelBillboard(preview, previewPlayer, content.now, padding, compact = scrolled)
                 } else {
-                    // Avant toute sélection : la première tendance de la semaine.
-                    SpotlightBillboard(section, spotlight ?: content.discover.trending.firstOrNull()?.let { Spotlight(it) }, padding, compact = scrolled, trailer = trailers)
+                    StreamingHero(
+                        section = section,
+                        spotlight = shown,
+                        featured = featuredMode,
+                        featuredCount = featuredItems.size,
+                        featuredIndex = featuredIndex % featuredItems.size.coerceAtLeast(1),
+                        frameHeight = heroHeight,
+                        padding = padding,
+                        progress = shown?.item?.itemKey?.let { key -> content.continueItems.firstOrNull { it.itemKey == key } },
+                        trailers = trailers,
+                        trailerFinished = trailerDone,
+                        muted = muted,
+                        trailerShown = trailerShown,
+                        actions = actions,
+                        heroFocus = heroFocus,
+                        onToggleSound = { muted = !muted },
+                        onTrailerShown = { trailerShown = it },
+                        onTrailerFinished = { finishedTrailer = trailerKey },
+                        onOpenTrailer = { key, language -> fullTrailer = key to language },
+                        onFocusInside = { if (it) onHero = true },
+                    )
+                    // Recherche en haut de la page, sur le bandeau (↑ depuis les boutons).
+                    SearchField(
+                        query,
+                        searchHint(section),
+                        actions.onQuery,
+                        Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = padding).width(380.dp),
+                    )
                 }
-                // Recherche en haut de la page, sur la bannière (↑ depuis la première rangée).
-                SearchField(
-                    query,
-                    searchHint(section),
-                    actions.onQuery,
-                    Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = padding).width(380.dp),
-                )
             }
         }
         val sizes = ShelfSizes.of(window)
@@ -215,7 +285,19 @@ internal fun StreamingHome(
         RowJumpEffect(LocalRowJump.current, listState, content, shelves, offset = if (searchInList) 1 else 0, onOpen = actions.onCategory)
         AnchoredRows(peekBelow = STREAMING_NEXT_ROW_PEEK) { anchor ->
             LazyColumn(
-                Modifier.weight(1f),
+                Modifier
+                    .weight(1f)
+                    // Sélection dans les rangées : le bandeau montre l'affiche choisie.
+                    .onFocusChanged { if (it.hasFocus) onHero = false }
+                    .onPreviewKeyEvent { event ->
+                        val firstRow = anchor.focusedRow != null && anchor.focusedRow == shelves.firstOrNull()?.key
+                        if (!hero || query.isNotEmpty() || !firstRow || event.key != Key.DirectionUp || event.type != KeyEventType.KeyDown) {
+                            return@onPreviewKeyEvent false
+                        }
+                        onHero = true
+                        heroFocusRequest++
+                        true
+                    },
                 state = listState,
                 contentPadding = PaddingValues(top = 4.dp, bottom = 40.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -236,6 +318,7 @@ internal fun StreamingHome(
             }
         }
     }
+    fullTrailer?.let { (key, language) -> TrailerFullScreen(key, language) { fullTrailer = null } }
 }
 
 /** Résultats de la recherche, sur une rangée. */
@@ -646,7 +729,8 @@ internal fun PreloadRows(content: ShelfContent) {
 /** Largeur des vignettes des rangées : sur la TV, six chaînes et huit affiches par rangée. */
 internal data class ShelfSizes(val channel: Dp, val poster: Dp) {
     companion object {
-        fun of(window: WindowInfo) = if (window.isWide) ShelfSizes(channel = 148.dp, poster = 104.dp) else ShelfSizes(channel = 156.dp, poster = 104.dp)
+        /** Streaming : grandes affiches seules (titre et détails dans le bandeau). */
+        fun of(window: WindowInfo) = if (window.isWide) ShelfSizes(channel = 148.dp, poster = 120.dp) else ShelfSizes(channel = 156.dp, poster = 104.dp)
 
         /** Cinéma Premium : affiches plus grandes, moins nombreuses. */
         fun premium(window: WindowInfo) = if (window.isWide) ShelfSizes(channel = 200.dp, poster = 116.dp) else ShelfSizes(channel = 180.dp, poster = 116.dp)
@@ -865,16 +949,8 @@ internal fun ShelfPoster(
     if (style == ShelfStyle.PREMIUM) {
         PremiumPoster(item.title, item.imageUrl, item.itemKey in favoriteKeys, onClick, onLongClick, modifier)
     } else {
-        PosterCard(
-            title = item.title,
-            subtitle = posterDetail(item),
-            imageUrl = item.imageUrl,
-            isFavorite = item.itemKey in favoriteKeys,
-            onClick = onClick,
-            onLongClick = onLongClick,
-            modifier = modifier,
-            compact = width < COMPACT_POSTER_WIDTH,
-        )
+        // Streaming : l'affiche seule, ses informations sont dans le bandeau.
+        StreamingPoster(item.title, item.imageUrl, item.itemKey in favoriteKeys, onClick, onLongClick, modifier, width)
     }
 }
 
@@ -916,17 +992,7 @@ private fun ContinueCard(
     if (style == ShelfStyle.PREMIUM) {
         PremiumPoster(item.title, item.logoUrl, false, onClick, { actions.onClearProgress(item.itemKey) }, modifier, progress = progress, detail = detail)
     } else {
-        PosterCard(
-            title = item.title,
-            subtitle = detail,
-            imageUrl = item.logoUrl,
-            isFavorite = false,
-            onClick = onClick,
-            onLongClick = { actions.onClearProgress(item.itemKey) },
-            modifier = modifier,
-            progress = progress,
-            compact = width < COMPACT_POSTER_WIDTH,
-        )
+        StreamingPoster(item.title, item.logoUrl, false, onClick, { actions.onClearProgress(item.itemKey) }, modifier, width, progress = progress, detail = detail)
     }
 }
 
@@ -993,69 +1059,6 @@ internal fun ChannelBillboard(preview: ChannelPreview?, player: Player?, now: Lo
 }
 
 /**
- * Bannière d'un film ou d'une série : visuel TMDB à droite fondu dans le fond, titre, année,
- * genres, note et résumé à gauche. [compact] : titre et détails seulement.
- */
-@Composable
-internal fun SpotlightBillboard(
-    section: HomeSection,
-    spotlight: Spotlight?,
-    padding: Dp,
-    compact: Boolean = false,
-    /** Bande-annonce en fond après quelques secondes (réglages), quand TMDB en a une. */
-    trailer: Boolean = false,
-) {
-    val background = MaterialTheme.colorScheme.background
-    Box(Modifier.fillMaxSize()) {
-        val image = spotlightImage(spotlight)
-        Crossfade(image, animationSpec = tween(450), label = "backdrop", modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight().fillMaxWidth(0.66f)) { url ->
-            Box(Modifier.fillMaxSize()) {
-                if (url != null) {
-                    AsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Crop, alignment = Alignment.TopCenter, modifier = Modifier.fillMaxSize())
-                } else {
-                    Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color.Transparent, MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)))))
-                }
-                BillboardFade(background)
-            }
-        }
-        val trailerKey = spotlight?.details?.trailerYoutubeKey
-        if (trailer && !compact && trailerKey != null) {
-            // Cadre au format de la vidéo (16/9) sur toute la hauteur : l'image entière, rien de coupé.
-            Box(Modifier.align(Alignment.CenterEnd).fillMaxHeight().aspectRatio(16f / 9f)) {
-                TrailerBackdrop(trailerKey, spotlight?.details?.trailerLanguage, Modifier.fillMaxSize())
-                TrailerFade(background)
-            }
-        }
-        Column(
-            Modifier.align(Alignment.CenterStart).fillMaxWidth(0.5f).padding(start = padding, end = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            if (!compact) {
-                Text(
-                    sectionLabel(section).uppercase(),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
-            Text(
-                spotlight?.item?.title ?: allLabel(section),
-                style = if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.displaySmall,
-                fontWeight = FontWeight.Bold,
-                maxLines = if (compact) 1 else 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            spotlight?.let { MetaLine(it) }
-            if (!compact) {
-                spotlight?.overview?.let { overview ->
-                    Text(overview, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                }
-            }
-        }
-    }
-}
-
-/**
  * Image de fond de la mise en avant : l'image TMDB du film ou de la série, l'affiche de la liste à défaut.
  * Pendant la lecture de la fiche TMDB ([Spotlight.pending]), l'image précédente reste : sinon l'affiche
  * passait, puis l'image TMDB une demi-seconde après (deux changements d'image à chaque déplacement).
@@ -1100,12 +1103,6 @@ internal fun MetaLine(spotlight: Spotlight, color: Color = MaterialTheme.colorSc
 }
 
 /** Fondu léger autour de la bande-annonce : bord gauche et bas seulement, la vidéo reste visible. */
-@Composable
-private fun TrailerFade(background: Color) {
-    Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to background, 0.12f to Color.Transparent)))
-    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.88f to Color.Transparent, 1f to background)))
-}
-
 /** Fondu du visuel vers le fond, à gauche et en bas. */
 @Composable
 internal fun BillboardFade(background: Color) {
@@ -1121,9 +1118,18 @@ internal fun shortTime(millis: Long): String = DateFormat.getTimeInstance(DateFo
 
 /** Bannière pleine : la première rangée tient en entier dessous, au-dessus de la marge de sécurité du bas des TV. */
 private val STREAMING_BILLBOARD_HEIGHT = 200.dp
-private val STREAMING_HERO_HEIGHT = 215.dp
 private val COMPACT_BILLBOARD_HEIGHT = 104.dp
-private val SLIM_BILLBOARD_HEIGHT = 72.dp
+
+/** Bandeau vedette de Streaming (sélection sur le bandeau) : les rangées se devinent dessous. */
+private val HERO_FEATURED_HEIGHT = 340.dp
+
+/** Bandeau pendant le parcours des rangées : l'affiche choisie, la rangée entière dessous. */
+private val HERO_BROWSE_HEIGHT = 260.dp
+
+/** Contenus mis en avant dans le bandeau vedette. */
+private const val FEATURED_COUNT = 6
+private const val FEATURED_ROTATE_MILLIS = 9_000L
+private const val FEATURED_AFTER_TRAILER_MILLIS = 1_500L
 private val SEE_ALL_MIN_WIDTH = 104.dp
 internal const val CHANNEL_RATIO = 16f / 9f
 internal const val POSTER_RATIO = 2f / 3f

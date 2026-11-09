@@ -297,6 +297,34 @@ class HomeFocusTest {
 
     private fun focusedText() = runCatching { compose.onNode(isFocused()).fetchSemanticsNode().config.toString().let { Regex("Text : \\[[^]]*]").find(it)?.value } }.getOrNull()
 
+    /**
+     * Bandeau vedette de Streaming : à l'ouverture, la sélection est sur « Regarder » ; ↓ passe aux rangées
+     * (le bandeau montre alors l'affiche choisie, sans boutons) ; ↑ depuis la première rangée y revient.
+     */
+    @Test
+    fun streamingHeroButtonsAndRows() {
+        val focused = mutableListOf<String>()
+        // Télécommande : pas de mode tactile (où Android refuse de poser la sélection d'office).
+        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().setInTouchMode(false)
+        val trending = Discover(trending = SampleData.movies.take(3).map { it.toPoster() })
+        compose.setContent { Home(HomeLayout.STREAMING, HomeActions(onPosterFocus = { focused += it.title }), HomeSection.MOVIES, discover = trending) }
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
+        println("Bandeau, sélection de départ : ${focusedText()}")
+        assertTrue("Départ : ${focusedText()}", focusedText()?.contains("Regarder") == true)
+        compose.onNodeWithText("Plus d’infos").assertExists()
+        press(Key.DirectionDown)
+        println("↓ : ${focusedText()}")
+        // Première rangée (le Top 10 des tendances) : une affiche.
+        assertTrue("↓ : pas sur une affiche (${focusedText()})", focusedText()?.contains("Le Grand Voyage") == true)
+        // Rangées : le bandeau n'a plus ses boutons.
+        assertTrue("Boutons encore là", compose.onAllNodesWithText("Plus d’infos").fetchSemanticsNodes().isEmpty())
+        press(Key.DirectionUp)
+        println("↑ : ${focusedText()}")
+        assertTrue("↑ : ${focusedText()}", focusedText()?.contains("Regarder") == true)
+    }
+
     @Test
     fun liveCenterCategoriesCanBeReachedWithDown() {
         val categories = mutableListOf<Category>()
@@ -738,6 +766,7 @@ class HomeFocusTest {
         preview: ChannelPreview? = null,
         grid: GridColumns = GridColumns(),
         category: Category = Category.All,
+        discover: Discover = Discover(),
     ) {
         NexTvTheme(ThemeStyle.NIGHT) {
 
@@ -767,6 +796,7 @@ class HomeFocusTest {
                 preview = preview,
                 spotlight = spotlight,
                 gridColumns = grid,
+                discover = discover,
             )
         }
     }

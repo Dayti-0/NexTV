@@ -7,10 +7,7 @@ import android.webkit.WebChromeClient
 import android.webkit.WebView
 import androidx.compose.animation.core.animateFloatAsState
 import android.webkit.JavascriptInterface
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -21,6 +18,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.Dialog
 
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
@@ -30,43 +35,89 @@ import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 /**
- * Bande-annonce YouTube ([key]) derrière la grande affiche, avec le son et sans les commandes, après
- * [TRAILER_DELAY_MILLIS] sur le même film (pas de lecture en passant d'une affiche à l'autre). Elle
- * passe par une page web (lecteur YouTube intégré) qui ne prend jamais le focus de la télécommande,
- * et se met en pause quand l'appli passe en arrière-plan. Sous-titres selon sa langue ([language],
+ * Bande-annonce YouTube ([key]) dans le bandeau, sans les commandes, après [delayMillis] sur le même contenu
+ * (pas de lecture en passant d'une affiche à l'autre ; un seul bandeau, donc une seule bande-annonce).
+ * Elle passe par une page web (lecteur YouTube intégré) qui ne prend jamais le focus de la télécommande,
+ * et se met en pause quand l'appli passe en arrière-plan. Muette selon [muted] (changeable en cours de
+ * lecture). Lue une fois : à la fin, ou si YouTube refuse la lecture intégrée, [onFinished] (l'image de fond
+ * revient). [onShown] : la vidéo est visible (bouton du son). Sous-titres selon sa langue ([language],
  * donnée par TMDB) : aucun en français (VF, ou VOSTFR qui a déjà les siens dans l'image), en français
  * pour une autre langue, au choix de YouTube si elle est inconnue.
+ *
+ * Le cadre du lecteur est fixe ([BoxWithConstraints] de [modifier]) : il ne doit pas changer de taille
+ * pendant la lecture (la page serait recréée).
  */
 @Composable
-internal fun TrailerBackdrop(key: String, language: String?, modifier: Modifier = Modifier) {
-    var show by remember(key) { mutableStateOf(false) }
-    LaunchedEffect(key) {
-        delay(TRAILER_DELAY_MILLIS)
+internal fun TrailerBackdrop(
+    key: String,
+    language: String?,
+    modifier: Modifier = Modifier,
+    delayMillis: Long = TRAILER_DELAY_MILLIS,
+    muted: Boolean = true,
+    onShown: (Boolean) -> Unit = {},
+    onFinished: () -> Unit = {},
+) {
+    var show by remember(key) { mutableStateOf(delayMillis <= 0) }
+    LaunchedEffect(key, delayMillis) {
+        if (show) return@LaunchedEffect
+        delay(delayMillis)
         show = true
     }
-    AnimatedVisibility(show, enter = fadeIn(tween(800)), exit = fadeOut(), modifier = modifier) {
-        // Taille du cadre donnée au lecteur en pixels CSS (= dp) : sur la Fire TV, la page calcule mal la
-        // hauteur disponible (100 %, vh), et la vidéo ne tenait qu'une bande en haut, ou rien (carré noir).
-        BoxWithConstraints(Modifier.fillMaxSize()) {
-            val width = maxWidth.value.roundToInt()
-            val height = maxHeight.value.roundToInt()
-            if (width > 0 && height > 0) {
-                androidx.compose.runtime.key(width, height) {
-                    TrailerPage(key, captions(language), width, height)
-                }
+    DisposableEffect(key) { onDispose { onShown(false) } }
+    if (!show) return
+    // Taille du cadre donnée au lecteur en pixels CSS (= dp) : sur la Fire TV, la page calcule mal la
+    // hauteur disponible (100 %, vh), et la vidéo ne tenait qu'une bande en haut, ou rien (carré noir).
+    BoxWithConstraints(modifier) {
+        val width = maxWidth.value.roundToInt()
+        val height = maxHeight.value.roundToInt()
+        if (width > 0 && height > 0) {
+            androidx.compose.runtime.key(key, width, height) {
+                TrailerPage(key, captions(language), width, height, muted, onShown, onFinished)
             }
+        }
+    }
+}
+
+/**
+ * Bande-annonce en plein écran, avec le son (bouton « Bande-annonce ») : « Retour » la ferme, et elle se
+ * ferme d'elle-même à la fin ou si YouTube refuse la lecture intégrée.
+ */
+@Composable
+internal fun TrailerFullScreen(key: String, language: String?, onClose: () -> Unit) {
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        val focus = remember { FocusRequester() }
+        LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(androidx.compose.ui.graphics.Color.Black)
+                // Les touches ne vont à rien d'autre (la page ne prend jamais le focus) ; « Retour » ferme.
+                .focusRequester(focus)
+                .focusable(),
+        ) {
+            TrailerBackdrop(key, language, Modifier.fillMaxSize(), delayMillis = 0, muted = false, onFinished = onClose)
         }
     }
 }
 
 /** Page du lecteur YouTube, mise en pause quand l'appli passe en arrière-plan. */
 @Composable
-private fun TrailerPage(key: String, captions: Captions, width: Int, height: Int) {
+private fun TrailerPage(
+    key: String,
+    captions: Captions,
+    width: Int,
+    height: Int,
+    muted: Boolean,
+    onShown: (Boolean) -> Unit,
+    onFinished: () -> Unit,
+) {
     var view by remember { mutableStateOf<WebView?>(null) }
     // Vue cachée (alpha) tant que YouTube affiche ses commandes du démarrage ; la page, qui ne le voit pas,
     // continue de lire la vidéo (une vidéo cachée dans la page elle-même n'était jamais lancée).
     var visible by remember { mutableStateOf(false) }
     val alpha by animateFloatAsState(if (visible) 1f else 0f, tween(800), label = "trailer")
+    val shown by rememberUpdatedState(onShown)
+    val finished by rememberUpdatedState(onFinished)
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle, view) {
         val web = view
@@ -81,8 +132,16 @@ private fun TrailerPage(key: String, captions: Captions, width: Int, height: Int
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }
     }
+    // Son coupé ou rendu en cours de lecture (bouton du bandeau).
+    LaunchedEffect(view, muted) { view?.evaluateJavascript("setMuted(${if (muted) "true" else "false"})", null) }
     AndroidView(
-        factory = { context -> trailerView(context, key, captions, width, height) { visible = it }.also { view = it } },
+        factory = { context ->
+            trailerView(
+                context, key, captions, width, height, muted,
+                onVisible = { visible = it; shown(it) },
+                onFinished = { visible = false; shown(false); finished() },
+            ).also { view = it }
+        },
         update = { web -> web.alpha = alpha },
         onRelease = { web -> web.destroy() },
         modifier = Modifier.fillMaxSize(),
@@ -96,16 +155,23 @@ private fun trailerView(
     captions: Captions,
     width: Int,
     height: Int,
+    startMuted: Boolean,
     onVisible: (Boolean) -> Unit,
+    onFinished: () -> Unit,
 ): WebView = WebView(context).apply {
     alpha = 0f
-    // La page signale quand montrer la vidéo (commandes YouTube parties) ou la cacher (reprise, boucle).
+    // La page signale quand montrer la vidéo (commandes YouTube parties), la cacher (reprise), et la fin.
     val web = this
     addJavascriptInterface(
         object {
             @JavascriptInterface
             fun show(value: Boolean) {
                 web.post { onVisible(value) }
+            }
+
+            @JavascriptInterface
+            fun finished() {
+                web.post { onFinished() }
             }
         },
         "NixTv",
@@ -120,36 +186,38 @@ private fun trailerView(
     settings.domStorageEnabled = true
     webChromeClient = WebChromeClient()
     // Page avec le lecteur intégré, à la taille exacte du cadre : son adresse de base sert d'origine
-    // (YouTube refuse un lecteur sans). Le cadre est au format de la vidéo (16/9) :
-    // rien n'est coupé. L'API YouTube se branche sur ce lecteur pour le son, la pause et les sous-titres.
+    // (YouTube refuse un lecteur sans). L'API YouTube se branche sur ce lecteur pour le son, la pause,
+    // la fin et les sous-titres. Lue une fois (pas de boucle).
     val html = """
         <html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>
         html,body{margin:0;width:${width}px;height:${height}px;background:transparent;overflow:hidden}
         iframe{position:absolute;top:0;left:0;width:${width}px;height:${height}px;border:0;pointer-events:none}
         </style></head><body>
-        <iframe id="player" width="$width" height="$height" src="https://www.youtube-nocookie.com/embed/$key?autoplay=1&mute=1&controls=0&loop=1&playlist=$key&modestbranding=1&rel=0&playsinline=1&iv_load_policy=3&disablekb=1&fs=0&hl=fr&cc_load_policy=${captions.loadPolicy}&enablejsapi=1&origin=https%3A%2F%2Fnixtv.app"
+        <iframe id="player" width="$width" height="$height" src="https://www.youtube-nocookie.com/embed/$key?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0&playsinline=1&iv_load_policy=3&disablekb=1&fs=0&hl=fr&cc_load_policy=${captions.loadPolicy}&enablejsapi=1&origin=https%3A%2F%2Fnixtv.app"
         allow="autoplay; encrypted-media" referrerpolicy="strict-origin-when-cross-origin"></iframe>
         <script>
         var player=null;
-        // Vidéo cachée au démarrage, à la reprise et à chaque boucle : YouTube y affiche quelques secondes
-        // son titre, sa chaîne et ses boutons. Elle apparaît (avec le son) une fois ces commandes parties.
+        // Son voulu (bouton du bandeau, réglage) ; la lecture démarre toujours muette (lecture automatique).
+        var muted=${if (startMuted) "true" else "false"};
+        // Vidéo cachée au démarrage et à la reprise : YouTube y affiche quelques secondes son titre, sa chaîne
+        // et ses boutons. Elle apparaît (avec le son s'il est voulu) une fois ces commandes parties.
         var hidden=true;
+        var done=false;
         var revealTimer=null;
+        function call(f){try{f();}catch(e){}}
         function show(v){call(function(){NixTv.show(v);});}
-        function hide(){hidden=true;clearTimeout(revealTimer);show(false);call(function(){player.mute();});}
+        function finish(){if(done)return;done=true;clearTimeout(revealTimer);call(function(){NixTv.finished();});}
+        function applySound(){call(function(){if(muted||hidden){player.mute();}else{player.unMute();player.setVolume(100);}});}
+        function setMuted(m){muted=m;applySound();}
+        function hide(){hidden=true;clearTimeout(revealTimer);show(false);applySound();}
         function revealSoon(p){
           clearTimeout(revealTimer);
-          revealTimer=setTimeout(function(){
-            hidden=false;
-            show(true);
-            call(function(){p.unMute();p.setVolume(100);});
-          },${REVEAL_DELAY_MILLIS});
+          revealTimer=setTimeout(function(){hidden=false;show(true);applySound();},$REVEAL_DELAY_MILLIS);
         }
-        function pause(){try{player.pauseVideo();}catch(e){}}
-        function resume(){hide();try{player.playVideo();}catch(e){}}
+        function pause(){call(function(){player.pauseVideo();});}
+        function resume(){if(done)return;hide();call(function(){player.playVideo();});}
         var captions='${captions.name}';
         var captionsSet=false;
-        function call(f){try{f();}catch(e){}}
         function track(list,lang){return list.filter(function(t){return (t.languageCode||'').indexOf(lang)==0;})[0];}
         function applyCaptions(p){
           if(captions=='OFF'){call(function(){p.setOption('captions','track',{});});return;}
@@ -168,16 +236,20 @@ private fun trailerView(
           var i=setInterval(function(){applyCaptions(p);},1000);
           setTimeout(function(){clearInterval(i);},12000);
         }
+        // Rien ne démarre (réseau, page bloquée) : on abandonne, l'image reste.
+        setTimeout(function(){if(hidden&&!done)finish();},$START_TIMEOUT_MILLIS);
         function onYouTubeIframeAPIReady(){
           player=new YT.Player('player',{
             events:{
               onReady:function(e){applyCaptions(e.target);watchCaptions(e.target);},
               onApiChange:function(e){applyCaptions(e.target);},
-              // Lecture (1) : la vidéo apparaît après les commandes du démarrage ; fin (0, avant la boucle) : cachée.
+              // Lecture (1) : la vidéo apparaît après les commandes du démarrage ; fin (0) : terminée.
               onStateChange:function(e){
                 if(e.data==1&&hidden)revealSoon(e.target);
-                if(e.data==0)hide();
-              }
+                if(e.data==0){hide();finish();}
+              },
+              // Lecture intégrée refusée par la vidéo (101, 150), vidéo introuvable… : l'image reste.
+              onError:function(){hide();finish();}
             }
           });
         }
@@ -209,5 +281,8 @@ private fun captions(language: String?): Captions = when {
 /** Attente après le début de la lecture avant de montrer la vidéo : le temps que les commandes YouTube disparaissent. */
 private const val REVEAL_DELAY_MILLIS = 3_500
 
-/** Temps passé sur la même affiche avant que sa bande-annonce démarre. */
-private const val TRAILER_DELAY_MILLIS = 4_000L
+/** Temps passé sur la même affiche avant que sa bande-annonce démarre (réglable). */
+internal const val TRAILER_DELAY_MILLIS = 3_000L
+
+/** Lecture qui ne démarre pas (réseau, page bloquée) : abandonnée au bout de ce temps. */
+private const val START_TIMEOUT_MILLIS = 20_000
