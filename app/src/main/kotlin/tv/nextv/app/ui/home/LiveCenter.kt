@@ -122,6 +122,9 @@ internal fun LiveCenterSection(
     val focusManager = LocalFocusManager.current
     var paneFocused by remember { mutableStateOf(false) }
     var listFocused by remember { mutableStateOf(false) }
+    var railFocused by remember { mutableStateOf(false) }
+    // ← depuis la liste : la sélection va sur la catégorie choisie, pas sur la plus proche à l'écran.
+    val selectedCategory = remember { FocusRequester() }
     var initialFocusDone by rememberSaveable { mutableStateOf(false) }
     if (initialFocus && !initialFocusDone) {
         LaunchedEffect(Unit) {
@@ -151,19 +154,30 @@ internal fun LiveCenterSection(
                     Modifier
                 },
             )
-            .then(if (paneShortcut) Modifier.onPreviewKeyEvent { menuKey(it, paneFocused, focusManager, paneFocus) } else Modifier),
+            .then(if (paneShortcut) Modifier.onPreviewKeyEvent { menuKey(it, paneFocused, focusManager, paneFocus) } else Modifier)
+            .onPreviewKeyEvent { event ->
+                if (event.key != Key.DirectionLeft || event.type != KeyEventType.KeyDown || !listFocused) return@onPreviewKeyEvent false
+                if (focusManager.moveFocus(FocusDirection.Left) && railFocused) runCatching { selectedCategory.requestFocus() }
+                true
+            },
         horizontalArrangement = Arrangement.spacedBy(if (glass) 10.dp else 0.dp),
     ) {
         if (glass) {
             CategoryRail(
                 section, window, groups, recentCount, allCount, category, query, favoritesCount, resumeCount, actions,
-                Modifier.width(264.dp).clip(panel).background(colors.surfaceContainerLow.copy(alpha = 0.62f)).padding(top = 6.dp),
+                Modifier.width(264.dp).clip(panel).background(colors.surfaceContainerLow.copy(alpha = 0.62f)).padding(top = 6.dp).onFocusChanged { railFocused = it.hasFocus },
                 dense = true,
                 containerColor = Color.Transparent,
                 startPadding = 6.dp,
+                selectedFocus = selectedCategory,
             )
         } else {
-            CategoryRail(section, window, groups, recentCount, allCount, category, query, favoritesCount, resumeCount, actions, Modifier.width(230.dp), dense = true)
+            CategoryRail(
+                section, window, groups, recentCount, allCount, category, query, favoritesCount, resumeCount, actions,
+                Modifier.width(230.dp).onFocusChanged { railFocused = it.hasFocus },
+                dense = true,
+                selectedFocus = selectedCategory,
+            )
         }
         Column(Modifier.weight(1f).fillMaxHeight()) {
             banner?.invoke(Modifier.fillMaxWidth().height(LIVE_BANNER_HEIGHT).clip(panel))
@@ -177,13 +191,17 @@ internal fun LiveCenterSection(
             }
             hint?.invoke()
             // Retour depuis le volet (gauche) : sur l'élément choisi, pas sur le plus proche.
-            Box(
-                Modifier
-                    .weight(1f)
-                    .onFocusChanged { listFocused = it.hasFocus }
-                    .focusRequester(listFocus)
-                    .focusRestorer(),
-            ) { body() }
+            // Nouvelle catégorie : la liste repart du haut, sans reprendre la chaîne choisie dans la précédente
+            // (elle restait défilée sur elle, comme si l'ancienne catégorie était encore affichée).
+            androidx.compose.runtime.key(category) {
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .onFocusChanged { listFocused = it.hasFocus }
+                        .focusRequester(listFocus)
+                        .focusRestorer(),
+                ) { body() }
+            }
         }
         if (banner == null) {
             pane(

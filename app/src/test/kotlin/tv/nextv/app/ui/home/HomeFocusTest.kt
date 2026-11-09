@@ -31,6 +31,9 @@ import androidx.paging.PagingData
 import androidx.paging.compose.collectAsLazyPagingItems
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
+import androidx.compose.runtime.collectAsState
+import androidx.paging.cachedIn
+import kotlinx.coroutines.flow.flatMapLatest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -230,6 +233,81 @@ class HomeFocusTest {
         assertTrue("Volet encore ouvert", compose.onAllNodesWithText("CATÉGORIES").fetchSemanticsNodes().isEmpty())
         assertTrue("Sélection hors du menu : $focusedLeft", focusedLeft < 100.dp)
     }
+
+    /**
+     * Chaînes en Streaming : une catégorie, puis « Toutes les chaînes » : la liste revient bien à toutes
+     * (liste paginée qui suit la catégorie, comme dans l'application).
+     */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Test
+    fun streamingChannelsBackToAllChannels() {
+        val chosen = mutableListOf<Category>()
+        val focusedChannels = mutableListOf<ChannelListRow>()
+        val categoryFlow = kotlinx.coroutines.flow.MutableStateFlow<Category>(Category.All)
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main)
+        val paged = categoryFlow.flatMapLatest { c ->
+            if (c == Category.Favorites || c == Category.Recent) {
+                kotlinx.coroutines.flow.emptyFlow()
+            } else {
+                val list = SampleData.channels.filter { c !is Category.Group || it.groupTitle.orEmpty() == c.title }
+                androidx.paging.Pager(androidx.paging.PagingConfig(pageSize = 60, enablePlaceholders = false)) { ListSource(list) }.flow
+            }
+        }.cachedIn(scope)
+        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().setInTouchMode(false)
+        compose.setContent {
+            val category by categoryFlow.collectAsState()
+            NexTvTheme(ThemeStyle.NIGHT) {
+                HomeContent(
+                    section = HomeSection.TV,
+                    groups = SampleData.groups,
+                    category = category,
+                    query = "",
+                    channels = paged.collectAsLazyPagingItems(),
+                    favoriteChannels = emptyList(),
+                    movies = remember { flowOf(PagingData.from(SampleData.movies)) }.collectAsLazyPagingItems(),
+                    favoriteMovies = emptyList(),
+                    series = remember { flowOf(PagingData.from(SampleData.series)) }.collectAsLazyPagingItems(),
+                    favoriteSeries = emptyList(),
+                    favoriteKeys = emptySet(),
+                    reorder = ReorderState(),
+                    now = SampleData.NOW,
+                    snackbarHostState = remember { SnackbarHostState() },
+                    actions = HomeActions(onCategory = { chosen += it; categoryFlow.value = it }, onChannelFocus = { focusedChannels += it }),
+                    guide = {},
+                    football = {},
+                    layout = HomeLayout.STREAMING,
+                )
+            }
+        }
+        compose.waitForIdle()
+        // ← : catégories ; Favoris, Récentes, Toutes les chaînes, Information, Sport : OK sur « Sport ».
+        press(Key.DirectionLeft)
+        repeat(5) { press(Key.DirectionDown) }
+        press(Key.DirectionCenter)
+        // Dans la liste de Sport, sur une chaîne plus bas.
+        press(Key.DirectionRight)
+        repeat(2) { press(Key.DirectionDown) }
+        // ← : retour sur la catégorie choisie (« Sport »), pas sur la plus proche.
+        press(Key.DirectionLeft)
+        val picked = (chosen.last() as Category.Group).title
+        println("Retour aux catégories sur : ${focusedText()} (choisie : $picked)")
+        assertTrue("← : ${focusedText()} (choisie : $picked)", focusedText()?.contains(picked) == true)
+        // ↑ jusqu'à « Toutes les chaînes », OK : la liste repart du haut, sur toutes les chaînes.
+        repeat(8) { if (focusedText()?.contains("Toutes les chaînes") != true) press(Key.DirectionUp) }
+        press(Key.DirectionCenter)
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
+        println("Catégories choisies : $chosen")
+        assertEquals(Category.All, chosen.lastOrNull())
+        assertTrue("Info 24 pas affichée en haut de « Toutes »", compose.onAllNodesWithText("Info 24", substring = true).fetchSemanticsNodes().isNotEmpty())
+    }
+
+    private class ListSource(private val rows: List<ChannelListRow>) : androidx.paging.PagingSource<Int, ChannelListRow>() {
+        override fun getRefreshKey(state: androidx.paging.PagingState<Int, ChannelListRow>): Int? = null
+        override suspend fun load(params: LoadParams<Int>): LoadResult<Int, ChannelListRow> = LoadResult.Page(rows, null, null)
+    }
+
+    private fun focusedText() = runCatching { compose.onNode(isFocused()).fetchSemanticsNode().config.toString().let { Regex("Text : \\[[^]]*]").find(it)?.value } }.getOrNull()
 
     @Test
     fun liveCenterCategoriesCanBeReachedWithDown() {
@@ -649,6 +727,7 @@ class HomeFocusTest {
         section: HomeSection = HomeSection.TV,
         preview: ChannelPreview? = null,
         grid: GridColumns = GridColumns(),
+        category: Category = Category.All,
     ) {
         NexTvTheme(ThemeStyle.NIGHT) {
 
@@ -658,7 +737,7 @@ class HomeFocusTest {
             HomeContent(
                 section = section,
                 groups = groups,
-                category = Category.All,
+                category = category,
                 query = "",
                 channels = channels,
                 favoriteChannels = emptyList(),

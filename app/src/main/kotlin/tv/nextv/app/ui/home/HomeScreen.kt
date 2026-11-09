@@ -67,6 +67,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
@@ -493,6 +497,17 @@ fun HomeContent(
     val rowJump = remember(section) { RowJump() }
     // Section affichée dans le menu de gauche de Streaming (← depuis le volet des catégories).
     val navFocus = remember { FocusRequester() }
+    // Section choisie dans le menu de gauche : la sélection quitte le menu (→) dès que le contenu est là.
+    var navPicked by remember { mutableIntStateOf(0) }
+    val navFocusManager = LocalFocusManager.current
+    LaunchedEffect(navPicked) {
+        if (navPicked == 0) return@LaunchedEffect
+        for (attempt in 1..40) {
+            withFrameNanos { }
+            if (!tabsFocused.value) break
+            if (navFocusManager.moveFocus(FocusDirection.Right) && !tabsFocused.value) break
+        }
+    }
     // Accueil à rangées : Streaming et Cinéma Premium, sauf les chaînes sur grand écran (liste avec aperçu).
     val rowsHome = layout != HomeLayout.LIVE_CENTER && !(section == HomeSection.TV && window.isWide)
     val drawerRail: @Composable (Modifier) -> Unit = { railModifier ->
@@ -630,7 +645,11 @@ fun HomeContent(
                 StreamingNav(
                     section = section,
                     window = window,
-                    onSection = actions.onSection,
+                    // Section choisie : le menu se referme, la sélection passe au contenu de la section.
+                    onSection = { target ->
+                        actions.onSection(target)
+                        navPicked++
+                    },
                     onSearch = onSearch,
                     onCategories = if (catalog && !liveList) ({ drawerOpen.value = true }) else null,
                     onSettings = actions.onSettings,
@@ -1077,7 +1096,10 @@ internal fun CategoryRail(
     onCategory: (Category) -> Unit = actions.onCategory,
     /** Marge de gauche des catégories (`null` : d'après celle de l'écran). */
     startPadding: Dp? = null,
+    /** Catégorie choisie, pour y poser la sélection de l'extérieur (← depuis la liste). */
+    selectedFocus: FocusRequester = remember { FocusRequester() },
 ) {
+    fun Modifier.selectedHere(selected: Boolean) = if (selected) focusRequester(selectedFocus) else this
     // Appui long sur une catégorie pour la masquer.
     val hide: (String) -> (() -> Unit)? = { title -> if (section.kind() != null) ({ actions.onHideCategory(title) }) else null }
     // L'ombre de la catégorie choisie déborde un peu : la liste (coupée à ses bords par les fondus) lui laisse
@@ -1099,25 +1121,25 @@ internal fun CategoryRail(
                 modifier = fade,
             ) {
                 item {
-                    CategoryItem(stringResource(R.string.home_favorites), favoritesCount, category == Category.Favorites, star = true, dense = dense) {
+                    CategoryItem(stringResource(R.string.home_favorites), favoritesCount, category == Category.Favorites, star = true, dense = dense, modifier = Modifier.selectedHere(category == Category.Favorites)) {
                         onCategory(Category.Favorites)
                     }
                 }
                 if (recentCount != null) {
                     item {
-                        CategoryItem(stringResource(R.string.home_recent), recentCount, category == Category.Recent, dense = dense) {
+                        CategoryItem(stringResource(R.string.home_recent), recentCount, category == Category.Recent, dense = dense, modifier = Modifier.selectedHere(category == Category.Recent)) {
                             onCategory(Category.Recent)
                         }
                     }
                 }
                 if (resumeCount != null) {
                     item {
-                        CategoryItem(stringResource(R.string.home_continue), resumeCount, category == Category.ContinueWatching, dense = dense) {
+                        CategoryItem(stringResource(R.string.home_continue), resumeCount, category == Category.ContinueWatching, dense = dense, modifier = Modifier.selectedHere(category == Category.ContinueWatching)) {
                             onCategory(Category.ContinueWatching)
                         }
                     }
                 }
-                item { CategoryItem(allLabel(section), allCount, category == Category.All, dense = dense) { onCategory(Category.All) } }
+                item { CategoryItem(allLabel(section), allCount, category == Category.All, dense = dense, modifier = Modifier.selectedHere(category == Category.All)) { onCategory(Category.All) } }
                 items(groups, key = { it.title ?: NO_GROUP_KEY }) { group ->
                     val title = group.title.orEmpty()
                     CategoryItem(
@@ -1126,6 +1148,7 @@ internal fun CategoryRail(
                         category == Category.Group(title),
                         onLongClick = hide(title),
                         dense = dense,
+                        modifier = Modifier.selectedHere(category == Category.Group(title)),
                     ) {
                         onCategory(Category.Group(title))
                     }
@@ -1291,6 +1314,19 @@ private fun Modifier.reorderKeys(active: Boolean, columns: Int, onMove: (Int) ->
         }
     }
 
+/**
+ * Nouvelle catégorie : la grille repart du haut quand sa liste arrive. Pendant la lecture, l'ancienne liste reste
+ * un instant affichée ; à l'arrivée de la nouvelle, la grille se recalait sur une chaîne de l'ancienne, loin dans
+ * la liste (« Toutes les chaînes » semblait garder la catégorie précédente). Pas au retour du lecteur
+ * ([lastOpened] : la grille y revient sur l'élément ouvert).
+ */
+@Composable
+private fun TopOnNewList(state: LazyGridState, category: Category, firstKey: Any?, lastOpened: MutableState<OpenedItem?>) {
+    LaunchedEffect(category, firstKey) {
+        if (firstKey != null && lastOpened.value == null && state.firstVisibleItemIndex > 0) state.scrollToItem(0)
+    }
+}
+
 @Composable
 internal fun TvBody(
     channels: LazyPagingItems<ChannelListRow>,
@@ -1353,6 +1389,7 @@ internal fun TvBody(
         else -> channels.itemCount
     }
     RestoreScroll(state, lastOpened, count)
+    TopOnNewList(state, category, if (channels.itemCount > 0) channels.peek(0)?.id else null, lastOpened)
     FadingBottom({ state.canScrollForward }, { state.canScrollBackward }) { fade ->
         LazyVerticalGrid(
             columns = GridCells.Fixed(grid.columns),
@@ -1426,6 +1463,7 @@ private fun MoviesBody(
     }
     val state = rememberSaveable(category, saver = LazyGridState.Saver) { LazyGridState() }
     RestoreScroll(state, lastOpened, if (favoritesMode) favorites.size else movies.itemCount)
+    TopOnNewList(state, category, if (movies.itemCount > 0) movies.peek(0)?.id else null, lastOpened)
     FadingBottom({ state.canScrollForward }, { state.canScrollBackward }) { fade ->
         LazyVerticalGrid(
             columns = GridCells.Fixed(grid.columns),
@@ -1498,6 +1536,7 @@ private fun SeriesBody(
     }
     val state = rememberSaveable(category, saver = LazyGridState.Saver) { LazyGridState() }
     RestoreScroll(state, lastOpened, if (favoritesMode) favorites.size else series.itemCount)
+    TopOnNewList(state, category, if (series.itemCount > 0) series.peek(0)?.itemKey else null, lastOpened)
     FadingBottom({ state.canScrollForward }, { state.canScrollBackward }) { fade ->
         LazyVerticalGrid(
             columns = GridCells.Fixed(grid.columns),
@@ -1621,13 +1660,14 @@ internal fun CategoryItem(
     star: Boolean = false,
     onLongClick: (() -> Unit)? = null,
     dense: Boolean = false,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
     FocusSurface(
         onClick = onClick,
         onLongClick = onLongClick,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.small,
         color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
         // Pas d'agrandissement : le texte de la catégorie choisie resterait légèrement flou.

@@ -4,6 +4,12 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.69
+- Catégories des chaînes : en revenant sur « Toutes les chaînes », la liste repart du haut (elle restait défilée sur les chaînes de la catégorie précédente)
+- Catégories : ← depuis la liste revient sur la catégorie choisie, et non sur la plus proche
+- Streaming, menu de gauche : choisir une section le referme, la sélection passe au contenu
+- Réglages, son de l’aperçu : « Moyen » devient « Normal »
+
 ## 0.2.68
 - Cinéma Premium : moins d’espace sous la barre du haut, l’aperçu du direct et les catégories remontent
 

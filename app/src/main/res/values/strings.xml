@@ -417,7 +417,7 @@
     <string name="settings_preview_volume">Son de l’aperçu</string>
     <string name="preview_volume_off">Coupé</string>
     <string name="preview_volume_low">Faible</string>
-    <string name="preview_volume_medium">Moyen</string>
+    <string name="preview_volume_medium">Normal</string>
     <string name="settings_crash">Dernier incident</string>
     <string name="settings_crash_help">NixTV s’est fermé de façon inattendue %1$s (version %2$s). Une photo de ce cadre aide à corriger le problème.</string>
     <string name="settings_crash_clear">Effacer</string>
