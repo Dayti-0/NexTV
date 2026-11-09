@@ -725,6 +725,12 @@ private fun CatalogBody(
             paneShortcut = !reorder.active,
             glass = liveList,
             initialFocus = initialFocus,
+            // Mosaïque des chaînes (Streaming, Cinéma Premium) : aperçu en bandeau au-dessus, mosaïque en pleine largeur.
+            banner = if (liveList && section == HomeSection.TV && gridColumns.liveCenterMosaic) {
+                { bannerModifier -> LiveBanner(preview, previewPlayer, now, bannerModifier) }
+            } else {
+                null
+            },
             pane = { paneModifier ->
                 if (section == HomeSection.TV) LivePane(preview, previewPlayer, now, paneModifier, glass = liveList) else SpotlightPane(spotlight, paneModifier)
             },

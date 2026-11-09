@@ -106,6 +106,11 @@ internal fun LiveCenterSection(
     glass: Boolean = false,
     /** Focus sur la liste au premier affichage. */
     initialFocus: Boolean = false,
+    /**
+     * Bandeau horizontal au-dessus de la liste, à la place du volet de droite (mosaïque des chaînes de
+     * Streaming et Cinéma Premium : la mosaïque prend toute la largeur, le nom de la chaîne s'affiche en grand).
+     */
+    banner: (@Composable (Modifier) -> Unit)? = null,
     pane: @Composable (Modifier) -> Unit,
     body: @Composable () -> Unit,
 ) {
@@ -159,6 +164,7 @@ internal fun LiveCenterSection(
             CategoryRail(section, window, groups, recentCount, allCount, category, query, favoritesCount, resumeCount, actions, Modifier.width(230.dp), dense = true)
         }
         Column(Modifier.weight(1f).fillMaxHeight()) {
+            banner?.invoke(Modifier.fillMaxWidth().height(LIVE_BANNER_HEIGHT).clip(panel))
             // Pas de titre au-dessus de la liste : la catégorie et son nombre sont déjà dans la colonne de gauche.
             if (action != null) {
                 Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, top = 6.dp, bottom = 6.dp), horizontalArrangement = Arrangement.End) {
@@ -177,14 +183,71 @@ internal fun LiveCenterSection(
                     .focusRestorer(),
             ) { body() }
         }
-        pane(
-            Modifier
-                .weight(if (tv) 0.82f else 0.62f)
-                .fillMaxHeight()
-                .then(if (glass) Modifier.clip(panel) else Modifier)
-                .focusRequester(paneFocus)
-                .onFocusChanged { paneFocused = it.hasFocus },
-        )
+        if (banner == null) {
+            pane(
+                Modifier
+                    .weight(if (tv) 0.82f else 0.62f)
+                    .fillMaxHeight()
+                    .then(if (glass) Modifier.clip(panel) else Modifier)
+                    .focusRequester(paneFocus)
+                    .onFocusChanged { paneFocused = it.hasFocus },
+            )
+        }
+    }
+}
+
+private val LIVE_BANNER_HEIGHT = 196.dp
+
+/**
+ * Bandeau du direct, à l'horizontale (mosaïque) : la vidéo à gauche ; à côté, en grand, le numéro et le
+ * nom de la chaîne, le programme en cours avec ses horaires et sa progression, puis le suivant.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+internal fun LiveBanner(preview: ChannelPreview?, player: Player?, now: Long, modifier: Modifier) {
+    val colors = MaterialTheme.colorScheme
+    Row(
+        modifier.background(colors.surfaceContainerLow.copy(alpha = 0.62f)).padding(14.dp),
+        horizontalArrangement = Arrangement.spacedBy(18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.fillMaxHeight().aspectRatio(16f / 9f).clip(MaterialTheme.shapes.large).background(Color.Black),
+            contentAlignment = Alignment.Center,
+        ) {
+            preview?.channel?.let { ChannelLogo(it.logoUrl, it.title, Modifier.fillMaxWidth(0.4f).aspectRatio(16f / 9f), monogramSize = 26.dp) }
+            if (player != null) PreviewVideo(player, Modifier.fillMaxSize())
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (preview == null) return@Column
+            val channel = preview.channel
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                channel.channelNumber?.let { Text(it, style = MaterialTheme.typography.headlineSmall, color = colors.primary, fontWeight = FontWeight.Bold) }
+                Text(channel.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.weight(1f, fill = false).basicMarquee())
+                qualityLabel(channel.quality)?.let { Badge(it, color = colors.secondary) }
+            }
+            val current = preview.current
+            if (current == null) {
+                Text(stringResource(R.string.channels_no_epg), style = MaterialTheme.typography.bodyLarge, color = NexTvColors.TextMuted)
+            } else {
+                Text(current.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("${shortTime(current.startMillis)} – ${shortTime(current.stopMillis)}", style = MaterialTheme.typography.labelLarge, color = colors.onSurfaceVariant)
+                    LiveProgress(current.startMillis, current.stopMillis, now, Modifier.weight(1f))
+                    val left = ((current.stopMillis - now) / 60_000L).coerceAtLeast(0)
+                    Text(stringResource(R.string.live_remaining, left), style = MaterialTheme.typography.labelMedium, color = colors.onSurfaceVariant)
+                }
+            }
+            preview.next?.let { next ->
+                Text(
+                    stringResource(R.string.preview_next, shortTime(next.startMillis), next.title),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
     }
 }
 

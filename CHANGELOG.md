@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.63
+- Chaînes en mosaïque (Streaming et Cinéma Premium) : l’aperçu passe en bandeau en haut, avec le nom de la chaîne et le programme en grand ; la mosaïque prend toute la largeur, vignettes plus grandes
+
 ## 0.2.62
 - Streaming et Cinéma Premium, films et séries : choisir une catégorie dans le volet saute à sa rangée, toutes les autres restent affichées
 - Volet des catégories : ← le ferme et ouvre le menu de gauche (Streaming)
