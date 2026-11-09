@@ -4,6 +4,16 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.60
+- Streaming et Cinéma Premium, chaînes : nouvel écran avec les catégories à gauche (dont « Toutes les chaînes »), la liste des chaînes et leur programme au centre, l’aperçu et la suite des programmes à droite ; ↑ ↓ pour changer de chaîne, ← pour les catégories
+- Films et séries : l’image de fond ne change plus deux fois (affiche puis belle image) ; elle attend la bonne image, et celles déjà vues s’affichent tout de suite
+- Heure affichée dans la barre de navigation de toutes les interfaces, depuis n’importe quel menu
+- Guide TV : le titre d’un programme commencé avant le bord de l’écran reste visible
+- Guide TV : « L’essentiel » est retiré ; dans Favoris, choix entre « Guide TV » et « Ce soir »
+- Guide TV, « Ce soir » : une fois la soirée finie (vers 23 h 30, et après minuit), c’est le lendemain soir qui s’affiche ; plus de programme de la veille
+- Lecteur, menu des chaînes : la catégorie choisie est toujours calée à gauche, en allant à gauche comme à droite
+- Réglages › Interface et couleurs : la sélection s’ouvre sur l’interface choisie (et non sur « Retour »)
+
 ## 0.2.59
 - Streaming, films et séries : les boutons « Épisodes » / « Lecture » et « Plus d’infos » de la bannière sont retirés (OK sur une affiche suffit)
 - Volet des catégories refait : fond translucide (on devine l’écran derrière), titre « Catégories », ouverture plus douce

@@ -54,6 +54,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -120,10 +122,6 @@ fun GuideScreen(
     val context = LocalContext.current
     val viewModel = appViewModel(key = "guide-$sourceId") { container, _ -> GuideViewModel(container, sourceId, context.resources) }
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val selection by viewModel.selection.collectAsStateWithLifecycle()
-    LaunchedEffect(viewModel) {
-        viewModel.messages.collect { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }
-    }
     val groups by viewModel.groups.collectAsStateWithLifecycle()
     val selectedGroup by viewModel.selectedGroup.collectAsStateWithLifecycle()
     val tonight by viewModel.tonight.collectAsStateWithLifecycle()
@@ -137,8 +135,6 @@ fun GuideScreen(
         onPlay = onPlay,
         onReplay = { channel, programme -> onReplay(channel.id, programme.startMillis, programme.stopMillis) },
         modifier = modifier,
-        selection = selection,
-        onToggleSelection = viewModel::toggleSelection,
     )
 }
 
@@ -161,9 +157,6 @@ fun GuideContent(
     /** Programme du soir (catégorie « Ce soir »). */
     tonight: TonightUiState = TonightUiState(),
     onTonightDay: (Int) -> Unit = {},
-    /** Chaînes de « L'essentiel » (clés) ; appui long sur une chaîne ou bouton de la fiche pour l'y ajouter. */
-    selection: Set<String> = emptySet(),
-    onToggleSelection: (GuideChannel) -> Unit = {},
 ) {
     val window = rememberWindowInfo()
     val minuteWidth = if (window.isWide) 4.6.dp else 3.2.dp
@@ -176,15 +169,20 @@ fun GuideContent(
         channel.programmes.firstOrNull { it.isLive(state.now) }?.let { channel to it }
     }
 
+    val favorites = selectedGroup == GuideViewModel.FAVORITES || selectedGroup == GuideViewModel.FAVORITES_TONIGHT
     Column(modifier.fillMaxSize()) {
         LazyRow(
             contentPadding = PaddingValues(horizontal = window.horizontalPadding, vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            item { GuideGroupChip(stringResource(R.string.home_favorites), selectedGroup == GuideViewModel.FAVORITES, star = true) { onSelectGroup(GuideViewModel.FAVORITES) } }
-            // « Ce soir » et « L'essentiel » : une ligne par chaîne, TNT d'abord (sans les doublons SD, HD, FHD).
+            // Favoris : en grille ou en « Ce soir » (choix juste en dessous), le mode choisi est gardé.
+            item {
+                GuideGroupChip(stringResource(R.string.home_favorites), favorites, star = true) {
+                    if (!favorites) onSelectGroup(GuideViewModel.FAVORITES)
+                }
+            }
+            // « Ce soir » : une ligne par chaîne, TNT d'abord (sans les doublons SD, HD, FHD).
             item { GuideGroupChip(stringResource(R.string.guide_tonight), selectedGroup == GuideViewModel.TONIGHT) { onSelectGroup(GuideViewModel.TONIGHT) } }
-            item { GuideGroupChip(stringResource(R.string.guide_essential), selectedGroup == GuideViewModel.ESSENTIAL) { onSelectGroup(GuideViewModel.ESSENTIAL) } }
             item { GuideGroupChip(stringResource(R.string.channels_all_short), selectedGroup == null) { onSelectGroup(null) } }
             items(groups, key = { it.title ?: "\u0000" }) { group ->
                 GuideGroupChip(group.title ?: stringResource(R.string.channels_no_group), selectedGroup == group.title.orEmpty()) {
@@ -193,7 +191,18 @@ fun GuideContent(
             }
         }
 
-        if (selectedGroup == GuideViewModel.TONIGHT) {
+        if (favorites) {
+            // Favoris : grille du guide ou programme du soir.
+            Row(
+                Modifier.padding(start = window.horizontalPadding, end = window.horizontalPadding, bottom = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                GuideModeChip(stringResource(R.string.guide_mode_grid), selectedGroup == GuideViewModel.FAVORITES) { onSelectGroup(GuideViewModel.FAVORITES) }
+                GuideModeChip(stringResource(R.string.guide_tonight), selectedGroup == GuideViewModel.FAVORITES_TONIGHT) { onSelectGroup(GuideViewModel.FAVORITES_TONIGHT) }
+            }
+        }
+        if (selectedGroup == GuideViewModel.TONIGHT || selectedGroup == GuideViewModel.FAVORITES_TONIGHT) {
             TonightView(tonight, window, onTonightDay, onOpen = { channel, programme -> details = channel to programme })
         } else if (!state.loading && state.channels.isEmpty()) {
             EmptyState(
@@ -201,14 +210,12 @@ fun GuideContent(
                 title = stringResource(
                     when (selectedGroup) {
                         GuideViewModel.FAVORITES -> R.string.guide_no_favorites_title
-                        GuideViewModel.ESSENTIAL -> R.string.guide_selection_empty_title
                         else -> R.string.guide_empty_title
                     },
                 ),
                 message = stringResource(
                     when (selectedGroup) {
                         GuideViewModel.FAVORITES -> R.string.guide_no_favorites_message
-                        GuideViewModel.ESSENTIAL -> R.string.guide_selection_empty_message
                         else -> R.string.guide_empty_message
                     },
                 ),
@@ -227,8 +234,6 @@ fun GuideContent(
                 onPlay = onPlay,
                 onFocus = { focused = it },
                 onOpen = { details = it },
-                selection = selection,
-                onToggleSelection = onToggleSelection,
             )
         }
     }
@@ -251,8 +256,6 @@ fun GuideContent(
             } else {
                 null
             },
-            inSelection = (channel.itemKey in selection).takeIf { channel.itemKey.isNotEmpty() },
-            onToggleSelection = { onToggleSelection(channel) },
         )
     }
 }
@@ -271,8 +274,6 @@ private fun GuideGrid(
     onPlay: (Long) -> Unit,
     onFocus: (Pair<GuideChannel, GuideProgramme>) -> Unit,
     onOpen: (Pair<GuideChannel, GuideProgramme>) -> Unit,
-    selection: Set<String> = emptySet(),
-    onToggleSelection: (GuideChannel) -> Unit = {},
 ) {
     val initialFocus = remember { FocusRequester() }
     var initialFocusDone by remember { mutableStateOf(false) }
@@ -386,8 +387,6 @@ private fun GuideGrid(
                         timelineLocked = { timelineLocked },
                         onFocusAtDone = { pendingFocus = null },
                         onChannelFocus = { focusedRow = -1 },
-                        selected = channel.itemKey in selection,
-                        onToggleSelection = { onToggleSelection(channel) },
                         onPlay = {
                             rememberOpened(index, state.now)
                             onPlay(channel.id)
@@ -403,6 +402,24 @@ private fun GuideGrid(
                     )
                 }
             }
+        }
+    }
+}
+
+/** Choix du mode des Favoris (« Guide TV » ou « Ce soir »), plus discret que les catégories. */
+@Composable
+private fun GuideModeChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    FocusSurface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+        focusedColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+        contentColor = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
+        focusScale = 1.05f,
+    ) {
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (selected) Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(16.dp).padding(end = 4.dp))
+            Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
         }
     }
 }
@@ -514,9 +531,6 @@ private fun GuideRow(
     /** Frise horaire figée : le programme visé, visible, ne la fait pas défiler. */
     timelineLocked: () -> Boolean,
     onChannelFocus: () -> Unit,
-    /** Chaîne de « L'essentiel » ; appui long sur la chaîne pour l'y ajouter ou l'en retirer. */
-    selected: Boolean,
-    onToggleSelection: () -> Unit,
     onPlay: () -> Unit,
     onFocus: (GuideProgramme) -> Unit,
     onOpen: (GuideProgramme) -> Unit,
@@ -535,7 +549,6 @@ private fun GuideRow(
     Row(Modifier.fillMaxWidth().height(rowHeight)) {
         FocusSurface(
             onClick = onPlay,
-            onLongClick = onToggleSelection,
             modifier = Modifier.width(channelColumnWidth).fillMaxHeight(),
             shape = MaterialTheme.shapes.small,
             color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -555,7 +568,6 @@ private fun GuideRow(
                         }
                         Text(channel.name, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
-                    if (selected) Icon(Icons.Filled.Check, contentDescription = null, tint = NexTvColors.Primary, modifier = Modifier.size(16.dp))
                 } else {
                     Text(channel.number ?: "", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -584,6 +596,8 @@ private fun GuideRow(
                             live = live,
                             past = programme.stopMillis <= state.now,
                             replay = Catchup.isAvailable(channel.catchupDays, programme.startMillis, state.now),
+                            blockStart = minutes(start - state.windowStart) * minuteWidth,
+                            scroll = scroll,
                             modifier = Modifier
                                 .offset(x = minutes(start - state.windowStart) * minuteWidth)
                                 .width(minutes(end - start) * minuteWidth)
@@ -629,6 +643,9 @@ private fun ProgrammeBlock(
     live: Boolean,
     past: Boolean,
     replay: Boolean,
+    /** Début de la case dans la frise, et défilement de la frise : le texte suit le bord gauche visible. */
+    blockStart: Dp,
+    scroll: ScrollState,
     modifier: Modifier,
     onClick: () -> Unit,
     onFocus: () -> Unit,
@@ -646,7 +663,20 @@ private fun ProgrammeBlock(
         focusScale = 1f,
         onFocusChange = { if (it) onFocus() },
     ) {
-        Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalArrangement = Arrangement.Center) {
+        Column(
+            Modifier
+                // Programme commencé avant le bord gauche de l'écran : titre et horaires glissent jusqu'à ce
+                // bord (ils restaient tout à gauche de la case, hors de l'écran), sans sortir de la case.
+                .layout { measurable, constraints ->
+                    val hidden = scroll.value - blockStart.roundToPx()
+                    val maxShift = (constraints.maxWidth - STICKY_MIN_TEXT.roundToPx()).coerceAtLeast(0)
+                    val shift = hidden.coerceIn(0, maxShift)
+                    val placeable = measurable.measure(constraints.copy(minWidth = 0, maxWidth = (constraints.maxWidth - shift).coerceAtLeast(0)))
+                    layout(constraints.maxWidth, placeable.height) { placeable.place(shift, 0) }
+                }
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.Center,
+        ) {
             Text(programme.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 // Programme passé disponible en replay.
@@ -873,3 +903,6 @@ fun formatDuration(millis: Long): String {
 }
 
 private fun duration(programme: GuideProgramme) = formatDuration(programme.stopMillis - programme.startMillis)
+
+/** Place minimale gardée au texte d'une case du guide quand il suit le bord gauche de l'écran. */
+private val STICKY_MIN_TEXT = 110.dp

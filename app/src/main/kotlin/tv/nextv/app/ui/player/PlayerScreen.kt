@@ -959,7 +959,7 @@ fun ChannelMenu(
         focusPlaced = false
         if (!menu.open) return@LaunchedEffect
         val category = menu.category
-        chipsState.reveal(categories.indexOf(category))
+        chipsState.pinToStart(categories.indexOf(category))
         withTimeoutOrNull(LIST_WAIT_MILLIS) { snapshotFlow { listReady(category) }.first { it } }
         runCatching { listState.scrollToItem(menu.initialIndex) }
         delay(50)
@@ -976,12 +976,12 @@ fun ChannelMenu(
     }
     // Catégorie changée (gauche/droite) : un seul déplacement, une fois la nouvelle liste prête.
     // En attendant, le focus reste sur le panneau : aucune ligne de l'ancienne liste en surbrillance,
-    // et la rangée des catégories ne défile que si la pastille choisie sort de l'écran.
+    // et la catégorie choisie se cale tout à gauche de sa rangée.
     LaunchedEffect(categoryChanges) {
         if (categoryChanges == 0) return@LaunchedEffect
         val category = menu.category
         runCatching { panelFocus.requestFocus() }
-        chipsState.reveal(categories.indexOf(category))
+        chipsState.pinToStart(categories.indexOf(category))
         withTimeoutOrNull(LIST_WAIT_MILLIS) { snapshotFlow { listReady(category) }.first { it } } ?: return@LaunchedEffect
         runCatching { listState.scrollToItem(0) }
         withFrameNanos { }
@@ -1030,7 +1030,7 @@ fun ChannelMenu(
                             .edgeFade(
                                 start = { if (chipsState.canScrollBackward) 1f else 0f },
                                 end = { if (chipsState.canScrollForward) 1f else 0f },
-                                length = CHIPS_FADE,
+                                length = CHIPS_EDGE,
                             ),
                     ) {
                         item { MenuChip(stringResource(R.string.home_favorites), favoritesMode, star = true) { onCategory(Category.Favorites) } }
@@ -1191,6 +1191,9 @@ private val MENU_ART_WIDTH = 176.dp
 
 /** Fondu sur les bords de la rangée des catégories du menu des chaînes. */
 private val CHIPS_FADE = 28.dp
+
+/** Fondu des bords de la rangée des catégories : moins que la marge de gauche (24 dp), la catégorie calée à gauche reste nette. */
+private val CHIPS_EDGE = 20.dp
 
 @Composable
 private fun MenuChip(name: String, selected: Boolean, star: Boolean = false, onClick: () -> Unit) {
@@ -1497,17 +1500,12 @@ fun ResumePromptCard(prompt: ResumePrompt, onAnswer: (Boolean) -> Unit, modifier
 private const val LIST_WAIT_MILLIS = 3_000L
 private const val FOCUS_RECOVERY_MILLIS = 150L
 
-/** Fait défiler la rangée juste assez pour que l'élément [index] soit entièrement visible, sans animation. */
-private suspend fun LazyListState.reveal(index: Int) {
+/**
+ * Cale l'élément [index] tout à gauche de la rangée (après sa marge), sans animation : la catégorie choisie
+ * est toujours au même endroit, à l'ouverture comme en allant à gauche ou à droite (vers la droite, elle
+ * restait au bord droit). En fin de rangée, les dernières restent simplement visibles.
+ */
+private suspend fun LazyListState.pinToStart(index: Int) {
     if (index < 0) return
-    val info = layoutInfo
-    val item = info.visibleItemsInfo.firstOrNull { it.index == index }
-    val end = info.viewportEndOffset - info.afterContentPadding
-    runCatching {
-        when {
-            item == null -> scrollToItem((index - 1).coerceAtLeast(0))
-            item.offset < 0 -> scrollBy(item.offset.toFloat())
-            item.offset + item.size > end -> scrollBy((item.offset + item.size - end).toFloat())
-        }
-    }
+    runCatching { scrollToItem(index) }
 }

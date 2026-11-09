@@ -321,6 +321,20 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
+    fun guideFavoritesTonight() = capture("09i_guide_favoris_ce_soir") {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+            GuideContent(
+                state = SampleData.guide,
+                groups = SampleData.groups,
+                selectedGroup = GuideViewModel.FAVORITES_TONIGHT,
+                onSelectGroup = {},
+                onPlay = {},
+                tonight = SampleData.tonight,
+            )
+        }
+    }
+
+    @Test
     fun footballStandings() = capture("09c_foot_classement") {
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             FootballContent(

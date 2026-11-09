@@ -845,7 +845,7 @@ private const val EDGE_FADE_MILLIS = 250
 
 /** Heure actuelle (« 20:47 »), mise à jour à chaque changement de minute. */
 @Composable
-fun CurrentTime(modifier: Modifier = Modifier) {
+fun CurrentTime(modifier: Modifier = Modifier, style: androidx.compose.ui.text.TextStyle = MaterialTheme.typography.titleLarge) {
     val now by produceState(System.currentTimeMillis()) {
         while (true) {
             value = System.currentTimeMillis()
@@ -854,7 +854,7 @@ fun CurrentTime(modifier: Modifier = Modifier) {
     }
     Text(
         java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date(now)),
-        style = MaterialTheme.typography.titleLarge,
+        style = style,
         color = MaterialTheme.colorScheme.onBackground,
         maxLines = 1,
         modifier = modifier,

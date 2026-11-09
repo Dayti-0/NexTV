@@ -41,6 +41,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -173,6 +179,18 @@ fun AppearanceContent(
     snackbar: SnackbarHostState = remember { SnackbarHostState() },
 ) {
     val window = rememberWindowInfo()
+    // À l'ouverture, la sélection se pose sur l'interface choisie (et non sur la flèche « Retour »).
+    val currentLayout = remember { FocusRequester() }
+    var initialFocusDone by rememberSaveable { mutableStateOf(false) }
+    if (!initialFocusDone) {
+        LaunchedEffect(Unit) {
+            for (attempt in 1..10) {
+                if (runCatching { currentLayout.requestFocus() }.getOrDefault(false)) break
+                withFrameNanos { }
+            }
+            initialFocusDone = true
+        }
+    }
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Column(Modifier.fillMaxSize()) {
             ScreenHeader(
@@ -193,13 +211,13 @@ fun AppearanceContent(
                     // Écran large : les trois interfaces côte à côte.
                     Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         HomeLayout.entries.forEach { option ->
-                            LayoutCard(option, selected = option == layout, onClick = { onLayout(option) }, modifier = Modifier.weight(1f))
+                            LayoutCard(option, selected = option == layout, onClick = { onLayout(option) }, modifier = Modifier.weight(1f).focusOn(currentLayout, option == layout))
                         }
                     }
                 } else {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         HomeLayout.entries.forEach { option ->
-                            LayoutCard(option, selected = option == layout, onClick = { onLayout(option) }, modifier = Modifier.width(300.dp))
+                            LayoutCard(option, selected = option == layout, onClick = { onLayout(option) }, modifier = Modifier.width(300.dp).focusOn(currentLayout, option == layout))
                         }
                     }
                 }
@@ -573,3 +591,6 @@ fun homeLayoutHelp(layout: HomeLayout): String = stringResource(
         HomeLayout.PREMIUM -> R.string.home_layout_premium_help
     },
 )
+
+/** [requester] sur cet élément seulement s'il est [current]. */
+private fun Modifier.focusOn(requester: FocusRequester, current: Boolean): Modifier = if (current) focusRequester(requester) else this

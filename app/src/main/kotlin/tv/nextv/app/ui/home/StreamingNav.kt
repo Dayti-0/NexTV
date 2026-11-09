@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import tv.nextv.app.R
 import tv.nextv.app.ui.components.BrandMark
+import tv.nextv.app.ui.components.CurrentTime
 import tv.nextv.app.ui.components.FocusSurface
 import tv.nextv.app.ui.components.WindowInfo
 
@@ -100,7 +101,9 @@ internal fun StreamingNav(
         Row(Modifier.height(44.dp).padding(start = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             BrandMark(compact = true, showName = open)
         }
-        Spacer(Modifier.height(10.dp))
+        // Heure actuelle sous le logo, visible depuis toutes les sections (menu replié compris).
+        CurrentTime(Modifier.padding(start = 8.dp, top = 2.dp), style = MaterialTheme.typography.titleSmall)
+        Spacer(Modifier.height(8.dp))
         // Rechercher, sections et catégories : défilent si l'écran manque de hauteur, pour que
         // « Réglages » reste toujours entier en bas (il était écrasé sur la Fire TV).
         Column(

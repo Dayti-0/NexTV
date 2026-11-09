@@ -164,7 +164,12 @@ data class Discover(
 
 /** Affiche sélectionnée, puis sa fiche TMDB (visuel plein écran, résumé, genres, note) une fois lue. */
 @Immutable
-data class Spotlight(val item: PosterItem, val details: MediaDetails? = null) {
+data class Spotlight(
+    val item: PosterItem,
+    val details: MediaDetails? = null,
+    /** Fiche TMDB en cours de lecture : l'image de fond attend la sienne (pas d'affiche entre-temps). */
+    val pending: Boolean = false,
+) {
     val backdropUrl: String? get() = details?.backdropUrl ?: item.backdropUrl
     val overview: String? get() = details?.overview ?: item.overview
     /** Note TMDB, seulement quand assez de votes la rendent parlante (pas de « 10,0 » sur 2 votes). */
@@ -421,12 +426,23 @@ class HomeViewModel(
                 emit(null)
                 return@transformLatest
             }
-            emit(Spotlight(item))
-            if (!container.hasTmdbKey()) return@transformLatest
-            delay(SPOTLIGHT_DELAY_MILLIS)
+            if (!container.hasTmdbKey()) {
+                emit(Spotlight(item))
+                return@transformLatest
+            }
             val type = if (item.kind == ContentKind.SERIES) MediaType.SERIES else MediaType.MOVIE
-            val state = runCatching { container.metadata.details(metadataCacheKey(item.itemKey), type, item.title, item.year) }.getOrNull()
-            (state as? MetadataState.Available)?.let { emit(Spotlight(item, it.details)) }
+            val key = metadataCacheKey(item.itemKey)
+            // Fiche déjà lue : son image tout de suite, sans passer par l'affiche de la liste.
+            runCatching { container.metadata.cachedDetails(key, type) }.getOrNull()?.let {
+                emit(Spotlight(item, it))
+                return@transformLatest
+            }
+            // Sinon l'image de fond précédente reste jusqu'à la bonne (l'affiche puis l'image TMDB, une demi-seconde
+            // après, faisaient deux changements d'image).
+            emit(Spotlight(item, pending = item.backdropUrl == null))
+            delay(SPOTLIGHT_DELAY_MILLIS)
+            val state = runCatching { container.metadata.details(key, type, item.title, item.year) }.getOrNull()
+            emit((state as? MetadataState.Available)?.let { Spotlight(item, it.details) } ?: Spotlight(item))
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 

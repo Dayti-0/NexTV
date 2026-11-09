@@ -112,6 +112,7 @@ import tv.nextv.app.ui.components.RemoteTextField
 import tv.nextv.app.ui.components.openKeyboardOnOk
 import tv.nextv.app.ui.components.IconAction
 import tv.nextv.app.ui.components.PillButton
+import tv.nextv.app.ui.components.CurrentTime
 import tv.nextv.app.ui.components.WindowInfo
 import tv.nextv.app.ui.components.rememberWindowInfo
 import tv.nextv.app.ui.football.FootballScreen
@@ -517,7 +518,10 @@ fun HomeContent(
     ) { padding ->
         CompositionLocalProvider(LocalTabsFocused provides { tabsFocused.value }) {
             // Cinéma Premium : la sélection occupe tout l'écran, onglets compris.
-            if (catalog && layout == HomeLayout.PREMIUM && category == Category.All) {
+            // Streaming et Cinéma Premium sur grand écran : les chaînes en liste avec l'aperçu (comme Live Center),
+            // pas en rangées : « Toutes les chaînes » en tête des catégories, ↑ ↓ pour changer de chaîne.
+            val liveList = section == HomeSection.TV && window.isWide && layout != HomeLayout.LIVE_CENTER
+            if (catalog && layout == HomeLayout.PREMIUM && category == Category.All && !liveList) {
                 CategoryDrawer(drawerRail, Modifier.padding(padding), drawerOpen) {
                 PremiumHome(
                     content = shelfContent,
@@ -544,7 +548,7 @@ fun HomeContent(
                 when {
                     section == HomeSection.GUIDE -> guide(Modifier.weight(1f))
                     section == HomeSection.FOOTBALL -> football(Modifier.weight(1f))
-                    layout == HomeLayout.STREAMING && category == Category.All -> CategoryDrawer(drawerRail, Modifier.weight(1f), drawerOpen, initialFocus = streamingNav && window.isTv) {
+                    layout == HomeLayout.STREAMING && category == Category.All && !liveList -> CategoryDrawer(drawerRail, Modifier.weight(1f), drawerOpen, initialFocus = streamingNav && window.isTv) {
                         StreamingHome(
                         content = shelfContent,
                         window = window,
@@ -590,8 +594,10 @@ fun HomeContent(
                         modifier = Modifier.weight(1f),
                         // Streaming et Cinéma Premium : catégories dans le volet (←, ou « Catégories » du menu),
                         // comme sur l'accueil, au lieu d'une colonne fixe.
-                        drawerRail = drawerRail.takeIf { layout != HomeLayout.LIVE_CENTER },
+                        drawerRail = drawerRail.takeIf { layout != HomeLayout.LIVE_CENTER && !liveList },
                         drawerOpen = drawerOpen,
+                        liveList = liveList,
+                        initialFocus = liveList && streamingNav && window.isTv,
                     )
                 }
             }
@@ -601,7 +607,7 @@ fun HomeContent(
                     window = window,
                     onSection = actions.onSection,
                     onSearch = onSearch,
-                    onCategories = if (catalog) ({ drawerOpen.value = true }) else null,
+                    onCategories = if (catalog && !liveList) ({ drawerOpen.value = true }) else null,
                     onSettings = actions.onSettings,
                     onFocusChange = { tabsFocused.value = it },
                     modifier = Modifier.align(Alignment.CenterStart),
@@ -649,6 +655,10 @@ private fun CatalogBody(
     /** Volet des catégories (écran large) ; `null` : colonne des catégories fixe. */
     drawerRail: (@Composable (Modifier) -> Unit)? = null,
     drawerOpen: MutableState<Boolean>? = null,
+    /** Chaînes de Streaming / Cinéma Premium : catégories, liste et aperçu, en panneaux translucides. */
+    liveList: Boolean = false,
+    /** Focus de départ sur la liste (Streaming sur la télé : pas d'onglets pour le prendre). */
+    initialFocus: Boolean = false,
 ) {
     val favoritesCount = when (section) {
         HomeSection.TV -> favoriteChannels.size
@@ -677,7 +687,7 @@ private fun CatalogBody(
     } else {
         null
     }
-    if (layout == HomeLayout.LIVE_CENTER && window.isWide) {
+    if ((layout == HomeLayout.LIVE_CENTER || liveList) && window.isWide) {
         LiveCenterSection(
             section = section,
             window = window,
@@ -697,8 +707,10 @@ private fun CatalogBody(
                 null
             },
             paneShortcut = !reorder.active,
+            glass = liveList,
+            initialFocus = initialFocus,
             pane = { paneModifier ->
-                if (section == HomeSection.TV) LivePane(preview, previewPlayer, now, paneModifier) else SpotlightPane(spotlight, paneModifier)
+                if (section == HomeSection.TV) LivePane(preview, previewPlayer, now, paneModifier, glass = liveList) else SpotlightPane(spotlight, paneModifier)
             },
         ) {
             // Chaînes : une par ligne avec leur programme, ou en mosaïque (réglages) ; films et séries : affiches.
@@ -810,6 +822,8 @@ private fun HomeTopBar(
                 )
             }
         }
+        // Heure actuelle, visible depuis toutes les sections.
+        CurrentTime(Modifier.padding(horizontal = 12.dp))
         if (minimal) {
             // Sur l'image ou le direct (souvent clairs) : même fond translucide que les onglets, pour rester visible.
             Spacer(Modifier.width(10.dp))
@@ -847,6 +861,7 @@ private fun MenuTopBar(section: HomeSection, window: WindowInfo, onMenu: () -> U
         }
         Icon(sectionIcon(section), contentDescription = null, tint = MaterialTheme.colorScheme.primary)
         Text(sectionLabel(section), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+        CurrentTime()
         Box(Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.surface.copy(alpha = PREMIUM_BAR_ALPHA))) {
             IconAction(Icons.Filled.Settings, stringResource(R.string.settings_title), onSettings)
         }

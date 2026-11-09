@@ -109,7 +109,7 @@ internal fun TonightView(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             itemsIndexed(state.evenings) { index, evening ->
-                EveningChip(eveningLabel(index, evening), selected = index == state.day) { onDay(index) }
+                EveningChip(eveningLabel(evening, state.now.takeIf { it > 0 } ?: System.currentTimeMillis()), selected = index == state.day) { onDay(index) }
             }
         }
         // Programme sélectionné : image, horaires, genre et résumé.
@@ -308,12 +308,27 @@ private fun EveningChip(label: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
-/** « Ce soir », « Demain soir », puis « lundi 3 ». */
+/**
+ * « Ce soir », « Demain soir », puis « lundi 3 », d'après la date du soir (pas sa place dans la liste) :
+ * une fois la soirée finie, le premier soir proposé est celui du lendemain, nommé « Demain soir ».
+ */
 @Composable
-private fun eveningLabel(index: Int, evening: Long): String = when (index) {
+private fun eveningLabel(evening: Long, now: Long): String = when (daysBetween(now, evening)) {
     0 -> stringResource(R.string.tonight_today)
     1 -> stringResource(R.string.tonight_tomorrow)
     else -> SimpleDateFormat("EEEE d", Locale.getDefault()).format(Date(evening)).replaceFirstChar { it.titlecase(Locale.getDefault()) }
+}
+
+/** Nombre de jours de calendrier entre [from] et [to]. */
+private fun daysBetween(from: Long, to: Long): Int {
+    fun dayOf(millis: Long) = java.util.Calendar.getInstance().apply {
+        timeInMillis = millis
+        set(java.util.Calendar.HOUR_OF_DAY, 12)
+        set(java.util.Calendar.MINUTE, 0)
+        set(java.util.Calendar.SECOND, 0)
+        set(java.util.Calendar.MILLISECOND, 0)
+    }.timeInMillis
+    return Math.round((dayOf(to) - dayOf(from)) / 86_400_000.0).toInt()
 }
 
 private fun shortTime(millis: Long): String = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(millis))

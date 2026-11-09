@@ -238,13 +238,9 @@
     <string name="guide_yesterday">Hier</string>
     <string name="guide_tomorrow">Demain</string>
     <string name="guide_tonight">Ce soir</string>
-    <string name="guide_essential">L’essentiel</string>
-    <string name="guide_selection_added">%1$s ajoutée à L’essentiel</string>
-    <string name="guide_selection_removed">%1$s retirée de L’essentiel</string>
+    <string name="guide_mode_grid">Guide TV</string>
     <string name="guide_selection_add">Ajouter à L’essentiel</string>
     <string name="guide_selection_remove">Retirer de L’essentiel</string>
-    <string name="guide_selection_empty_title">L’essentiel est vide</string>
-    <string name="guide_selection_empty_message">Aucune chaîne dans L’essentiel.</string>
     <string name="tonight_today">Ce soir</string>
     <string name="tonight_tomorrow">Demain soir</string>
     <string name="tonight_first_part">Vers 21 h</string>

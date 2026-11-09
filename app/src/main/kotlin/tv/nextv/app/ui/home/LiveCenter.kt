@@ -34,8 +34,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.focus.FocusRequester
@@ -94,19 +99,64 @@ internal fun LiveCenterSection(
     hint: (@Composable () -> Unit)? = null,
     /** Touche ☰ vers le volet et retour (pas pendant la réorganisation des favoris). */
     paneShortcut: Boolean = true,
+    /**
+     * Streaming et Cinéma Premium : catégories et volet en panneaux translucides aux coins arrondis,
+     * espacés, sur un fond légèrement teinté (au lieu des colonnes pleines de Live Center).
+     */
+    glass: Boolean = false,
+    /** Focus sur la liste au premier affichage. */
+    initialFocus: Boolean = false,
     pane: @Composable (Modifier) -> Unit,
     body: @Composable () -> Unit,
 ) {
     val tv = section == HomeSection.TV
     val paneFocus = remember { FocusRequester() }
+    val listFocus = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     var paneFocused by remember { mutableStateOf(false) }
+    var listFocused by remember { mutableStateOf(false) }
+    var initialFocusDone by rememberSaveable { mutableStateOf(false) }
+    if (initialFocus && !initialFocusDone) {
+        LaunchedEffect(Unit) {
+            // Les chaînes arrivent parfois quelques images plus tard : on réessaie.
+            repeat(30) {
+                if (listFocused) return@repeat
+                runCatching { listFocus.requestFocus() }
+                withFrameNanos { }
+            }
+            initialFocusDone = true
+        }
+    }
+    val colors = MaterialTheme.colorScheme
+    val panel = RoundedCornerShape(22.dp)
     Row(
         modifier
             .fillMaxSize()
+            .then(
+                if (glass) {
+                    // Lueur de la couleur du thème en bas à droite, éteinte avant les bords haut et gauche (pas de cassure).
+                    Modifier
+                        .drawBehind {
+                            drawRect(Brush.radialGradient(listOf(colors.primary.copy(alpha = 0.14f), Color.Transparent), center = Offset(size.width, size.height), radius = size.height * 0.95f))
+                        }
+                        .padding(start = 16.dp, end = 24.dp, top = 8.dp, bottom = 20.dp)
+                } else {
+                    Modifier
+                },
+            )
             .then(if (paneShortcut) Modifier.onPreviewKeyEvent { menuKey(it, paneFocused, focusManager, paneFocus) } else Modifier),
+        horizontalArrangement = Arrangement.spacedBy(if (glass) 18.dp else 0.dp),
     ) {
-        CategoryRail(section, window, groups, recentCount, allCount, category, query, favoritesCount, resumeCount, actions, Modifier.width(230.dp), dense = true)
+        if (glass) {
+            CategoryRail(
+                section, window, groups, recentCount, allCount, category, query, favoritesCount, resumeCount, actions,
+                Modifier.width(272.dp).clip(panel).background(colors.surfaceContainerLow.copy(alpha = 0.62f)).padding(top = 6.dp),
+                dense = true,
+                containerColor = Color.Transparent,
+            )
+        } else {
+            CategoryRail(section, window, groups, recentCount, allCount, category, query, favoritesCount, resumeCount, actions, Modifier.width(230.dp), dense = true)
+        }
         Column(Modifier.weight(1f).fillMaxHeight()) {
             // Pas de titre au-dessus de la liste : la catégorie et son nombre sont déjà dans la colonne de gauche.
             if (action != null) {
@@ -118,12 +168,19 @@ internal fun LiveCenterSection(
             }
             hint?.invoke()
             // Retour depuis le volet (gauche) : sur l'élément choisi, pas sur le plus proche.
-            Box(Modifier.weight(1f).focusRestorer()) { body() }
+            Box(
+                Modifier
+                    .weight(1f)
+                    .onFocusChanged { listFocused = it.hasFocus }
+                    .focusRequester(listFocus)
+                    .focusRestorer(),
+            ) { body() }
         }
         pane(
             Modifier
                 .weight(if (tv) 0.82f else 0.62f)
                 .fillMaxHeight()
+                .then(if (glass) Modifier.clip(panel) else Modifier)
                 .focusRequester(paneFocus)
                 .onFocusChanged { paneFocused = it.hasFocus },
         )
@@ -133,8 +190,16 @@ internal fun LiveCenterSection(
 /** Volet du direct : vidéo, chaîne, programme en cours (progression, description), puis les suivants. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-internal fun LivePane(preview: ChannelPreview?, player: Player?, now: Long, modifier: Modifier) {
-    ScrollingPane(preview?.channel?.id, modifier) {
+internal fun LivePane(
+    preview: ChannelPreview?,
+    player: Player?,
+    now: Long,
+    modifier: Modifier,
+    /** Panneau translucide (Streaming, Cinéma Premium). */
+    glass: Boolean = false,
+) {
+    val container = MaterialTheme.colorScheme.surfaceContainerLow.let { if (glass) it.copy(alpha = 0.62f) else it }
+    ScrollingPane(preview?.channel?.id, modifier, container) {
         Box(
             Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(MaterialTheme.shapes.large).background(Color.Black),
             contentAlignment = Alignment.Center,
@@ -154,12 +219,13 @@ internal fun LivePane(preview: ChannelPreview?, player: Player?, now: Long, modi
             Text(stringResource(R.string.channels_no_epg), style = MaterialTheme.typography.bodyLarge, color = NexTvColors.TextMuted)
         } else {
             Text(current.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            // Horaires et temps restant, puis la progression sur toute la largeur (lisible même si le volet est étroit).
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("${shortTime(current.startMillis)} – ${shortTime(current.stopMillis)}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                LiveProgress(current.startMillis, current.stopMillis, now, Modifier.weight(1f))
+                Text("${shortTime(current.startMillis)} – ${shortTime(current.stopMillis)}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
                 val left = ((current.stopMillis - now) / 60_000L).coerceAtLeast(0)
                 Text(stringResource(R.string.live_remaining, left), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            LiveProgress(current.startMillis, current.stopMillis, now, Modifier.fillMaxWidth())
             // Description entière : le volet défile (haut / bas une fois dedans).
             current.description?.let {
                 Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -182,7 +248,12 @@ internal fun LivePane(preview: ChannelPreview?, player: Player?, now: Long, modi
  * Il repart du haut à chaque nouvelle sélection ([resetKey]).
  */
 @Composable
-private fun ScrollingPane(resetKey: Any?, modifier: Modifier, content: @Composable ColumnScope.() -> Unit) {
+private fun ScrollingPane(
+    resetKey: Any?,
+    modifier: Modifier,
+    container: Color = MaterialTheme.colorScheme.surfaceContainerLow,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     val scroll = rememberScrollState()
     val scope = rememberCoroutineScope()
     var focused by remember { mutableStateOf(false) }
@@ -190,7 +261,7 @@ private fun ScrollingPane(resetKey: Any?, modifier: Modifier, content: @Composab
     val step = with(LocalDensity.current) { PANE_SCROLL_STEP.toPx() }
     Column(
         modifier
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .background(container)
             .then(if (focused) Modifier.border(2.dp, MaterialTheme.colorScheme.primary) else Modifier)
             .onFocusChanged { focused = it.isFocused }
             .onKeyEvent { event -> event.type == KeyEventType.KeyDown && scrollPane(scroll, event.key, step) { scope.launch { it() } } }
@@ -249,7 +320,7 @@ private fun UpcomingLine(programme: GuideProgramme, highlight: Boolean = false) 
 @Composable
 internal fun SpotlightPane(spotlight: Spotlight?, modifier: Modifier) {
     ScrollingPane(spotlight?.item?.itemKey, modifier) {
-        val image = spotlight?.backdropUrl ?: spotlight?.item?.imageUrl
+        val image = spotlightImage(spotlight)
         Crossfade(image, animationSpec = tween(400), label = "pane", modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(MaterialTheme.shapes.large)) { url ->
             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
                 if (url != null) {

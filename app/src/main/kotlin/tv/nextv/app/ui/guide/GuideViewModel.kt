@@ -7,9 +7,6 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -20,10 +17,10 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import tv.nextv.app.AppContainer
-import tv.nextv.app.R
 import tv.nextv.app.data.db.GroupRow
 import tv.nextv.app.data.db.GuideVersionRow
 import tv.nextv.core.catalog.ContentClassifier
@@ -104,7 +101,7 @@ class GuideViewModel(
 
     /**
      * `null` : toutes les chaînes ; `""` : chaînes sans groupe ; [FAVORITES] : chaînes favorites ;
-     * [ESSENTIAL] : une ligne par chaîne du guide ; [TONIGHT] : programme du soir.
+     * [FAVORITES_TONIGHT] : programme du soir des favorites ; [TONIGHT] : programme du soir.
      */
     val selectedGroup = MutableStateFlow<String?>(null)
 
@@ -113,22 +110,12 @@ class GuideViewModel(
 
     private val hiddenGroups = container.hiddenGroupDao.observeTitles(sourceId, ContentKind.LIVE.name)
 
-    /** Chaînes choisies pour « L'essentiel » (clés). */
-    val selection: StateFlow<Set<String>> = container.favorites.observeGuideSelection(sourceId)
-        .map { it.toSet() }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
-
-    private val mutableMessages = MutableSharedFlow<String>(extraBufferCapacity = 2)
-
-    /** Messages brefs (chaîne ajoutée à « L'essentiel »…). */
-    val messages: SharedFlow<String> = mutableMessages.asSharedFlow()
-
     init {
         // Dernière catégorie spéciale choisie (« Ce soir » pour qui ne regarde que la soirée) ; un
         // groupe n'est pas repris : il peut ne pas exister dans une autre playlist.
         viewModelScope.launch {
             container.settings.guideCategory.first()
-                ?.takeIf { it == FAVORITES || it == ESSENTIAL || it == TONIGHT }
+                ?.takeIf { it == FAVORITES || it == FAVORITES_TONIGHT || it == TONIGHT }
                 ?.let { saved -> selectedGroup.compareAndSet(null, saved) }
             selectedGroup.drop(1).collect { container.settings.setGuideCategory(it) }
         }
@@ -142,15 +129,6 @@ class GuideViewModel(
         selectedGroup.value = group
     }
 
-    /** Ajoute la chaîne à « L'essentiel », ou l'en retire. */
-    fun toggleSelection(channel: GuideChannel) {
-        if (channel.itemKey.isEmpty()) return
-        viewModelScope.launch {
-            val added = container.favorites.toggleGuideSelection(sourceId, channel.itemKey, channel.name, channel.logoUrl)
-            mutableMessages.emit(resources.getString(if (added) R.string.guide_selection_added else R.string.guide_selection_removed, channel.name))
-        }
-    }
-
     private val clock = flow {
         while (true) {
             emit(System.currentTimeMillis())
@@ -162,24 +140,41 @@ class GuideViewModel(
     private val slot = clock.map { it - it % HALF_HOUR }.distinctUntilChanged()
 
     val state: StateFlow<GuideUiState> = combine(
-        combine(selectedGroup, slot, hiddenGroups, selection) { group, slot, _, _ -> group to slot }
-            .mapLatest { (group, slot) -> if (group == TONIGHT) GuideUiState(loading = false) else load(group, slot) },
+        combine(selectedGroup, slot, hiddenGroups) { group, slot, _ -> group to slot }
+            .mapLatest { (group, slot) -> if (group.isTonight()) GuideUiState(loading = false) else load(group, slot) },
         clock,
     ) { loaded, now -> loaded.copy(now = now) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), GuideUiState())
 
-    /** Programme du soir, lu seulement quand « Ce soir » est affiché. */
+    /**
+     * Programme du soir, lu seulement quand « Ce soir » est affiché. Soirée changée depuis le dernier affichage
+     * (retour sur l'écran après minuit…) : écran de chargement d'abord, jamais l'ancienne soirée sous « Ce soir ».
+     */
     val tonight: StateFlow<TonightUiState> = combine(
-        combine(selectedGroup, tonightDay, slot, hiddenGroups, selection) { group, day, slot, _, _ -> Triple(group, day, slot) }
-            .mapLatest { (group, day, slot) -> if (group == TONIGHT) loadTonight(day, slot) else TonightUiState() },
+        combine(selectedGroup, tonightDay, slot, hiddenGroups) { group, day, slot, _ -> Triple(group, day, slot) }
+            .transformLatest { (group, day, slot) ->
+                if (!group.isTonight()) {
+                    emit(TonightUiState())
+                    return@transformLatest
+                }
+                val evenings = evenings(slot)
+                val shown = group to evenings[day.coerceIn(evenings.indices)]
+                if (shown != tonightShown) emit(TonightUiState(loading = true, day = day, evenings = evenings))
+                emit(loadTonight(day, slot, favoritesOnly = group == FAVORITES_TONIGHT))
+                tonightShown = shown
+            },
         clock,
     ) { loaded, now -> loaded.copy(now = now) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TonightUiState())
 
+    /** Catégorie et soirée affichées en dernier (« Ce soir ») : rechargement de la même soirée sans écran de chargement. */
+    private var tonightShown: Pair<String?, Long>? = null
+
+    private fun String?.isTonight() = this == TONIGHT || this == FAVORITES_TONIGHT
+
     /**
      * Toutes les chaînes du guide, une ligne par chaîne (sa meilleure version visible, sans les
-     * doublons SD, HD, FHD ni ceux des autres catégories), la TNT d'abord dans l'ordre des numéros :
-     * « Ce soir » tant que « L'essentiel » est vide.
+     * doublons SD, HD, FHD ni ceux des autres catégories), la TNT d'abord dans l'ordre des numéros.
      */
     private suspend fun allGuideChannels(): List<Pair<GuideVersionRow, Int?>> =
         container.channelDao.guideVersions(sourceId)
@@ -187,16 +182,6 @@ class GuideViewModel(
             .map { it to TntChannels.number(it.title.ifBlank { it.name }, it.epgChannelId) }
             .distinctBy { (row, tnt) -> tnt?.toString() ?: row.epgChannelId }
             .sortedWith(compareBy({ it.second == null }, { it.second ?: 0 }, { it.first.position }))
-
-    /**
-     * « L'essentiel » : les chaînes choisies une à une, chacune une seule fois (sa meilleure version
-     * associée au guide) ; celles de la TNT d'abord, dans l'ordre des numéros, puis les autres dans
-     * l'ordre où elles ont été ajoutées.
-     */
-    private suspend fun selectedChannels(): List<Pair<GuideVersionRow, Int?>> =
-        container.channelDao.guideSelection(sourceId)
-            .map { it to TntChannels.number(it.title.ifBlank { it.name }, it.epgChannelId) }
-            .sortedWith(compareBy({ it.second == null }, { it.second ?: 0 }))
 
     private fun GuideVersionRow.toGuideChannel(tnt: Int?, programmes: List<GuideProgramme>) = GuideChannel(
         id = id,
@@ -214,23 +199,37 @@ class GuideViewModel(
             .flatMap { ids -> container.programmeDao.inWindow(sourceId, ids, from, to) }
             .groupBy({ it.epgChannelId }) { GuideProgramme(it.title, it.startMillis, it.stopMillis, it.subtitle, it.description, it.category, it.year, it.imageUrl) }
 
-    private suspend fun loadTonight(day: Int, now: Long): TonightUiState {
-        val evenings = (0 until EVENINGS).map { offset ->
-            Calendar.getInstance().apply {
-                timeInMillis = now
-                add(Calendar.DAY_OF_MONTH, offset)
-                set(Calendar.HOUR_OF_DAY, PRIME_TIME_HOUR)
-                set(Calendar.MINUTE, 0)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-            }.timeInMillis
+    /**
+     * 21 h des soirs proposés. Le premier est celui d'aujourd'hui tant que sa soirée n'est pas finie ;
+     * ensuite (vers 23 h 30, et bien sûr après minuit) c'est celui du lendemain : à 1 h du matin, plus
+     * de programme de la veille.
+     */
+    private fun evenings(now: Long): List<Long> {
+        val today = Calendar.getInstance().apply {
+            timeInMillis = now
+            set(Calendar.HOUR_OF_DAY, PRIME_TIME_HOUR)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
         }
+        if (now >= today.timeInMillis + EVENING_OVER) today.add(Calendar.DAY_OF_MONTH, 1)
+        return (0 until EVENINGS).map { offset ->
+            (today.clone() as Calendar).apply { add(Calendar.DAY_OF_MONTH, offset) }.timeInMillis
+        }
+    }
+
+    private suspend fun loadTonight(day: Int, now: Long, favoritesOnly: Boolean): TonightUiState {
+        val evenings = evenings(now)
         val evening = evenings[day.coerceIn(evenings.indices)]
         // Tout le catalogue associé au guide, une ligne par chaîne (sa meilleure version : « Regarder »
-        // l'ouvre dans la qualité des réglages) : « L'essentiel » d'abord, puis la TNT, puis les autres.
-        val selected = selectedChannels()
-        val chosen = selected.mapTo(HashSet()) { it.first.epgChannelId }
-        val channels = (selected + allGuideChannels().filter { it.first.epgChannelId !in chosen }).take(MAX_TONIGHT_CHANNELS)
+        // l'ouvre dans la qualité des réglages), la TNT d'abord ; Favoris : seulement les chaînes favorites.
+        val all = allGuideChannels()
+        val channels = if (favoritesOnly) {
+            val favorites = container.channelDao.guideFavoriteChannels(sourceId).mapTo(HashSet()) { it.epgChannelId }
+            all.filter { it.first.epgChannelId in favorites }
+        } else {
+            all.take(MAX_TONIGHT_CHANNELS)
+        }
         val programmes = programmesFor(channels.map { it.first.epgChannelId }, evening - EVENING_BEFORE, evening + EVENING_AFTER)
         // Même programme à la même heure sur plusieurs chaînes (versions régionales, doublons) : une seule fois.
         val shown = HashSet<String>()
@@ -255,18 +254,6 @@ class GuideViewModel(
             add(Calendar.DAY_OF_MONTH, -1)
         }.timeInMillis
         val windowEnd = openAt + WINDOW_MILLIS
-        if (group == ESSENTIAL) {
-            val channels = selectedChannels().take(MAX_CHANNELS)
-            val programmes = programmesFor(channels.map { it.first.epgChannelId }, windowStart, windowEnd)
-            return GuideUiState(
-                loading = false,
-                windowStart = windowStart,
-                windowEnd = windowEnd,
-                openAt = openAt,
-                now = slot,
-                channels = channels.map { (row, tnt) -> row.toGuideChannel(tnt, programmes[row.epgChannelId].orEmpty()) },
-            )
-        }
         val rows = if (group == FAVORITES) {
             container.channelDao.guideFavoriteChannels(sourceId)
         } else {
@@ -301,8 +288,8 @@ class GuideViewModel(
         /** Catégorie « Favoris » (valeur réservée, jamais un nom de groupe). */
         const val FAVORITES = "\u0000favorites"
 
-        /** Catégorie « L'essentiel » : une ligne par chaîne du guide, TNT d'abord. */
-        const val ESSENTIAL = "\u0000essential"
+        /** Favoris en mode « Ce soir » : le programme du soir des chaînes favorites. */
+        const val FAVORITES_TONIGHT = "\u0000favorites_tonight"
 
         /** Programme du soir. */
         const val TONIGHT = "\u0000tonight"
@@ -310,6 +297,9 @@ class GuideViewModel(
         private const val EVENINGS = 7
         private const val EVENING_BEFORE = 90 * 60_000L
         private const val EVENING_AFTER = 5 * 60 * 60_000L
+
+        /** Soirée finie, après 21 h : le premier soir proposé devient celui du lendemain. */
+        private const val EVENING_OVER = 150 * 60_000L
         private const val MAX_TONIGHT_CHANNELS = 2_000
         private const val HALF_HOUR = 30 * 60_000L
 

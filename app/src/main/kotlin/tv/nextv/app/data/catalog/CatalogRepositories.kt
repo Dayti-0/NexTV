@@ -31,6 +31,13 @@ class MetadataRepository(
 ) {
     private val dao = database.tmdbDao()
 
+    /** Fiche déjà en cache et encore valable, sans appel réseau (`null` sinon). */
+    suspend fun cachedDetails(cacheKey: String, type: MediaType): MediaDetails? {
+        val cached = dao.get(cacheKey)?.takeIf { it.found } ?: return null
+        val current = cached.trailerKey == null || cached.trailerLanguage != null
+        return if (current && clock() - cached.fetchedAt < FOUND_TTL) cached.toDetails(type) else null
+    }
+
     suspend fun details(cacheKey: String, type: MediaType, title: String, year: Int?, exact: Boolean = false): MetadataState {
         val now = clock()
         dao.get(cacheKey)?.let { cached ->

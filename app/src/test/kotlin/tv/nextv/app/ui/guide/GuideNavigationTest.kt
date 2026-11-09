@@ -10,7 +10,9 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -93,5 +95,22 @@ class GuideNavigationTest {
         assertEquals(before.value, after.value, 0.5f)
         press(Key.DirectionUp)
         assertEquals(before.value, labelX().value, 0.5f)
+    }
+
+    /** Programme commencé avant le bord gauche de l'écran : son titre suit ce bord, il reste lisible. */
+    @Test
+    fun titleOfAProgrammeStartedEarlierStaysVisible() {
+        compose.setContent {
+            NexTvTheme(ThemeStyle.NIGHT) {
+                GuideContent(state = state, groups = emptyList(), selectedGroup = null, onSelectGroup = {}, onPlay = {})
+            }
+        }
+        compose.waitForIdle()
+        val title = compose.onAllNodesWithText("Long après-midi").onFirst().getBoundsInRoot()
+        val screen = compose.onRoot().getBoundsInRoot()
+        println("« Long après-midi » : ${title.left}..${title.right} (écran ${screen.right})")
+        // À droite de la colonne des chaînes (230 dp), et dans l'écran.
+        assertTrue("Titre hors de l'écran à gauche : ${title.left}", title.left >= 230.dp)
+        assertTrue("Titre hors de l'écran à droite : ${title.right}", title.right <= screen.right)
     }
 }

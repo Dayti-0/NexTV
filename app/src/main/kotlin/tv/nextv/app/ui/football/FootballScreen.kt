@@ -1,6 +1,5 @@
 package tv.nextv.app.ui.football
 
-import tv.nextv.app.ui.components.CurrentTime
 import tv.nextv.app.ui.components.FadingBottom
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -158,7 +157,7 @@ fun FootballContent(
 
     val list: @Composable (Modifier) -> Unit = { listModifier ->
         Column(listModifier.fillMaxSize()) {
-            // Matchs ou classement (championnats) à gauche, heure actuelle à droite.
+            // Matchs ou classement (championnats) ; l'heure est dans la barre de navigation.
             Row(
                 Modifier.fillMaxWidth().padding(start = if (window.isWide) 28.dp else window.horizontalPadding, end = window.horizontalPadding, top = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -168,8 +167,6 @@ fun FootballContent(
                     CompetitionChip(stringResource(R.string.football_matches), !showStandings) { onShowStandings(false) }
                     CompetitionChip(stringResource(R.string.football_standings), showStandings) { onShowStandings(true) }
                 }
-                Spacer(Modifier.weight(1f))
-                CurrentTime()
             }
             val body = Modifier.weight(1f)
             when {

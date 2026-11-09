@@ -86,7 +86,7 @@ internal fun PremiumHome(
                 if (previewPlayer != null) PreviewVideo(previewPlayer, Modifier.fillMaxSize(), zoom = true)
             }
         } else {
-            val image = spotlight?.backdropUrl ?: spotlight?.item?.imageUrl
+            val image = spotlightImage(spotlight)
             Crossfade(image, animationSpec = tween(600), label = "premium", modifier = Modifier.fillMaxSize()) { url ->
                 if (url != null) {
                     AsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Crop, alignment = Alignment.TopCenter, modifier = Modifier.fillMaxSize())

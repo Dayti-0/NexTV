@@ -91,16 +91,16 @@ class HomeFocusTest {
 
     @Test
     fun streamingRowsCanBeReachedWithDown() {
-        val focused = mutableListOf<ChannelListRow>()
-        compose.setContent { Home(HomeLayout.STREAMING, HomeActions(onChannelFocus = { focused += it })) }
+        val focused = mutableListOf<String>()
+        compose.setContent { Home(HomeLayout.STREAMING, HomeActions(onPosterFocus = { focused += it.title }), HomeSection.MOVIES) }
         compose.waitForIdle()
         enterStreamingContent()
         repeat(14) {
             compose.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
             compose.waitForIdle()
         }
-        val last = focused.lastOrNull()?.groupTitle
-        println("Focus après 14 × bas : $last (${focused.map { it.title }})")
+        val last = focused.lastOrNull()?.substringBefore(" · ")
+        println("Focus après 14 × bas : $last")
         assertTrue("Focus : $last", last != null && last.removePrefix("Groupe ").toInt() >= 8)
     }
 
@@ -113,15 +113,17 @@ class HomeFocusTest {
 
     private fun assertDrawerOpensWithLeft(layout: HomeLayout) {
         val categories = mutableListOf<Category>()
-        compose.setContent { Home(layout, HomeActions(onCategory = { categories += it })) }
+        compose.setContent { Home(layout, HomeActions(onCategory = { categories += it }), HomeSection.MOVIES) }
         compose.waitForIdle()
         if (layout == HomeLayout.STREAMING) enterStreamingContent()
         // Dans les rangées (première vignette), puis ← : volet ouvert, focus sur ses catégories.
         // Streaming : ← mène au menu de gauche, dont « Catégories » ouvre le volet.
         repeat(3) { press(Key.DirectionDown) }
-        repeat(2) { press(Key.DirectionLeft) }
+        // Jusqu'au bord gauche de la rangée, puis le menu (Streaming) ou le volet (Cinéma Premium).
+        repeat(6) { press(Key.DirectionLeft) }
         if (layout == HomeLayout.STREAMING) {
-            repeat(5) { press(Key.DirectionDown) }
+            // Menu : sur « Films », puis Séries, Guide TV, Foot, Catégories.
+            repeat(4) { press(Key.DirectionDown) }
             press(Key.DirectionCenter)
         }
         compose.onNodeWithText("Groupe 1").assertExists()
@@ -141,13 +143,15 @@ class HomeFocusTest {
 
     private fun assertDrawerKeepsFocus(layout: HomeLayout) {
         val categories = mutableListOf<Category>()
-        compose.setContent { Home(layout, HomeActions(onCategory = { categories += it })) }
+        compose.setContent { Home(layout, HomeActions(onCategory = { categories += it }), HomeSection.MOVIES) }
         compose.waitForIdle()
         if (layout == HomeLayout.STREAMING) enterStreamingContent()
         repeat(3) { press(Key.DirectionDown) }
-        repeat(2) { press(Key.DirectionLeft) }
+        // Jusqu'au bord gauche de la rangée, puis le menu (Streaming) ou le volet (Cinéma Premium).
+        repeat(6) { press(Key.DirectionLeft) }
         if (layout == HomeLayout.STREAMING) {
-            repeat(5) { press(Key.DirectionDown) }
+            // Menu : sur « Films », puis Séries, Guide TV, Foot, Catégories.
+            repeat(4) { press(Key.DirectionDown) }
             press(Key.DirectionCenter)
         }
         compose.onNodeWithText("Groupe 1").assertExists()
@@ -159,6 +163,45 @@ class HomeFocusTest {
         press(Key.DirectionCenter)
         println("$layout, volet après ↑ et ← : $categories")
         assertTrue("Catégorie : $categories", categories.lastOrNull() != null)
+    }
+
+    /**
+     * Chaînes en Streaming : liste avec « Toutes les chaînes » (comme Live Center), le focus d'office
+     * sur la liste ; ↓ passe d'une chaîne à l'autre, ← mène aux catégories, OK en ouvre une.
+     */
+    @Test
+    fun streamingChannelsAreAList() {
+        val focused = mutableListOf<ChannelListRow>()
+        val categories = mutableListOf<Category>()
+        compose.setContent { Home(HomeLayout.STREAMING, HomeActions(onChannelFocus = { focused += it }, onCategory = { categories += it })) }
+        compose.waitForIdle()
+        compose.onNodeWithText("Toutes les chaînes").assertExists()
+        repeat(8) { press(Key.DirectionDown) }
+        val seen = focused.map { it.id }.distinct()
+        println("Streaming, chaînes parcourues : ${focused.map { it.title }.distinct()}")
+        assertTrue("Chaînes parcourues : $seen", seen.size >= 8)
+        // ← : la colonne des catégories ; ↓ puis OK : une catégorie s'ouvre.
+        press(Key.DirectionLeft)
+        repeat(4) { press(Key.DirectionDown) }
+        press(Key.DirectionCenter)
+        println("Streaming, catégorie choisie : $categories")
+        assertTrue("Catégorie : $categories", categories.isNotEmpty())
+    }
+
+    @Test
+    fun premiumChannelsAreAList() {
+        val focused = mutableListOf<ChannelListRow>()
+        compose.setContent { Home(HomeLayout.PREMIUM, HomeActions(onChannelFocus = { focused += it })) }
+        compose.waitForIdle()
+        compose.onNodeWithText("Toutes les chaînes").assertExists()
+        // Barre du haut → recherche → catégories, puis → dans la liste.
+        press(Key.DirectionDown)
+        press(Key.DirectionDown)
+        press(Key.DirectionRight)
+        repeat(8) { press(Key.DirectionDown) }
+        val seen = focused.map { it.id }.distinct()
+        println("Premium, chaînes parcourues : ${focused.map { it.title }.distinct()}")
+        assertTrue("Chaînes parcourues : $seen", seen.size >= 8)
     }
 
     @Test
@@ -197,14 +240,14 @@ class HomeFocusTest {
 
     @Test
     fun premiumRowsCanBeReachedWithDown() {
-        val focused = mutableListOf<ChannelListRow>()
-        compose.setContent { Home(HomeLayout.PREMIUM, HomeActions(onChannelFocus = { focused += it })) }
+        val focused = mutableListOf<String>()
+        compose.setContent { Home(HomeLayout.PREMIUM, HomeActions(onPosterFocus = { focused += it.title }), HomeSection.MOVIES) }
         compose.waitForIdle()
         repeat(10) {
             compose.onRoot().performKeyInput { pressKey(Key.DirectionDown) }
             compose.waitForIdle()
         }
-        val last = focused.lastOrNull()?.groupTitle
+        val last = focused.lastOrNull()?.substringBefore(" · ")
         println("Cinéma Premium, focus après 10 × bas : $last")
         assertTrue("Focus : $last", last != null && last.removePrefix("Groupe ").toInt() >= 5)
     }
@@ -243,8 +286,8 @@ class HomeFocusTest {
     fun streamingRowIsSnappedWhenKeysComeQuickly() = assertFocusedRowSnapped(HomeLayout.STREAMING, quick = true)
 
     private fun assertFocusedRowSnapped(layout: HomeLayout, quick: Boolean = false) {
-        val focused = mutableListOf<ChannelListRow>()
-        compose.setContent { Home(layout, HomeActions(onChannelFocus = { focused += it })) }
+        val focused = mutableListOf<String>()
+        compose.setContent { Home(layout, HomeActions(onPosterFocus = { focused += it.title }), HomeSection.MOVIES) }
         compose.waitForIdle()
         if (layout == HomeLayout.STREAMING) enterStreamingContent()
         if (quick) compose.mainClock.autoAdvance = false
@@ -257,7 +300,7 @@ class HomeFocusTest {
             compose.mainClock.autoAdvance = true
         }
         compose.waitForIdle()
-        val group = focused.last().groupTitle!!.removePrefix("Groupe ").toInt()
+        val group = focused.last().substringBefore(" · ").removePrefix("Groupe ").toInt()
         val previous = "Groupe ${group - 1} · 0"
         val visible = runCatching { compose.onNodeWithText(previous).isDisplayed() }.getOrDefault(false)
         println("$layout${if (quick) " (rapide)" else ""} : rangée Groupe $group, « $previous » visible : $visible")
@@ -275,12 +318,12 @@ class HomeFocusTest {
     fun streamingRowsDoNotShakeWhenMovingSideways() = assertNoShake(HomeLayout.STREAMING)
 
     private fun assertNoShake(layout: HomeLayout) {
-        val focused = mutableListOf<ChannelListRow>()
-        compose.setContent { Home(layout, HomeActions(onChannelFocus = { focused += it })) }
+        val focused = mutableListOf<String>()
+        compose.setContent { Home(layout, HomeActions(onPosterFocus = { focused += it.title }), HomeSection.MOVIES) }
         compose.waitForIdle()
         if (layout == HomeLayout.STREAMING) enterStreamingContent()
         repeat(3) { press(Key.DirectionDown) }
-        val title = focused.last().groupTitle!!
+        val title = focused.last().substringBefore(" · ")
         val tops = mutableListOf<Float>()
         val lefts = mutableListOf<Float>()
         compose.mainClock.autoAdvance = false
@@ -304,13 +347,7 @@ class HomeFocusTest {
      * du bas des TV, rien de la rangée précédente au-dessus.
      */
     @Test
-    fun streamingChannelRowsAreEntirelyVisible() = assertRowsEntirelyVisible(HomeLayout.STREAMING, HomeSection.TV)
-
-    @Test
     fun streamingMovieRowsAreEntirelyVisible() = assertRowsEntirelyVisible(HomeLayout.STREAMING, HomeSection.MOVIES)
-
-    @Test
-    fun premiumChannelRowsAreEntirelyVisible() = assertRowsEntirelyVisible(HomeLayout.PREMIUM, HomeSection.TV)
 
     @Test
     fun premiumMovieRowsAreEntirelyVisible() = assertRowsEntirelyVisible(HomeLayout.PREMIUM, HomeSection.MOVIES)

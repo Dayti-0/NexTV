@@ -45,6 +45,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -895,7 +896,7 @@ internal fun SpotlightBillboard(
 ) {
     val background = MaterialTheme.colorScheme.background
     Box(Modifier.fillMaxSize()) {
-        val image = spotlight?.backdropUrl ?: spotlight?.item?.imageUrl
+        val image = spotlightImage(spotlight)
         Crossfade(image, animationSpec = tween(450), label = "backdrop", modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight().fillMaxWidth(0.66f)) { url ->
             Box(Modifier.fillMaxSize()) {
                 if (url != null) {
@@ -941,6 +942,23 @@ internal fun SpotlightBillboard(
             }
         }
     }
+}
+
+/**
+ * Image de fond de la mise en avant : l'image TMDB du film ou de la série, l'affiche de la liste à défaut.
+ * Pendant la lecture de la fiche TMDB ([Spotlight.pending]), l'image précédente reste : sinon l'affiche
+ * passait, puis l'image TMDB une demi-seconde après (deux changements d'image à chaque déplacement).
+ */
+@Composable
+internal fun spotlightImage(spotlight: Spotlight?): String? {
+    val last = remember { arrayOfNulls<String>(1) }
+    val image = when {
+        spotlight == null -> null
+        spotlight.pending -> last[0]
+        else -> spotlight.backdropUrl ?: spotlight.item.imageUrl
+    }
+    SideEffect { last[0] = image }
+    return image
 }
 
 /** « 2024 · Action, Aventure · 2 h 05 · ★ 7,8 ». */
