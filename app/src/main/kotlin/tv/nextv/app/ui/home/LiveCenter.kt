@@ -146,7 +146,7 @@ internal fun LiveCenterSection(
                         .drawBehind {
                             drawRect(Brush.radialGradient(listOf(colors.primary.copy(alpha = 0.14f), Color.Transparent), center = Offset(size.width, size.height), radius = size.height * 0.95f))
                         }
-                        .padding(start = 4.dp, end = 20.dp, top = 8.dp, bottom = 20.dp)
+                        .padding(start = 4.dp, end = 20.dp, top = 0.dp, bottom = 20.dp)
                 } else {
                     Modifier
                 },

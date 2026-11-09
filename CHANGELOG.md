@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.68
+- Cinéma Premium : moins d’espace sous la barre du haut, l’aperçu du direct et les catégories remontent
+
 ## 0.2.67
 - Cinéma Premium : « Reprendre la lecture » du menu ouvre un écran dédié, avec les onglets Films et Séries (ouvert sur le dernier visionnage), de grandes affiches avec la progression et le temps restant ou l’épisode ; OK reprend, appui long retire de la liste, Retour revient au menu
 

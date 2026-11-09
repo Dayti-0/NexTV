@@ -890,7 +890,8 @@ private fun MenuTopBar(section: HomeSection, window: WindowInfo, onMenu: () -> U
         }
     }
     Row(
-        Modifier.fillMaxWidth().padding(start = window.horizontalPadding, end = window.horizontalPadding, top = window.topPadding, bottom = 12.dp),
+        // Peu d'espace dessous : le contenu (aperçu du direct, catégories) remonte au plus près de la barre.
+        Modifier.fillMaxWidth().padding(start = window.horizontalPadding, end = window.horizontalPadding, top = window.topPadding, bottom = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
