@@ -59,8 +59,11 @@ Commandes :
 - Pousser une branche `release/vX.Y.Z` sur le commit à publier : le workflow « Release » construit l'APK signé et
   crée la version GitHub, que l'application propose en mise à jour.
 - Numéro : la dernière version + 1 (`git ls-remote --heads origin 'release/*'`).
-- L'utilisateur a demandé que chaque correction validée soit publiée sans attendre son accord : tests locaux
-  passés, puis CI verte sur `main`.
+- L'utilisateur a demandé que chaque correction validée soit publiée sans attendre son accord, et le plus vite
+  possible : dès que les tests locaux passent, pousser `main` et la branche `release/vX.Y.Z` en même temps, sans
+  attendre la CI (elle ne fait que compiler, le lint et les captures ; la publication prend ~10 min). Si la CI
+  échoue ensuite, corriger et publier la version suivante.
+- Ne pas compter sur un rappel programmé pendant un long travail : il ne se déclenche qu'à la fin du tour.
 
 ## Repères dans le code
 
