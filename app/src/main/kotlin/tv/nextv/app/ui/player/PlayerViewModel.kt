@@ -97,13 +97,17 @@ class PlayerViewModel(
     private var workingServer: Pair<Long, String>? = null
 
     // Lecteur ExoPlayer : lecture, pistes, infos techniques.
-    private val engine = PlayerEngine(
+    private val engine: PlayerEngine = PlayerEngine(
         container = container,
         scope = viewModelScope,
         state = mutableState,
         resources = resources,
         events = object : PlayerEngine.Events {
-            override fun onBuffering() = quality.onBufferingStarted()
+            override fun onBuffering() {
+                // Pause, différé, retour en arrière : chargements voulus, pas une connexion qui faiblit.
+                if (delayed.recording || state.value.paused || state.value.liveDelayMs > 0) return
+                quality.onBufferingStarted()
+            }
             override fun onReady() {
                 quality.onReady()
                 rememberServer()
@@ -115,7 +119,7 @@ class PlayerViewModel(
     val player: StateFlow<ExoPlayer?> = engine.player
 
     // Pause, différé, replay, sauts et avance rapide.
-    private val delayed = DelayedPlaybackController(
+    private val delayed: DelayedPlaybackController = DelayedPlaybackController(
         container = container,
         context = context,
         scope = viewModelScope,
@@ -130,11 +134,15 @@ class PlayerViewModel(
             override fun showPlaylist(sourceId: Long) {
                 this@PlayerViewModel.sourceId.value = sourceId
             }
+
+            override fun restartedByUser() {
+                quality.onUserRestart()
+            }
         },
     )
 
     // Qualité automatique (versions SD, HD, FHD, 4K d'une même chaîne).
-    private val quality = AutoQualityController(
+    private val quality: AutoQualityController = AutoQualityController(
         container = container,
         scope = viewModelScope,
         state = mutableState,
@@ -523,22 +531,37 @@ class PlayerViewModel(
     }
 
     /** Pause / lecture. En direct, la pause crée un différé ; le retard sur le direct est affiché. */
-    fun togglePause() = delayed.togglePause()
+    fun togglePause() {
+        quality.onUserRestart()
+        delayed.togglePause()
+    }
 
     /** Retour au direct : fin du différé, de « Depuis le début » ou du replay. */
     fun backToLive() = delayed.backToLive()
 
     /** ← en direct : recule de [seconds]. @return faux si ce n'est pas possible sur cette chaîne. */
-    fun rewindLive(seconds: Int): Boolean = delayed.rewindLive(seconds)
+    fun rewindLive(seconds: Int): Boolean {
+        quality.onUserRestart()
+        return delayed.rewindLive(seconds)
+    }
 
     /** Replay ou « Depuis le début » : recule ou avance de [steps] pas (voir [DelayedPlaybackController.jump]). */
-    fun jump(steps: Int) = delayed.jump(steps)
+    fun jump(steps: Int) {
+        quality.onUserRestart()
+        delayed.jump(steps)
+    }
 
     /** ← → maintenu : avance ([direction] 1) ou retour (−1) rapide x2, à rappeler tant que la touche reste enfoncée. */
-    fun fastSeek(direction: Int) = delayed.fastSeek(direction)
+    fun fastSeek(direction: Int) {
+        quality.onUserRestart()
+        delayed.fastSeek(direction)
+    }
 
     /** Touche relâchée : lecture normale à l'endroit atteint. */
-    fun stopFastSeek() = delayed.stopFastSeek()
+    fun stopFastSeek() {
+        quality.onUserRestart()
+        delayed.stopFastSeek()
+    }
 
     private fun onEnded() {
         if (delayed.onEnded()) return
@@ -553,6 +576,7 @@ class PlayerViewModel(
         val player = engine.current ?: return
         if (state.value.isLive) return
         val duration = player.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
+        quality.onUserRestart()
         player.seekTo((player.currentPosition + deltaMs).coerceIn(0, duration))
     }
 
@@ -560,6 +584,7 @@ class PlayerViewModel(
     fun seekTo(positionMs: Long) {
         val player = engine.current ?: return
         if (state.value.isLive) return
+        quality.onUserRestart()
         player.seekTo(positionMs.coerceAtLeast(0))
     }
 

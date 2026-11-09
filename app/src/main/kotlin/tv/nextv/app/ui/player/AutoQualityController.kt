@@ -147,6 +147,11 @@ internal class AutoQualityController(
         switcher?.onReady()
     }
 
+    /** Pause, retour en arrière, retour au direct, saut : le chargement qui suit ne compte pas comme une coupure. */
+    fun onUserRestart() {
+        switcher?.onUserRestart()
+    }
+
     /**
      * Surveillance de la lecture : [dropped] images perdues depuis le dernier passage (l'appareil ne
      * suit pas cette qualité), puis débit mesuré (blocage, ou retour à une meilleure qualité).

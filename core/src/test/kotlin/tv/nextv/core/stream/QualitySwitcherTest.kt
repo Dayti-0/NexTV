@@ -92,6 +92,27 @@ class QualitySwitcherTest {
     }
 
     @Test
+    fun `reloads asked by the user are not a weak connection`() {
+        val switcher = switcher()
+        switcher.onReady()
+        now += 60_000
+        // Pause, retour en arrière, retour au direct : trois rechargements rapprochés, voulus.
+        repeat(3) {
+            switcher.onUserRestart()
+            switcher.onBufferingStarted()
+            now += 1_000
+            switcher.onReady()
+            now += 5_000
+        }
+        assertEquals(QualitySwitcher.Decision.Stay, switcher.evaluate(null))
+        // Retour au direct : le chargement a la tolérance d'un démarrage, pas celle d'un blocage.
+        switcher.onUserRestart()
+        switcher.onBufferingStarted()
+        now += 4_000
+        assertEquals(QualitySwitcher.Decision.Stay, switcher.evaluate(null))
+    }
+
+    @Test
     fun `stable playback with enough bandwidth upgrades after the failed version cooled down`() {
         val switcher = switcher()
         switcher.onError() // FHD → HD

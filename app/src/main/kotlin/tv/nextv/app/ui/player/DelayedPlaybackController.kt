@@ -60,6 +60,9 @@ internal class DelayedPlaybackController(
 
         /** Playlist de la chaîne en cours (menu des chaînes). */
         fun showPlaylist(sourceId: Long)
+
+        /** Le flux va être rechargé à la demande (retour au direct…) : pas une coupure de connexion. */
+        fun restartedByUser()
     }
 
     private val resources = context.resources
@@ -416,6 +419,7 @@ internal class DelayedPlaybackController(
 
     /** Retour au direct : fin du différé, de « Depuis le début » ou du replay. */
     fun backToLive() {
+        host.restartedByUser()
         if (restarting || replay != null) {
             leaveReplay()
             host.reload()

@@ -336,7 +336,8 @@ fun PlayerScreen(onBack: () -> Unit) {
                                     viewModel.fastSeek(direction)
                                 }
                             }
-                            // Direct : ← recule de 10 s (maintenu : 10 s de plus régulièrement) ; → en différé : retour au direct.
+                            // Direct : ← recule de 10 s (maintenu : 10 s de plus régulièrement). Le retour au direct se fait
+                            // seulement par OK maintenu (→ ne fait rien : il ramenait au direct par mégarde).
                             direction < 0 && state.isLive -> true.also {
                                 if (repeat == 0 || repeat % LIVE_REWIND_REPEATS == 0) {
                                     if (viewModel.rewindLive(LIVE_REWIND_SECONDS)) {
@@ -345,7 +346,7 @@ fun PlayerScreen(onBack: () -> Unit) {
                                     }
                                 }
                             }
-                            else -> (direction > 0 && state.isLive && delayed).also { if (it) viewModel.backToLive() }
+                            else -> false
                         }
                     }
                     Key.MediaFastForward -> when {

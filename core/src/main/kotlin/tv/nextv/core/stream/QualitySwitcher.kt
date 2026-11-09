@@ -154,6 +154,17 @@ class QualitySwitcher(
         trialFrom = null
     }
 
+    /**
+     * Chargement voulu par l'utilisateur (pause, retour en arrière, retour au direct, saut) : ce n'est pas
+     * la connexion qui faiblit. Les chargements comptés sont oubliés, et le suivant est jugé comme un
+     * démarrage (tolérance du démarrage), pas comme un blocage en pleine lecture.
+     */
+    fun onUserRestart() {
+        bufferingSince = null
+        played = false
+        rebuffers.clear()
+    }
+
     /** La version courante ne peut pas être lue. */
     fun onError(): Decision {
         markFailed(current)
