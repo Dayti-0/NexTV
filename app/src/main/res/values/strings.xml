@@ -353,6 +353,9 @@
     <string name="settings_group_interface">Interface et couleurs</string>
     <string name="settings_group_preview">Aperçu et bande-annonce</string>
     <string name="settings_group_categories">Catégories affichées</string>
+    <string name="settings_groups_channels">Chaînes</string>
+    <string name="settings_groups_movies">Films</string>
+    <string name="settings_groups_series">Séries</string>
     <string name="settings_group_guide_source">Guide commun</string>
     <string name="settings_group_dns">DNS</string>
     <string name="settings_group_proxy">Proxy</string>

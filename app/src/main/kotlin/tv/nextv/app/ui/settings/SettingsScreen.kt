@@ -487,9 +487,10 @@ fun SettingsContent(
                     // Catégories masquables : chaînes, films, séries.
                     SectionCard(stringResource(R.string.settings_group_categories)) {
                         listOf(
-                            ContentKind.LIVE to R.string.settings_channel_groups,
-                            ContentKind.MOVIE to R.string.settings_movie_groups,
-                            ContentKind.SERIES to R.string.settings_series_groups,
+                            // Sous « Catégories affichées » : juste Chaînes, Films, Séries.
+                            ContentKind.LIVE to R.string.settings_groups_channels,
+                            ContentKind.MOVIE to R.string.settings_groups_movies,
+                            ContentKind.SERIES to R.string.settings_groups_series,
                         ).forEach { (kind, title) ->
                             val hidden = state.hiddenGroups[kind] ?: 0
                             ValueRow(

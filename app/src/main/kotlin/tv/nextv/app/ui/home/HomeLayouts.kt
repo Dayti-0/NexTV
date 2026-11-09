@@ -86,6 +86,7 @@ import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.itemKey
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import tv.nextv.app.R
 import tv.nextv.app.data.db.ChannelListRow
 import tv.nextv.app.data.db.GroupRow
@@ -394,10 +395,13 @@ internal fun RowJumpEffect(jump: RowJump?, listState: LazyListState, content: Sh
             return@LaunchedEffect
         }
         runCatching { listState.scrollToItem(shelves.indexOfFirst { it.key == key } + offset) }
-        // La rangée et ses vignettes arrivent à l'image suivante (rangée encore en lecture : un peu plus tard).
-        for (attempt in 1..30) {
+        // La rangée et ses vignettes arrivent à l'image suivante ; rangée encore en lecture (vignettes d'attente,
+        // pas sélectionnables) : jusqu'à 3 s. La liste reste sur la rangée pendant ce temps.
+        for (attempt in 1..60) {
             withFrameNanos { }
             if (runCatching { jump.rows[key]?.requestFocus() }.getOrNull() == true) break
+            delay(50)
+            if (listState.layoutInfo.visibleItemsInfo.none { it.key == key }) runCatching { listState.scrollToItem(shelves.indexOfFirst { it.key == key } + offset) }
         }
         jump.target = null
     }

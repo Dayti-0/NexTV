@@ -67,6 +67,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.first
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.runtime.mutableIntStateOf
@@ -495,6 +499,8 @@ fun HomeContent(
     // (Streaming : bouton « Catégories » du menu de gauche).
     val drawerOpen = rememberSaveable(section) { mutableStateOf(false) }
     val rowJump = remember(section) { RowJump() }
+    // Catégorie choisie dans le volet des chaînes de Streaming : la nouvelle liste prend la sélection elle-même.
+    val categoryPicked = remember { mutableStateOf(false) }
     // Section affichée dans le menu de gauche de Streaming (← depuis le volet des catégories).
     val navFocus = remember { FocusRequester() }
     // Section choisie dans le menu de gauche : la sélection quitte le menu (→) dès que le contenu est là.
@@ -510,7 +516,7 @@ fun HomeContent(
     }
     // Accueil à rangées : Streaming et Cinéma Premium, sauf les chaînes sur grand écran (liste avec aperçu).
     val rowsHome = layout != HomeLayout.LIVE_CENTER && !(section == HomeSection.TV && window.isWide)
-    val drawerRail: @Composable (Modifier) -> Unit = { railModifier ->
+    val drawerRail: @Composable (Modifier, FocusRequester) -> Unit = { railModifier, selectedFocus ->
         CategoryRail(
             section = section,
             window = window,
@@ -529,12 +535,19 @@ fun HomeContent(
             modifier = railModifier,
             dense = true,
             containerColor = Color.Transparent,
+            selectedFocus = selectedFocus,
             // Une catégorie choisie referme le volet (sinon il se rouvrait au retour, le focus resté derrière).
             // Accueil à rangées (Streaming, Cinéma Premium) : saut à la rangée de la catégorie, toutes les
             // autres restent ; ailleurs, la catégorie s'ouvre.
             onCategory = { chosen ->
                 drawerOpen.value = false
-                if (rowsHome && category == Category.All) rowJump.target = chosen else actions.onCategory(chosen)
+                if (rowsHome && category == Category.All) {
+                    rowJump.target = chosen
+                } else {
+                    // Chaînes de Streaming (liste avec volet) : la nouvelle liste prendra la sélection.
+                    categoryPicked.value = section == HomeSection.TV && window.isWide && layout == HomeLayout.STREAMING
+                    actions.onCategory(chosen)
+                }
             },
         )
     }
@@ -550,7 +563,7 @@ fun HomeContent(
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
-        CompositionLocalProvider(LocalTabsFocused provides { tabsFocused.value }, LocalRowJump provides rowJump) {
+        CompositionLocalProvider(LocalTabsFocused provides { tabsFocused.value }, LocalRowJump provides rowJump, LocalTakeListFocus provides categoryPicked) {
             // Cinéma Premium : la sélection occupe tout l'écran, onglets compris.
             // Streaming et Cinéma Premium sur grand écran : les chaînes en liste avec l'aperçu (comme Live Center),
             // pas en rangées : « Toutes les chaînes » en tête des catégories, ↑ ↓ pour changer de chaîne.
@@ -588,6 +601,7 @@ fun HomeContent(
                         drawerOpen,
                         initialFocus = streamingNav && window.isTv,
                         onExitLeft = if (streamingNav) ({ runCatching { navFocus.requestFocus() } }) else null,
+                        leftOpensDrawer = streamingNav,
                     ) {
                         StreamingHome(
                         content = shelfContent,
@@ -634,7 +648,10 @@ fun HomeContent(
                         modifier = Modifier.weight(1f),
                         // Streaming et Cinéma Premium : catégories dans le volet (←, ou « Catégories » du menu),
                         // comme sur l'accueil, au lieu d'une colonne fixe.
-                        drawerRail = drawerRail.takeIf { layout != HomeLayout.LIVE_CENTER && !liveList },
+                        // Chaînes de Streaming : les catégories dans le volet (comme films et séries), pas en colonne fixe.
+                        drawerRail = drawerRail.takeIf { layout != HomeLayout.LIVE_CENTER && (!liveList || layout == HomeLayout.STREAMING) },
+                        onDrawerExitLeft = if (streamingNav) ({ runCatching { navFocus.requestFocus() } }) else null,
+                        categoryPicked = categoryPicked,
                         drawerOpen = drawerOpen,
                         liveList = liveList,
                         initialFocus = liveList && streamingNav && window.isTv,
@@ -651,7 +668,7 @@ fun HomeContent(
                         navPicked++
                     },
                     onSearch = onSearch,
-                    onCategories = if (catalog && !liveList) ({ drawerOpen.value = true }) else null,
+                    onCategories = if (catalog && !(liveList && layout == HomeLayout.PREMIUM)) ({ drawerOpen.value = true }) else null,
                     onSettings = actions.onSettings,
                     onFocusChange = { tabsFocused.value = it },
                     modifier = Modifier.align(Alignment.CenterStart),
@@ -698,8 +715,12 @@ private fun CatalogBody(
     focused: MutableState<FocusedItem?>,
     modifier: Modifier,
     /** Volet des catégories (écran large) ; `null` : colonne des catégories fixe. */
-    drawerRail: (@Composable (Modifier) -> Unit)? = null,
+    drawerRail: (@Composable (Modifier, FocusRequester) -> Unit)? = null,
     drawerOpen: MutableState<Boolean>? = null,
+    /** ← dans le volet des catégories : le menu de gauche (Streaming). */
+    onDrawerExitLeft: (() -> Unit)? = null,
+    /** Catégorie choisie dans le volet (la nouvelle liste prend la sélection, pas le volet). */
+    categoryPicked: MutableState<Boolean>? = null,
     /** Chaînes de Streaming / Cinéma Premium : catégories, liste et aperçu, en panneaux translucides. */
     liveList: Boolean = false,
     /** Focus de départ sur la liste (Streaming sur la télé : pas d'onglets pour le prendre). */
@@ -733,6 +754,9 @@ private fun CatalogBody(
         null
     }
     if ((layout == HomeLayout.LIVE_CENTER || liveList) && window.isWide) {
+        // Chaînes de Streaming : catégories dans le volet (← au bord de la liste), comme films et séries.
+        val drawer = liveList && drawerRail != null && drawerOpen != null
+        val live: @Composable (Modifier) -> Unit = { liveModifier ->
         LiveCenterSection(
             section = section,
             window = window,
@@ -744,7 +768,8 @@ private fun CatalogBody(
             favoritesCount = favoritesCount,
             resumeCount = resumeItems?.size,
             actions = actions,
-            modifier = modifier,
+            modifier = liveModifier,
+            showRail = !drawer,
             action = reorderButton,
             hint = if (reorder.active) {
                 { ReorderHint(reorder, window) }
@@ -775,6 +800,19 @@ private fun CatalogBody(
                 body = body,
             )
         }
+        }
+        if (drawer) {
+            CategoryDrawer(
+                drawerRail!!,
+                modifier,
+                drawerOpen!!,
+                onExitLeft = onDrawerExitLeft,
+                leftOpensDrawer = onDrawerExitLeft != null,
+                consumePick = { categoryPicked?.value == true },
+            ) { live(Modifier) }
+        } else {
+            live(modifier)
+        }
         return
     }
     CatalogSection(
@@ -800,6 +838,7 @@ private fun CatalogBody(
         body = body,
         drawerRail = drawerRail,
         drawerOpen = drawerOpen,
+        onDrawerExitLeft = onDrawerExitLeft,
     )
 }
 
@@ -1028,14 +1067,15 @@ private fun CatalogSection(
     gridColumns: GridColumns,
     focusedItem: FocusedItem?,
     body: @Composable (grid: GridLayout) -> Unit,
-    drawerRail: (@Composable (Modifier) -> Unit)? = null,
+    drawerRail: (@Composable (Modifier, FocusRequester) -> Unit)? = null,
     drawerOpen: MutableState<Boolean>? = null,
+    onDrawerExitLeft: (() -> Unit)? = null,
 ) {
     // Chaînes : appui long sur une catégorie pour la masquer.
     val hide: (String) -> (() -> Unit)? = { title -> if (section.kind() != null) ({ actions.onHideCategory(title) }) else null }
     if (window.isWide && drawerRail != null && drawerOpen != null) {
         // Toute la largeur pour la grille ; les catégories s'ouvrent par-dessus (← au bord gauche).
-        CategoryDrawer(drawerRail, modifier, drawerOpen, initialFocus = window.isTv) {
+        CategoryDrawer(drawerRail, modifier, drawerOpen, initialFocus = window.isTv, onExitLeft = onDrawerExitLeft, leftOpensDrawer = onDrawerExitLeft != null) {
             SectionBody(section, category, groups, allCount, favoritesCount, resumeCount ?: 0, recentCount ?: 0, hero, reorder, window, actions, Modifier.fillMaxSize(), gridColumns, focusedItem, body)
         }
     } else if (window.isWide) {
@@ -1315,6 +1355,35 @@ private fun Modifier.reorderKeys(active: Boolean, columns: Int, onMove: (Int) ->
     }
 
 /**
+ * Catégorie choisie dans le volet ([LocalTakeListFocus]) : une fois sa liste réellement affichée (et non plus
+ * l'ancienne, encore là un instant), la sélection va sur son premier élément ([first]). Posée plus tôt, elle
+ * était sur une chaîne de l'ancienne liste et disparaissait avec elle. [items] : la liste paginée (`null` :
+ * liste déjà prête, favoris ou récentes).
+ */
+@Composable
+private fun TakeFocusOnNewList(state: LazyGridState, category: Category, first: FocusRequester, items: () -> List<Any>?) {
+    val take = LocalTakeListFocus.current ?: return
+    LaunchedEffect(category) {
+        if (!take.value) return@LaunchedEffect
+        val before = items()
+        if (before != null) {
+            withTimeoutOrNull(NEW_LIST_WAIT_MILLIS) { snapshotFlow { items() }.first { it !== before && !it.isNullOrEmpty() } }
+        }
+        runCatching { state.scrollToItem(0) }
+        for (attempt in 1..30) {
+            withFrameNanos { }
+            if (runCatching { first.requestFocus() }.getOrDefault(false)) break
+        }
+        take.value = false
+    }
+}
+
+/** Catégorie choisie : la sélection est à poser sur sa nouvelle liste (voir [TakeFocusOnNewList]). */
+internal val LocalTakeListFocus = staticCompositionLocalOf<MutableState<Boolean>?> { null }
+
+private const val NEW_LIST_WAIT_MILLIS = 2_000L
+
+/**
  * Nouvelle catégorie : la grille repart du haut quand sa liste arrive. Pendant la lecture, l'ancienne liste reste
  * un instant affichée ; à l'arrivée de la nouvelle, la grille se recalait sur une chaîne de l'ancienne, loin dans
  * la liste (« Toutes les chaînes » semblait garder la catégorie précédente). Pas au retour du lecteur
@@ -1343,6 +1412,8 @@ internal fun TvBody(
     focused: MutableState<FocusedItem?>,
 ) {
     val padding = grid.padding
+    // Premier élément : la sélection y va quand une catégorie choisie dans le volet est affichée.
+    val firstFocus = remember { FocusRequester() }
     val favoritesMode = category == Category.Favorites
     val recentMode = category == Category.Recent
     if (favoritesMode && favorites.isEmpty()) {
@@ -1374,6 +1445,7 @@ internal fun TvBody(
             .restoreFocus(channel.itemKey, lastOpened)
             .showWhenFocused(focused, FocusedItem(listOfNotNull(channel.channelNumber, channel.title).joinToString("  "), channel.nowTitle))
             .onFocusChanged { if (it.isFocused) actions.onChannelFocus(channel) }
+            .then(if (index == 0) Modifier.focusRequester(firstFocus) else Modifier)
             .reorderKeys(moving, grid.columns) { actions.onMove(ContentKind.LIVE, channel.itemKey, it) }
         if (grid.columns == 1) {
             ChannelListItem(channel, now, channel.itemKey in favoriteKeys, onClick, onLongClick, modifier, moving)
@@ -1390,6 +1462,9 @@ internal fun TvBody(
     }
     RestoreScroll(state, lastOpened, count)
     TopOnNewList(state, category, if (channels.itemCount > 0) channels.peek(0)?.id else null, lastOpened)
+    TakeFocusOnNewList(state, category, firstFocus) {
+        if (favoritesMode || recentMode) null else channels.itemSnapshotList.items
+    }
     FadingBottom({ state.canScrollForward }, { state.canScrollBackward }) { fade ->
         LazyVerticalGrid(
             columns = GridCells.Fixed(grid.columns),

@@ -63,7 +63,8 @@ private val DRAWER_WIDTH = 320.dp
  */
 @Composable
 internal fun CategoryDrawer(
-    rail: @Composable (Modifier) -> Unit,
+    /** Colonne des catégories, et de quoi poser la sélection sur la catégorie choisie à l'ouverture. */
+    rail: @Composable (Modifier, FocusRequester) -> Unit,
     modifier: Modifier = Modifier,
     /** Ouverture du volet, partagée avec un bouton « Catégories » (menu de gauche de Streaming). */
     openState: MutableState<Boolean> = rememberSaveable { mutableStateOf(false) },
@@ -71,12 +72,24 @@ internal fun CategoryDrawer(
     initialFocus: Boolean = false,
     /** ← dans le volet : il se ferme et la sélection va au menu de gauche (`null` : retour aux rangées). */
     onExitLeft: (() -> Unit)? = null,
+    /**
+     * ← au bord gauche du contenu : le volet s'ouvre, même si un menu est à gauche (Streaming : ← ouvre
+     * d'abord les catégories, un second ← le menu).
+     */
+    leftOpensDrawer: Boolean = false,
+    /**
+     * Catégorie choisie dans le volet (sa liste remplace l'ancienne) : rend `true` une fois, et le volet ne pose
+     * pas la sélection sur le contenu à la fermeture (la nouvelle liste la prend elle-même une fois affichée).
+     */
+    consumePick: () -> Boolean = { false },
     content: @Composable () -> Unit,
 ) {
     var open by openState
     val focusManager = LocalFocusManager.current
+    val rowJump = LocalRowJump.current
     val contentFocus = remember { FocusRequester() }
     val railFocus = remember { FocusRequester() }
+    val selectedFocus = remember { FocusRequester() }
     var railFocused by remember { mutableStateOf(false) }
     var contentFocused by remember { mutableStateOf(false) }
     BackHandler(enabled = open) { open = false }
@@ -86,14 +99,28 @@ internal fun CategoryDrawer(
             // quelques images, sinon le focus restait derrière (sur le menu ou les affiches).
             repeat(10) {
                 if (railFocused || !open) return@LaunchedEffect
-                runCatching { railFocus.requestFocus() }
+                // Sur la catégorie choisie, sinon en haut de la colonne.
+                if (runCatching { selectedFocus.requestFocus() }.getOrDefault(false) != true) runCatching { railFocus.requestFocus() }
                 withFrameNanos { }
             }
             // Le focus n'a pas pu y entrer : on ne laisse pas un volet ouvert sans focus.
             if (!railFocused) open = false
-        } else if (railFocused) {
-            // Fermeture (→, Retour, catégorie choisie) : le focus retourne sur les rangées.
-            runCatching { contentFocus.requestFocus() }
+        } else if (railFocused && !consumePick()) {
+            // Fermeture (→, Retour, catégorie choisie) : le focus retourne sur le contenu. Saut à une rangée en
+            // cours : c'est lui qui pose la sélection. Nouvelle catégorie : sa liste peut arriver quelques images
+            // plus tard (sinon la sélection se perdait, puis réapparaissait dans le menu).
+            // La liste de la catégorie choisie peut remplacer l'ancienne juste après : on surveille quelques images.
+            var settled = 0
+            for (attempt in 1..90) {
+                if (rowJump?.target != null || open) break
+                if (contentFocused) {
+                    if (++settled >= 15) break
+                } else {
+                    settled = 0
+                    runCatching { contentFocus.requestFocus() }
+                }
+                withFrameNanos { }
+            }
         }
     }
     // Volet quitté (autre catégorie, autre section) : il ne doit pas se rouvrir tout seul au retour.
@@ -115,6 +142,15 @@ internal fun CategoryDrawer(
             Modifier
                 .fillMaxSize()
                 .focusRequester(contentFocus)
+                // ← qui sortirait du contenu (vers le menu de gauche) : le volet s'ouvre à la place.
+                .focusProperties {
+                    onExit = {
+                        if (leftOpensDrawer && !open && requestedFocusDirection == FocusDirection.Left) {
+                            cancelFocusChange()
+                            open = true
+                        }
+                    }
+                }
                 .focusRestorer()
                 // Le focus est sur les rangées alors que le volet est ouvert : on le referme.
                 .onFocusChanged {
@@ -125,6 +161,7 @@ internal fun CategoryDrawer(
                 // garde ses flèches (il consomme la touche avant).
                 .onKeyEvent { event ->
                     if (event.key != Key.DirectionLeft || event.type != KeyEventType.KeyDown) return@onKeyEvent false
+                    // Rien à gauche : le volet s'ouvre (vers le menu, c'est la sortie du contenu qui l'ouvre).
                     if (!focusManager.moveFocus(FocusDirection.Left)) open = true
                     true
                 },
@@ -181,7 +218,7 @@ internal fun CategoryDrawer(
                     color = colors.primary,
                     modifier = Modifier.align(Alignment.Start).padding(start = 22.dp, top = 18.dp, bottom = 2.dp),
                 )
-                rail(Modifier.fillMaxWidth().weight(1f))
+                rail(Modifier.fillMaxWidth().weight(1f), selectedFocus)
             }
         }
     }

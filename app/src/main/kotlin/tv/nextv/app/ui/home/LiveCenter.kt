@@ -97,6 +97,8 @@ internal fun LiveCenterSection(
     resumeCount: Int?,
     actions: HomeActions,
     modifier: Modifier = Modifier,
+    /** Colonne des catégories à gauche (`false` : elles sont dans le volet, Streaming). */
+    showRail: Boolean = true,
     action: (@Composable () -> Unit)? = null,
     hint: (@Composable () -> Unit)? = null,
     /** Touche ☰ vers le volet et retour (pas pendant la réorganisation des favoris). */
@@ -156,13 +158,15 @@ internal fun LiveCenterSection(
             )
             .then(if (paneShortcut) Modifier.onPreviewKeyEvent { menuKey(it, paneFocused, focusManager, paneFocus) } else Modifier)
             .onPreviewKeyEvent { event ->
-                if (event.key != Key.DirectionLeft || event.type != KeyEventType.KeyDown || !listFocused) return@onPreviewKeyEvent false
+                if (!showRail || event.key != Key.DirectionLeft || event.type != KeyEventType.KeyDown || !listFocused) return@onPreviewKeyEvent false
                 if (focusManager.moveFocus(FocusDirection.Left) && railFocused) runCatching { selectedCategory.requestFocus() }
                 true
             },
         horizontalArrangement = Arrangement.spacedBy(if (glass) 10.dp else 0.dp),
     ) {
-        if (glass) {
+        if (!showRail) {
+            Unit
+        } else if (glass) {
             CategoryRail(
                 section, window, groups, recentCount, allCount, category, query, favoritesCount, resumeCount, actions,
                 Modifier.width(264.dp).clip(panel).background(colors.surfaceContainerLow.copy(alpha = 0.62f)).padding(top = 6.dp).onFocusChanged { railFocused = it.hasFocus },

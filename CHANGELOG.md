@@ -4,6 +4,13 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.70
+- Streaming, chaînes : les catégories passent dans le volet, comme pour les films et séries (la liste et l’aperçu ont toute la place)
+- Streaming : ← au bord des rangées ou de la liste ouvre le volet des catégories, un second ← ouvre le menu
+- Volet des catégories : il s’ouvre sur la catégorie choisie ; après un choix, la sélection va sur la première chaîne de la nouvelle liste
+- Films et séries : le saut à la rangée d’une catégorie attend qu’elle soit chargée (il revenait parfois sur l’ancienne rangée)
+- Réglages, « Catégories affichées » : simplement Chaînes, Films, Séries
+
 ## 0.2.69
 - Catégories des chaînes : en revenant sur « Toutes les chaînes », la liste repart du haut (elle restait défilée sur les chaînes de la catégorie précédente)
 - Catégories : ← depuis la liste revient sur la catégorie choisie, et non sur la plus proche

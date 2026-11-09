@@ -123,17 +123,12 @@ class HomeFocusTest {
         // Dans les rangées (première vignette), puis ← : volet ouvert, focus sur ses catégories.
         // Streaming : ← mène au menu de gauche, dont « Catégories » ouvre le volet.
         repeat(3) { press(Key.DirectionDown) }
-        // Jusqu'au bord gauche de la rangée, puis le menu (Streaming) ou le volet (Cinéma Premium).
-        repeat(6) { press(Key.DirectionLeft) }
-        if (layout == HomeLayout.STREAMING) {
-            // Menu : sur « Films », puis Séries, Guide TV, Foot, Catégories.
-            repeat(4) { press(Key.DirectionDown) }
-            press(Key.DirectionCenter)
-        }
+        // ← jusqu'au bord gauche de la rangée : le volet des catégories s'ouvre (Streaming comme Cinéma Premium).
+        openDrawerWithLeft()
         compose.onNodeWithText("Groupe 1").assertExists()
-        // Recherche, Favoris, Reprendre, Tous les films, puis Groupe 1, 2, 3 ; OK : saut à la rangée « Groupe 3 »,
+        // Volet ouvert sur « Tous les films », puis Groupe 1, 2, 3 ; OK : saut à la rangée « Groupe 3 »,
         // toutes les rangées restent (aucune catégorie ouverte).
-        repeat(6) { press(Key.DirectionDown) }
+        repeat(3) { press(Key.DirectionDown) }
         press(Key.DirectionCenter)
         compose.mainClock.advanceTimeBy(1_000)
         compose.waitForIdle()
@@ -157,17 +152,13 @@ class HomeFocusTest {
         compose.waitForIdle()
         if (layout == HomeLayout.STREAMING) enterStreamingContent()
         repeat(3) { press(Key.DirectionDown) }
-        // Jusqu'au bord gauche de la rangée, puis le menu (Streaming) ou le volet (Cinéma Premium).
-        repeat(6) { press(Key.DirectionLeft) }
-        if (layout == HomeLayout.STREAMING) {
-            // Menu : sur « Films », puis Séries, Guide TV, Foot, Catégories.
-            repeat(4) { press(Key.DirectionDown) }
-            press(Key.DirectionCenter)
-        }
+        // ← jusqu'au bord gauche de la rangée : le volet des catégories s'ouvre (Streaming comme Cinéma Premium).
+        openDrawerWithLeft()
         compose.onNodeWithText("Groupe 1").assertExists()
         // Tout en haut, puis au-delà : le focus doit rester dans le volet (← le ferme : test à part).
         repeat(12) { press(Key.DirectionUp) }
         compose.onNodeWithText("Groupe 1").assertExists()
+        // Recherche, Favoris, Reprendre, Tous les films, Groupe 1.
         repeat(4) { press(Key.DirectionDown) }
         press(Key.DirectionCenter)
         compose.mainClock.advanceTimeBy(1_000)
@@ -186,14 +177,14 @@ class HomeFocusTest {
         val categories = mutableListOf<Category>()
         compose.setContent { Home(HomeLayout.STREAMING, HomeActions(onChannelFocus = { focused += it }, onCategory = { categories += it })) }
         compose.waitForIdle()
-        compose.onNodeWithText("Toutes les chaînes").assertExists()
         repeat(8) { press(Key.DirectionDown) }
         val seen = focused.map { it.id }.distinct()
         println("Streaming, chaînes parcourues : ${focused.map { it.title }.distinct()}")
         assertTrue("Chaînes parcourues : $seen", seen.size >= 8)
-        // ← : la colonne des catégories ; ↓ puis OK : une catégorie s'ouvre.
+        // ← : le volet des catégories (« Toutes les chaînes » en fait partie) ; ↓ puis OK : une catégorie s'ouvre.
         press(Key.DirectionLeft)
-        repeat(4) { press(Key.DirectionDown) }
+        compose.onNodeWithText("Toutes les chaînes").assertExists()
+        repeat(2) { press(Key.DirectionDown) }
         press(Key.DirectionCenter)
         println("Streaming, catégorie choisie : $categories")
         assertTrue("Catégorie : $categories", categories.isNotEmpty())
@@ -222,9 +213,7 @@ class HomeFocusTest {
         compose.waitForIdle()
         enterStreamingContent()
         repeat(3) { press(Key.DirectionDown) }
-        repeat(6) { press(Key.DirectionLeft) }
-        repeat(4) { press(Key.DirectionDown) }
-        press(Key.DirectionCenter)
+        openDrawerWithLeft()
         compose.onNodeWithText("CATÉGORIES").assertExists()
         repeat(2) { press(Key.DirectionDown) }
         press(Key.DirectionLeft)
@@ -280,17 +269,16 @@ class HomeFocusTest {
             }
         }
         compose.waitForIdle()
-        // ← : catégories ; Favoris, Récentes, Toutes les chaînes, Information, Sport : OK sur « Sport ».
+        // ← : volet des catégories, ouvert sur « Toutes les chaînes » ; Information, Sport : OK sur « Sport ».
         press(Key.DirectionLeft)
-        repeat(5) { press(Key.DirectionDown) }
+        repeat(2) { press(Key.DirectionDown) }
         press(Key.DirectionCenter)
         // Dans la liste de Sport, sur une chaîne plus bas.
-        press(Key.DirectionRight)
         repeat(2) { press(Key.DirectionDown) }
-        // ← : retour sur la catégorie choisie (« Sport »), pas sur la plus proche.
+        // ← : le volet s'ouvre sur la catégorie choisie.
         press(Key.DirectionLeft)
         val picked = (chosen.last() as Category.Group).title
-        println("Retour aux catégories sur : ${focusedText()} (choisie : $picked)")
+        println("Volet ouvert sur : ${focusedText()} (choisie : $picked)")
         assertTrue("← : ${focusedText()} (choisie : $picked)", focusedText()?.contains(picked) == true)
         // ↑ jusqu'à « Toutes les chaînes », OK : la liste repart du haut, sur toutes les chaînes.
         repeat(8) { if (focusedText()?.contains("Toutes les chaînes") != true) press(Key.DirectionUp) }
@@ -709,6 +697,14 @@ class HomeFocusTest {
      * Streaming : au premier appui (télécommande), le focus se pose dans le menu de gauche ; → entre dans
      * le contenu (sur la télé, le contenu a le focus d'office).
      */
+    /** ← jusqu'à l'ouverture du volet des catégories (bord gauche de la rangée ou de la liste). */
+    private fun openDrawerWithLeft() {
+        repeat(10) {
+            if (compose.onAllNodesWithText("CATÉGORIES").fetchSemanticsNodes().isNotEmpty()) return
+            press(Key.DirectionLeft)
+        }
+    }
+
     private fun enterStreamingContent() {
         press(Key.DirectionDown)
         press(Key.DirectionRight)
