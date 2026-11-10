@@ -4,6 +4,10 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.92
+- Moteur VLC : l’appli ne se fige plus (« ne répond plus ») en quittant le lecteur ou en changeant de titre pendant une lecture par VLC
+- Moteur VLC : un flux qu’il n’arrive pas à ouvrir affiche « Lecture impossible, même avec le moteur VLC » au lieu de fermer le lecteur comme à la fin d’un film
+
 ## 0.2.91
 - « Reprendre » un film ou une série après un changement d’adresse des flux (autre serveur, autre mot de passe) : le film ou l’épisode est retrouvé par son titre, au lieu d’ouvrir « chaîne introuvable ». Les reprises sont rattachées au lancement et après chaque mise à jour de la playlist
 - « Reprendre la lecture » : un titre retiré de la playlist par le fournisseur n’y apparaît plus (il revient si le titre revient)

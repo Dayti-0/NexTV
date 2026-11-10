@@ -14,6 +14,7 @@ import org.videolan.libvlc.LibVLC
 import org.videolan.libvlc.Media
 import org.videolan.libvlc.MediaPlayer
 import org.videolan.libvlc.util.VLCVideoLayout
+import kotlin.concurrent.thread
 
 /**
  * Lecture par le moteur de VLC (libVLC), dans le lecteur de l'appli : quand celui-ci ne sait pas lire le son
@@ -44,6 +45,9 @@ class VlcPlayback(context: Context, private val listener: Listener) {
     private val mediaPlayer = MediaPlayer(libVlc)
     private var attached: VLCVideoLayout? = null
 
+    /** La lecture a commencé au moins une fois : une « fin » signalée avant est un flux que VLC n'a pas su ouvrir. */
+    private var started = false
+
     /** Le même lecteur vu par l'écran (barre de progression, pause, déplacements). */
     val player = VlcPlayer(mediaPlayer)
 
@@ -51,6 +55,7 @@ class VlcPlayback(context: Context, private val listener: Listener) {
         mediaPlayer.setEventListener { event ->
             when (event.type) {
                 MediaPlayer.Event.Playing -> {
+                    started = true
                     player.update(buffering = false)
                     listener.onPlaying()
                     listener.onTracksChanged()
@@ -63,8 +68,13 @@ class VlcPlayback(context: Context, private val listener: Listener) {
                 MediaPlayer.Event.Paused, MediaPlayer.Event.LengthChanged, MediaPlayer.Event.SeekableChanged -> player.update()
                 MediaPlayer.Event.ESAdded, MediaPlayer.Event.ESDeleted, MediaPlayer.Event.ESSelected -> listener.onTracksChanged()
                 MediaPlayer.Event.EndReached -> {
-                    player.update(ended = true)
-                    listener.onEnded()
+                    if (started) {
+                        player.update(ended = true)
+                        listener.onEnded()
+                    } else {
+                        // Rien n'a été lu : pas la fin du film (qui fermerait le lecteur), mais un échec.
+                        listener.onError()
+                    }
                 }
                 MediaPlayer.Event.EncounteredError -> listener.onError()
             }
@@ -80,6 +90,7 @@ class VlcPlayback(context: Context, private val listener: Listener) {
         }
         mediaPlayer.media = media
         media.release()
+        started = false
         player.update(buffering = true, ended = false)
         mediaPlayer.play()
     }
@@ -121,14 +132,28 @@ class VlcPlayback(context: Context, private val listener: Listener) {
         mediaPlayer.spuTrack = id
     }
 
+    /**
+     * Arrête la lecture et libère le moteur. L'arrêt de libVLC attend la fin de ses fils (réseau, image), qui
+     * peuvent eux-mêmes attendre le fil principal : fait sur le fil principal, il figeait l'application (« ne
+     * répond plus ») en quittant le lecteur. L'image est donc détachée ici, puis l'arrêt se fait à part.
+     */
     fun release() {
         mediaPlayer.setEventListener(null)
-        mediaPlayer.stop()
-        attached?.let { mediaPlayer.detachViews() }
+        attached?.let { runCatching { mediaPlayer.detachViews() } }
         attached = null
-        mediaPlayer.release()
-        libVlc.release()
         player.release()
+        stopInBackground(release = true)
+    }
+
+    /** Arrêt (et libération si [release]) du moteur hors du fil principal ; les erreurs d'un moteur déjà arrêté sont ignorées. */
+    private fun stopInBackground(release: Boolean) {
+        thread(name = "nextv-vlc-stop", isDaemon = true) {
+            runCatching { mediaPlayer.stop() }
+            if (release) {
+                runCatching { mediaPlayer.release() }
+                runCatching { libVlc.release() }
+            }
+        }
     }
 
     private companion object {
@@ -206,7 +231,8 @@ class VlcPlayer(private val mediaPlayer: MediaPlayer) : SimpleBasePlayer(Looper.
     }
 
     override fun handleStop(): ListenableFuture<*> {
-        mediaPlayer.stop()
+        // Jamais sur le fil principal : l'arrêt de libVLC peut l'attendre lui-même (application figée).
+        thread(name = "nextv-vlc-stop", isDaemon = true) { runCatching { mediaPlayer.stop() } }
         return Futures.immediateVoidFuture()
     }
 
