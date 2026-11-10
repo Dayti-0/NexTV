@@ -419,7 +419,12 @@ private fun DetailButtons(
  * que fait OK (« Ajouter aux favoris », « Retirer des favoris »).
  */
 @Composable
-private fun FavoriteButton(isFavorite: Boolean, onClick: () -> Unit) {
+internal fun FavoriteButton(
+    isFavorite: Boolean,
+    onClick: () -> Unit,
+    /** Libellé à côté de l'étoile quand elle est choisie (faux : jamais, la ligne de boutons ne bouge pas). */
+    labelOnFocus: Boolean = true,
+) {
     var focused by remember { mutableStateOf(false) }
     val label = stringResource(if (isFavorite) R.string.detail_unfavorite else R.string.detail_favorite)
     FocusSurface(
@@ -441,7 +446,7 @@ private fun FavoriteButton(isFavorite: Boolean, onClick: () -> Unit) {
                 tint = if (isFavorite) NexTvColors.Warning else LocalContentColor.current,
                 modifier = Modifier.size(20.dp),
             )
-            if (focused) {
+            if (focused && labelOnFocus) {
                 Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1, modifier = Modifier.padding(start = 8.dp, end = 6.dp))
             }
         }

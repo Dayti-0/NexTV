@@ -28,6 +28,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -224,8 +225,10 @@ internal fun PremiumPoster(
     detail: String? = null,
     watched: Boolean = false,
     quality: String? = null,
-    /** Place laissée en haut à gauche au rang du Top 10 : la qualité et « Déjà vu » passent dessous. */
+    /** Place laissée en haut à gauche au rang du Top 10 : « Déjà vu » passe dessous. */
     badgeTop: Dp = 6.dp,
+    /** Top 10 : la qualité en bas à droite, un peu transparente (le haut à gauche est au rang). */
+    qualityBottomEnd: Boolean = false,
 ) {
     val width = POSTER_COLUMN_WIDTH
     Column(Modifier.width(width), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -240,7 +243,10 @@ internal fun PremiumPoster(
             Box(Modifier.fillMaxSize()) {
                 PosterImage(title, imageUrl, Modifier.fillMaxSize())
                 if (isFavorite) FavoriteStar(Modifier.align(Alignment.TopEnd).padding(6.dp))
-                PosterBadges(quality, watched, Modifier.align(Alignment.TopStart).padding(start = 6.dp, top = badgeTop))
+                PosterBadges(quality.takeUnless { qualityBottomEnd }, watched, Modifier.align(Alignment.TopStart).padding(start = 6.dp, top = badgeTop))
+                if (qualityBottomEnd) {
+                    QualityBadge(quality, Modifier.align(Alignment.BottomEnd).padding(end = 6.dp, bottom = 10.dp).alpha(0.75f))
+                }
                 if (progress != null) {
                     Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp).background(Color.Black.copy(alpha = 0.4f))) {
                         Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).fillMaxHeight().background(MaterialTheme.colorScheme.primary))

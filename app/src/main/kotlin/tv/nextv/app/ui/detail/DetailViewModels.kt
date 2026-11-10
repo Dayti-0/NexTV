@@ -166,32 +166,8 @@ class DetailViewModel(
     ) { autoplay, sound, delay -> TrailerSettings(autoplay, sound, delay * 1_000L) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, TrailerSettings())
 
-    /**
-     * Titres similaires : ceux que TMDB recommande pour ce film ou cette série (mêmes genres, même public),
-     * retrouvés dans la playlist par leur titre (et leur année pour un film), dans l'ordre de TMDB. Aucun
-     * trouvé : pas de rangée (pas de remplissage avec la simple catégorie de la playlist).
-     */
-    private suspend fun similarInPlaylist(sourceId: Long, itemKey: String, details: MediaDetails): List<PosterItem> {
-        val titles = container.metadata.recommendations(details)
-        if (titles.isEmpty()) return emptyList()
-        val movie = kind == ContentKind.MOVIE
-        fun keyOf(title: String, year: Int?) = if (movie) "movie:${ItemKeys.normalize(title)}:${year ?: ""}" else "series:${ItemKeys.normalize(title)}"
-        val rank = HashMap<String, Int>()
-        titles.forEachIndexed { index, title ->
-            rank.putIfAbsent(keyOf(title.title, title.year), index)
-            title.originalTitle?.let { rank.putIfAbsent(keyOf(it, title.year), index) }
-        }
-        val poster = { key: String -> rank[key]?.let { titles[it].posterUrl } }
-        val keys = rank.keys.filter { it != itemKey }
-        val found = if (movie) {
-            keys.chunked(KEYS_PER_QUERY).flatMap { container.channelDao.moviesByKey(sourceId, it) }.map { it.toPoster() }
-        } else {
-            keys.chunked(KEYS_PER_QUERY).flatMap { container.channelDao.seriesByKey(sourceId, it) }.map { it.toPoster() }
-        }
-        // Affiche TMDB d'abord (celles des playlists sont souvent recadrées ou floues).
-        return found.distinctBy { it.itemKey }.sortedBy { rank[it.itemKey] ?: Int.MAX_VALUE }.take(SIMILAR_COUNT)
-            .map { item -> poster(item.itemKey)?.let { item.copy(imageUrl = it) } ?: item }
-    }
+    private suspend fun similarInPlaylist(sourceId: Long, itemKey: String, details: MediaDetails): List<PosterItem> =
+        recommendedInPlaylist(container, sourceId, kind, itemKey, details, SIMILAR_COUNT)
 
     fun selectSeason(index: Int) {
         mutableState.update { it.copy(selectedSeason = index) }
@@ -206,6 +182,41 @@ class DetailViewModel(
             container.favorites.toggle(item.sourceId, kind, item.itemKey, item.title, item.logoUrl)
         }
     }
+}
+
+/**
+ * Titres que TMDB recommande pour [details] (mêmes genres, même public), retrouvés dans la playlist par leur titre
+ * (et leur année pour un film), dans l'ordre de TMDB, sans [itemKey] lui-même. Aucun trouvé : liste vide (pas de
+ * remplissage avec la simple catégorie de la playlist). Titres similaires des fiches, « Parce que vous avez
+ * regardé » de l'accueil.
+ */
+internal suspend fun recommendedInPlaylist(
+    container: AppContainer,
+    sourceId: Long,
+    kind: ContentKind,
+    itemKey: String,
+    details: MediaDetails,
+    limit: Int,
+): List<PosterItem> {
+    val titles = container.metadata.recommendations(details)
+    if (titles.isEmpty()) return emptyList()
+    val movie = kind == ContentKind.MOVIE
+    fun keyOf(title: String, year: Int?) = if (movie) "movie:${ItemKeys.normalize(title)}:${year ?: ""}" else "series:${ItemKeys.normalize(title)}"
+    val rank = HashMap<String, Int>()
+    titles.forEachIndexed { index, title ->
+        rank.putIfAbsent(keyOf(title.title, title.year), index)
+        title.originalTitle?.let { rank.putIfAbsent(keyOf(it, title.year), index) }
+    }
+    val poster = { key: String -> rank[key]?.let { titles[it].posterUrl } }
+    val keys = rank.keys.filter { it != itemKey }
+    val found = if (movie) {
+        keys.chunked(KEYS_PER_QUERY).flatMap { container.channelDao.moviesByKey(sourceId, it) }.map { it.toPoster() }
+    } else {
+        keys.chunked(KEYS_PER_QUERY).flatMap { container.channelDao.seriesByKey(sourceId, it) }.map { it.toPoster() }
+    }
+    // Affiche TMDB d'abord (celles des playlists sont souvent recadrées ou floues).
+    return found.distinctBy { it.itemKey }.sortedBy { rank[it.itemKey] ?: Int.MAX_VALUE }.take(limit)
+        .map { item -> poster(item.itemKey)?.let { item.copy(imageUrl = it) } ?: item }
 }
 
 /**

@@ -4,6 +4,12 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.100
+- Fiche d’un film ou d’une série (Cinéma Premium) : en passant d’un bouton à l’autre, l’écran ne descend plus ; il ne défile que si l’élément choisi sort de l’écran
+- Fiche Cinéma Premium : les boutons tiennent sur une ligne (le bouton Favoris devient une étoile ronde, comme dans la fiche Streaming)
+- « Parce que vous avez regardé » : la rangée montre maintenant les titres que TMDB recommande pour le dernier film ou la dernière série regardés, quand la playlist les a (avant, c’étaient simplement d’autres titres de la même catégorie). Sans recommandation trouvée, la rangée n’apparaît pas
+- Top 10 de Cinéma Premium : la qualité passe en bas à droite de l’affiche, un peu transparente
+
 ## 0.2.99
 - Aperçu des chaînes : quand le son joue sans image (catégorie ouverte dans l’interface Streaming, l’image pouvait mettre 20 s à venir), l’aperçu repart au direct au bout de 2 s et l’image arrive tout de suite
 

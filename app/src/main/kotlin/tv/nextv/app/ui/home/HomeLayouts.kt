@@ -1035,7 +1035,7 @@ internal fun ShelfPoster(
     val watched = item.kind == ContentKind.MOVIE && item.itemKey in LocalWatchedKeys.current
     val image = posterImage(item)
     if (style == ShelfStyle.PREMIUM) {
-        PremiumPoster(item.title, image, item.itemKey in favoriteKeys, onClick, onLongClick, modifier, watched = watched, quality = item.quality, badgeTop = if (ranked) 40.dp else 6.dp)
+        PremiumPoster(item.title, image, item.itemKey in favoriteKeys, onClick, onLongClick, modifier, watched = watched, quality = item.quality, badgeTop = if (ranked) 40.dp else 6.dp, qualityBottomEnd = ranked)
     } else {
         // Streaming : l'affiche seule, ses informations sont dans le bandeau.
         StreamingPoster(item.title, image, item.itemKey in favoriteKeys, onClick, onLongClick, modifier, width, watched = watched, quality = item.quality)

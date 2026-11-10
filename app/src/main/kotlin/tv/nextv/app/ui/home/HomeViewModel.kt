@@ -36,6 +36,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import tv.nextv.app.AppContainer
+import tv.nextv.core.catalog.ContentClassifier
+import tv.nextv.app.ui.detail.recommendedInPlaylist
 import tv.nextv.app.data.progress.ProgressEntity
 import tv.nextv.app.data.settings.GridColumns
 import tv.nextv.app.R
@@ -407,16 +409,15 @@ class HomeViewModel(
                 val newest = runCatching {
                     if (isMovie) dao.newestMovies(id, minYear, ROW_SIZE).map { it.toPoster() } else dao.newestSeries(id, minYear, ROW_SIZE).map { it.toPoster() }
                 }.getOrDefault(emptyList())
-                // Recommandations : même catégorie que le dernier titre regardé, sans ceux déjà commencés.
+                // « Parce que vous avez regardé » : les titres que TMDB recommande pour le dernier titre regardé,
+                // présents dans la playlist, sans ceux déjà commencés. Sans TMDB ou sans résultat : pas de rangée
+                // (prendre la même catégorie de la playlist donnait des titres au hasard).
                 val watched = runCatching { container.progress.observeAll(id, kind.name).first().mapTo(HashSet()) { it.itemKey } }.getOrDefault(emptySet())
-                val group = lastWatched?.let { dao.get(it.channelId)?.groupTitle }
-                val recommended = if (lastWatched == null) {
+                val recommended = if (lastWatched == null || !container.hasTmdbKey()) {
                     emptyList()
                 } else {
-                    runCatching {
-                        val rows = if (isMovie) dao.movieRow(id, group, ROW_SIZE * 2).map { it.toPoster() } else dao.seriesRow(id, group, ROW_SIZE * 2).map { it.toPoster() }
-                        rows.filter { it.itemKey !in watched }.take(ROW_SIZE)
-                    }.getOrDefault(emptyList())
+                    runCatching { recommendedFor(id, kind, lastWatched) }.getOrDefault(emptyList())
+                        .filter { it.itemKey !in watched }.take(ROW_SIZE)
                 }
                 val trending = trending(id, kind)
                 // Streaming : fiches TMDB des contenus mis en avant lues d'avance (bande-annonce connue tout de suite).
@@ -424,6 +425,17 @@ class HomeViewModel(
                 Discover(trending = trending, newest = newest, recommended = recommended, recommendedFrom = lastWatched?.title?.takeIf { recommended.isNotEmpty() })
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), Discover())
+
+    /** Recommandations TMDB du titre [watched] (fiche lue, ou déjà en cache), retrouvées dans la playlist. */
+    private suspend fun recommendedFor(sourceId: Long, kind: ContentKind, watched: ProgressEntity): List<PosterItem> {
+        val entity = dao.get(watched.channelId)
+        val type = if (kind == ContentKind.SERIES) MediaType.SERIES else MediaType.MOVIE
+        val rawTitle = (if (kind == ContentKind.SERIES) entity?.seriesName ?: entity?.title else entity?.title) ?: watched.title
+        val title = ContentClassifier.cleanTitle(rawTitle).ifBlank { rawTitle }
+        val state = container.metadata.details(metadataCacheKey(watched.itemKey), type, title, entity?.year)
+        val details = (state as? MetadataState.Available)?.details ?: return emptyList()
+        return recommendedInPlaylist(container, sourceId, kind, watched.itemKey, details, ROW_SIZE * 2)
+    }
 
     /** Tendances TMDB de la semaine retrouvées dans la playlist (titre et année, ou titre original). */
     private suspend fun trending(sourceId: Long, kind: ContentKind): List<PosterItem> {

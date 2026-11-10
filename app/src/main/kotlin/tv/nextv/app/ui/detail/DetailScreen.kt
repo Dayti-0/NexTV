@@ -9,6 +9,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -38,6 +42,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -160,7 +165,7 @@ private val YOUTUBE_APPS = listOf(
 )
 
 /** Fiche d'un film ou d'une série. Sans dépendance au ViewModel (captures d'écran). */
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun DetailContent(
     state: DetailUiState,
@@ -182,11 +187,21 @@ fun DetailContent(
     val title = details?.title?.takeIf { it.isNotBlank() } ?: item?.title.orEmpty()
     val playFocus = remember { FocusRequester() }
     // Focus sur « Reprendre » s'il existe (la reprise est connue juste après la fiche), sinon sur « Lecture ».
-    LaunchedEffect(item != null, state.progress != null) { if (item != null && window.isTv) runCatching { playFocus.requestFocus() } }
+    // Quelques essais : le bouton n'accepte la sélection qu'une fois la fiche à l'écran.
+    LaunchedEffect(item != null, state.progress != null) {
+        if (item == null || !window.isTv) return@LaunchedEffect
+        for (attempt in 1..20) {
+            if (runCatching { playFocus.requestFocus() }.getOrDefault(false)) break
+            withFrameNanos { }
+        }
+    }
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background, snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             Backdrop(details?.backdropUrl ?: details?.posterUrl ?: item?.logoUrl)
+            // Défilement seulement si l'élément choisi sort de l'écran : la télé le place sinon au tiers de l'écran,
+            // et passer d'un bouton à l'autre faisait descendre toute la fiche.
+            CompositionLocalProvider(LocalBringIntoViewSpec provides MinimalBringIntoView) {
             LazyColumn(Modifier.fillMaxSize()) {
                 item {
                     Row(Modifier.padding(start = window.horizontalPadding - 12.dp, top = window.topPadding)) {
@@ -285,11 +300,17 @@ fun DetailContent(
                                 details?.trailerYoutubeKey?.let { key ->
                                     PillButton(stringResource(R.string.detail_trailer), { onTrailer(key) }, icon = NexTvIcons.Movie)
                                 }
-                                PillButton(
-                                    stringResource(if (state.isFavorite) R.string.detail_unfavorite else R.string.detail_favorite),
-                                    onToggleFavorite,
-                                    icon = Icons.Filled.Star,
-                                )
+                                // Grand écran : une étoile ronde (comme la fiche Streaming), pour que les boutons
+                                // tiennent sur une ligne ; « Ajouter aux favoris » écrit en entier ailleurs.
+                                if (window.isWide) {
+                                    FavoriteButton(state.isFavorite, onToggleFavorite, labelOnFocus = false)
+                                } else {
+                                    PillButton(
+                                        stringResource(if (state.isFavorite) R.string.detail_unfavorite else R.string.detail_favorite),
+                                        onToggleFavorite,
+                                        icon = Icons.Filled.Star,
+                                    )
+                                }
                             }
                         }
                     }
@@ -335,6 +356,22 @@ fun DetailContent(
                 }
                 item { Spacer(Modifier.height(32.dp)) }
             }
+            }
+        }
+    }
+}
+
+/** Défilement minimal : juste ce qu'il faut pour montrer l'élément choisi, rien s'il est déjà visible. */
+@OptIn(ExperimentalFoundationApi::class)
+private val MinimalBringIntoView = object : BringIntoViewSpec {
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+        val end = offset + size
+        return when {
+            // Plus grand que l'écran : son début en haut.
+            size > containerSize -> offset
+            offset < 0f -> offset
+            end > containerSize -> end - containerSize
+            else -> 0f
         }
     }
 }
