@@ -40,6 +40,7 @@ import tv.nextv.app.ui.guide.ProgrammeSheetContent
 import tv.nextv.app.ui.home.Category
 import tv.nextv.app.ui.home.HomeActions
 import tv.nextv.app.ui.home.HomeContent
+import tv.nextv.app.ui.home.PremiumFavorites
 import tv.nextv.app.ui.home.HomeLayout
 import tv.nextv.app.ui.home.PremiumResume
 import tv.nextv.core.stream.QualityTarget
@@ -218,6 +219,18 @@ abstract class ScreenshotSuite(private val device: String) {
     @Test
     fun premiumResume() = capture("05s_premium_reprendre") {
         PremiumResume(movies = listOf(SampleData.movieProgress), series = SampleData.continueSeries, onResume = {}, onClear = {}, onBack = {})
+    }
+
+    @Test
+    fun premiumFavorites() = capture("05t_premium_favoris") {
+        PremiumFavorites(
+            movies = SampleData.movies.take(5),
+            series = emptyList<tv.nextv.app.data.db.SeriesRow>(),
+            channels = SampleData.channels.take(4),
+            now = SampleData.NOW,
+            actions = HomeActions(),
+            onBack = {},
+        )
     }
 
     @Test
@@ -876,7 +889,7 @@ abstract class ScreenshotSuite(private val device: String) {
         val movies = remember { flowOf(PagingData.from(SampleData.movies)) }.collectAsLazyPagingItems()
         val series = remember { flowOf(PagingData.from(SampleData.series)) }.collectAsLazyPagingItems()
         HomeContent(
-            // Cinéma Premium : sections ouvertes depuis le menu d'accueil, bouton « Menu » au lieu des onglets.
+            // Classique : sections ouvertes depuis le menu d'accueil, bouton « Menu » au lieu des onglets.
             onMenu = if (layout == HomeLayout.PREMIUM) ({}) else null,
             section = section,
             groups = when (section) {

@@ -88,6 +88,12 @@ android {
         }
     }
 
+    lint {
+        // Pas de lint à la fabrication de l'APK de publication : il tourne déjà dans la CI à chaque envoi
+        // (`lintDebug`). La publication y passait une à deux minutes de plus pour rien.
+        checkReleaseBuilds = false
+    }
+
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -173,4 +179,7 @@ tasks.withType<Test>().configureEach {
         exceptionFormat = TestExceptionFormat.FULL
     }
     timeout.set(Duration.ofMinutes(25))
+    // Tests (Robolectric) et captures répartis sur deux processus : deux fois plus vite sur 4 cœurs (CI comprise).
+    // 2 Go chacun, avec les 6 Go de Gradle : tient dans les 16 Go des machines de la CI.
+    maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 2)
 }

@@ -4,6 +4,12 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.101
+- L’interface « Cinéma Premium » s’appelle maintenant « Classique »
+- Classique : « Favoris » du menu d’accueil ouvre une fenêtre avec trois onglets, Films, Séries et Chaînes TV, comme « Reprendre la lecture ». OK ouvre la fiche d’un film ou d’une série ; sur une chaîne, elle se lance et haut/bas passe aux autres chaînes favorites. Appui long : retirer des favoris
+- Recherche globale : au retour d’une fiche, la sélection revient sur l’élément ouvert (et non sur « Retour »)
+- « Reprendre la lecture » (Classique) : en remontant depuis une affiche, la sélection revient sur l’onglet en cours, sans changer de liste
+
 ## 0.2.100
 - Fiche d’un film ou d’une série (Cinéma Premium) : en passant d’un bouton à l’autre, l’écran ne descend plus ; il ne défile que si l’élément choisi sort de l’écran
 - Fiche Cinéma Premium : les boutons tiennent sur une ligne (le bouton Favoris devient une étoile ronde, comme dans la fiche Streaming)

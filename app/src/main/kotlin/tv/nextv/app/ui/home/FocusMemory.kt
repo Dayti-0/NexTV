@@ -55,7 +55,7 @@ internal fun rememberHomeVisit(): Int {
 }
 
 /** L'élément est à rendre : ouvert depuis un affichage précédent de l'accueil. */
-private fun OpenedItem.pending(): Boolean = visit != HomeVisit.current
+internal fun OpenedItem.pending(): Boolean = visit != HomeVisit.current
 
 private val OpenedItemSaver = Saver<MutableState<OpenedItem?>, List<Any>>(
     save = { state -> state.value?.let { listOf(it.key, it.index, it.row.orEmpty(), it.visit) } ?: emptyList() },

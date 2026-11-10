@@ -37,7 +37,7 @@ import tv.nextv.app.ui.components.rememberWindowInfo
 
 /**
  * Recherche de partout : un champ, puis les chaînes, les films et les séries qui correspondent, une
- * rangée chacun. Ouverte depuis le menu de Cinéma Premium ou la barre du haut (Live Center, Streaming).
+ * rangée chacun. Ouverte depuis le menu de Classique ou la barre du haut (Live Center, Streaming).
  */
 @Composable
 internal fun GlobalSearch(
@@ -54,8 +54,12 @@ internal fun GlobalSearch(
     val window = rememberWindowInfo()
     val sizes = ShelfSizes.of(window)
     val padding = window.horizontalPadding
+    // Nouvel affichage (ouverture, ou retour d'une fiche ou du lecteur) : au retour, l'élément ouvert reprend la
+    // sélection, à sa place ; sinon, elle va dans le champ de recherche.
+    rememberHomeVisit()
+    val returning = lastOpened.value?.pending() == true
     val fieldFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { fieldFocus.requestFocus() } }
+    LaunchedEffect(Unit) { if (!returning) runCatching { fieldFocus.requestFocus() } }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(top = window.topPadding)) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = padding),
@@ -84,6 +88,10 @@ internal fun GlobalSearch(
             )
             else -> {
                 val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+                // Retour d'une fiche : la rangée de l'élément ouvert (films, séries…) revient à l'écran.
+                val rowKeys = listOf(HomeSection.TV to channels.itemCount, HomeSection.MOVIES to movies.itemCount, HomeSection.SERIES to series.itemCount)
+                    .filter { it.second > 0 }.map { "search-${it.first.name}" }
+                RestoreRow(listState, lastOpened, rowKeys)
                 FadingBottom({ listState.canScrollForward }, { listState.canScrollBackward }) { fade ->
                     LazyColumn(
                         state = listState,

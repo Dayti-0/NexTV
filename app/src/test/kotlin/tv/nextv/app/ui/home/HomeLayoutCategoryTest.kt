@@ -13,7 +13,7 @@ import org.robolectric.annotation.Config
 import tv.nextv.app.AppContainer
 
 /**
- * Cinéma Premium et Streaming n'ont pas de catégories : une catégorie ouverte dans le Live Center
+ * Classique et Streaming n'ont pas de catégories : une catégorie ouverte dans le Live Center
  * (« Français ») ne doit pas y rester, sinon l'interface s'affiche en catégories et grille.
  */
 @RunWith(RobolectricTestRunner::class)

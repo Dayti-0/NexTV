@@ -75,7 +75,7 @@ Commandes :
 - Numéro : la dernière version + 1 (`git ls-remote --heads origin 'release/*'`). Le numéro interne (versionCode)
   est calculé à partir de ce nom par le workflow (0.2.94 → 20094) : ne jamais publier un numéro plus petit que le
   précédent.
-- Le workflow « Release » lance les tests du module `core` avant de construire l'APK.
+- Le workflow « Release » lance les tests du module `core` en même temps que la fabrication de l'APK (une seule commande).
 - L'utilisateur a demandé que chaque correction validée soit publiée sans attendre son accord, et le plus vite
   possible : dès que les tests locaux passent, pousser `main` et la branche `release/vX.Y.Z` en même temps, sans
   attendre la CI (elle ne fait que compiler, le lint et les captures ; la publication prend ~10 min). Si la CI
@@ -90,6 +90,6 @@ Commandes :
 - Lecteur : `ui/player/PlayerViewModel.kt` avec `PlayerEngine` (un seul ExoPlayer par écran, une source réseau par
   flux via `PlayerFactory.mediaSource`), `DelayedPlaybackController` (pause, différé, replay, avance rapide),
   `AutoQualityController`, `ResumeController`, `ChannelMenuController`.
-- Accueil : `ui/home/` (interfaces Live Center, Streaming, Cinéma Premium) ; composants communs dans
+- Accueil : `ui/home/` (interfaces Live Center, Streaming, Classique) ; composants communs dans
   `ui/components/Components.kt` (fondus `bottomFade`, `FadingRow` / `edgeFade`).
 - Guide TV et fiche programme : `ui/guide/`.

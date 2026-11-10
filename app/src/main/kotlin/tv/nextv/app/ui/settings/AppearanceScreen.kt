@@ -223,7 +223,7 @@ fun AppearanceContent(
                 }
                 run {
                     // Chaînes en liste (logo, nom, programme) ou en mosaïque de vignettes : Live Center, et la
-                    // section TV de Streaming et Cinéma Premium (films et séries y restent en rangées).
+                    // section TV de Streaming et Classique (films et séries y restent en rangées).
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(stringResource(R.string.appearance_channels), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(end = 6.dp))
                         listOf(false to R.string.appearance_channels_list, true to R.string.appearance_channels_mosaic).forEach { (mosaic, label) ->

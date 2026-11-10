@@ -35,6 +35,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -51,7 +52,7 @@ import tv.nextv.app.ui.components.PillStyle
 import tv.nextv.app.ui.components.rememberWindowInfo
 
 /**
- * « Reprendre la lecture » de Cinéma Premium, ouvert depuis le menu d'accueil : onglets Films et Séries
+ * « Reprendre la lecture » de Classique, ouvert depuis le menu d'accueil : onglets Films et Séries
  * (ouvert sur celui du dernier visionnage), grandes affiches avec la progression et le temps restant ou
  * l'épisode. OK reprend la lecture, appui long retire de la liste, « Retour » ramène au menu.
  */
@@ -127,7 +128,8 @@ fun PremiumResume(
                             item,
                             onClick = { onResume(item.channelId) },
                             onLongClick = { onClear(item.itemKey) },
-                            modifier = if (index == 0) Modifier.focusRequester(firstCard) else Modifier,
+                            // ↑ : l'onglet en cours (et non le plus proche, qui changerait la liste).
+                            modifier = (if (index == 0) Modifier.focusRequester(firstCard) else Modifier).focusProperties { up = tabFocus },
                         )
                     }
                 }

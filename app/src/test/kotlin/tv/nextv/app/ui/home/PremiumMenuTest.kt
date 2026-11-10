@@ -27,7 +27,7 @@ import org.robolectric.annotation.Config
 import tv.nextv.app.ui.theme.NexTvTheme
 import tv.nextv.app.ui.theme.ThemeStyle
 
-/** Menu d'accueil de Cinéma Premium : une tuile par section, parcourue à la télécommande. */
+/** Menu d'accueil de Classique : une tuile par section, parcourue à la télécommande. */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class, qualifiers = "fr-rFR-w960dp-h540dp-land-television-xhdpi")

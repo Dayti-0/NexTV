@@ -112,12 +112,10 @@ jobs:
           echo "NEXTV_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
           echo "PRIVATE_KEY=1" >> "$GITHUB_ENV"
 
-      # Tests du cœur (playlists, guide, réseau, sauvegarde : une minute environ) : une version dont ils échouent
-      # n'est pas publiée. Ceux de l'application (plus longs) tournent dans la CI à chaque envoi.
-      - name: Test core module
-        run: ./gradlew -p core test --stacktrace
-
-      - name: Build release APK
+      # Tests du cœur (playlists, guide, réseau, sauvegarde) lancés avec la fabrication de l'APK, en parallèle
+      # (une seule commande Gradle) : une version dont ils échouent n'est pas publiée. Ceux de l'application (plus
+      # longs) tournent dans la CI à chaque envoi.
+      - name: Test core module and build release APK
         env:
           NEXTV_KEYSTORE_PASSWORD: ${{ secrets.NEXTV_KEYSTORE_PASSWORD || secrets.NEXTV_KEY_PASSPHRASE }}
           NEXTV_KEY_ALIAS: ${{ secrets.NEXTV_KEY_ALIAS || 'nextv' }}
@@ -127,7 +125,7 @@ jobs:
           # Clé football-data.org facultative (section Foot), intégrée de la même façon.
           NEXTV_FOOTBALL_API_KEY: ${{ secrets.NEXTV_FOOTBALL_API_KEY }}
         run: |
-          ./gradlew :app:assembleRelease --stacktrace \
+          ./gradlew :core:test :app:assembleRelease --stacktrace \
             -Pnextv.versionName="$VERSION" \
             -Pnextv.versionCode="${VERSION_CODE}" \
             -Pnextv.updateRepo="${UPDATE_REPO}"

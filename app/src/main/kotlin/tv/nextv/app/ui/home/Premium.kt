@@ -51,7 +51,7 @@ import tv.nextv.app.ui.components.LiveProgress
 import tv.nextv.app.ui.components.WindowInfo
 
 /**
- * Interface « Cinéma Premium » : la sélection occupe tout l'écran (visuel TMDB d'un film ou d'une
+ * Interface « Classique » : la sélection occupe tout l'écran (visuel TMDB d'un film ou d'une
  * série, direct de la chaîne), avec son titre en grand, ses détails et son résumé ; dessous, de
  * grandes affiches sur des rangées aérées. Les onglets, discrets, flottent sur l'image.
  */

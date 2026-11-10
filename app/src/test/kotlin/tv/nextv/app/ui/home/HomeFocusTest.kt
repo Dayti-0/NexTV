@@ -108,7 +108,7 @@ class HomeFocusTest {
         assertTrue("Focus : $last", last != null && last.removePrefix("Groupe ").toInt() >= 8)
     }
 
-    /** Streaming et Cinéma Premium : ← au bord gauche des rangées ouvre le volet de toutes les catégories. */
+    /** Streaming et Classique : ← au bord gauche des rangées ouvre le volet de toutes les catégories. */
     @Test
     fun streamingCategoriesOpenWithLeft() = assertDrawerOpensWithLeft(HomeLayout.STREAMING)
 
@@ -124,7 +124,7 @@ class HomeFocusTest {
         // Dans les rangées (première vignette), puis ← : volet ouvert, focus sur ses catégories.
         // Streaming : ← mène au menu de gauche, dont « Catégories » ouvre le volet.
         repeat(3) { press(Key.DirectionDown) }
-        // ← jusqu'au bord gauche de la rangée : le volet des catégories s'ouvre (Streaming comme Cinéma Premium).
+        // ← jusqu'au bord gauche de la rangée : le volet des catégories s'ouvre (Streaming comme Classique).
         openDrawerWithLeft()
         compose.onNodeWithText("Groupe 1").assertExists()
         // Volet ouvert sur « Tous les films », puis Groupe 1, 2, 3 ; OK : saut à la rangée « Groupe 3 »,
@@ -153,7 +153,7 @@ class HomeFocusTest {
         compose.waitForIdle()
         if (layout == HomeLayout.STREAMING) enterStreamingContent()
         repeat(3) { press(Key.DirectionDown) }
-        // ← jusqu'au bord gauche de la rangée : le volet des catégories s'ouvre (Streaming comme Cinéma Premium).
+        // ← jusqu'au bord gauche de la rangée : le volet des catégories s'ouvre (Streaming comme Classique).
         openDrawerWithLeft()
         compose.onNodeWithText("Groupe 1").assertExists()
         // Tout en haut, puis au-delà : le focus doit rester dans le volet (← le ferme : test à part).
@@ -372,7 +372,7 @@ class HomeFocusTest {
             compose.waitForIdle()
         }
         val last = focused.lastOrNull()?.substringBefore(" · ")
-        println("Cinéma Premium, focus après 10 × bas : $last")
+        println("Classique, focus après 10 × bas : $last")
         assertTrue("Focus : $last", last != null && last.removePrefix("Groupe ").toInt() >= 5)
     }
 
@@ -627,7 +627,7 @@ class HomeFocusTest {
     }
 
     /**
-     * Cinéma Premium, films : à droite dans une rangée (l'affiche choisie change la mise en avant),
+     * Classique, films : à droite dans une rangée (l'affiche choisie change la mise en avant),
      * la rangée reste calée en haut, sans que la précédente revienne au-dessus.
      */
     @Test

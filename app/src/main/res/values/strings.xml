@@ -164,6 +164,9 @@
     <string name="home_no_series">Aucune série</string>
     <string name="home_no_series_hint">La playlist ne contient pas de séries, ou aucune ne correspond à la recherche.</string>
     <string name="favorites_empty_title">Aucun favori</string>
+    <string name="favorites_tab_channels">Chaînes TV</string>
+    <string name="favorites_remove_hint">Appui long sur une affiche pour la retirer des favoris</string>
+    <string name="favorites_channels_hint">OK : la chaîne s’ouvre, haut et bas passent aux autres chaînes favorites. Appui long : la retirer des favoris</string>
     <string name="favorites_empty_channels">Appui long sur OK sur une chaîne pour l’ajouter aux favoris.</string>
     <string name="favorites_empty_movies">Appui long sur OK sur un film pour l’ajouter aux favoris.</string>
     <string name="favorites_empty_series">Appui long sur OK sur une série pour l’ajouter aux favoris.</string>
@@ -478,7 +481,7 @@
     <string name="settings_home_layout">Interface de l’accueil</string>
     <string name="home_layout_live">Live Center</string>
     <string name="home_layout_streaming">Streaming</string>
-    <string name="home_layout_premium">Cinéma Premium</string>
+    <string name="home_layout_premium">Classique</string>
     <string name="home_layout_live_help">Catégories à gauche, liste des chaînes au centre, aperçu vidéo et programme à droite. Pensée pour la télévision en direct.</string>
     <string name="home_layout_streaming_help">Grande bannière, rangées de jaquettes : reprises, nouveautés, tendances et recommandations, comme sur les plateformes de streaming.</string>
     <string name="home_layout_premium_help">Visuels plein écran, grandes affiches et typographie soignée, pour mettre en valeur films et séries.</string>

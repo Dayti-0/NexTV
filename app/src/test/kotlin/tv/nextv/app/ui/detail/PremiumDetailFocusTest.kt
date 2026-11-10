@@ -30,7 +30,7 @@ import tv.nextv.app.ui.theme.ThemeStyle
 import tv.nextv.core.model.ContentKind
 
 /**
- * Fiche de l'interface Cinéma Premium, à la télécommande : long résumé, série (« Lire le premier épisode »,
+ * Fiche de l'interface Classique, à la télécommande : long résumé, série (« Lire le premier épisode »,
  * « Bande-annonce », favoris). Les boutons tiennent sur une ligne, et passer de l'un à l'autre ne fait pas défiler.
  */
 @OptIn(ExperimentalTestApi::class)

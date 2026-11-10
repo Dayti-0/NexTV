@@ -42,6 +42,6 @@ class AppearanceFocusTest {
         }
         compose.mainClock.advanceTimeBy(1_000)
         compose.waitForIdle()
-        compose.onNode(isFocused() and hasText("Cinéma Premium")).assertExists()
+        compose.onNode(isFocused() and hasText("Classique")).assertExists()
     }
 }

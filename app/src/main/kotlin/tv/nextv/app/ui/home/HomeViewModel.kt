@@ -88,7 +88,7 @@ data class ChannelPreview(
 )
 
 /**
- * Contenu des rangées des interfaces « Streaming » et « Cinéma Premium » : premiers éléments d'une
+ * Contenu des rangées des interfaces « Streaming » et « Classique » : premiers éléments d'une
  * catégorie ([String] vide : sans groupe), au plus le nombre demandé (« Voir plus » l'augmente).
  */
 class HomeRows(
@@ -134,7 +134,7 @@ class HomeRows(
 }
 
 /**
- * Film ou série affiché en affiche (rangées, grilles, Cinéma Premium), avec les informations de la
+ * Film ou série affiché en affiche (rangées, grilles, Classique), avec les informations de la
  * tendance TMDB quand il en vient ([backdropUrl], [overview], [rating]).
  */
 @Immutable
@@ -271,7 +271,7 @@ class HomeViewModel(
         if (id == null) flowOf(null) else dao.observeListedCount(id)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    /** Nombres affichés sur les tuiles du menu de Cinéma Premium : chaînes, films et séries. */
+    /** Nombres affichés sur les tuiles du menu de Classique : chaînes, films et séries. */
     val menuCounts: StateFlow<Map<HomeSection, Int>> = sourceId.flatMapLatest { id ->
         if (id == null) {
             flowOf(emptyMap())
@@ -378,7 +378,7 @@ class HomeViewModel(
         .stateIn(viewModelScope, SharingStarted.Eagerly, HomeLayout.DEFAULT)
 
     init {
-        // Interfaces à rangées (Streaming, Cinéma Premium) : aucune catégorie ne s'y choisit. Celle laissée
+        // Interfaces à rangées (Streaming, Classique) : aucune catégorie ne s'y choisit. Celle laissée
         // ouverte dans le Live Center (« Français ») les afficherait en catégories et grille, sans leurs rangées.
         viewModelScope.launch {
             layout.collect { if (it != HomeLayout.LIVE_CENTER) categories.value = emptyMap() }

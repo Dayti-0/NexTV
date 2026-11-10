@@ -104,7 +104,7 @@ internal fun LiveCenterSection(
     /** Touche ☰ vers le volet et retour (pas pendant la réorganisation des favoris). */
     paneShortcut: Boolean = true,
     /**
-     * Streaming et Cinéma Premium : catégories et volet en panneaux translucides aux coins arrondis,
+     * Streaming et Classique : catégories et volet en panneaux translucides aux coins arrondis,
      * espacés, sur un fond légèrement teinté (au lieu des colonnes pleines de Live Center).
      */
     glass: Boolean = false,
@@ -112,7 +112,7 @@ internal fun LiveCenterSection(
     initialFocus: Boolean = false,
     /**
      * Bandeau horizontal au-dessus de la liste, à la place du volet de droite (mosaïque des chaînes de
-     * Streaming et Cinéma Premium : la mosaïque prend toute la largeur, le nom de la chaîne s'affiche en grand).
+     * Streaming et Classique : la mosaïque prend toute la largeur, le nom de la chaîne s'affiche en grand).
      */
     banner: (@Composable (Modifier) -> Unit)? = null,
     pane: @Composable (Modifier) -> Unit,
@@ -222,7 +222,7 @@ internal fun LiveCenterSection(
 
 private val LIVE_BANNER_HEIGHT = 196.dp
 
-/** Coins des panneaux translucides (Streaming, Cinéma Premium). */
+/** Coins des panneaux translucides (Streaming, Classique). */
 private val LIVE_PANEL_SHAPE = RoundedCornerShape(22.dp)
 
 /**
@@ -286,7 +286,7 @@ internal fun LivePane(
     player: Player?,
     now: Long,
     modifier: Modifier,
-    /** Panneau translucide (Streaming, Cinéma Premium). */
+    /** Panneau translucide (Streaming, Classique). */
     glass: Boolean = false,
 ) {
     val container = MaterialTheme.colorScheme.surfaceContainerLow.let { if (glass) it.copy(alpha = 0.62f) else it }

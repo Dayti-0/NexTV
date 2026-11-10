@@ -44,7 +44,7 @@ import tv.nextv.app.ui.components.PillButton
 import tv.nextv.app.ui.components.rememberWindowInfo
 
 /**
- * Menu d'accueil de Cinéma Premium : une grande tuile par section (TV, Guide TV, Films, Séries, Foot),
+ * Menu d'accueil de Classique : une grande tuile par section (TV, Guide TV, Films, Séries, Foot),
  * puis les raccourcis (recherche de partout, favoris, reprise, réglages) et la fin de l'abonnement. Une tuile ouvre sa
  * section, « Retour » y ramène.
  */

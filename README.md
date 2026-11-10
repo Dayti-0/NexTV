@@ -17,7 +17,7 @@ Lecteur IPTV Android (téléphone, tablette, Android TV) basé sur Media3, enti�
   chaînes) ; les favoris restent visibles.
   Interface et couleurs (Réglages › Apparence) : « Live Center » (catégories, liste des chaînes et volet du direct
   avec le programme en cours et les suivants), « Streaming » (grande bannière, rangées reprises, tendances,
-  nouveautés, recommandations et catégories) ou « Cinéma Premium » (visuel plein écran, grandes affiches) ;
+  nouveautés, recommandations et catégories) ou « Classique » (visuel plein écran, grandes affiches) ;
   19 palettes (classiques, pastel, sombres, colorées), avec aperçu en direct.
 - **Foot** : matchs des 8 prochains jours par compétition (Ligue 1, Premier League, Liga, Serie A, Bundesliga, Ligue
   des champions, Ligue Europa, Ligue Conférence, équipes nationales), par jour, avec les écussons et la chaîne de la

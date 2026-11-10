@@ -54,7 +54,7 @@ import tv.nextv.app.R
 private val DRAWER_WIDTH = 320.dp
 
 /**
- * Volet des catégories des interfaces à rangées (Streaming, Cinéma Premium) : ← depuis le bord gauche
+ * Volet des catégories des interfaces à rangées (Streaming, Classique) : ← depuis le bord gauche
  * des rangées l'ouvre avec toutes les catégories et leur nombre ; OK ouvre une catégorie, → ou
  * « Retour » referme le volet et rend le focus là où il était.
  * Tant qu'il est ouvert, le focus ne peut pas en sortir (ni vers les affiches derrière, ni vers le menu) ;

@@ -219,11 +219,13 @@ fun HomeScreen(
     // maladresse). Déclaré en premier : les autres usages de « Retour » à l'accueil passent avant.
     var confirmExit by remember { mutableStateOf(false) }
     BackHandler { confirmExit = true }
-    // Cinéma Premium : menu d'accueil (grandes tuiles) au lieu des onglets ; « Retour » depuis une section y ramène.
+    // Classique : menu d'accueil (grandes tuiles) au lieu des onglets ; « Retour » depuis une section y ramène.
     var premiumMenu by rememberSaveable { mutableStateOf(true) }
     val showMenu = layout == HomeLayout.PREMIUM && premiumMenu
-    // Écran « Reprendre la lecture » ouvert depuis le menu de Cinéma Premium (gardé au retour du lecteur).
+    // Écran « Reprendre la lecture » ouvert depuis le menu de Classique (gardé au retour du lecteur).
     var resumeOpen by rememberSaveable { mutableStateOf(false) }
+    // Fenêtre « Favoris » ouverte depuis le menu de Classique (gardée au retour d'une fiche ou du lecteur).
+    var favoritesOpen by rememberSaveable { mutableStateOf(false) }
     BackHandler(enabled = layout == HomeLayout.PREMIUM && !premiumMenu) { premiumMenu = true }
     // Interfaces à rangées : « Retour » ramène d'une catégorie ou d'une recherche aux rangées.
     BackHandler(enabled = layout != HomeLayout.LIVE_CENTER && section.kind() != null && (category != Category.All || query.isNotEmpty())) {
@@ -245,7 +247,7 @@ fun HomeScreen(
     }
     BackHandler(enabled = searching) { closeSearch() }
     // Aperçu seulement quand l'accueil est affiché (arrêté en arrière-plan et à l'ouverture d'un autre écran).
-    // Menu d'accueil de Cinéma Premium et recherche de partout : pas d'aperçu en direct (stream arrêté).
+    // Menu d'accueil de Classique et recherche de partout : pas d'aperçu en direct (stream arrêté).
     LifecycleStartEffect(viewModel, showMenu, searching) {
         viewModel.setPreviewActive(!showMenu && !searching)
         onStopOrDispose { viewModel.setPreviewActive(false) }
@@ -312,13 +314,26 @@ fun HomeScreen(
     }
 
     if (showMenu && resumeOpen) {
-        // « Reprendre la lecture » du menu de Cinéma Premium : films et séries en cours, Retour ramène au menu.
+        // « Reprendre la lecture » du menu de Classique : films et séries en cours, Retour ramène au menu.
         PremiumResume(
             movies = continueMovies,
             series = continueSeries,
             onResume = actions.onResume,
             onClear = actions.onClearProgress,
             onBack = { resumeOpen = false },
+        )
+        return
+    }
+
+    if (showMenu && favoritesOpen) {
+        // « Favoris » du menu de Classique : films, séries et chaînes TV, Retour ramène au menu.
+        PremiumFavorites(
+            movies = favoriteMovies,
+            series = favoriteSeries,
+            channels = favoriteChannels,
+            now = now,
+            actions = actions,
+            onBack = { favoritesOpen = false },
         )
         return
     }
@@ -337,11 +352,7 @@ fun HomeScreen(
                 viewModel.selectSection(target)
                 premiumMenu = false
             },
-            onFavorites = {
-                viewModel.selectSection(HomeSection.TV)
-                viewModel.selectCategory(Category.Favorites)
-                premiumMenu = false
-            },
+            onFavorites = { favoritesOpen = true },
             onContinue = { resumeOpen = true },
             onSettings = onSettings,
             onSearch = openSearch,
@@ -476,13 +487,13 @@ fun HomeContent(
     previewPlayer: Player? = null,
     /** Interface choisie dans les réglages (Apparence). */
     layout: HomeLayout = HomeLayout.DEFAULT,
-    /** Contenu des rangées (interfaces Streaming et Cinéma Premium). */
+    /** Contenu des rangées (interfaces Streaming et Classique). */
     rows: HomeRows = HomeRows(),
     /** Tendances, nouveautés et recommandations de la section affichée. */
     discover: Discover = Discover(),
     /** Film ou série sélectionné, avec sa fiche TMDB. */
     spotlight: Spotlight? = null,
-    /** Cinéma Premium : retour au menu d'accueil ; pas d'onglets des sections, un bouton « Menu » à la place. */
+    /** Classique : retour au menu d'accueil ; pas d'onglets des sections, un bouton « Menu » à la place. */
     onMenu: (() -> Unit)? = null,
     /** Recherche de partout (chaînes, films et séries), bouton de la barre du haut. */
     onSearch: (() -> Unit)? = null,
@@ -536,7 +547,7 @@ fun HomeContent(
             if (navFocusManager.moveFocus(FocusDirection.Right) && !tabsFocused.value) break
         }
     }
-    // Accueil à rangées : Streaming et Cinéma Premium, sauf les chaînes sur grand écran (liste avec aperçu).
+    // Accueil à rangées : Streaming et Classique, sauf les chaînes sur grand écran (liste avec aperçu).
     val rowsHome = layout != HomeLayout.LIVE_CENTER && !(section == HomeSection.TV && window.isWide)
     val drawerRail: @Composable (Modifier, FocusRequester) -> Unit = { railModifier, selectedFocus ->
         CategoryRail(
@@ -559,7 +570,7 @@ fun HomeContent(
             containerColor = Color.Transparent,
             selectedFocus = selectedFocus,
             // Une catégorie choisie referme le volet (sinon il se rouvrait au retour, le focus resté derrière).
-            // Accueil à rangées (Streaming, Cinéma Premium) : saut à la rangée de la catégorie, toutes les
+            // Accueil à rangées (Streaming, Classique) : saut à la rangée de la catégorie, toutes les
             // autres restent ; ailleurs, la catégorie s'ouvre.
             onCategory = { chosen ->
                 drawerOpen.value = false
@@ -586,8 +597,8 @@ fun HomeContent(
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
         CompositionLocalProvider(LocalTabsFocused provides { tabsFocused.value }, LocalRowJump provides rowJump, LocalTakeListFocus provides categoryPicked) {
-            // Cinéma Premium : la sélection occupe tout l'écran, onglets compris.
-            // Streaming et Cinéma Premium sur grand écran : les chaînes en liste avec l'aperçu (comme Live Center),
+            // Classique : la sélection occupe tout l'écran, onglets compris.
+            // Streaming et Classique sur grand écran : les chaînes en liste avec l'aperçu (comme Live Center),
             // pas en rangées : « Toutes les chaînes » en tête des catégories, ↑ ↓ pour changer de chaîne.
             val liveList = section == HomeSection.TV && window.isWide && layout != HomeLayout.LIVE_CENTER
             if (catalog && layout == HomeLayout.PREMIUM && category == Category.All && !liveList) {
@@ -668,7 +679,7 @@ fun HomeContent(
                         lastOpened = lastOpened,
                         focused = focused,
                         modifier = Modifier.weight(1f),
-                        // Streaming et Cinéma Premium : catégories dans le volet (←, ou « Catégories » du menu),
+                        // Streaming et Classique : catégories dans le volet (←, ou « Catégories » du menu),
                         // comme sur l'accueil, au lieu d'une colonne fixe.
                         // Chaînes de Streaming : les catégories dans le volet (comme films et séries), pas en colonne fixe.
                         drawerRail = drawerRail.takeIf { layout != HomeLayout.LIVE_CENTER && (!liveList || layout == HomeLayout.STREAMING) },
@@ -747,7 +758,7 @@ private fun CatalogBody(
     onDrawerExitLeft: (() -> Unit)? = null,
     /** Catégorie choisie dans le volet (la nouvelle liste prend la sélection, pas le volet). */
     categoryPicked: MutableState<Boolean>? = null,
-    /** Chaînes de Streaming / Cinéma Premium : catégories, liste et aperçu, en panneaux translucides. */
+    /** Chaînes de Streaming / Classique : catégories, liste et aperçu, en panneaux translucides. */
     liveList: Boolean = false,
     /** Focus de départ sur la liste (Streaming sur la télé : pas d'onglets pour le prendre). */
     initialFocus: Boolean = false,
@@ -805,7 +816,7 @@ private fun CatalogBody(
             paneShortcut = !reorder.active,
             glass = liveList,
             initialFocus = initialFocus,
-            // Mosaïque des chaînes (Streaming, Cinéma Premium) : aperçu en bandeau au-dessus, mosaïque en pleine largeur.
+            // Mosaïque des chaînes (Streaming, Classique) : aperçu en bandeau au-dessus, mosaïque en pleine largeur.
             banner = if (liveList && section == HomeSection.TV && gridColumns.liveCenterMosaic) {
                 { bannerModifier -> LiveBanner(preview, previewPlayer, now, bannerModifier) }
             } else {
@@ -818,7 +829,7 @@ private fun CatalogBody(
             // Chaînes : une par ligne avec leur programme, ou en mosaïque (réglages) ; films et séries : affiches.
             val channelList = section == HomeSection.TV && !gridColumns.liveCenterMosaic
             // Volet à droite : pas de marge de bord d'écran de ce côté, la place va aux vignettes.
-            // Chaînes de Streaming / Cinéma Premium : marges réduites entre les panneaux, la place va aux chaînes.
+            // Chaînes de Streaming / Classique : marges réduites entre les panneaux, la place va aux chaînes.
             CatalogGrid(
                 section, window, gridColumns.perRow, list = channelList,
                 endPadding = if (liveList) LIVE_LIST_GAP else LIVE_CENTER_GRID_END,
@@ -886,7 +897,7 @@ private fun HomeTopBar(
     onTabsFocused: (Boolean) -> Unit = {},
     /**
      * Interface choisie : Live Center, onglets avec icône ; Streaming, onglets en texte soulignés
-     * (sélection) ; Cinéma Premium, onglets discrets sans icône dans une capsule translucide.
+     * (sélection) ; Classique, onglets discrets sans icône dans une capsule translucide.
      */
     style: HomeLayout = HomeLayout.LIVE_CENTER,
     onSearch: (() -> Unit)? = null,
@@ -960,7 +971,7 @@ private fun HomeTopBar(
 }
 
 /**
- * Barre du haut d'une section ouverte depuis le menu d'accueil de Cinéma Premium : « Menu » (comme
+ * Barre du haut d'une section ouverte depuis le menu d'accueil de Classique : « Menu » (comme
  * « Retour »), le nom de la section et les réglages. « Menu » a le focus à l'ouverture de la section.
  */
 @Composable
@@ -991,7 +1002,7 @@ private fun MenuTopBar(section: HomeSection, window: WindowInfo, onMenu: () -> U
     }
 }
 
-/** Fond des onglets et du bouton des réglages de Cinéma Premium, lisible sur une image claire. */
+/** Fond des onglets et du bouton des réglages de Classique, lisible sur une image claire. */
 private const val PREMIUM_BAR_ALPHA = 0.72f
 
 /** Marge de part et d'autre des onglets pour l'onglet agrandi au focus (×1,06) ; Premium : en plus de celle de la capsule. */
@@ -1842,7 +1853,7 @@ private val GRID_SPACING = 16.dp
 /** Live Center : marge entre la grille et le volet de droite. */
 private val LIVE_CENTER_GRID_END = 16.dp
 
-/** Marge de la liste des chaînes entre ses panneaux (Streaming, Cinéma Premium). */
+/** Marge de la liste des chaînes entre ses panneaux (Streaming, Classique). */
 private val LIVE_LIST_GAP = 6.dp
 
 /** Vignette la plus étroite acceptée, quel que soit le réglage. */

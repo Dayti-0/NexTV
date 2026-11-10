@@ -142,7 +142,7 @@ enum class HomeLayout {
     }
 }
 
-/** Contenu commun des interfaces à rangées (Streaming, Cinéma Premium). */
+/** Contenu commun des interfaces à rangées (Streaming, Classique). */
 @Immutable
 internal data class ShelfContent(
     val section: HomeSection,
@@ -405,11 +405,11 @@ internal fun shelfList(content: ShelfContent): List<ShelfSpec> = buildList {
     content.groups.forEach { add(ShelfSpec.Group("group:" + (it.title ?: NO_GROUP_KEY), it)) }
 }
 
-/** Présentation des rangées : Streaming (vignettes serrées) ou Cinéma Premium (grandes affiches). */
+/** Présentation des rangées : Streaming (vignettes serrées) ou Classique (grandes affiches). */
 internal enum class ShelfStyle { STREAMING, PREMIUM }
 
 /**
- * Rangées calées en haut de la liste (Streaming, Cinéma Premium) : la vignette choisie s'arrête
+ * Rangées calées en haut de la liste (Streaming, Classique) : la vignette choisie s'arrête
  * toujours à la même hauteur ([RowAnchor.cardTopPx], mesurée sur l'en-tête des rangées), donc sa
  * rangée tout en haut, sans morceau de la précédente au-dessus (sur TV, Compose place sinon la
  * vignette à 30 % de la hauteur). Calcul fait par le défilement lui-même : rien n'attend la fin
@@ -432,7 +432,7 @@ internal class RowAnchor {
 internal val LocalRowAnchor = staticCompositionLocalOf<RowAnchor?> { null }
 
 /**
- * Saut à la rangée d'une catégorie (volet des catégories de Streaming et Cinéma Premium) : toutes les rangées
+ * Saut à la rangée d'une catégorie (volet des catégories de Streaming et Classique) : toutes les rangées
  * restent, la liste défile jusqu'à celle de la catégorie et la sélection s'y pose.
  */
 internal class RowJump {
@@ -445,7 +445,7 @@ internal class RowJump {
 
 internal val LocalRowJump = staticCompositionLocalOf<RowJump?> { null }
 
-/** Rang du Top 10 de Cinéma Premium : « N°1 » doré, discret, dans le coin de l'affiche. */
+/** Rang du Top 10 de Classique : « N°1 » doré, discret, dans le coin de l'affiche. */
 @Composable
 private fun RankBadge(rank: Int, modifier: Modifier = Modifier) {
     Text(
@@ -511,7 +511,7 @@ internal val LocalRowDefaultSpec = staticCompositionLocalOf<BringIntoViewSpec?> 
 internal fun AnchoredRows(
     /**
      * Streaming : la rangée choisie est calée vers le bas, de sorte qu'il ne reste en dessous que cette hauteur
-     * (le titre de la rangée suivante, ses affiches cachées). `null` : rangée calée en haut (Cinéma Premium).
+     * (le titre de la rangée suivante, ses affiches cachées). `null` : rangée calée en haut (Classique).
      */
     peekBelow: Dp? = null,
     /** Liste des rangées : avec [peekBelow], c'est le bas de la rangée entière (titres sous les affiches compris) qui est calé. */
@@ -610,7 +610,7 @@ internal fun LazyListScope.shelfItems(
                 }
             }
             is ShelfSpec.Group -> GroupShelf(spec, content, sizes, padding, lastOpened, actions, style)
-            // Cinéma Premium : affiches ordinaires avec un petit rang doré dans le coin (pas les grands chiffres de Streaming).
+            // Classique : affiches ordinaires avec un petit rang doré dans le coin (pas les grands chiffres de Streaming).
             is ShelfSpec.Top10 -> if (style == ShelfStyle.PREMIUM) Shelf(
                 title = stringResource(R.string.home_rows_top10),
                 count = null,
@@ -769,7 +769,7 @@ internal data class ShelfSizes(val channel: Dp, val poster: Dp) {
         /** Streaming : grandes affiches seules (titre et détails dans le bandeau). */
         fun of(window: WindowInfo) = if (window.isWide) ShelfSizes(channel = 148.dp, poster = 120.dp) else ShelfSizes(channel = 156.dp, poster = 104.dp)
 
-        /** Cinéma Premium : affiches plus grandes, moins nombreuses. */
+        /** Classique : affiches plus grandes, moins nombreuses. */
         fun premium(window: WindowInfo) = if (window.isWide) ShelfSizes(channel = 200.dp, poster = 116.dp) else ShelfSizes(channel = 180.dp, poster = 116.dp)
     }
 }
@@ -1019,7 +1019,7 @@ internal fun ShelfPoster(
     style: ShelfStyle = ShelfStyle.STREAMING,
     /** Premier élément ajouté par « Voir plus » : il prend la sélection. */
     focusRequester: FocusRequester? = null,
-    /** Affiche du Top 10 de Cinéma Premium : son rang occupe le coin haut gauche. */
+    /** Affiche du Top 10 de Classique : son rang occupe le coin haut gauche. */
     ranked: Boolean = false,
 ) {
     val onClick = {
