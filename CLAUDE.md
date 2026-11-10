@@ -76,6 +76,10 @@ Commandes :
   est calculé à partir de ce nom par le workflow (0.2.94 → 20094) : ne jamais publier un numéro plus petit que le
   précédent.
 - Le workflow « Release » lance les tests du module `core` en même temps que la fabrication de l'APK (une seule commande).
+- Fichiers publiés : l'APK universel (`NexTV-vX.Y.Z.apk`, et `NexTV.apk` pour le lien permanent) et un APK par
+  processeur (`NexTV-vX.Y.Z.arm64-v8a.apk`, `NexTV-vX.Y.Z.armeabi-v7a.apk`), chacun avec son `.sha256`. Garder ces
+  noms : GitHub trie les fichiers par nom, et les versions 0.2.102 et avant prennent le premier `.apk` de la liste
+  (il doit rester l'universel). La mise à jour intégrée (0.2.103 et après) prend celui du processeur de l'appareil.
 - L'utilisateur a demandé que chaque correction validée soit publiée sans attendre son accord, et le plus vite
   possible : dès que les tests locaux passent, pousser `main` et la branche `release/vX.Y.Z` en même temps, sans
   attendre la CI (elle ne fait que compiler, le lint et les captures ; la publication prend ~10 min). Si la CI

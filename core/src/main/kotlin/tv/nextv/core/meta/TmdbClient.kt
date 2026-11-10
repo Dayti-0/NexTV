@@ -158,6 +158,31 @@ class TmdbClient(
     }
 
     /**
+     * Bandes-annonces et teasers YouTube d'un film ou d'une série, la meilleure d'abord (même ordre que
+     * [MediaDetails.trailerYoutubeKey]) : identifiant et langue. Pour en essayer une autre quand la première ne se lit
+     * pas (vidéo retirée, réservée à un pays ou aux adultes, lecture intégrée refusée). Liste vide sans clé ou en cas d'échec.
+     */
+    suspend fun trailers(type: MediaType, tmdbId: Long, limit: Int = 8): List<Pair<String, String>> {
+        val key = apiKey()?.trim()?.takeIf { it.isNotEmpty() } ?: fallbackApiKey()?.trim()?.takeIf { it.isNotEmpty() } ?: return emptyList()
+        val path = if (type == MediaType.MOVIE) "movie/$tmdbId/videos" else "tv/$tmdbId/videos"
+        val url = baseUrl.newBuilder().addPathSegments(path)
+            .addQueryParameter("language", language)
+            .addQueryParameter("include_video_language", "${language.substringBefore('-')},en,null")
+            .build()
+        val json = try {
+            get(key, url)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            return emptyList()
+        }
+        return rankedTrailers(json.optJSONArray("results"))
+            .map { it.optString("key") to it.optStringOrNull("iso_639_1").orEmpty() }
+            .distinctBy { it.first }
+            .take(limit)
+    }
+
+    /**
      * Films ou séries les plus regardés de la semaine (deux pages, une quarantaine de titres) ;
      * liste vide sans clé ou en cas d'échec.
      */
@@ -321,7 +346,10 @@ class TmdbClient(
      * Bande-annonce YouTube, de préférence dans la langue de l'interface, et doublée (VF) plutôt
      * que sous-titrée (VOSTFR).
      */
-    private fun trailer(videos: JSONArray?): JSONObject? {
+    private fun trailer(videos: JSONArray?): JSONObject? = rankedTrailers(videos).firstOrNull()
+
+    /** Bandes-annonces puis teasers YouTube, dans la langue de l'interface d'abord, doublés plutôt que sous-titrés. */
+    private fun rankedTrailers(videos: JSONArray?): List<JSONObject> {
         val candidates = videos.objects().filter { it.optString("site").equals("YouTube", ignoreCase = true) && it.optStringOrNull("key") != null }
         val lang = language.substringBefore('-')
         val ranked = candidates.sortedWith(
@@ -330,7 +358,7 @@ class TmdbClient(
                 .thenByDescending { !SUBTITLED.containsMatchIn(it.optString("name")) }
                 .thenByDescending { it.optBoolean("official") },
         )
-        return ranked.firstOrNull { it.optString("type") == "Trailer" || it.optString("type") == "Teaser" }
+        return ranked.filter { it.optString("type") == "Trailer" || it.optString("type") == "Teaser" }
     }
 
     private suspend fun get(key: String, url: HttpUrl): JSONObject {

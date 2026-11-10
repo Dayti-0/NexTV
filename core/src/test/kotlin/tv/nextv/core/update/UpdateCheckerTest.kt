@@ -116,4 +116,58 @@ class UpdateCheckerTest {
     }
 
     private fun sha256(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+
+    /** Version publiée avec l'APK universel et un APK par processeur (liste triée par nom, comme GitHub la renvoie). */
+    private fun splitRelease(): String {
+        val names = listOf(
+            "NexTV-v0.2.103-mapping.txt",
+            "NexTV-v0.2.103.apk", "NexTV-v0.2.103.apk.sha256",
+            "NexTV-v0.2.103.arm64-v8a.apk", "NexTV-v0.2.103.arm64-v8a.apk.sha256",
+            "NexTV-v0.2.103.armeabi-v7a.apk", "NexTV-v0.2.103.armeabi-v7a.apk.sha256",
+            "NexTV.apk",
+        )
+        val assets = names.joinToString(",") { name ->
+            val size = when {
+                name.endsWith(".sha256") -> 90
+                name.contains("arm64") -> 30_000_000
+                name.contains("armeabi") -> 26_000_000
+                else -> 51_000_000
+            }
+            """{"name":"$name","size":$size,"browser_download_url":"https://example.com/$name"}"""
+        }
+        return """[{"tag_name":"v0.2.103","draft":false,"body":"","assets":[$assets]}]"""
+    }
+
+    @Test
+    fun `the apk of the device processor is chosen, with its own checksum`() {
+        val arm64 = UpdateChecker.parseReleases(splitRelease(), listOf("arm64-v8a", "armeabi-v7a", "armeabi")).single()
+        assertEquals("https://example.com/NexTV-v0.2.103.arm64-v8a.apk", arm64.apkUrl)
+        assertEquals(30_000_000L, arm64.apkSize)
+        assertEquals("https://example.com/NexTV-v0.2.103.arm64-v8a.apk.sha256", arm64.sha256Url)
+        // Fire TV en 32 bits.
+        val arm32 = UpdateChecker.parseReleases(splitRelease(), listOf("armeabi-v7a", "armeabi")).single()
+        assertEquals("https://example.com/NexTV-v0.2.103.armeabi-v7a.apk", arm32.apkUrl)
+        assertEquals("https://example.com/NexTV-v0.2.103.armeabi-v7a.apk.sha256", arm32.sha256Url)
+        // Processeur sans APK à lui (ou inconnu) : l'APK universel.
+        for (abis in listOf(listOf("x86_64", "x86"), emptyList())) {
+            val universal = UpdateChecker.parseReleases(splitRelease(), abis).single()
+            assertEquals("https://example.com/NexTV-v0.2.103.apk", universal.apkUrl)
+            assertEquals("https://example.com/NexTV-v0.2.103.apk.sha256", universal.sha256Url)
+        }
+    }
+
+    /**
+     * Les versions 0.2.102 et avant prennent le premier APK et la première empreinte de la liste (triée par nom) :
+     * avec les noms publiés, ce sont l'APK universel et la sienne, jamais ceux d'un processeur.
+     */
+    @Test
+    fun `older versions still find the universal apk first`() {
+        val names = Regex("\"name\":\"([^\"]+)\"").findAll(splitRelease()).map { it.groupValues[1] }.toList().sorted()
+        assertEquals("NexTV-v0.2.103.apk", names.first { it.endsWith(".apk") })
+        assertEquals("NexTV-v0.2.103.apk.sha256", names.first { it.endsWith(".apk.sha256") })
+        assertNull(UpdateChecker.abiOf("NexTV-v0.2.103.apk"))
+        assertNull(UpdateChecker.abiOf("NexTV.apk"))
+        assertEquals("arm64-v8a", UpdateChecker.abiOf("NexTV-v0.2.103.arm64-v8a.apk"))
+        assertEquals("armeabi-v7a", UpdateChecker.abiOf("NexTV-v0.2.103.armeabi-v7a.apk"))
+    }
 }

@@ -32,6 +32,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /**
@@ -94,13 +95,42 @@ internal fun TrailerBackdrop(
 }
 
 /**
- * Bande-annonce en plein écran, avec le son (bouton « Bande-annonce ») : « Retour » la ferme, et elle se
- * ferme d'elle-même à la fin. Si YouTube refuse la lecture dans l'appli (certaines vidéos l'interdisent), elle
- * s'ouvre dans l'application YouTube de l'appareil, ou un message le dit s'il n'y en a pas.
+ * Bande-annonce en plein écran, avec le son (bouton « Bande-annonce ») : « Retour » la ferme, et elle se ferme
+ * d'elle-même à la fin. Une vidéo qui ne se lit pas (lecture intégrée refusée, vidéo retirée, réservée à un pays ou
+ * aux adultes, ou qui ne démarre pas) laisse la place à la suivante des [alternatives] (les autres bandes-annonces
+ * du titre connues de TMDB) ; quand il n'en reste plus, la première s'ouvre dans l'application YouTube de
+ * l'appareil, ou un message le dit s'il n'y en a pas.
  */
 @Composable
-internal fun TrailerFullScreen(key: String, language: String?, onClose: () -> Unit) {
+internal fun TrailerFullScreen(
+    key: String,
+    language: String?,
+    onClose: () -> Unit,
+    alternatives: suspend () -> List<Pair<String, String?>> = { emptyList() },
+) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var current by remember(key) { mutableStateOf(key to language) }
+    val tried = remember(key) { mutableSetOf(key) }
+    var others by remember(key) { mutableStateOf<List<Pair<String, String?>>?>(null) }
+    // Vidéo en échec : sa fin (signalée juste après l'échec) ne ferme pas l'écran, la suivante est essayée.
+    var failedKey by remember(key) { mutableStateOf<String?>(null) }
+    val close by rememberUpdatedState(onClose)
+    val onFailed: () -> Unit = {
+        val failed = current.first
+        failedKey = failed
+        scope.launch {
+            val list = others ?: runCatching { alternatives() }.getOrDefault(emptyList()).also { others = it }
+            val next = list.firstOrNull { it.first !in tried }
+            if (next != null) {
+                tried += next.first
+                current = next
+            } else {
+                openTrailerExternally(context, key)
+                close()
+            }
+        }
+    }
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         val focus = remember { FocusRequester() }
         LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
@@ -113,21 +143,37 @@ internal fun TrailerFullScreen(key: String, language: String?, onClose: () -> Un
                 .focusable(),
         ) {
             TrailerBackdrop(
-                key, language, Modifier.fillMaxSize(), delayMillis = 0, muted = false, onFinished = onClose,
-                onFailed = { openInYouTube(context, key) },
+                current.first, current.second, Modifier.fillMaxSize(), delayMillis = 0, muted = false,
+                onFinished = { if (failedKey != current.first) close() },
+                onFailed = onFailed,
             )
         }
     }
 }
 
-/** Bande-annonce [key] dans l'application YouTube (ou le navigateur) ; message si aucune ne peut l'ouvrir. */
-private fun openInYouTube(context: android.content.Context, key: String) {
-    val intents = listOf("vnd.youtube:$key", "https://www.youtube.com/watch?v=$key").map {
-        android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(it)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-    }
-    val opened = intents.any { intent -> runCatching { context.startActivity(intent) }.isSuccess }
+/**
+ * Ouvre la bande-annonce [key] dans une application YouTube : d'abord celles des TV (Fire TV, Android TV, SmartTube),
+ * pour que le navigateur ne s'en empare pas, puis toute application qui comprend le lien, enfin le navigateur. Le lien
+ * web d'abord : certaines (SmartTube) refusent `vnd.youtube:`. Message si aucune ne peut l'ouvrir.
+ * @return vrai si une application l'a ouverte.
+ */
+internal fun openTrailerExternally(context: android.content.Context, key: String): Boolean {
+    val links = listOf(android.net.Uri.parse("https://www.youtube.com/watch?v=$key"), android.net.Uri.parse("vnd.youtube:$key"))
+    val intents = YOUTUBE_APPS.flatMap { app -> links.map { android.content.Intent(android.content.Intent.ACTION_VIEW, it).setPackage(app) } } +
+        links.map { android.content.Intent(android.content.Intent.ACTION_VIEW, it) }
+    val opened = intents.any { intent -> runCatching { context.startActivity(intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess }
     if (!opened) android.widget.Toast.makeText(context, tv.nextv.app.R.string.trailer_unavailable, android.widget.Toast.LENGTH_LONG).show()
+    return opened
 }
+
+/** Applications YouTube des TV et des téléphones, par ordre de préférence. */
+private val YOUTUBE_APPS = listOf(
+    "com.amazon.firetv.youtube",
+    "com.google.android.youtube.tv",
+    "com.liskovsoft.smarttubetv.beta",
+    "com.liskovsoft.smarttubetv",
+    "com.google.android.youtube",
+)
 
 /** Page du lecteur YouTube, mise en pause quand l'appli passe en arrière-plan. */
 @Composable
@@ -267,7 +313,7 @@ private fun trailerView(
         function setMuted(m){muted=m;applySound();}
         function reveal(){clearTimeout(startTimer);hidden=false;show(true);applySound();}
         // Rien ne démarre (réseau, page bloquée) : on abandonne, l'image reste.
-        function watchStart(){clearTimeout(startTimer);startTimer=setTimeout(function(){if(hidden&&!done)finish();},$START_TIMEOUT_MILLIS);}
+        function watchStart(){clearTimeout(startTimer);startTimer=setTimeout(function(){if(hidden&&!done){call(function(){NixTv.failed();});finish();}},$START_TIMEOUT_MILLIS);}
         // Délai écoulé : lecture depuis le début.
         function allow(){
           if(allowed||done)return;

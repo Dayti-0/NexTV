@@ -15,6 +15,7 @@ import androidx.compose.ui.test.pressKey
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import androidx.compose.ui.unit.dp
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -105,5 +106,80 @@ class PremiumDetailFocusTest {
         press(Key.DirectionLeft)
         assertEquals(start, top(title), 1f)
         assertTrue("Haut coupé : $start", start >= 0f)
+    }
+
+    /** Distribution : en y descendant, le nom de l'acteur choisi est à l'écran (et pas seulement sa photo). */
+    @Test
+    fun castNamesAreShownWhenSelected() {
+        val base = SampleData.movieDetail
+        val available = base.metadata as MetadataState.Available
+        val movie = base.copy(
+            progress = null,
+            metadata = available.copy(details = available.details.copy(overview = "Un long résumé du film. ".repeat(12))),
+            cast = listOf("Camille Martin", "Hugo Bernard", "Inès Petit", "Louis Moreau").map { tv.nextv.core.meta.CastMember(it, "Rôle de $it", null) },
+        )
+        compose.setContent {
+            NexTvTheme(ThemeStyle.NIGHT) {
+                DetailContent(
+                    state = movie,
+                    kind = ContentKind.MOVIE,
+                    snackbarHostState = remember { SnackbarHostState() },
+                    onPlay = {},
+                    onTrailer = {},
+                    onToggleFavorite = {},
+                    onSelectSeason = {},
+                    onBack = {},
+                )
+            }
+        }
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
+        // ↓ depuis les boutons : la première photo de la distribution.
+        press(Key.DirectionDown)
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
+        val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
+        val name = compose.onAllNodes(hasText("Camille Martin"), useUnmergedTree = true).fetchSemanticsNodes().maxOf { it.boundsInRoot.bottom }
+        val role = compose.onAllNodes(hasText("Rôle de Camille Martin"), useUnmergedTree = true).fetchSemanticsNodes().maxOf { it.boundsInRoot.bottom }
+        println("Distribution : nom en bas à $name, rôle à $role, écran ${root.bottom}")
+        assertTrue("Nom coupé : $name > ${root.bottom}", name <= root.bottom)
+        assertTrue("Rôle coupé : $role > ${root.bottom}", role <= root.bottom)
+    }
+
+    /** Tout en bas de la fiche, puis tout en haut : le bouton Retour choisi n'est pas coupé (marge au-dessus). */
+    @Test
+    fun backButtonIsNotCutAtTheTop() {
+        val base = SampleData.movieDetail
+        val available = base.metadata as MetadataState.Available
+        val movie = base.copy(
+            progress = null,
+            metadata = available.copy(details = available.details.copy(overview = "Un long résumé du film. ".repeat(12))),
+            cast = listOf("Camille Martin", "Hugo Bernard", "Inès Petit", "Louis Moreau").map { tv.nextv.core.meta.CastMember(it, "Rôle de $it", null) },
+        )
+        compose.setContent {
+            NexTvTheme(ThemeStyle.NIGHT) {
+                DetailContent(
+                    state = movie,
+                    kind = ContentKind.MOVIE,
+                    snackbarHostState = remember { SnackbarHostState() },
+                    onPlay = {},
+                    onTrailer = {},
+                    onToggleFavorite = {},
+                    onSelectSeason = {},
+                    onBack = {},
+                )
+            }
+        }
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
+        repeat(4) { press(Key.DirectionDown) }
+        val back = androidx.compose.ui.test.hasContentDescription("Retour")
+        repeat(8) { if (compose.onAllNodes(isFocused() and back).fetchSemanticsNodes().isEmpty()) press(Key.DirectionUp) }
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
+        val top = compose.onNode(isFocused() and back).fetchSemanticsNode().boundsInRoot.top
+        val margin = with(compose.density) { 12.dp.toPx() }
+        println("Bouton Retour choisi : haut à $top (marge voulue $margin)")
+        assertTrue("Bouton Retour coupé : haut à $top", top >= margin)
     }
 }

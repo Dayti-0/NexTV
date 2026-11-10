@@ -215,7 +215,8 @@ class AppContainer(context: Context) {
     /** Mises à jour de l'application (versions publiées sur GitHub). */
     val updater = AppUpdater(
         appContext,
-        UpdateChecker(httpClients, BuildConfig.UPDATE_REPOSITORY, logger = logger),
+        // APK du processeur de l'appareil (deux fois plus léger que l'APK universel) quand il est publié.
+        UpdateChecker(httpClients, BuildConfig.UPDATE_REPOSITORY, logger = logger, supportedAbis = android.os.Build.SUPPORTED_ABIS.toList()),
         applicationScope,
         logger,
     )

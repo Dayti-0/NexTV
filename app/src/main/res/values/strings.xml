@@ -248,7 +248,6 @@
     <string name="detail_season">Saison %1$d</string>
     <string name="detail_episodes">Épisodes</string>
     <string name="detail_episode">Épisode %1$d</string>
-    <string name="detail_no_trailer_app">Aucune application ne peut lire la bande-annonce.</string>
     <string name="detail_tmdb_not_found">Aucune fiche TMDB trouvée pour ce titre.</string>
     <string name="detail_tmdb_missing_key">Ajoutez une clé API TMDB dans les réglages pour afficher synopsis, notes et affiches.</string>
     <string name="detail_tmdb_invalid_key">La clé API TMDB est refusée. Vérifiez-la dans les réglages.</string>

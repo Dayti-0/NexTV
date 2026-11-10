@@ -132,9 +132,20 @@ jobs:
 
       - name: Prepare release assets
         run: |
+          # APK universel (les deux processeurs ARM) : première installation, lien permanent, versions 0.2.102 et avant.
           APK="NexTV-${TAG}.apk"
-          cp app/build/outputs/apk/release/app-release.apk "$APK"
+          cp app/build/outputs/apk/release/app-universal-release.apk "$APK"
           sha256sum "$APK" > "$APK.sha256"
+          # Un APK par processeur, deux fois plus léger : la mise à jour intégrée (0.2.103 et après) prend celui de
+          # l'appareil. Nom « NexTV-vX.<processeur>.apk » : GitHub trie les fichiers par nom, et celui-ci vient après
+          # « NexTV-vX.apk » ; les versions 0.2.102 et avant, qui prennent le premier APK de la liste, gardent l'universel.
+          ABI_FILES=""
+          for ABI in arm64-v8a armeabi-v7a; do
+            ABI_APK="NexTV-${TAG}.${ABI}.apk"
+            cp "app/build/outputs/apk/release/app-${ABI}-release.apk" "$ABI_APK"
+            sha256sum "$ABI_APK" > "$ABI_APK.sha256"
+            ABI_FILES="$ABI_FILES $ABI_APK $ABI_APK.sha256"
+          done
           # Table de correspondance de R8 : décode les traces des plantages (« Dernier incident » des réglages).
           MAPPING="NexTV-${TAG}-mapping.txt"
           cp app/build/outputs/mapping/release/mapping.txt "$MAPPING"
@@ -163,6 +174,7 @@ jobs:
           NOTES
           echo "APK=$APK" >> "$GITHUB_ENV"
           echo "MAPPING=$MAPPING" >> "$GITHUB_ENV"
+          echo "ABI_FILES=$ABI_FILES" >> "$GITHUB_ENV"
 
       - name: Publish GitHub release
         env:
@@ -170,7 +182,8 @@ jobs:
         run: |
           PRERELEASE=""
           case "$TAG" in *-*) PRERELEASE="--prerelease" ;; esac
-          gh release create "$TAG" "$APK" "$APK.sha256" NexTV.apk "$MAPPING" \
+          # shellcheck disable=SC2086 (ABI_FILES : plusieurs fichiers)
+          gh release create "$TAG" "$APK" "$APK.sha256" NexTV.apk "$MAPPING" $ABI_FILES \
             --target "$GITHUB_SHA" \
             --title "NexTV ${TAG}" \
             --notes-file notes.md \
@@ -183,7 +196,8 @@ jobs:
         run: |
           PRERELEASE=""
           case "$TAG" in *-*) PRERELEASE="--prerelease" ;; esac
-          gh release create "$TAG" "$APK" "$APK.sha256" NexTV.apk \
+          # shellcheck disable=SC2086 (ABI_FILES : plusieurs fichiers)
+          gh release create "$TAG" "$APK" "$APK.sha256" NexTV.apk $ABI_FILES \
             --repo "$RELEASES_REPO" \
             --title "NexTV ${TAG}" \
             --notes-file notes.md \

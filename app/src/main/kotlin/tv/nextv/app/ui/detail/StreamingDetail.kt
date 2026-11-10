@@ -8,6 +8,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
@@ -117,6 +119,8 @@ internal fun StreamingDetailContent(
     onToggleFavorite: () -> Unit,
     onSelectSeason: (Int) -> Unit,
     onOpenItem: (PosterItem) -> Unit,
+    /** Autres bandes-annonces du titre, essayées si celle choisie ne se lit pas. */
+    trailerAlternatives: suspend () -> List<Pair<String, String?>> = { emptyList() },
 ) {
     val colors = MaterialTheme.colorScheme
     val background = colors.background
@@ -317,7 +321,7 @@ internal fun StreamingDetailContent(
     }
     if (fullTrailer) {
         // Série : bande-annonce de la saison choisie si TMDB en a une.
-        state.trailer?.let { (key, language) -> TrailerFullScreen(key, language) { fullTrailer = false } }
+        state.trailer?.let { (key, language) -> TrailerFullScreen(key, language, onClose = { fullTrailer = false }, alternatives = trailerAlternatives) }
     }
 }
 
@@ -543,13 +547,21 @@ internal fun CastLine(cast: List<CastMember>, modifier: Modifier = Modifier) {
 @Composable
 internal fun CastCard(person: CastMember) {
     val colors = MaterialTheme.colorScheme
-    Column(Modifier.width(CAST_WIDTH), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    // Photo choisie : toute la carte est montrée, nom et rôle compris (sinon seule la photo, les noms coupés en bas).
+    val wholeCard = remember { BringIntoViewRequester() }
+    val scope = rememberCoroutineScope()
+    Column(
+        Modifier.width(CAST_WIDTH).bringIntoViewRequester(wholeCard),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
         FocusSurface(
             onClick = {},
             modifier = Modifier.size(CAST_PHOTO),
             shape = CircleShape,
             color = colors.surfaceContainerHigh,
             focusScale = 1.08f,
+            onFocusChange = { focused -> if (focused) scope.launch { wholeCard.bringIntoView() } },
         ) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(

@@ -1,9 +1,5 @@
 package tv.nextv.app.ui.detail
 
-import android.content.ActivityNotFoundException
-import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -42,10 +38,12 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import tv.nextv.app.ui.home.TrailerFullScreen
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -57,13 +55,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
-import kotlinx.coroutines.launch
 import tv.nextv.app.R
 import tv.nextv.app.data.catalog.MetadataState
 import tv.nextv.app.data.db.EpisodeRow
@@ -114,13 +112,13 @@ fun DetailScreen(
             onToggleFavorite = viewModel::toggleFavorite,
             onSelectSeason = viewModel::selectSeason,
             onOpenItem = { onOpenItem(it.id, it.kind) },
+            trailerAlternatives = viewModel::trailerAlternatives,
         )
         return
     }
-    val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
-    val noTrailerApp = stringResource(R.string.detail_no_trailer_app)
+    // Bande-annonce lue dans l'appli, en plein écran (une autre est essayée si elle ne se lit pas).
+    var fullTrailer by remember { mutableStateOf<String?>(null) }
     DetailContent(
         state = state,
         kind = kind,
@@ -128,41 +126,16 @@ fun DetailScreen(
         onPlay = onPlay,
         onResume = onResume,
         onRestart = onRestart,
-        onTrailer = { key -> if (!openTrailer(context, key)) scope.launch { snackbar.showSnackbar(noTrailerApp) } },
+        onTrailer = { key -> fullTrailer = key },
         onToggleFavorite = viewModel::toggleFavorite,
         onSelectSeason = viewModel::selectSeason,
         onBack = onBack,
     )
-}
-
-/**
- * Ouvre la bande-annonce dans une application YouTube : d'abord celles des TV (Fire TV, Android TV,
- * SmartTube), pour que le navigateur ne s'en empare pas, puis toute application qui comprend le lien,
- * enfin le navigateur. Le lien web d'abord : certaines (SmartTube) refusent `vnd.youtube:`.
- */
-private fun openTrailer(context: Context, key: String): Boolean {
-    val links = listOf(Uri.parse("https://www.youtube.com/watch?v=$key"), Uri.parse("vnd.youtube:$key"))
-    val intents = YOUTUBE_APPS.flatMap { app -> links.map { Intent(Intent.ACTION_VIEW, it).setPackage(app) } } +
-        links.map { Intent(Intent.ACTION_VIEW, it) }
-    for (intent in intents) {
-        try {
-            context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            return true
-        } catch (e: ActivityNotFoundException) {
-            // Essai suivant.
-        }
+    fullTrailer?.let { key ->
+        val language = (state.metadata as? MetadataState.Available)?.details?.trailerLanguage
+        TrailerFullScreen(key, language, onClose = { fullTrailer = null }, alternatives = viewModel::trailerAlternatives)
     }
-    return false
 }
-
-/** Applications YouTube des TV et des téléphones, par ordre de préférence. */
-private val YOUTUBE_APPS = listOf(
-    "com.amazon.firetv.youtube",
-    "com.google.android.youtube.tv",
-    "com.liskovsoft.smarttubetv.beta",
-    "com.liskovsoft.smarttubetv",
-    "com.google.android.youtube",
-)
 
 /** Fiche d'un film ou d'une série. Sans dépendance au ViewModel (captures d'écran). */
 @OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
@@ -201,7 +174,9 @@ fun DetailContent(
             Backdrop(details?.backdropUrl ?: details?.posterUrl ?: item?.logoUrl)
             // Défilement seulement si l'élément choisi sort de l'écran : la télé le place sinon au tiers de l'écran,
             // et passer d'un bouton à l'autre faisait descendre toute la fiche.
-            CompositionLocalProvider(LocalBringIntoViewSpec provides MinimalBringIntoView) {
+            val margin = with(LocalDensity.current) { BRING_INTO_VIEW_MARGIN.toPx() }
+            val minimalScroll = remember(margin) { MinimalBringIntoView(margin) }
+            CompositionLocalProvider(LocalBringIntoViewSpec provides minimalScroll) {
             LazyColumn(Modifier.fillMaxSize()) {
                 item {
                     Row(Modifier.padding(start = window.horizontalPadding - 12.dp, top = window.topPadding)) {
@@ -361,20 +336,26 @@ fun DetailContent(
     }
 }
 
-/** Défilement minimal : juste ce qu'il faut pour montrer l'élément choisi, rien s'il est déjà visible. */
+/**
+ * Défilement minimal : juste ce qu'il faut pour montrer l'élément choisi, rien s'il est déjà visible ; avec une marge
+ * de [margin] en haut et en bas, pour son agrandissement et son contour (le bouton Retour était coupé en haut).
+ */
 @OptIn(ExperimentalFoundationApi::class)
-private val MinimalBringIntoView = object : BringIntoViewSpec {
+private class MinimalBringIntoView(private val margin: Float) : BringIntoViewSpec {
     override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
         val end = offset + size
         return when {
-            // Plus grand que l'écran : son début en haut.
-            size > containerSize -> offset
-            offset < 0f -> offset
-            end > containerSize -> end - containerSize
+            // Plus grand que l'écran (marges comprises) : son début en haut.
+            size + 2 * margin > containerSize -> offset - margin
+            offset < margin -> offset - margin
+            end > containerSize - margin -> end - (containerSize - margin)
             else -> 0f
         }
     }
 }
+
+/** Marge gardée autour de l'élément choisi en faisant défiler la fiche. */
+private val BRING_INTO_VIEW_MARGIN = 24.dp
 
 @Composable
 private fun Backdrop(imageUrl: String?) {

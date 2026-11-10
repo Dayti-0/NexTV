@@ -58,6 +58,14 @@ class TmdbClientTest {
                         """{"page":1,"total_pages":1,"results":[{"title":"Titanic","original_title":"Titanic","release_date":"1997-12-19","poster_path":"/t.jpg"},
                         {"title":"Aliens, le retour","original_title":"Aliens","release_date":"1986-07-18"}]}""",
                     )
+                    path.endsWith("/movie/19995/videos") -> json(
+                        """{"results":[
+                        {"site":"YouTube","type":"Featurette","key":"feat","iso_639_1":"fr"},
+                        {"site":"YouTube","type":"Teaser","key":"en-teaser","iso_639_1":"en"},
+                        {"site":"YouTube","type":"Trailer","key":"en-trailer","iso_639_1":"en"},
+                        {"site":"Vimeo","type":"Trailer","key":"vimeo","iso_639_1":"fr"},
+                        {"site":"YouTube","type":"Trailer","key":"fr-trailer","iso_639_1":"fr","name":"Bande-annonce (VF)"}]}""",
+                    )
                     path.endsWith("/tv/42/season/4/videos") -> json(
                         """{"results":[{"site":"YouTube","type":"Teaser","key":"s4-teaser","iso_639_1":"en"},
                         {"site":"YouTube","type":"Trailer","key":"s4-trailer","iso_639_1":"fr","name":"Saison 4 (VF)"}]}""",
@@ -99,6 +107,15 @@ class TmdbClientTest {
         assertEquals("2009", search.url.queryParameter("year"))
         assertEquals("fr-FR", search.url.queryParameter("language"))
         assertEquals("abc123", search.url.queryParameter("api_key"))
+    }
+
+    /** Toutes les bandes-annonces, la meilleure d'abord : de quoi en essayer une autre si la première ne se lit pas. */
+    @Test
+    fun `lists every trailer, best first`() = runBlocking {
+        assertEquals(
+            listOf("fr-trailer" to "fr", "en-trailer" to "en", "en-teaser" to "en"),
+            client.trailers(tv.nextv.core.meta.MediaType.MOVIE, 19995),
+        )
     }
 
     @Test

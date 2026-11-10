@@ -23,6 +23,7 @@ data class AppRelease(
     /** « 0.2.3 » (sans le « v » du tag). */
     val version: String,
     val notes: String?,
+    /** APK à télécharger : celui du processeur de l'appareil s'il est publié, sinon l'APK universel. */
     val apkUrl: String,
     val apkSize: Long,
     /** Empreinte SHA-256 publiée avec l'APK (fichier `.sha256`), si présente. */
@@ -53,12 +54,16 @@ sealed interface UpdateCheck {
 /**
  * Mises à jour publiées sur GitHub ([repository] : « propriétaire/dépôt »). Lecture anonyme de
  * l'API : les versions doivent être publiques. Les pré-versions (0.x) sont prises en compte.
+ *
+ * @param supportedAbis processeurs de l'appareil, du préféré au moins bon (`Build.SUPPORTED_ABIS`) : l'APK publié
+ * pour le premier d'entre eux est téléchargé (deux fois plus léger que l'APK universel).
  */
 class UpdateChecker(
     private val clients: HttpClientProvider,
     private val repository: String,
     private val apiBaseUrl: HttpUrl = "https://api.github.com/".toHttpUrl(),
     private val logger: Logger = Logger.None,
+    private val supportedAbis: List<String> = emptyList(),
 ) {
 
     /** Version la plus récente, si elle est plus récente que [currentVersion]. */
@@ -75,7 +80,7 @@ class UpdateChecker(
                 response.code == 404 -> UpdateCheck.Failed(UpdateError.NOT_PUBLISHED)
                 !response.isSuccessful -> UpdateCheck.Failed(UpdateError.SERVER)
                 else -> {
-                    val releases = parseReleases(response.body.string())
+                    val releases = parseReleases(response.body.string(), supportedAbis)
                     val latest = releases.maxWithOrNull { a, b -> compareVersions(a.version, b.version) }
                     when {
                         latest == null -> UpdateCheck.Failed(UpdateError.NOT_PUBLISHED)
@@ -156,8 +161,21 @@ class UpdateChecker(
         private const val TAG = "Update"
         private const val BUFFER_SIZE = 64 * 1024
 
-        /** Versions publiées avec un APK (brouillons exclus). */
-        fun parseReleases(json: String): List<AppRelease> {
+        /**
+         * APK publié pour un processeur : « NexTV-v0.2.103.arm64-v8a.apk ». Ce nom se range après celui de l'APK
+         * universel (« NexTV-v0.2.103.apk ») dans la liste de GitHub, triée par nom : les versions 0.2.102 et avant,
+         * qui prennent le premier APK de la liste, continuent de télécharger l'APK universel.
+         */
+        private val ABI_APK = Regex("""^.+\.(arm64-v8a|armeabi-v7a|x86_64|x86)\.apk$""")
+
+        /** Processeur d'un APK publié pour un seul processeur, `null` pour l'APK universel. */
+        fun abiOf(name: String): String? = ABI_APK.matchEntire(name)?.groupValues?.get(1)
+
+        /**
+         * Versions publiées avec un APK (brouillons exclus) : celui du premier processeur de [supportedAbis] qui en a
+         * un, sinon l'APK universel ; son empreinte est celle du même nom suivi de « .sha256 ».
+         */
+        fun parseReleases(json: String, supportedAbis: List<String> = emptyList()): List<AppRelease> {
             val releases = JSONArray(json)
             return (0 until releases.length()).mapNotNull { i ->
                 val release = releases.getJSONObject(i)
@@ -165,8 +183,15 @@ class UpdateChecker(
                 val version = release.optString("tag_name").removePrefix("v").takeIf { it.isNotBlank() } ?: return@mapNotNull null
                 val assets = release.optJSONArray("assets") ?: return@mapNotNull null
                 val files = (0 until assets.length()).map { assets.getJSONObject(it) }
-                val apk = files.firstOrNull { it.optString("name").endsWith(".apk") } ?: return@mapNotNull null
-                val sha = files.firstOrNull { it.optString("name").endsWith(".apk.sha256") }
+                val apks = files.filter { it.optString("name").endsWith(".apk") }
+                val universal = apks.firstOrNull { abiOf(it.optString("name")) == null }
+                val forDevice = supportedAbis.firstNotNullOfOrNull { abi -> apks.firstOrNull { abiOf(it.optString("name")) == abi } }
+                val apk = forDevice ?: universal ?: apks.firstOrNull() ?: return@mapNotNull null
+                val apkName = apk.optString("name")
+                val sha = files.firstOrNull { it.optString("name") == "$apkName.sha256" }
+                    // Versions plus anciennes : la première empreinte d'un APK universel.
+                    ?: files.firstOrNull { it.optString("name").let { name -> name.endsWith(".apk.sha256") && abiOf(name.removeSuffix(".sha256")) == null } }
+                        ?.takeIf { abiOf(apkName) == null }
                 AppRelease(
                     version = version,
                     notes = release.optString("body").takeIf { it.isNotBlank() },

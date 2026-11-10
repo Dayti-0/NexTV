@@ -55,6 +55,9 @@ class MetadataRepository(
     /** Bande-annonce d'une saison de série (identifiant YouTube, langue), `null` si TMDB n'en a pas. */
     suspend fun seasonTrailer(details: MediaDetails, season: Int): Pair<String, String>? = client.seasonTrailer(details.tmdbId, season)
 
+    /** Toutes les bandes-annonces du titre, la meilleure d'abord (pour en essayer une autre si l'une ne se lit pas). */
+    suspend fun trailers(details: MediaDetails): List<Pair<String, String>> = client.trailers(details.type, details.tmdbId)
+
     /**
      * Retire du cache les fiches lues depuis plus de [PURGE_AGE] (titres disparus des playlists, recherches
      * anciennes) : sans cela, il ne fait que grossir. Une fiche encore consultée est relue avant (30 jours).

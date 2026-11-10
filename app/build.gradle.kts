@@ -24,8 +24,6 @@ android {
         targetSdk = 36
         versionCode = providers.gradleProperty("nextv.versionCode").orNull?.toIntOrNull() ?: 1
         versionName = providers.gradleProperty("nextv.versionName").orNull ?: "0.2.0"
-        // Processeurs ARM seulement (Fire TV, téléviseurs, box) : le moteur VLC pèse ~40 Mo par processeur.
-        ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
 
         // Clé TMDB optionnelle fournie à la compilation (secret CI) ; l'utilisateur peut aussi la saisir.
         val tmdbKey = providers.environmentVariable("NEXTV_TMDB_API_KEY").orNull.orEmpty()
@@ -88,6 +86,18 @@ android {
         }
     }
 
+    // Un APK par processeur ARM (Fire TV, téléviseurs, box), deux fois plus léger : le moteur VLC pèse ~20 Mo par
+    // processeur dans l'APK. La mise à jour intégrée télécharge celui de l'appareil ; l'APK universel (les deux
+    // processeurs) reste publié pour la première installation et les versions 0.2.102 et avant.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("armeabi-v7a", "arm64-v8a")
+            isUniversalApk = true
+        }
+    }
+
     lint {
         // Pas de lint à la fabrication de l'APK de publication : il tourne déjà dans la CI à chaque envoi
         // (`lintDebug`). La publication y passait une à deux minutes de plus pour rien.
@@ -101,6 +111,8 @@ android {
         // Bibliothèques natives compressées dans l'APK (moteur VLC) : téléchargement de la mise à jour deux fois plus léger.
         jniLibs {
             useLegacyPackaging = true
+            // Processeurs ARM seulement, l'APK universel compris (les filtres « ndk » ne vont pas avec les APK par processeur).
+            excludes += listOf("lib/x86/**", "lib/x86_64/**")
         }
     }
 }

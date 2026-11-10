@@ -4,6 +4,13 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.103
+- Mises à jour deux fois plus légères (environ 27 Mo au lieu de 51 Mo) : l’appli télécharge la version faite pour le processeur de l’appareil. Cette mise à jour-ci se télécharge encore en entier, les suivantes seront plus légères
+- Bande-annonce qui ne se lit pas (retirée, réservée à un pays ou aux adultes, ou qui ne démarre pas) : l’appli essaie toute seule les autres bandes-annonces du titre, et n’ouvre l’appli YouTube qu’en dernier recours
+- Fiche Classique : la bande-annonce se lit dans l’appli, comme dans la fiche Streaming
+- Fiche Classique : en descendant sur la distribution, les noms et les rôles sont en entier à l’écran
+- Fiche Classique : en remontant tout en haut, le bouton Retour n’est plus coupé
+
 ## 0.2.102
 - Réglages › Apparence refait : schémas des trois interfaces à jour (Streaming sans boutons, avec son Top 10 ; Classique avec son menu en grandes tuiles) et descriptions plus courtes
 - Apparence : « Chaînes et affiches » regroupe liste ou mosaïque et vignettes par ligne, avec une phrase qui dit où ça s’applique et un petit aperçu qui change en direct

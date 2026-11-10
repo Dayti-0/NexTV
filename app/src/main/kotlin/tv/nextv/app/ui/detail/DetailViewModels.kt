@@ -169,6 +169,12 @@ class DetailViewModel(
     private suspend fun similarInPlaylist(sourceId: Long, itemKey: String, details: MediaDetails): List<PosterItem> =
         recommendedInPlaylist(container, sourceId, kind, itemKey, details, SIMILAR_COUNT)
 
+    /** Autres bandes-annonces du titre (TMDB), essayées quand celle choisie ne se lit pas. */
+    suspend fun trailerAlternatives(): List<Pair<String, String?>> {
+        val details = (state.value.metadata as? MetadataState.Available)?.details ?: return emptyList()
+        return runCatching { container.metadata.trailers(details) }.getOrDefault(emptyList())
+    }
+
     fun selectSeason(index: Int) {
         mutableState.update { it.copy(selectedSeason = index) }
         loadSeasonTrailer(index)
