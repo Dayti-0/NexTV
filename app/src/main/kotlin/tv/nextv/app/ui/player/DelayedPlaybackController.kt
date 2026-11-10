@@ -24,6 +24,7 @@ import tv.nextv.app.R
 import tv.nextv.app.data.db.ChannelEntity
 import tv.nextv.app.player.LiveRecording
 import tv.nextv.app.player.PlaybackRequest
+import tv.nextv.app.player.TIMESHIFT_FILE
 import tv.nextv.app.player.TimeshiftBuffer
 import tv.nextv.app.player.TimeshiftRecorder
 import tv.nextv.app.player.toStream
@@ -782,7 +783,6 @@ internal class DelayedPlaybackController(
 
     private companion object {
         const val TAG = "Player"
-        const val TIMESHIFT_FILE = "timeshift.ts"
         const val TIMESHIFT_MAX_BYTES = 4L * 1024 * 1024 * 1024
 
         /** Moins de place que cela pour le différé (appareil presque plein) : pas d'enregistrement. */

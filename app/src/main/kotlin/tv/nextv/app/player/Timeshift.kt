@@ -15,6 +15,9 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
+/** Fichier du différé, dans le cache de l'application (un seul à la fois ; supprimé au lancement s'il en reste un). */
+const val TIMESHIFT_FILE = "timeshift.ts"
+
 /**
  * Différé d'un direct : à la mise en pause, le flux continue d'être reçu et écrit dans un fichier,
  * puis la lecture reprend depuis ce fichier. Pour les flux continus (MPEG-TS…) que le serveur
@@ -187,9 +190,19 @@ class TimeshiftDataSource(private val buffer: TimeshiftBuffer, private val start
  *
  * Les positions sont comptées depuis le début du flux (octets reçus).
  */
-class LiveRecording(tailBytes: Int) {
-    private val ring = ByteArray(tailBytes)
-    private val lock = Any()
+class LiveRecording(private val ring: ByteArray) {
+
+    constructor(tailBytes: Int) : this(ByteArray(tailBytes))
+
+    /**
+     * Verrou : l'anneau lui-même. Il est réutilisé d'une chaîne à l'autre (pas de nouveau bloc de plusieurs
+     * dizaines de Mo à chaque zapping) : les directs successifs qui se le partagent ne s'y mélangent pas.
+     */
+    private val lock: Any = ring
+
+    /** Remplacé par le direct d'une autre chaîne, qui écrit maintenant dans l'anneau : celui-ci n'y touche plus. */
+    @Volatile
+    private var retired = false
 
     /** Protège le passage sur le disque face à un arrêt simultané ([startDisk] hors du fil principal, [stop] dessus). */
     private val diskLock = Any()
@@ -227,6 +240,8 @@ class LiveRecording(tailBytes: Int) {
         synchronized(lock) {
             val diskBuffer = disk
             if (diskBuffer == null) {
+                // L'anneau appartient désormais au direct suivant (derniers octets d'un flux en train de se fermer).
+                if (retired) return
                 // En mémoire seulement (anneau) tant qu'on regarde le direct.
                 var copied = 0
                 while (copied < length) {
@@ -254,6 +269,14 @@ class LiveRecording(tailBytes: Int) {
                 lastSample = now
             }
         }
+    }
+
+    /**
+     * Un autre direct prend l'anneau : celui-ci n'y écrit plus (son enregistrement sur le disque, s'il y en a
+     * un, continue). Le retour en arrière n'est alors plus possible depuis sa mémoire.
+     */
+    fun retire() {
+        retired = true
     }
 
     /** Position la plus ancienne encore disponible (début de l'enregistrement, ou de l'anneau). */
@@ -298,7 +321,7 @@ class LiveRecording(tailBytes: Int) {
      */
     fun startDisk(file: File, maxBytes: Long): TimeshiftBuffer? = synchronized(lock) {
         disk?.let { return it }
-        if (stopped) return null
+        if (stopped || retired) return null
         var buffer: TimeshiftBuffer? = null
         try {
             val created = TimeshiftBuffer(file, maxBytes)

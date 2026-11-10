@@ -1,5 +1,6 @@
 package tv.nextv.app.ui.player
 
+import android.app.ActivityManager
 import android.content.res.Resources
 import android.os.SystemClock
 import androidx.annotation.OptIn
@@ -227,7 +228,9 @@ internal class PlayerEngine(
      */
     fun play(request: PlaybackRequest, forceHls: Boolean, startPositionMs: Long, record: Boolean = false) {
         // Direct continu (MPEG-TS…) : les dernières secondes sont gardées en mémoire pour revenir en arrière.
-        val recording = if (record && !forceHls && request.stream.format in RECORDABLE_FORMATS) LiveRecording(LIVE_TAIL_BYTES) else null
+        // Le direct précédent cède l'anneau avant que le nouveau n'y écrive.
+        liveRecording?.retire()
+        val recording = if (record && !forceHls && request.stream.format in RECORDABLE_FORMATS) LiveRecording(liveTail()) else null
         liveRecording = recording
         open(container.playerFactory.mediaSource(request, forceHls, received, recording), startPositionMs)
     }
@@ -235,6 +238,22 @@ internal class PlayerEngine(
     /** Direct en cours gardé pour revenir en arrière (`null` : pas un direct continu). */
     var liveRecording: LiveRecording? = null
         private set
+
+    /**
+     * Mémoire des dernières secondes du direct, allouée au premier direct continu puis réutilisée à chaque
+     * chaîne : un bloc neuf de 32 Mo à chaque zapping ralentissait le zapping et pouvait faire fermer
+     * l'application faute de mémoire sur les petits appareils.
+     */
+    private var liveTail: ByteArray? = null
+
+    private fun liveTail(): ByteArray = liveTail ?: ByteArray(liveTailBytes()).also { liveTail = it }
+
+    /** Petit appareil (clé TV d'entrée de gamme) : moitié moins de secondes gardées. */
+    private fun liveTailBytes(): Int {
+        val manager = container.appContext.getSystemService(ActivityManager::class.java)
+        val small = manager == null || manager.isLowRamDevice || manager.largeMemoryClass <= SMALL_HEAP_MB
+        return if (small) LIVE_TAIL_BYTES / 2 else LIVE_TAIL_BYTES
+    }
 
     /**
      * Relit le direct gardé ([recording], déjà passé sur le disque) à partir de [position] (octets du flux).
@@ -524,3 +543,6 @@ private val RECORDABLE_FORMATS = setOf(StreamFormat.PROGRESSIVE, StreamFormat.UN
 
 /** Dernières secondes du direct gardées en mémoire : 32 Mo (une trentaine de secondes en HD). */
 private const val LIVE_TAIL_BYTES = 32 * 1024 * 1024
+
+/** Mémoire maximale de l'application (avec `largeHeap`) en dessous de laquelle l'appareil est traité comme petit. */
+private const val SMALL_HEAP_MB = 256

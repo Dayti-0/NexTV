@@ -4,6 +4,14 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.90
+- Zapping : la mémoire du retour en arrière (←) est réutilisée d’une chaîne à l’autre au lieu d’être réservée de nouveau à chaque chaîne (32 Mo à chaque fois) ; moitié moins sur les petits appareils. Moins de risque de fermeture par manque de mémoire sur Fire TV
+- Aperçu de l’accueil : l’image d’une chaîne survolée arrive plus vite (le même lecteur sert d’une chaîne à l’autre)
+- Son : le lecteur tient compte des autres applis (il s’interrompt pendant une annonce vocale ou un appel, et se met en pause si le casque est débranché)
+- Film ou replay en pause : l’économiseur d’écran peut se lancer (pause oubliée). L’écran reste allumé pendant la lecture et pendant la pause d’un direct
+- Différé resté sur l’appareil après une fermeture de l’appli pendant une pause du direct : supprimé au lancement suivant
+- Bandeau du lecteur : après un zapping rapide, le programme affiché est bien celui de la nouvelle chaîne
+
 ## 0.2.89
 - Correction urgente : l’appli se fermait à l’ouverture d’un film ou d’une chaîne (erreur introduite dans la 0.2.87). Le lecteur s’ouvre de nouveau normalement
 

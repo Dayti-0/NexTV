@@ -647,11 +647,12 @@ class HomeViewModel(
     /** Accueil affiché ou quitté ; l'aperçu s'arrête aussitôt (une seule connexion pour la lecture). */
     fun setPreviewActive(active: Boolean) {
         previewActive.value = active
-        if (!active) previewer.stop()
+        // Le lecteur de l'aperçu (et ses décodeurs) est rendu : le plein écran en a besoin.
+        if (!active) previewer.release()
     }
 
     override fun onCleared() {
-        previewer.stop()
+        previewer.release()
     }
 
     fun selectSection(target: HomeSection) {

@@ -30,6 +30,10 @@ fun ChannelEntity.toStream() = StreamDescriptor(
  * Aperçu vidéo de l'accueil : un seul lecteur, au son réduit (réglages), pour la chaîne sélectionnée.
  * À libérer avant de lancer une chaîne en plein écran : beaucoup d'abonnements n'autorisent
  * qu'une connexion à la fois.
+ *
+ * Le lecteur est créé au premier aperçu puis gardé d'une chaîne à l'autre ([stop] ferme le flux, pas le
+ * lecteur) : en recréer un complet à chaque chaîne survolée retardait l'image. [release] le libère quand
+ * l'accueil n'est plus affiché.
  */
 @OptIn(UnstableApi::class)
 class ChannelPreviewPlayer(
@@ -41,13 +45,21 @@ class ChannelPreviewPlayer(
     /** Lecteur de l'aperçu, `null` sans aperçu (aucune chaîne, flux illisible ou en erreur). */
     val player: StateFlow<ExoPlayer?> = mutablePlayer.asStateFlow()
 
+    /** Le lecteur, gardé entre deux aperçus. */
+    private var exoPlayer: ExoPlayer? = null
+
     private var channelId: Long? = null
+
+    private val errors = object : Player.Listener {
+        // Flux en erreur : l'aperçu s'efface (le logo reste affiché).
+        override fun onPlayerError(error: PlaybackException) = stop()
+    }
 
     /** Volume de l'aperçu (0 : sans le son), appliqué aussi à l'aperçu en cours. Fil principal. */
     var volume: Float = 0f
         set(value) {
             field = value
-            mutablePlayer.value?.volume = value
+            exoPlayer?.volume = value
         }
 
     /** Montre [channel] (sans effet si c'est déjà la chaîne de l'aperçu). Fil principal. */
@@ -64,22 +76,35 @@ class ChannelPreviewPlayer(
             credentialsOrigin = (source?.location as? SourceLocation.Remote)?.url,
         )
         channelId = channel.id
-        mutablePlayer.value = factory.create(preview = true).apply {
-            volume = this@ChannelPreviewPlayer.volume
-            addListener(object : Player.Listener {
-                // Flux en erreur : l'aperçu s'efface (le logo reste affiché).
-                override fun onPlayerError(error: PlaybackException) = stop()
-            })
-            setMediaSource(factory.mediaSource(request))
-            playWhenReady = true
-            prepare()
+        val player = exoPlayer ?: factory.create(preview = true).also {
+            it.addListener(errors)
+            exoPlayer = it
         }
+        player.volume = volume
+        player.setMediaSource(factory.mediaSource(request))
+        player.playWhenReady = true
+        player.prepare()
+        mutablePlayer.value = player
     }
 
-    /** Arrête l'aperçu et ferme sa connexion. Fil principal. */
+    /** Arrête l'aperçu et ferme sa connexion ; le lecteur reste prêt pour la chaîne suivante. Fil principal. */
     fun stop() {
         channelId = null
-        mutablePlayer.value?.release()
+        exoPlayer?.let {
+            it.stop()
+            it.clearMediaItems()
+        }
         mutablePlayer.value = null
+    }
+
+    /** Accueil quitté (lecture en plein écran, autre écran) : le lecteur et ses décodeurs sont rendus. Fil principal. */
+    fun release() {
+        channelId = null
+        mutablePlayer.value = null
+        exoPlayer?.let {
+            it.removeListener(errors)
+            it.release()
+        }
+        exoPlayer = null
     }
 }

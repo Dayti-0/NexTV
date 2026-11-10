@@ -5,6 +5,7 @@ import android.os.Handler
 import android.hardware.display.DisplayManager
 import android.view.Display
 import androidx.annotation.OptIn
+import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
@@ -129,6 +130,16 @@ class PlayerFactory(
             .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(context, OkHttpDataSource.Factory(clients.client(RequestPurpose.STREAM)))))
             .setLoadControl(if (preview) previewLoadControl() else loadControl())
         if (bandwidthMeter != null) builder.setBandwidthMeter(bandwidthMeter)
+        if (!preview) {
+            // Lecture en plein écran : le son est demandé au système (une autre application qui joue se tait,
+            // et la lecture s'interrompt le temps d'une annonce vocale ou d'un appel), et elle se met en pause
+            // quand la sortie son disparaît (casque débranché). L'aperçu de l'accueil, lui, ne prend pas le son.
+            builder.setAudioAttributes(
+                AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),
+                /* handleAudioFocus = */ true,
+            )
+            builder.setHandleAudioBecomingNoisy(true)
+        }
         return builder.build()
     }
 

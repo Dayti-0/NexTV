@@ -103,6 +103,28 @@ class LiveRecordingTest {
     }
 
     @Test
+    fun theSameMemoryServesOneChannelAfterAnother() {
+        // Un seul bloc de mémoire pour tous les directs (pas de nouveau bloc à chaque zapping).
+        val ring = ByteArray(100)
+        val first = LiveRecording(ring)
+        first.append(bytes(0, 80), 0, 80, now = 1_000)
+        // Autre chaîne : le direct précédent cède l'anneau avant que le nouveau n'y écrive.
+        first.retire()
+        val second = LiveRecording(ring)
+        second.append(bytes(500, 60), 0, 60, now = 2_000)
+        // Derniers octets du flux précédent, encore en train de se fermer : ils ne touchent plus à l'anneau.
+        first.append(bytes(80, 40), 0, 40, now = 2_100)
+        assertNull(first.startDisk(File(folder.root, "old.ts"), maxBytes = 10_000))
+        val disk = checkNotNull(second.startDisk(File(folder.root, "shift.ts"), maxBytes = 10_000))
+        val reader = disk.openReader()
+        val read = ByteArray(60)
+        var got = 0
+        while (got < 60) got += disk.read(reader, got.toLong(), read, got, 60 - got)
+        assertArrayEquals(bytes(500, 60), read)
+        second.stop()
+    }
+
+    @Test
     fun connectionContinuesAfterThePlayerLetsGo() {
         val recording = LiveRecording(tailBytes = 1_000)
         val upstream = FakeLive()

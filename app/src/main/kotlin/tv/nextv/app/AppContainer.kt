@@ -46,6 +46,7 @@ import tv.nextv.app.data.security.KeystoreSecretCipher
 import tv.nextv.app.data.settings.SettingsRepository
 import tv.nextv.app.data.update.AppUpdater
 import tv.nextv.app.player.PlayerFactory
+import tv.nextv.app.player.TIMESHIFT_FILE
 import tv.nextv.core.epg.EpgImporter
 import tv.nextv.core.epg.EpgLoader
 import tv.nextv.core.epg.HttpEpgFeedProvider
@@ -71,7 +72,7 @@ import tv.nextv.core.update.UpdateChecker
 /** Assemblage manuel des dépendances de l'application. */
 class AppContainer(context: Context) {
 
-    private val appContext = context.applicationContext
+    val appContext: Context = context.applicationContext
 
     /** Dernier plantage enregistré (absent hors de l'application, dans les tests). */
     val crashLog: CrashLog? get() = (appContext as? NexTvApplication)?.crashLog
@@ -259,6 +260,8 @@ class AppContainer(context: Context) {
             settings.tmdbApiKey.collect { redactor.registerSecret(it) }
         }
         redactor.registerSecret(BuildConfig.TMDB_API_KEY.takeIf { it.isNotBlank() })
+        // Différé resté sur le disque (application fermée pendant une pause du direct) : jusqu'à plusieurs Go.
+        applicationScope.launch(Dispatchers.IO) { runCatching { File(appContext.cacheDir, TIMESHIFT_FILE).delete() } }
         applicationScope.launch {
             safely("Masquage des identifiants") { sourceRepository.registerStoredSecrets() }
             safely("Noms des playlists") { sourceRepository.cleanStoredNames() }

@@ -101,6 +101,57 @@ class PlayerViewModelTest {
     }
 
     @Test
+    fun theRemoteKeysOfALiveChannelNeverCrash() {
+        val (live, _) = playlist()
+        val (viewModel, store) = open(live)
+        viewModel.onStart()
+        idle()
+        // Pause (différé), reprise, retour en arrière, retour au direct, zapping, menu, nouvel essai : le flux
+        // de test ne répond pas, chaque commande doit le supporter.
+        viewModel.togglePause()
+        idle()
+        viewModel.togglePause()
+        idle()
+        viewModel.rewindLive(10)
+        idle()
+        viewModel.backToLive()
+        idle()
+        viewModel.zap(1)
+        viewModel.zap(-1)
+        viewModel.previousChannel()
+        idle()
+        viewModel.openMenu()
+        viewModel.closeMenu()
+        viewModel.retry()
+        idle()
+        viewModel.onStop()
+        viewModel.onStart()
+        idle()
+        assertEquals("TF1", viewModel.state.value.channelName)
+        store.clear()
+    }
+
+    @Test
+    fun theRemoteKeysOfAMovieNeverCrash() {
+        val (_, movie) = playlist()
+        val (viewModel, store) = open(movie)
+        viewModel.onStart()
+        idle()
+        viewModel.togglePause()
+        viewModel.seekBy(10_000)
+        viewModel.seekTo(60_000)
+        viewModel.fastSeek(1)
+        viewModel.stopFastSeek()
+        viewModel.jump(1)
+        viewModel.togglePause()
+        viewModel.retry()
+        idle()
+        viewModel.onStop()
+        idle()
+        store.clear()
+    }
+
+    @Test
     fun aMissingChannelShowsAMessage() {
         val (viewModel, store) = open(987_654L)
         viewModel.onStart()

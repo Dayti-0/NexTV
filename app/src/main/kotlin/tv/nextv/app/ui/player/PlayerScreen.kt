@@ -179,6 +179,9 @@ fun PlayerScreen(onBack: () -> Unit) {
         current?.addListener(listener)
         onDispose { current?.removeListener(listener) }
     }
+    // Écran maintenu allumé pendant la lecture, et pendant la pause d'un direct (son différé continue). Film mis en
+    // pause, ou erreur affichée : l'économiseur d'écran du système peut se lancer (pause oubliée sur une télé).
+    val keepScreenOn = state.error == null && (playWhenReady || (state.isLive && state.paused))
     // Film ou épisode : commandes NixTV (titre, progression, boutons), affichées au départ puis masquées.
     val film = !bannerMode && !state.isLive
     var filmControls by remember { mutableStateOf(true) }
@@ -403,7 +406,6 @@ fun PlayerScreen(onBack: () -> Unit) {
             factory = { viewContext ->
                 PlayerView(viewContext).apply {
                     layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-                    keepScreenOn = true
                     // Commandes dessinées par NixTV (direct, replay, films) : jamais celles de Media3.
                     useController = false
                     isFocusable = false
@@ -413,6 +415,7 @@ fun PlayerScreen(onBack: () -> Unit) {
             update = { view ->
                 // Pause, différé, saut dans un replay : la dernière image reste affichée pendant le changement de flux.
                 view.setKeepContentOnPlayerReset(state.paused || state.liveDelayMs > 0 || state.seekable)
+                view.keepScreenOn = keepScreenOn
                 view.player = player
                 view.resizeMode = when (aspect) {
                     AspectMode.FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT
@@ -429,13 +432,13 @@ fun PlayerScreen(onBack: () -> Unit) {
             AndroidView(
                 factory = { viewContext ->
                     VLCVideoLayout(viewContext).apply {
-                        keepScreenOn = true
                         isFocusable = false
                         descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
                         setBackgroundColor(android.graphics.Color.BLACK)
                     }
                 },
                 update = { layout ->
+                    layout.keepScreenOn = keepScreenOn
                     playback.attach(layout)
                     playback.setScale(fill = aspect == AspectMode.FILL, zoom = aspect == AspectMode.ZOOM)
                 },

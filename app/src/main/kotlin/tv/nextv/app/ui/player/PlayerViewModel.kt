@@ -36,6 +36,7 @@ import tv.nextv.app.R
 import tv.nextv.app.data.db.ChannelEntity
 import tv.nextv.app.data.db.ChannelListRow
 import tv.nextv.app.data.db.GroupRow
+import tv.nextv.app.data.db.ProgrammeEntity
 import tv.nextv.app.data.settings.AspectMode
 import tv.nextv.app.player.PlaybackRequest
 import tv.nextv.app.player.toStream
@@ -538,12 +539,14 @@ class PlayerViewModel(
         // En différé : le programme à l'écran, pas celui du direct.
         val shown = state.value
         val now = System.currentTimeMillis() - shown.liveDelayMs - (shown.pausedAtMillis?.let { System.currentTimeMillis() - it } ?: 0)
-        val upcoming = container.programmeDao.upcoming(current.id, now, limit = 2)
-            .map { PlayerProgramme(it.title, it.startMillis, it.stopMillis) }
+        val programmes = container.programmeDao.upcoming(current.id, now, limit = 2)
+        // Autre chaîne ouverte pendant la lecture de la base : ce programme n'est plus le sien.
+        if (session.channel?.id != current.id) return
+        val upcoming = programmes.map { PlayerProgramme(it.title, it.startMillis, it.stopMillis) }
         val live = upcoming.firstOrNull()?.takeIf { it.startMillis <= now }
         mutableState.update { it.copy(now = live, next = upcoming.firstOrNull { p -> p != live }) }
         // Chaîne « événement » (LALIGA 2 LIVE MATCH…) sans programme du guide : le match qu'elle diffuse.
-        val match = (if (live != null) matchOnAir(current.id, now) else null)
+        val match = (if (live != null) matchOnAir(programmes.first(), now) else null)
             ?: eventMatchOnAir(container, current.sourceId, current.name, now)?.let(::playerMatchOf)
         if (session.channel?.id == current.id) mutableState.update { it.copy(match = match) }
     }
@@ -553,8 +556,7 @@ class PlayerViewModel(
      * (réponse partagée avec la section Foot), sinon l'affiche du guide (coupes d'Europe, titre sans
      * compétition) avec le score en direct.
      */
-    private suspend fun matchOnAir(channelId: Long, now: Long): PlayerMatch? {
-        val programme = container.programmeDao.upcoming(channelId, now, limit = 1).firstOrNull()?.takeIf { it.startMillis <= now } ?: return null
+    private suspend fun matchOnAir(programme: ProgrammeEntity, now: Long): PlayerMatch? {
         val result = container.footballData.matches(now, now + FOOTBALL_WINDOW_MILLIS) as? FootballDataResult.Success
         val broadcast = Broadcast(Unit, programme.title, programme.subtitle, programme.category, programme.description, programme.startMillis, programme.stopMillis)
         val match = result?.let { BroadcastFinder.assign(it.matches, listOf(broadcast)).keys.firstOrNull() }
@@ -819,6 +821,13 @@ class PlayerViewModel(
             return
         }
         quality.onUserRestart()
+        // Lecture suspendue par le système (une autre application a pris le son, casque débranché) et non par
+        // la télécommande : la touche la reprend, au lieu de mettre le direct « en pause » une seconde fois.
+        val player = engine.current
+        if (player != null && !player.playWhenReady && !state.value.paused && state.value.isLive) {
+            player.play()
+            return
+        }
         delayed.togglePause()
     }
 
