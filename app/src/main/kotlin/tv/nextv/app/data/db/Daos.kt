@@ -214,6 +214,8 @@ data class MovieRow(
     val groupTitle: String?,
     val itemKey: String,
     val streamSupport: String,
+    /** Qualité annoncée par la playlist ([tv.nextv.core.model.StreamQuality]), si elle l'indique. */
+    val quality: String? = null,
 )
 
 /** Série (regroupement de ses épisodes). [id] : premier épisode. */
@@ -225,6 +227,8 @@ data class SeriesRow(
     val groupTitle: String?,
     val itemKey: String,
     val episodeCount: Int,
+    /** Qualité annoncée pour son premier épisode. */
+    val quality: String? = null,
 )
 
 data class EpisodeRow(
@@ -415,7 +419,7 @@ interface ChannelDao {
      */
     @Query(
         """
-        SELECT id, title, year, logoUrl, groupTitle, itemKey, streamSupport FROM channels
+        SELECT id, title, year, logoUrl, groupTitle, itemKey, streamSupport, quality FROM channels
         WHERE sourceId = :sourceId AND kind = 'MOVIE' AND groupTitle IS :group
         ORDER BY position + 0 LIMIT :limit
         """,
@@ -425,7 +429,7 @@ interface ChannelDao {
     /** Films les plus récents (année de sortie), hors catégories masquées : rangée « Nouveautés ». */
     @Query(
         """
-        SELECT id, title, year, logoUrl, groupTitle, itemKey, streamSupport FROM channels
+        SELECT id, title, year, logoUrl, groupTitle, itemKey, streamSupport, quality FROM channels
         WHERE sourceId = :sourceId AND kind = 'MOVIE' AND year >= :minYear
           AND IFNULL(groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'MOVIE')
         ORDER BY year DESC, position LIMIT :limit
@@ -436,7 +440,7 @@ interface ChannelDao {
     /** Séries les plus récentes : rangée « Nouveautés ». */
     @Query(
         """
-        SELECT id, seriesName AS title, year, logoUrl, groupTitle, itemKey, variantCount AS episodeCount FROM channels
+        SELECT id, seriesName AS title, year, logoUrl, groupTitle, itemKey, variantCount AS episodeCount, quality FROM channels
         WHERE sourceId = :sourceId AND kind = 'SERIES' AND isPrimary = 1 AND seriesName IS NOT NULL AND year >= :minYear
           AND IFNULL(groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'SERIES')
         ORDER BY year DESC, position LIMIT :limit
@@ -447,7 +451,7 @@ interface ChannelDao {
     /** Films désignés par leur clé (tendances retrouvées dans la playlist). */
     @Query(
         """
-        SELECT id, title, year, logoUrl, groupTitle, itemKey, streamSupport FROM channels
+        SELECT id, title, year, logoUrl, groupTitle, itemKey, streamSupport, quality FROM channels
         WHERE sourceId = :sourceId AND kind = 'MOVIE' AND itemKey IN (:itemKeys)
         """,
     )
@@ -456,7 +460,7 @@ interface ChannelDao {
     /** Séries désignées par leur clé. */
     @Query(
         """
-        SELECT id, seriesName AS title, year, logoUrl, groupTitle, itemKey, variantCount AS episodeCount FROM channels
+        SELECT id, seriesName AS title, year, logoUrl, groupTitle, itemKey, variantCount AS episodeCount, quality FROM channels
         WHERE sourceId = :sourceId AND kind = 'SERIES' AND isPrimary = 1 AND seriesName IS NOT NULL AND itemKey IN (:itemKeys)
         """,
     )
@@ -465,7 +469,7 @@ interface ChannelDao {
     /** Premières séries d'une catégorie ([group] `null` : sans groupe). */
     @Query(
         """
-        SELECT id, seriesName AS title, year, logoUrl, groupTitle, itemKey, variantCount AS episodeCount FROM channels
+        SELECT id, seriesName AS title, year, logoUrl, groupTitle, itemKey, variantCount AS episodeCount, quality FROM channels
         WHERE sourceId = :sourceId AND kind = 'SERIES' AND isPrimary = 1 AND seriesName IS NOT NULL AND groupTitle IS :group
         ORDER BY position + 0 LIMIT :limit
         """,
@@ -502,7 +506,7 @@ interface ChannelDao {
 
     @Query(
         """
-        SELECT id, title, year, logoUrl, groupTitle, itemKey, streamSupport FROM channels
+        SELECT id, title, year, logoUrl, groupTitle, itemKey, streamSupport, quality FROM channels
         WHERE sourceId = :sourceId AND kind = 'MOVIE'
           AND IFNULL(groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'MOVIE')
           AND (:filterGroup = 0 OR IFNULL(groupTitle, '') = :group)
@@ -519,7 +523,7 @@ interface ChannelDao {
 
     @Query(
         """
-        SELECT c.id, c.title, c.year, c.logoUrl, c.groupTitle, c.itemKey, c.streamSupport
+        SELECT c.id, c.title, c.year, c.logoUrl, c.groupTitle, c.itemKey, c.streamSupport, c.quality
         FROM favorites f JOIN channels c ON c.id = (
             SELECT c2.id FROM channels c2
             WHERE c2.sourceId = f.sourceId AND c2.itemKey = f.itemKey AND c2.kind = 'MOVIE'
@@ -534,7 +538,7 @@ interface ChannelDao {
     /** Séries : la ligne de chaque série est son premier épisode, qui porte le nombre d'épisodes. */
     @Query(
         """
-        SELECT id, seriesName AS title, year, logoUrl, groupTitle, itemKey, variantCount AS episodeCount
+        SELECT id, seriesName AS title, year, logoUrl, groupTitle, itemKey, variantCount AS episodeCount, quality
         FROM channels
         WHERE sourceId = :sourceId AND kind = 'SERIES' AND isPrimary = 1 AND seriesName IS NOT NULL
           AND IFNULL(groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'SERIES')
@@ -552,7 +556,7 @@ interface ChannelDao {
 
     @Query(
         """
-        SELECT c.id, c.seriesName AS title, c.year, c.logoUrl, c.groupTitle, c.itemKey, c.variantCount AS episodeCount
+        SELECT c.id, c.seriesName AS title, c.year, c.logoUrl, c.groupTitle, c.itemKey, c.variantCount AS episodeCount, c.quality
         FROM favorites f
         CROSS JOIN channels c ON c.sourceId = f.sourceId AND c.itemKey = f.itemKey AND c.kind = 'SERIES' AND c.isPrimary = 1
         WHERE f.sourceId = :sourceId AND f.kind = 'SERIES'

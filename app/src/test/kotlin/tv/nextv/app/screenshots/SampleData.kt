@@ -212,6 +212,7 @@ object SampleData {
             groupTitle = if (index % 3 == 0) "Films | Aventure" else "Films | Drame",
             itemKey = "movie:${title.lowercase()}",
             streamSupport = "SUPPORTED",
+            quality = listOf("UHD", "FHD", null, "HD")[index % 4],
         )
     }
 
@@ -231,13 +232,14 @@ object SampleData {
             groupTitle = "Séries | Policier",
             itemKey = "series:${title.lowercase()}",
             episodeCount = 6 + index * 3,
+            quality = listOf("FHD", null, "UHD")[index % 3],
         )
     }
 
     val seriesGroups = listOf(GroupRow("Séries | Policier", 8), GroupRow("Séries | Science-fiction", 5))
 
     val movieDetail = DetailUiState(
-        item = PlaylistItem(sourceId = 1, firstId = 1_000, title = "Le Grand Voyage", year = 2023, logoUrl = null, itemKey = "movie:le grand voyage"),
+        item = PlaylistItem(sourceId = 1, firstId = 1_000, title = "Le Grand Voyage", year = 2023, logoUrl = null, itemKey = "movie:le grand voyage", quality = "UHD"),
         metadata = MetadataState.Available(
             MediaDetails(
                 tmdbId = 1,
@@ -258,7 +260,7 @@ object SampleData {
     )
 
     val seriesDetail = DetailUiState(
-        item = PlaylistItem(sourceId = 1, firstId = 2_000, title = "Enquêtes en série", year = 2022, logoUrl = null, itemKey = "series:enquetes en serie"),
+        item = PlaylistItem(sourceId = 1, firstId = 2_000, title = "Enquêtes en série", year = 2022, logoUrl = null, itemKey = "series:enquetes en serie", quality = "FHD"),
         metadata = MetadataState.Unavailable(TmdbError.MISSING_KEY),
         seasons = listOf(1, 2).map { season ->
             Season(

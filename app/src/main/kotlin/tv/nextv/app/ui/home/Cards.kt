@@ -311,6 +311,8 @@ fun PosterCard(
     compact: Boolean = false,
     /** Déjà vu jusqu'au bout : badge en haut à gauche. */
     watched: Boolean = false,
+    /** Qualité annoncée par la playlist ([StreamQuality]), en haut à gauche. */
+    quality: String? = null,
 ) {
     FocusSurface(
         onClick = onClick,
@@ -324,7 +326,7 @@ fun PosterCard(
                 PosterImage(title, imageUrl, Modifier.fillMaxSize(), compact)
                 val inset = if (compact) 4.dp else 8.dp
                 if (isFavorite) FavoriteStar(Modifier.align(Alignment.TopEnd).padding(inset).then(if (compact) Modifier.size(16.dp) else Modifier))
-                if (watched) WatchedBadge(Modifier.align(Alignment.TopStart).padding(inset), compact)
+                PosterBadges(quality, watched, Modifier.align(Alignment.TopStart).padding(inset), compact)
                 progress?.let { LiveProgress(0, 1_000, (it * 1_000).toLong(), Modifier.align(Alignment.BottomCenter).padding(inset)) }
             }
             if (compact) {
@@ -393,6 +395,33 @@ internal data class PosterArt(
 )
 
 internal val LocalPosterArt = androidx.compose.runtime.compositionLocalOf<PosterArt?> { null }
+
+/** Qualité annoncée par la playlist (« 4K », « FHD »…) sur une affiche ou une fiche ; rien si elle ne l'indique pas. */
+@Composable
+internal fun QualityBadge(quality: String?, modifier: Modifier = Modifier, compact: Boolean = false, large: Boolean = false) {
+    val label = qualityLabel(quality) ?: return
+    Text(
+        label,
+        modifier = modifier
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+            .background(Color.Black.copy(alpha = 0.72f))
+            .padding(horizontal = if (compact) 4.dp else if (large) 8.dp else 6.dp, vertical = if (large) 3.dp else 2.dp),
+        style = if (large) MaterialTheme.typography.labelLarge else MaterialTheme.typography.labelSmall,
+        fontWeight = FontWeight.Bold,
+        color = Color.White,
+        maxLines = 1,
+    )
+}
+
+/** Badges du coin haut gauche d'une affiche : la qualité, puis « Déjà vu » dessous. */
+@Composable
+internal fun PosterBadges(quality: String?, watched: Boolean, modifier: Modifier = Modifier, compact: Boolean = false) {
+    if (!watched && qualityLabel(quality) == null) return
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        QualityBadge(quality, compact = compact)
+        if (watched) WatchedBadge(compact = compact)
+    }
+}
 
 /** Badge « Déjà vu » : coche et libellé sur fond sombre, en haut à gauche d'une affiche ou d'une vignette. */
 @Composable

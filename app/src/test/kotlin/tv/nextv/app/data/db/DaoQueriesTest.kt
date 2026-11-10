@@ -146,6 +146,37 @@ class DaoQueriesTest {
         assertEquals(listOf("Arte"), dao.pageChannels(sourceId, 0, "", "arté", 1_500).all().map { it.name })
     }
 
+    @Test
+    fun `films and series carry the quality announced by the playlist`() = runBlocking {
+        fun movie(title: String, quality: StreamQuality?) = Channel(
+            position = 100 + title.length, name = title, stream = StreamDescriptor("http://example.com/movie/${title.length}.mkv"),
+            groupTitle = "Films", kind = ContentKind.MOVIE, title = title, year = 2024, quality = quality,
+        )
+        fun episode(number: Int, quality: StreamQuality?) = Channel(
+            position = 200 + number, name = "Lupin S01E$number", stream = StreamDescriptor("http://example.com/series/$number.mkv"),
+            groupTitle = "Séries", kind = ContentKind.SERIES, title = "Lupin", episode = EpisodeInfo("Lupin", 1, number), quality = quality,
+        )
+        val other = db.sourceDao().insert(
+            SourceEntity(
+                name = "Q", type = "m3u", locationKind = "remote", location = "http://example.com/q.m3u", locationName = null,
+                epgLocationKind = null, epgLocation = null, epgLocationName = null, epgUseHeaderUrls = false,
+                userAgent = null, hasCredentials = false, createdAt = 0, updatedAt = 0, epgGeneration = 1,
+            ),
+        )
+        RoomPlaylistStore(db).replaceChannels(
+            other,
+            listOf(movie("Heat", StreamQuality.UHD), movie("Alien", null), episode(1, StreamQuality.HD), episode(2, StreamQuality.UHD)),
+        ) {}
+        val dao = db.channelDao()
+        assertEquals(listOf("Heat" to "UHD", "Alien" to null), dao.pageMovies(other, 0, "", "").all().map { it.title to it.quality })
+        assertEquals(listOf("Heat" to "UHD", "Alien" to null), dao.movieRow(other, "Films", 10).map { it.title to it.quality })
+        // La série reste représentée par son premier épisode, même si un autre est annoncé en meilleure qualité.
+        val series = dao.pageSeries(other, 0, "", "").all().single()
+        assertEquals("HD", series.quality)
+        assertEquals(dao.episodes(other, "series:lupin").first().id, series.id)
+        assertEquals("HD", dao.seriesRow(other, "Séries", 10).single().quality)
+    }
+
     private fun episodeOf(series: String) = Channel(
         position = 200, name = "$series S01E01", stream = StreamDescriptor("http://example.com/series/t.mkv"),
         groupTitle = "Séries", kind = ContentKind.SERIES, title = series, episode = EpisodeInfo(series, 1, 1),

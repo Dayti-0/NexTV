@@ -4,6 +4,10 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.95
+- Films et séries : la qualité annoncée par la playlist (4K, FHD, HD, SD) s’affiche sur la vignette, en haut à gauche, et sur la fiche à côté de l’année. Elle est lue dans le nom du film (« Avatar 4K »), sinon dans celui de sa catégorie (« FILMS 4K ») ; rien n’est affiché si la playlist ne l’indique pas
+- La playlist est relue une fois au premier lancement après la mise à jour, pour y lire ces qualités
+
 ## 0.2.94
 - Place libérée sur l’appareil : le fichier d’une mise à jour déjà installée est supprimé au lancement, et les fiches de films et séries qui ne sont plus consultées depuis trois mois sont retirées du cache
 - Journaux : la clé football-data.org y est masquée comme les autres identifiants

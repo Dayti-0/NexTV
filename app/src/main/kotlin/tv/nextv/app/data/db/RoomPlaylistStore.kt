@@ -316,7 +316,12 @@ internal data class VariantInfo(val primary: Boolean, val count: Int) {
                 }
             }
             for (group in groups.values) {
-                val best = group.maxWith(compareBy<Channel> { StreamQuality.rankOf(it.quality) }.thenByDescending { it.position })
+                // Série : son premier épisode la représente, quelle que soit la qualité annoncée par chacun.
+                val best = if (group.first().kind == ContentKind.SERIES) {
+                    group.minBy { it.position }
+                } else {
+                    group.maxWith(compareBy<Channel> { StreamQuality.rankOf(it.quality) }.thenByDescending { it.position })
+                }
                 group.forEach { result[it.position] = VariantInfo(primary = it === best, count = group.size) }
             }
             return result

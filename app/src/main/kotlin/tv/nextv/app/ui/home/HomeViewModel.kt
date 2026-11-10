@@ -148,11 +148,13 @@ data class PosterItem(
     val backdropUrl: String? = null,
     val overview: String? = null,
     val rating: Double? = null,
+    /** Qualité annoncée par la playlist ([tv.nextv.core.model.StreamQuality]), si elle l'indique. */
+    val quality: String? = null,
 )
 
-fun MovieRow.toPoster() = PosterItem(id, ContentKind.MOVIE, itemKey, title, year, logoUrl)
+fun MovieRow.toPoster() = PosterItem(id, ContentKind.MOVIE, itemKey, title, year, logoUrl, quality = quality)
 
-fun SeriesRow.toPoster() = PosterItem(id, ContentKind.SERIES, itemKey, title, year, logoUrl, episodeCount)
+fun SeriesRow.toPoster() = PosterItem(id, ContentKind.SERIES, itemKey, title, year, logoUrl, episodeCount, quality = quality)
 
 /** Rangées de découverte des films ou des séries : tendances de la semaine, nouveautés, recommandations. */
 @Immutable

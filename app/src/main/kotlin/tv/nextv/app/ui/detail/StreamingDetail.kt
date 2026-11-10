@@ -81,6 +81,7 @@ import tv.nextv.app.ui.components.PillStyle
 import tv.nextv.app.ui.components.WindowInfo
 import tv.nextv.app.ui.guide.formatDuration
 import tv.nextv.app.ui.home.PosterImage
+import tv.nextv.app.ui.home.QualityBadge
 import tv.nextv.app.ui.home.PosterItem
 import tv.nextv.app.ui.home.StreamingPoster
 import tv.nextv.app.ui.home.TRAILER_FILL_ZOOM
@@ -196,6 +197,7 @@ internal fun StreamingDetailContent(
                                     Text(NumberFormat.getNumberInstance().apply { maximumFractionDigits = 1 }.format(rating), style = MaterialTheme.typography.titleSmall)
                                 }
                             }
+                            QualityBadge(item?.quality, large = true)
                             DetailMeta(state, kind)
                         }
                         details?.tagline?.let {

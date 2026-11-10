@@ -14,9 +14,9 @@ object QualityParser {
 
     /**
      * Version des règles de regroupement : quand elle augmente, la playlist est relue au démarrage
-     * suivant pour regrouper les chaînes selon les nouvelles règles.
+     * suivant pour regrouper les chaînes selon les nouvelles règles (3 : qualité des films et des séries).
      */
-    const val VERSION = 2
+    const val VERSION = 3
 
     data class Result(
         /** Nom sans les mentions de qualité ni de codec. */

@@ -643,7 +643,7 @@ internal fun LazyListScope.shelfItems(
             ) {
                 itemsIndexed(spec.items, key = { _, it -> it.itemKey }) { index, item ->
                     Box {
-                        ShelfPoster(item, index, spec.key, sizes.poster, content.favoriteKeys, lastOpened, actions, style)
+                        ShelfPoster(item, index, spec.key, sizes.poster, content.favoriteKeys, lastOpened, actions, style, ranked = true)
                         RankBadge(index + 1, Modifier.align(Alignment.TopStart).padding(7.dp))
                     }
                 }
@@ -1037,6 +1037,8 @@ internal fun ShelfPoster(
     style: ShelfStyle = ShelfStyle.STREAMING,
     /** Premier élément ajouté par « Voir plus » : il prend la sélection. */
     focusRequester: FocusRequester? = null,
+    /** Affiche du Top 10 de Cinéma Premium : son rang occupe le coin haut gauche. */
+    ranked: Boolean = false,
 ) {
     val onClick = {
         lastOpened.value = OpenedItem(item.itemKey, index, row)
@@ -1051,10 +1053,10 @@ internal fun ShelfPoster(
     val watched = item.kind == ContentKind.MOVIE && item.itemKey in LocalWatchedKeys.current
     val image = posterImage(item)
     if (style == ShelfStyle.PREMIUM) {
-        PremiumPoster(item.title, image, item.itemKey in favoriteKeys, onClick, onLongClick, modifier, watched = watched)
+        PremiumPoster(item.title, image, item.itemKey in favoriteKeys, onClick, onLongClick, modifier, watched = watched, quality = item.quality, badgeTop = if (ranked) 40.dp else 6.dp)
     } else {
         // Streaming : l'affiche seule, ses informations sont dans le bandeau.
-        StreamingPoster(item.title, image, item.itemKey in favoriteKeys, onClick, onLongClick, modifier, width, watched = watched)
+        StreamingPoster(item.title, image, item.itemKey in favoriteKeys, onClick, onLongClick, modifier, width, watched = watched, quality = item.quality)
     }
 }
 

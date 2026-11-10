@@ -259,6 +259,7 @@ internal fun StreamingPoster(
     progress: Float? = null,
     detail: String? = null,
     watched: Boolean = false,
+    quality: String? = null,
 ) {
     Column(Modifier.width(width), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         FocusSurface(
@@ -272,7 +273,7 @@ internal fun StreamingPoster(
             Box(Modifier.fillMaxSize()) {
                 PosterImage(title, imageUrl, Modifier.fillMaxSize(), compact = width < COMPACT_POSTER_WIDTH)
                 if (isFavorite) FavoriteStar(Modifier.align(Alignment.TopEnd).padding(6.dp).size(18.dp))
-                if (watched) WatchedBadge(Modifier.align(Alignment.TopStart).padding(6.dp))
+                PosterBadges(quality, watched, Modifier.align(Alignment.TopStart).padding(6.dp), compact = width < COMPACT_POSTER_WIDTH)
                 // Détail (épisode, temps restant) en bas de l'image : toutes les rangées gardent la même hauteur.
                 detail?.let {
                     Text(

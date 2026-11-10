@@ -1534,6 +1534,7 @@ private fun MoviesBody(
             imageUrl = movie.logoUrl,
             isFavorite = movie.itemKey in favoriteKeys,
             watched = movie.itemKey in LocalWatchedKeys.current,
+            quality = movie.quality,
             onClick = if (inFavorites && reorder.active) {
                 { actions.onPick(movie.itemKey) }
             } else {
@@ -1607,6 +1608,7 @@ private fun SeriesBody(
             subtitle = resources.getQuantityString(R.plurals.episodes_count, show.episodeCount, show.episodeCount),
             imageUrl = show.logoUrl,
             isFavorite = show.itemKey in favoriteKeys,
+            quality = show.quality,
             onClick = if (inFavorites && reorder.active) {
                 { actions.onPick(show.itemKey) }
             } else {

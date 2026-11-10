@@ -268,4 +268,40 @@ class M3uPlaylistLoaderTest {
 
         assertTrue(load(remote("/latin1.m3u")).channels.single().name == "Télé")
     }
+
+    @Test
+    fun `film quality comes from its name, else from its category`() {
+        respond(
+            """
+            #EXTM3U
+            #EXTINF:-1 group-title="VOD",Avatar (2009) 4K
+            http://h/movie/u/p/1.mkv
+            #EXTINF:-1 group-title="FILMS FHD",Heat (1995)
+            http://h/movie/u/p/2.mkv
+            #EXTINF:-1 group-title="FILMS FHD",Alien (1979) HD
+            http://h/movie/u/p/3.mkv
+            #EXTINF:-1 group-title="VOD",Seven (1995)
+            http://h/movie/u/p/4.mkv
+            #EXTINF:-1 group-title="Séries",Dark S01 E02 FHD
+            http://h/series/u/p/5.mp4
+            """.trimIndent(),
+        )
+
+        val channels = runBlocking { loader.load(remote("/list.m3u"), null) { } }.channels
+
+        assertEquals(
+            listOf(
+                tv.nextv.core.model.StreamQuality.UHD,
+                tv.nextv.core.model.StreamQuality.FHD,
+                tv.nextv.core.model.StreamQuality.HD,
+                null,
+                tv.nextv.core.model.StreamQuality.FHD,
+            ),
+            channels.map { it.quality },
+        )
+        // La qualité est seulement affichée : ni le titre ni le regroupement ne changent.
+        assertEquals(listOf("Avatar", "Heat", "Alien", "Seven"), channels.take(4).map { it.title })
+        assertEquals(tv.nextv.core.model.EpisodeInfo("Dark", 1, 2), channels[4].episode)
+        assertEquals(listOf("", "", "", "", ""), channels.map { it.variantKey })
+    }
 }

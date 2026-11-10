@@ -6,6 +6,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import tv.nextv.core.catalog.ContentClassifier
 import tv.nextv.core.catalog.QualityParser
+import tv.nextv.core.model.StreamQuality
 import tv.nextv.core.error.SourceError
 import tv.nextv.core.error.SourceException
 import tv.nextv.core.io.DetectedContent
@@ -121,13 +122,14 @@ class M3uPlaylistLoader(
         val base = content.effectiveUrl
         val channels = ArrayList<Channel>()
         val strings = HashMap<String, String>()
+        val groupQualities = HashMap<String, StreamQuality?>()
         var unsupported = false
         val playlist = try {
             parser.parse(InputStreamReader(input, decoder), checkCancelled) { entry, headerSeen ->
                 // Sans en-tête ni #EXTINF, seule une liste d'URL absolues est acceptée : un fichier texte
                 // quelconque ne doit pas devenir une liste de « chaînes ».
                 if (!headerSeen && !entry.hasExtInf && "://" !in entry.url) return@parse
-                val channel = toChannel(channels.size, entry, base, strings)
+                val channel = toChannel(channels.size, entry, base, strings, groupQualities)
                 if (channel.stream.support == StreamSupport.UNSUPPORTED) unsupported = true
                 channels += channel
             }
@@ -151,7 +153,13 @@ class M3uPlaylistLoader(
     }
 
     /** @param strings textes déjà rencontrés (groupes…) : une seule copie en mémoire pour des milliers d'entrées. */
-    private fun toChannel(position: Int, entry: M3uEntry, baseUrl: String?, strings: MutableMap<String, String>): Channel {
+    private fun toChannel(
+        position: Int,
+        entry: M3uEntry,
+        baseUrl: String?,
+        strings: MutableMap<String, String>,
+        groupQualities: MutableMap<String, StreamQuality?>,
+    ): Channel {
         val stream = StreamUrlInspector.inspect(entry.url, baseUrl, entry.headers, entry.drmProtected)
         val attributes = entry.attributes
         val name = entry.title
@@ -159,7 +167,8 @@ class M3uPlaylistLoader(
             ?: stream.url.substringBefore('?').trimEnd('/').substringAfterLast('/').takeIf { it.isNotBlank() }
             ?: "#${position + 1}"
         val classification = ContentClassifier.classify(name, stream.url, entry.group, attributes)
-        val quality = if (classification.kind == ModelContentKind.LIVE) QualityParser.parse(name) else null
+        val live = classification.kind == ModelContentKind.LIVE
+        val quality = if (live) QualityParser.parse(name) else null
         return Channel(
             position = position,
             name = name,
@@ -172,11 +181,22 @@ class M3uPlaylistLoader(
             kind = classification.kind,
             title = quality?.baseName ?: classification.title,
             variantKey = quality?.variantKey.orEmpty(),
-            quality = quality?.quality,
+            quality = if (live) quality?.quality else vodQuality(name, entry.group, groupQualities),
             year = classification.year,
             episode = classification.episode,
         )
     }
+
+    /**
+     * Qualité d'un film ou d'un épisode : celle de son nom (« Avatar 4K »), sinon celle de sa catégorie
+     * (« FILMS 4K »). Elle est seulement affichée : le titre et le regroupement n'en dépendent pas.
+     */
+    private fun vodQuality(name: String, group: String?, groupQualities: MutableMap<String, StreamQuality?>): StreamQuality? =
+        QualityParser.parse(name).quality ?: group?.let {
+            // Catégorie sans qualité : retenue aussi (« null »), pour ne pas la relire à chaque entrée.
+            if (it !in groupQualities) groupQualities[it] = QualityParser.parse(it).quality?.takeIf { q -> q != StreamQuality.LOW }
+            groupQualities[it]
+        }
 
     private fun resolveLogo(logo: String, baseUrl: String?): String? {
         // Cas courant : URL absolue HTTP(S) sans espace, utilisable telle quelle (analyse complète évitée).

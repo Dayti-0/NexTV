@@ -34,6 +34,8 @@ data class PlaylistItem(
     val year: Int?,
     val logoUrl: String?,
     val itemKey: String,
+    /** Qualité annoncée par la playlist ([tv.nextv.core.model.StreamQuality]), si elle l'indique. */
+    val quality: String? = null,
 )
 
 data class Season(val number: Int?, val episodes: List<EpisodeRow>)
@@ -89,7 +91,7 @@ class DetailViewModel(
         val rawTitle = if (kind == ContentKind.SERIES) entity.seriesName ?: entity.title else entity.title
         // Nettoyé à nouveau : les titres importés avant une amélioration du nettoyage (« … (MULTI ») en profitent.
         val title = ContentClassifier.cleanTitle(rawTitle).ifBlank { rawTitle }
-        val item = PlaylistItem(entity.sourceId, entity.id, title, entity.year, entity.logoUrl, entity.itemKey)
+        val item = PlaylistItem(entity.sourceId, entity.id, title, entity.year, entity.logoUrl, entity.itemKey, entity.quality)
         mutableState.update { it.copy(item = item) }
 
         if (kind == ContentKind.SERIES) {

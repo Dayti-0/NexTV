@@ -72,6 +72,7 @@ import tv.nextv.app.ui.components.rememberWindowInfo
 import tv.nextv.app.ui.guide.formatDuration
 import tv.nextv.app.ui.home.HomeLayout
 import tv.nextv.app.ui.home.PosterImage
+import tv.nextv.app.ui.home.QualityBadge
 import tv.nextv.app.ui.theme.NexTvColors
 import tv.nextv.app.ui.theme.NexTvIcons
 import tv.nextv.core.meta.MediaDetails
@@ -379,8 +380,11 @@ private fun MetaLine(details: MediaDetails?, item: PlaylistItem?, kind: ContentK
             (playlistSeasons.takeIf { it > 0 } ?: details?.seasonCount)?.let { add(resources.getQuantityString(R.plurals.seasons_count, it, it)) }
         }
     }
-    if (parts.isNotEmpty()) {
-        Text(parts.joinToString("  ·  "), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        QualityBadge(item?.quality, large = true)
+        if (parts.isNotEmpty()) {
+            Text(parts.joinToString("  ·  "), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 

@@ -223,6 +223,9 @@ internal fun PremiumPoster(
     progress: Float? = null,
     detail: String? = null,
     watched: Boolean = false,
+    quality: String? = null,
+    /** Place laissée en haut à gauche au rang du Top 10 : la qualité et « Déjà vu » passent dessous. */
+    badgeTop: Dp = 6.dp,
 ) {
     val width = POSTER_COLUMN_WIDTH
     Column(Modifier.width(width), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -237,7 +240,7 @@ internal fun PremiumPoster(
             Box(Modifier.fillMaxSize()) {
                 PosterImage(title, imageUrl, Modifier.fillMaxSize())
                 if (isFavorite) FavoriteStar(Modifier.align(Alignment.TopEnd).padding(6.dp))
-                if (watched) WatchedBadge(Modifier.align(Alignment.TopStart).padding(6.dp))
+                PosterBadges(quality, watched, Modifier.align(Alignment.TopStart).padding(start = 6.dp, top = badgeTop))
                 if (progress != null) {
                     Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp).background(Color.Black.copy(alpha = 0.4f))) {
                         Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).fillMaxHeight().background(MaterialTheme.colorScheme.primary))
