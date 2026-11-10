@@ -45,4 +45,25 @@ class HomeLayoutCategoryTest {
         assertEquals(HomeLayout.PREMIUM, viewModel.layout.value)
         assertEquals(Category.All, viewModel.category.value)
     }
+
+    /** Recherche : dans tous les films (la catégorie ouverte est quittée) ; une catégorie choisie efface la recherche. */
+    @Test
+    fun searchLooksEverywhereAndACategoryClearsIt() {
+        val application = RuntimeEnvironment.getApplication()
+        val container = AppContainer(application)
+        runBlocking { container.settings.setHomeLayout(HomeLayout.LIVE_CENTER) }
+        val viewModel = HomeViewModel(container, application.resources)
+        idle { viewModel.layout.value == HomeLayout.LIVE_CENTER }
+        viewModel.selectSection(HomeSection.MOVIES)
+        viewModel.selectCategory(Category.Group("Action"))
+        idle { viewModel.category.value == Category.Group("Action") }
+        viewModel.setQuery("avatar")
+        idle { viewModel.category.value == Category.All && viewModel.query.value == "avatar" }
+        assertEquals(Category.All, viewModel.category.value)
+        assertEquals("avatar", viewModel.query.value)
+        viewModel.selectCategory(Category.Group("Français"))
+        idle { viewModel.query.value.isEmpty() && viewModel.category.value == Category.Group("Français") }
+        assertEquals("", viewModel.query.value)
+        assertEquals(Category.Group("Français"), viewModel.category.value)
+    }
 }

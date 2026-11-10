@@ -256,6 +256,9 @@ fun FocusSurface(
     if (onFocusChange != null) {
         LaunchedEffect(focused) { onFocusChange(focused) }
     }
+    // OK appuyé sur cette surface (première pression) : seul son relâchement, ou ses répétitions, y agissent.
+    val pressedHere = remember { BooleanArray(1) }
+    LaunchedEffect(focused) { if (!focused) pressedHere[0] = false }
     val currentOnLongClick by rememberUpdatedState(onLongClick)
     // Appui long : action dès qu'il est reconnu, OK encore tenu ; le menu qu'elle ouvre ignore la fin de l'appui.
     val longClick: (() -> Unit)? = onLongClick?.let {
@@ -282,16 +285,24 @@ fun FocusSurface(
             .background(if (focused) focusedColor else color)
             .then(if (border != null) Modifier.border(border, shape) else Modifier)
             .onPreviewKeyEvent { event ->
-                if (event.key in OK_KEYS) {
-                    when (event.type) {
-                        KeyEventType.KeyDown -> HeldOk.held = true
-                        KeyEventType.KeyUp -> {
-                            HeldOk.held = false
-                            HeldOk.armed = false
-                        }
+                if (event.key !in OK_KEYS) return@onPreviewKeyEvent false
+                when (event.type) {
+                    KeyEventType.KeyDown -> {
+                        HeldOk.held = true
+                        if (event.nativeKeyEvent.repeatCount == 0) pressedHere[0] = true
+                        // Suite d'un appui commencé ailleurs (appui long qui a retiré un favori, la sélection est
+                        // passée à l'élément suivant) : ignorée, sinon son relâchement ouvrirait cet élément.
+                        !pressedHere[0]
                     }
+                    KeyEventType.KeyUp -> {
+                        HeldOk.held = false
+                        HeldOk.armed = false
+                        val foreign = !pressedHere[0]
+                        pressedHere[0] = false
+                        foreign
+                    }
+                    else -> false
                 }
-                false
             }
             .combinedClickable(
                 interactionSource = interactionSource,

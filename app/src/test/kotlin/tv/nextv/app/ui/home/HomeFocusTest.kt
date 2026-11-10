@@ -298,11 +298,11 @@ class HomeFocusTest {
     private fun focusedText() = runCatching { compose.onNode(isFocused()).fetchSemanticsNode().config.toString().let { Regex("Text : \\[[^]]*]").find(it)?.value } }.getOrNull()
 
     /**
-     * Bandeau vedette de Streaming : à l'ouverture, la sélection est sur « Regarder » ; ↓ passe aux rangées
-     * (le bandeau montre alors l'affiche choisie, sans boutons) ; ↑ depuis la première rangée y revient.
+     * Bandeau de Streaming, sans boutons : à l'ouverture, la sélection est sur la première affiche du Top 10, dont
+     * la rangée est entière (titre compris : le bandeau ne change plus de hauteur sous elle).
      */
     @Test
-    fun streamingHeroButtonsAndRows() {
+    fun streamingHeroStartsOnTheFirstPoster() {
         val focused = mutableListOf<String>()
         // Télécommande : pas de mode tactile (où Android refuse de poser la sélection d'office).
         androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().setInTouchMode(false)
@@ -311,18 +311,20 @@ class HomeFocusTest {
         compose.waitForIdle()
         compose.mainClock.advanceTimeBy(1_000)
         compose.waitForIdle()
-        println("Bandeau, sélection de départ : ${focusedText()}")
-        assertTrue("Départ : ${focusedText()}", focusedText()?.contains("Regarder") == true)
-        compose.onNodeWithText("Plus d’infos").assertExists()
-        press(Key.DirectionDown)
-        println("↓ : ${focusedText()}")
-        // Première rangée (le Top 10 des tendances) : une affiche.
-        assertTrue("↓ : pas sur une affiche (${focusedText()})", focusedText()?.contains("Le Grand Voyage") == true)
-        // Rangées : le bandeau n'a plus ses boutons.
+        println("Sélection de départ : ${focusedText()}")
+        assertTrue("Départ : ${focusedText()}", focusedText()?.contains("Le Grand Voyage") == true)
         assertTrue("Boutons encore là", compose.onAllNodesWithText("Plus d’infos").fetchSemanticsNodes().isEmpty())
-        press(Key.DirectionUp)
-        println("↑ : ${focusedText()}")
-        assertTrue("↑ : ${focusedText()}", focusedText()?.contains("Regarder") == true)
+        assertTrue("Boutons encore là", compose.onAllNodesWithText("Regarder").fetchSemanticsNodes().isEmpty())
+        // Titre de la première rangée visible en entier, sous le bandeau (244 dp).
+        val heroBottom = with(compose.density) { 244.dp.toPx() }
+        fun titleTop() = compose.onAllNodesWithText("Tendances", substring = true).fetchSemanticsNodes().firstOrNull()?.boundsInRoot?.top
+        println("Titre de la rangée : ${titleTop()} (bandeau : $heroBottom)")
+        assertTrue("Titre de la rangée coupé : ${titleTop()}", (titleTop() ?: -1f) >= heroBottom - 1f)
+        // → puis ← : retour sur la première affiche, la rangée toujours entière.
+        press(Key.DirectionRight)
+        press(Key.DirectionLeft)
+        assertTrue("← : ${focusedText()}", focusedText()?.contains("Le Grand Voyage") == true)
+        assertTrue("Titre de la rangée coupé : ${titleTop()}", (titleTop() ?: -1f) >= heroBottom - 1f)
     }
 
     @Test

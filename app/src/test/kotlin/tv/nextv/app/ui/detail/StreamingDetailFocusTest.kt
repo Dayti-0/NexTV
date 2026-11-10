@@ -168,4 +168,52 @@ class StreamingDetailFocusTest {
         // Et dès l'ouverture, le haut n'est pas coupé.
         assertTrue("Haut coupé : $start", start >= 0f)
     }
+
+    /**
+     * Haut de fiche chargé (long titre, long résumé, distribution) : passer d'un bouton à l'autre ne fait pas
+     * défiler la fiche, le titre reste entier en haut.
+     */
+    @Test
+    fun movingBetweenTheButtonsKeepsTheTitleInPlace() {
+        val base = SampleData.movieDetail
+        val available = base.metadata as tv.nextv.app.data.catalog.MetadataState.Available
+        val title = "Leaving Neverland 2 : Surviving Michael Jackson"
+        val movie = base.copy(
+            metadata = available.copy(
+                details = available.details.copy(title = title, overview = "Un très long résumé de la fiche. ".repeat(20), tagline = "Une accroche"),
+            ),
+            cast = listOf("Camille Martin", "Hugo Bernard", "Inès Petit", "Louis Moreau", "Jeanne Laurent").map { tv.nextv.core.meta.CastMember(it, null, null) },
+        )
+        compose.setContent {
+            NexTvTheme(ThemeStyle.NIGHT) {
+                StreamingDetailContent(
+                    state = movie,
+                    kind = ContentKind.MOVIE,
+                    window = rememberWindowInfo(),
+                    trailers = TrailerSettings(),
+                    onPlay = {},
+                    onResume = {},
+                    onRestart = {},
+                    onToggleFavorite = {},
+                    onSelectSeason = {},
+                    onOpenItem = {},
+                )
+            }
+        }
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
+        fun titleTop() = compose.onAllNodes(androidx.compose.ui.test.hasText(title), useUnmergedTree = true).fetchSemanticsNodes().minOf { it.positionInRoot.y }
+        val start = titleTop()
+        println("Départ sur ${focusedText()} : titre à $start")
+        assertTrue("Haut coupé : $start", start >= 0f)
+        repeat(3) {
+            press(Key.DirectionRight)
+            println("→ ${focusedText()} : titre à ${titleTop()}")
+            assertEquals("→ ${focusedText()}", start, titleTop(), 1f)
+        }
+        repeat(3) {
+            press(Key.DirectionLeft)
+            assertEquals("← ${focusedText()}", start, titleTop(), 1f)
+        }
+    }
 }

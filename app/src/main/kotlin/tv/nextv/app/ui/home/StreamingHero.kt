@@ -66,10 +66,11 @@ import tv.nextv.core.model.ContentKind
  * droite, fondu dans le fond ; à gauche la rubrique, le titre, l'année, les genres, la note, la durée et
  * le résumé.
  *
- * - [featured] (la sélection est sur le bandeau, ou aucune rangée encore parcourue) : bandeau haut, avec
- *   les boutons « Regarder » / « Reprendre », « Bande-annonce », « Plus d'infos » et le son de la
- *   bande-annonce ; les contenus mis en avant défilent d'eux-mêmes.
- * - Sinon : le contenu de l'affiche choisie dans les rangées, sans boutons.
+ * - [featured] (aucune rangée encore parcourue) : les contenus mis en avant défilent d'eux-mêmes.
+ * - Sinon : le contenu de l'affiche choisie dans les rangées.
+ *
+ * Pas de boutons : la sélection reste dans les rangées (OK sur une affiche ouvre sa fiche), et le bandeau garde
+ * la même hauteur (une rangée calée pendant qu'il rétrécissait avait le haut coupé).
  *
  * La bande-annonce ([trailers]) remplace peu à peu le visuel après le délai réglé, muette ou non
  * ([muted]) ; à sa fin, ou si elle ne peut pas être lue, le visuel revient ([onTrailerFinished]).
@@ -82,18 +83,11 @@ internal fun StreamingHero(
     featured: Boolean,
     frameHeight: Dp,
     padding: Dp,
-    progress: ProgressEntity?,
     trailers: TrailerSettings,
     trailerFinished: Boolean,
     muted: Boolean,
-    trailerShown: Boolean,
-    actions: HomeActions,
-    heroFocus: FocusRequester,
-    onToggleSound: () -> Unit,
     onTrailerShown: (Boolean) -> Unit,
     onTrailerFinished: () -> Unit,
-    onOpenTrailer: (String, String?) -> Unit,
-    onFocusInside: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
@@ -172,59 +166,6 @@ internal fun StreamingHero(
                             maxLines = if (featured) 3 else 2,
                             overflow = TextOverflow.Ellipsis,
                         )
-                    }
-                }
-            }
-            val item = spotlight?.item
-            AnimatedVisibility(featured && item != null, enter = fadeIn(tween(250)), exit = fadeOut(tween(150))) {
-                if (item == null) return@AnimatedVisibility
-                Row(
-                    Modifier
-                        .padding(top = 10.dp)
-                        .onFocusChanged { onFocusInside(it.hasFocus) }
-                        .focusGroup(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    val series = item.kind == ContentKind.SERIES
-                    // « Reprendre » quand le film ou la série est en cours, sinon « Regarder » (série : sa fiche).
-                    val resume = progress != null
-                    PillButton(
-                        stringResource(if (resume) R.string.hero_resume else R.string.hero_watch),
-                        {
-                            when {
-                                progress != null -> actions.onResume(progress.channelId)
-                                series -> actions.onOpenSeries(item.id)
-                                else -> actions.onPlayChannel(item.id)
-                            }
-                        },
-                        icon = Icons.Filled.PlayArrow,
-                        style = PillStyle.Primary,
-                        modifier = Modifier.focusRequester(heroFocus),
-                    )
-                    spotlight.details?.trailerYoutubeKey?.let { key ->
-                        PillButton(stringResource(R.string.hero_trailer), { onOpenTrailer(key, spotlight.details.trailerLanguage) }, icon = NexTvIcons.Movie)
-                    }
-                    PillButton(
-                        stringResource(R.string.hero_more_info),
-                        { if (series) actions.onOpenSeries(item.id) else actions.onOpenMovie(item.id) },
-                        icon = Icons.Filled.Info,
-                    )
-                    // Son de la bande-annonce, tant qu'elle est à l'écran.
-                    if (trailerShown) {
-                        FocusSurface(
-                            onClick = onToggleSound,
-                            shape = CircleShape,
-                            color = colors.surfaceContainerHigh,
-                            focusedColor = colors.primary,
-                            contentColor = colors.onSurface,
-                            focusScale = 1.08f,
-                        ) {
-                            Icon(
-                                if (muted) NexTvIcons.VolumeOff else NexTvIcons.VolumeUp,
-                                contentDescription = stringResource(if (muted) R.string.hero_sound_on else R.string.hero_sound_off),
-                                modifier = Modifier.padding(10.dp).size(22.dp),
-                            )
-                        }
                     }
                 }
             }

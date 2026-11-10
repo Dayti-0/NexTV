@@ -681,8 +681,10 @@ class HomeViewModel(
         reorder.value = ReorderState()
     }
 
+    /** Catégorie choisie : la recherche en cours de la section est effacée (la catégorie s'affiche en entier). */
     fun selectCategory(target: Category) {
         categories.update { it + (section.value to target) }
+        if (queries.value[section.value].orEmpty().isNotEmpty()) queries.update { it + (section.value to "") }
         reorder.value = ReorderState()
     }
 
@@ -698,8 +700,12 @@ class HomeViewModel(
         }
     }
 
+    /** Recherche : dans toute la section (tous les films, toutes les séries, toutes les chaînes), quelle que soit la catégorie. */
     fun setQuery(text: String) {
         queries.update { it + (section.value to text) }
+        if (text.isNotBlank() && (categories.value[section.value] ?: Category.All) != Category.All) {
+            categories.update { it + (section.value to Category.All) }
+        }
     }
 
     fun toggleFavorite(kind: ContentKind, itemKey: String, title: String, logoUrl: String?) {

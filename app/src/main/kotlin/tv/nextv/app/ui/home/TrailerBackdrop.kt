@@ -56,6 +56,8 @@ internal fun TrailerBackdrop(
     muted: Boolean = true,
     onShown: (Boolean) -> Unit = {},
     onFinished: () -> Unit = {},
+    /** YouTube refuse de lire cette vidéo dans l'appli (lecture intégrée interdite par son auteur, vidéo retirée). */
+    onFailed: () -> Unit = {},
     /**
      * Agrandissement de la vidéo dans le cadre (bords rognés) : les bandes-annonces au format cinéma ont des
      * bandes noires en haut et en bas, qui la faisaient paraître petite. 1 : vidéo entière (plein écran).
@@ -85,7 +87,7 @@ internal fun TrailerBackdrop(
         val height = maxHeight.value.roundToInt()
         if (width > 0 && height > 0) {
             androidx.compose.runtime.key(key, width, height) {
-                TrailerPage(key, captions(language), width, height, zoom, muted, delayPassed, onShown, onFinished)
+                TrailerPage(key, captions(language), width, height, zoom, muted, delayPassed, onShown, onFinished, onFailed)
             }
         }
     }
@@ -93,10 +95,12 @@ internal fun TrailerBackdrop(
 
 /**
  * Bande-annonce en plein écran, avec le son (bouton « Bande-annonce ») : « Retour » la ferme, et elle se
- * ferme d'elle-même à la fin ou si YouTube refuse la lecture intégrée.
+ * ferme d'elle-même à la fin. Si YouTube refuse la lecture dans l'appli (certaines vidéos l'interdisent), elle
+ * s'ouvre dans l'application YouTube de l'appareil, ou un message le dit s'il n'y en a pas.
  */
 @Composable
 internal fun TrailerFullScreen(key: String, language: String?, onClose: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         val focus = remember { FocusRequester() }
         LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
@@ -108,9 +112,21 @@ internal fun TrailerFullScreen(key: String, language: String?, onClose: () -> Un
                 .focusRequester(focus)
                 .focusable(),
         ) {
-            TrailerBackdrop(key, language, Modifier.fillMaxSize(), delayMillis = 0, muted = false, onFinished = onClose)
+            TrailerBackdrop(
+                key, language, Modifier.fillMaxSize(), delayMillis = 0, muted = false, onFinished = onClose,
+                onFailed = { openInYouTube(context, key) },
+            )
         }
     }
+}
+
+/** Bande-annonce [key] dans l'application YouTube (ou le navigateur) ; message si aucune ne peut l'ouvrir. */
+private fun openInYouTube(context: android.content.Context, key: String) {
+    val intents = listOf("vnd.youtube:$key", "https://www.youtube.com/watch?v=$key").map {
+        android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(it)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    val opened = intents.any { intent -> runCatching { context.startActivity(intent) }.isSuccess }
+    if (!opened) android.widget.Toast.makeText(context, tv.nextv.app.R.string.trailer_unavailable, android.widget.Toast.LENGTH_LONG).show()
 }
 
 /** Page du lecteur YouTube, mise en pause quand l'appli passe en arrière-plan. */
@@ -126,6 +142,7 @@ private fun TrailerPage(
     delayPassed: Boolean,
     onShown: (Boolean) -> Unit,
     onFinished: () -> Unit,
+    onFailed: () -> Unit,
 ) {
     var view by remember { mutableStateOf<WebView?>(null) }
     // Vue cachée (alpha) avant la fin du délai : la page y prépare la vidéo (une vidéo cachée dans la page
@@ -136,6 +153,7 @@ private fun TrailerPage(
     val alpha by animateFloatAsState(if (visible) 1f else 0f, tween(250), label = "trailer")
     val shown by rememberUpdatedState(onShown)
     val finished by rememberUpdatedState(onFinished)
+    val failed by rememberUpdatedState(onFailed)
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle, view) {
         val web = view
@@ -161,6 +179,7 @@ private fun TrailerPage(
                 context, key, captions, width, height, zoom, muted || !delayPassed, delayPassed,
                 onVisible = { ready = it },
                 onFinished = { ready = false; shown(false); finished() },
+                onFailed = { failed() },
             ).also { view = it }
         },
         update = { web -> web.alpha = alpha },
@@ -182,6 +201,7 @@ private fun trailerView(
     startAllowed: Boolean,
     onVisible: (Boolean) -> Unit,
     onFinished: () -> Unit,
+    onFailed: () -> Unit,
 ): WebView = WebView(context).apply {
     alpha = 0f
     // La page signale quand montrer la vidéo (elle joue depuis son début), la cacher, et la fin.
@@ -196,6 +216,11 @@ private fun trailerView(
             @JavascriptInterface
             fun finished() {
                 web.post { onFinished() }
+            }
+
+            @JavascriptInterface
+            fun failed() {
+                web.post { onFailed() }
             }
         },
         "NixTv",
@@ -288,7 +313,7 @@ private fun trailerView(
                 if(e.data==0){hidden=true;show(false);finish();}
               },
               // Lecture intégrée refusée par la vidéo (101, 150), vidéo introuvable… : l'image reste.
-              onError:function(){hidden=true;show(false);finish();}
+              onError:function(){if(!done){call(function(){NixTv.failed();});}hidden=true;show(false);finish();}
             }
           });
         }

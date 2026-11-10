@@ -7,8 +7,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.relocation.BringIntoViewRequester
-import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,6 +42,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.animation.animateContentSize
@@ -102,6 +104,7 @@ import java.text.NumberFormat
  * puis « Reprendre » / « Regarder », « Depuis le début », « Bande-annonce » et « Favoris ». Série : les
  * saisons et leurs épisodes en vignettes (déjà vus, en cours) ; puis les titres similaires.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun StreamingDetailContent(
     state: DetailUiState,
@@ -124,7 +127,18 @@ internal fun StreamingDetailContent(
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val playFocus = remember { FocusRequester() }
-    val headerInView = remember { BringIntoViewRequester() }
+    // Sélection dans le haut de la fiche (boutons) : la fiche reste tout en haut, titre compris. Aucun autre
+    // défilement pendant ce temps : la télé place sinon le bouton choisi au tiers de l'écran, et le haut de la fiche
+    // montait puis redescendait à chaque bouton (titre coupé, impossible de remonter).
+    val headerFocused = remember { mutableStateOf(false) }
+    val defaultSpec = LocalBringIntoViewSpec.current
+    val headerSpec = remember(defaultSpec) {
+        object : BringIntoViewSpec {
+            override val scrollAnimationSpec get() = defaultSpec.scrollAnimationSpec
+            override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float =
+                if (headerFocused.value) 0f else defaultSpec.calculateScrollDistance(offset, size, containerSize)
+        }
+    }
     var focusDone by remember { mutableStateOf(false) }
     // La sélection sur « Reprendre » (connu juste après la fiche) ou « Regarder ».
     LaunchedEffect(item != null, state.progress != null) {
@@ -168,16 +182,18 @@ internal fun StreamingDetailContent(
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to background.copy(alpha = 0.3f), 0.2f to Color.Transparent, 0.65f to Color.Transparent, 1f to background)))
             Box(Modifier.fillMaxSize().background(background.copy(alpha = dim)))
         }
+        CompositionLocalProvider(LocalBringIntoViewSpec provides headerSpec) {
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 48.dp)) {
             item(key = "header") {
                 Row(
                     Modifier
                         .fillMaxWidth()
                         .heightIn(min = frameHeight - 20.dp)
-                        // Boutons choisis (à l'ouverture, ou en remontant) : tout le haut de la fiche est montré. La
-                        // télé place sinon l'élément choisi au tiers de l'écran, et le titre restait coupé.
-                        .bringIntoViewRequester(headerInView)
-                        .onFocusChanged { if (it.hasFocus) scope.launch { headerInView.bringIntoView() } }
+                        // Boutons choisis (à l'ouverture, ou en remontant) : tout le haut de la fiche est montré.
+                        .onFocusChanged {
+                            headerFocused.value = it.hasFocus
+                            if (it.hasFocus) scope.launch { listState.animateScrollToItem(0) }
+                        }
                         .padding(start = padding, end = padding, top = window.topPadding),
                     horizontalArrangement = Arrangement.spacedBy(28.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -296,6 +312,7 @@ internal fun StreamingDetailContent(
                     }
                 }
             }
+        }
         }
     }
     if (fullTrailer) {

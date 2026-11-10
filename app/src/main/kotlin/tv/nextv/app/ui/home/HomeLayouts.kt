@@ -12,6 +12,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
@@ -215,14 +216,12 @@ internal fun StreamingHome(
     val shown = spotlight ?: featuredItems.firstOrNull()?.let { Spotlight(it) } ?: content.discover.trending.firstOrNull()?.let { Spotlight(it) }
     // Bande-annonce : une seule (celle du bandeau), terminée une fois pour le contenu affiché.
     var finishedTrailer by remember { mutableStateOf<String?>(null) }
-    var trailerShown by remember { mutableStateOf(false) }
-    var muted by remember(trailers.sound) { mutableStateOf(!trailers.sound) }
-    var fullTrailer by remember { mutableStateOf<Pair<String, String?>?>(null) }
+    val muted = !trailers.sound
     val trailerKey = shown?.details?.trailerYoutubeKey
     val trailerDone = trailerKey != null && trailerKey == finishedTrailer
     // Rotation des contenus mis en avant : après la bande-annonce (si elle se lit), sinon toutes les 9 s.
-    LaunchedEffect(featuredMode, featuredIndex, featuredItems.size, trailerKey, trailerDone, trailers.autoplay, fullTrailer) {
-        if (!featuredMode || featuredItems.size < 2 || fullTrailer != null) return@LaunchedEffect
+    LaunchedEffect(featuredMode, featuredIndex, featuredItems.size, trailerKey, trailerDone, trailers.autoplay) {
+        if (!featuredMode || featuredItems.size < 2) return@LaunchedEffect
         val trailerWillPlay = trailers.autoplay && trailerKey != null && !trailerDone
         if (trailerWillPlay) return@LaunchedEffect
         delay(if (trailerDone) FEATURED_AFTER_TRAILER_MILLIS else FEATURED_ROTATE_MILLIS)
@@ -231,7 +230,6 @@ internal fun StreamingHome(
     val heroHeight = when {
         !window.isWide -> 0.dp
         section == HomeSection.TV -> if (scrolled) COMPACT_BILLBOARD_HEIGHT else STREAMING_BILLBOARD_HEIGHT
-        featuredMode -> HERO_FEATURED_HEIGHT
         else -> HERO_BROWSE_HEIGHT
     }
     val billboardHeight by animateDpAsState(heroHeight, animationSpec = tween(320), label = "billboard")
@@ -242,17 +240,8 @@ internal fun StreamingHome(
         webViewWarmed = true
         warmUpWebView(context)
     }
+    // Bandeau sans boutons : à la première ouverture sur la télé, la sélection va sur la première affiche des rangées.
     val heroFocus = remember { FocusRequester() }
-    // ↑ depuis la première rangée : le bandeau vedette revient, la sélection va sur « Regarder » dès qu'il est là.
-    var heroFocusRequest by remember { mutableIntStateOf(0) }
-    LaunchedEffect(heroFocusRequest) {
-        if (heroFocusRequest == 0) return@LaunchedEffect
-        for (attempt in 1..30) {
-            withFrameNanos { }
-            if (runCatching { heroFocus.requestFocus() }.getOrDefault(false)) break
-        }
-    }
-    // Première ouverture sur la télé : la sélection sur « Regarder », comme sur les plateformes de streaming.
     var heroFocusDone by rememberSaveable(section) { mutableStateOf(false) }
     if (hero && window.isTv && !heroFocusDone && lastOpened.value == null) {
         LaunchedEffect(shown?.item?.itemKey != null) {
@@ -276,18 +265,11 @@ internal fun StreamingHome(
                         featured = featuredMode,
                         frameHeight = heroHeight,
                         padding = padding,
-                        progress = shown?.item?.itemKey?.let { key -> content.continueItems.firstOrNull { it.itemKey == key } },
                         trailers = trailers,
                         trailerFinished = trailerDone,
                         muted = muted,
-                        trailerShown = trailerShown,
-                        actions = actions,
-                        heroFocus = heroFocus,
-                        onToggleSound = { muted = !muted },
-                        onTrailerShown = { trailerShown = it },
+                        onTrailerShown = {},
                         onTrailerFinished = { finishedTrailer = trailerKey },
-                        onOpenTrailer = { key, language -> fullTrailer = key to language },
-                        onFocusInside = { if (it) onHero = true },
                     )
                 }
             }
@@ -298,7 +280,7 @@ internal fun StreamingHome(
         RestoreRow(listState, lastOpened, (if (searchInList) listOf("search") else emptyList()) + shelves.map { it.key })
         // Petit écran : la recherche précède les rangées dans la liste.
         RowJumpEffect(LocalRowJump.current, listState, content, shelves, offset = if (searchInList) 1 else 0, onOpen = actions.onCategory)
-        AnchoredRows(peekBelow = STREAMING_NEXT_ROW_PEEK, listState = listState) { anchor ->
+        AnchoredRows(peekBelow = STREAMING_NEXT_ROW_PEEK, listState = listState) { _ ->
             LazyColumn(
                 Modifier
                     .weight(1f)
@@ -309,15 +291,9 @@ internal fun StreamingHome(
                             fromRows = true
                         }
                     }
-                    .onPreviewKeyEvent { event ->
-                        val firstRow = anchor.focusedRow != null && anchor.focusedRow == shelves.firstOrNull()?.key
-                        if (!hero || query.isNotEmpty() || !firstRow || event.key != Key.DirectionUp || event.type != KeyEventType.KeyDown) {
-                            return@onPreviewKeyEvent false
-                        }
-                        onHero = true
-                        heroFocusRequest++
-                        true
-                    },
+                    // Sélection de départ : la première affiche de la liste.
+                    .focusRequester(heroFocus)
+                    .focusGroup(),
                 state = listState,
                 contentPadding = PaddingValues(top = 4.dp, bottom = 40.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -338,7 +314,6 @@ internal fun StreamingHome(
             }
         }
     }
-    fullTrailer?.let { (key, language) -> TrailerFullScreen(key, language) { fullTrailer = null } }
 }
 
 /** Résultats de la recherche, sur une rangée. */
@@ -556,7 +531,11 @@ internal fun AnchoredRows(
                     // juste au-dessus de la place laissée au titre de la rangée suivante.
                     val info = listState?.layoutInfo
                     val row = info?.visibleItemsInfo?.firstOrNull { it.key == anchor.focusedRow }
-                    if (info != null && row != null) return row.offset + row.size - (info.viewportEndOffset - peekPx)
+                    // Jamais le haut de la rangée (son titre) au-dessus du haut de la liste : liste plus basse
+                    // que la rangée (bandeau qui change de hauteur), la rangée est calée en haut.
+                    if (info != null && row != null) {
+                        return minOf(row.offset + row.size - (info.viewportEndOffset - peekPx), (row.offset - info.viewportStartOffset).toFloat())
+                    }
                     return offset + size - (containerSize - peekPx)
                 }
                 val top = anchor.cardTopPx
@@ -1228,9 +1207,6 @@ internal fun shortTime(millis: Long): String = DateFormat.getTimeInstance(DateFo
 /** Bannière pleine : la première rangée tient en entier dessous, au-dessus de la marge de sécurité du bas des TV. */
 private val STREAMING_BILLBOARD_HEIGHT = 200.dp
 private val COMPACT_BILLBOARD_HEIGHT = 104.dp
-
-/** Bandeau vedette de Streaming (sélection sur le bandeau) : les rangées se devinent dessous. */
-private val HERO_FEATURED_HEIGHT = 340.dp
 
 /** Bandeau pendant le parcours des rangées : l'affiche choisie, la rangée entière dessous. */
 private val HERO_BROWSE_HEIGHT = 244.dp

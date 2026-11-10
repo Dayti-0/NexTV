@@ -4,6 +4,14 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.97
+- Appui long (par exemple pour retirer un favori) : en relâchant OK, l’élément suivant ne s’ouvre plus. Vaut pour toute l’appli
+- Accueil Streaming : plus de boutons « Regarder », « Bande-annonce » et « Plus » sur le bandeau ; la sélection démarre sur la première affiche (OK ouvre sa fiche)
+- Accueil Streaming : la première affiche du Top 10 n’est plus coupée en haut quand elle est sélectionnée
+- Fiche d’un film ou d’une série : en passant d’un bouton à l’autre, l’écran ne monte et ne redescend plus, et le titre n’est plus coupé en haut
+- Recherche : le texte tapé cherche dans tous les films, toutes les séries ou toutes les chaînes, quelle que soit la catégorie ouverte ; choisir une catégorie efface la recherche
+- Bande-annonce que YouTube refuse de lire dans l’appli : elle s’ouvre dans l’application YouTube (ou un message le dit), au lieu de se refermer aussitôt
+
 ## 0.2.96
 - Chaîne lancée depuis les favoris (accueil, guide TV ou menu des chaînes) : « Retour » ouvre le menu sur les favoris, et haut/bas passe à la favorite suivante ou précédente, dans l’ordre choisi
 - Versions de secours : « RMC SPORT 1 BKP » ou « BEIN SPORTS 2 FHD++ (Très haute résolution) » sont maintenant des versions de la même chaîne. Si la chaîne ne marche pas, l’appli essaie d’abord son secours de même qualité, avant de passer en HD
