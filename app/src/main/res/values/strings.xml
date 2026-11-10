@@ -281,6 +281,7 @@
     <string name="player_no_audio">Aucun son disponible</string>
     <string name="player_audio_unsupported">Aucun son disponible : format audio non pris en charge par l’appareil</string>
     <string name="player_use_vlc">Lire avec le moteur VLC</string>
+    <string name="player_use_app_player">Lire avec le lecteur de l\'appli</string>
     <string name="player_vlc_engine">Son et image lus par le moteur VLC</string>
     <string name="player_error_vlc">Lecture impossible, même avec le moteur VLC.</string>
     <string name="player_audio_unsupported_codec">Aucun son disponible : son %1$s non pris en charge par l’appareil</string>

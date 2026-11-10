@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -98,17 +99,26 @@ internal class ChannelMenuController(
         menuFocus.value = row
     }
 
-    /** Ouvre le menu sur la catégorie de la chaîne [current], à sa place dans la liste. */
-    fun open(current: ChannelEntity) {
+    /**
+     * Ouvre le menu sur la catégorie de la chaîne [current], à sa place dans la liste. [fromFavorites] : chaîne
+     * ouverte depuis les favoris, menu ouvert sur les favoris (si elle en fait toujours partie).
+     */
+    fun open(current: ChannelEntity, fromFavorites: Boolean = false) {
         scope.launch {
             val dao = container.channelDao
             val group = current.groupTitle.orEmpty()
-            // Catégorie masquée (chaîne ouverte depuis les favoris) : menu ouvert sur les favoris.
-            val (category, index) = if (container.hiddenGroupDao.isHidden(current.sourceId, ContentKind.LIVE.name, group)) {
-                val favorite = favorites.value.indexOfFirst { it.itemKey == current.itemKey }
-                if (favorite >= 0) Category.Favorites to favorite else Category.All to dao.indexInList(current.sourceId, 0, "", current.position)
-            } else {
-                Category.Group(group) to dao.indexInList(current.sourceId, 1, group, current.position)
+            // Lu dans la base : la liste des favoris du menu n'est pas encore chargée à la première ouverture.
+            val favoriteIndex = suspend {
+                dao.observeFavoriteChannels(current.sourceId, System.currentTimeMillis()).first()
+                    .indexOfFirst { it.itemKey == current.itemKey }
+            }
+            val hidden = container.hiddenGroupDao.isHidden(current.sourceId, ContentKind.LIVE.name, group)
+            val favorite = if (fromFavorites || hidden) favoriteIndex() else -1
+            val (category, index) = when {
+                favorite >= 0 -> Category.Favorites to favorite
+                // Catégorie masquée et chaîne hors des favoris : la liste « Toutes ».
+                hidden -> Category.All to dao.indexInList(current.sourceId, 0, "", current.position)
+                else -> Category.Group(group) to dao.indexInList(current.sourceId, 1, group, current.position)
             }
             mutableMenu.value = ChannelMenuState(
                 open = true,

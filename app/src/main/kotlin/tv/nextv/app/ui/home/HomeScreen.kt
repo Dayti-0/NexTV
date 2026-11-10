@@ -141,6 +141,8 @@ class HomeActions(
     val onCategory: (Category) -> Unit = {},
     val onQuery: (String) -> Unit = {},
     val onPlayChannel: (Long) -> Unit = {},
+    /** Chaîne ouverte depuis les favoris : le lecteur reste dans les favoris (menu, haut/bas). */
+    val onPlayFavoriteChannel: (Long) -> Unit = onPlayChannel,
     val onOpenMovie: (Long) -> Unit = {},
     val onOpenSeries: (Long) -> Unit = {},
     val onToggleFavorite: (ContentKind, String, String, String?) -> Unit = { _, _, _, _ -> },
@@ -168,6 +170,8 @@ fun HomeScreen(
     onResume: (Long) -> Unit = onPlay,
     /** Programme passé d'une chaîne avec replay (chaîne, début, fin). */
     onReplay: (Long, Long, Long) -> Unit = { _, _, _ -> },
+    /** Chaîne ouverte depuis les favoris (le lecteur reste dans les favoris). */
+    onPlayFavorite: (Long) -> Unit = onPlay,
 ) {
     val resources = LocalContext.current.resources
     val viewModel = appViewModel { container, _ -> HomeViewModel(container, resources) }
@@ -252,12 +256,17 @@ fun HomeScreen(
         viewModel.setPreviewActive(false)
         onPlay(it)
     }
+    val playFavorite: (Long) -> Unit = {
+        viewModel.setPreviewActive(false)
+        onPlayFavorite(it)
+    }
 
     val actions = HomeActions(
         onSection = viewModel::selectSection,
         onCategory = viewModel::selectCategory,
         onQuery = viewModel::setQuery,
         onPlayChannel = playChannel,
+        onPlayFavoriteChannel = playFavorite,
         onOpenMovie = onMovie,
         onOpenSeries = onSeries,
         onToggleFavorite = viewModel::toggleFavorite,
@@ -370,7 +379,7 @@ fun HomeScreen(
             trailers = trailers,
             guide = { modifier ->
                 sourceId?.let {
-                    GuideScreen(it, playChannel, modifier, onReplay = { channelId, start, stop ->
+                    GuideScreen(it, playChannel, modifier, onPlayFavorite = playFavorite, onReplay = { channelId, start, stop ->
                         viewModel.setPreviewActive(false)
                         onReplay(channelId, start, stop)
                     })
@@ -1452,7 +1461,7 @@ internal fun TvBody(
         } else {
             {
                 lastOpened.value = OpenedItem(channel.itemKey, index)
-                actions.onPlayChannel(channel.id)
+                if (inFavorites) actions.onPlayFavoriteChannel(channel.id) else actions.onPlayChannel(channel.id)
             }
         }
         val onLongClick = if (reorder.active) null else {

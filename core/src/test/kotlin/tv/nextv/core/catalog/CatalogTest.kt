@@ -62,6 +62,40 @@ class QualityParserTest {
     }
 
     @Test
+    fun `backup and very high resolution versions are grouped with the channel`() {
+        val rmc = QualityParser.parse("FR| RMC SPORT 1 FHD")
+        val backup = QualityParser.parse("FR| RMC SPORT 1 BKP FHD")
+        assertEquals(rmc.variantKey, backup.variantKey)
+        assertEquals(StreamQuality.FHD, backup.quality)
+        assertEquals("FR| RMC SPORT 1", backup.baseName)
+        // Secours seulement en HD : une version HD de la même chaîne.
+        val backupHd = QualityParser.parse("FR| RMC SPORT 1 BKP HD")
+        assertEquals(rmc.variantKey, backupHd.variantKey)
+        assertEquals(StreamQuality.HD, backupHd.quality)
+        assertEquals(rmc.variantKey, QualityParser.parse("FR| RMC SPORT 1 (BACKUP2)").variantKey)
+
+        val bein = QualityParser.parse("FR| BEIN SPORTS 2 FHD")
+        val veryHigh = QualityParser.parse("FR| BEIN SPORTS 2 FHD++ (Trés haute résolution)")
+        assertEquals(bein.variantKey, veryHigh.variantKey)
+        assertEquals(StreamQuality.FHD, veryHigh.quality)
+        assertEquals("FR| BEIN SPORTS 2", veryHigh.baseName)
+        // Chaînes différentes : jamais mélangées.
+        assertNotEquals(rmc.variantKey, QualityParser.parse("FR| RMC SPORT ACCESS 1 FHD").variantKey)
+        assertNotEquals(bein.variantKey, QualityParser.parse("FR| BEIN SPORTS 3 FHD++ (Trés haute résolution)").variantKey)
+        assertEquals("FR| CANAL+", QualityParser.parse("FR| CANAL+ FHD").baseName)
+    }
+
+    @Test
+    fun `fifa plus qualities are separate channels`() {
+        // Un flux différent par qualité : pas des versions de la même chaîne.
+        val fhd = QualityParser.parse("FR| FIFA+ FHD")
+        assertNotEquals(fhd.variantKey, QualityParser.parse("FR| FIFA+ HD").variantKey)
+        assertEquals("FR| FIFA+", fhd.baseName)
+        // Son secours de même qualité reste avec elle.
+        assertEquals(fhd.variantKey, QualityParser.parse("FR| FIFA+ BKP FHD").variantKey)
+    }
+
+    @Test
     fun `resolution wording around the quality is grouped with the channel`() {
         val tf1 = QualityParser.parse("FR| TF1 FHD")
         val uhd = QualityParser.parse("FR| TF1 (Résolution 4K)")

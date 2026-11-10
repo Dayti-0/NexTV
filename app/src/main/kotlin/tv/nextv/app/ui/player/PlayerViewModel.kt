@@ -71,6 +71,12 @@ class PlayerViewModel(
 
     private var channelId: Long = checkNotNull(handle.get<Long>(ARG_CHANNEL_ID))
 
+    /**
+     * Chaîne ouverte depuis les favoris (accueil, guide ou menu des chaînes) : « Retour » ouvre le menu sur les
+     * favoris et haut/bas zappe dans les favoris. Déclaré avant `init` (utilisé par `load()`).
+     */
+    private var fromFavorites: Boolean = handle.get<Boolean>(ARG_FAVORITES) ?: false
+
     private val resources = context.resources
 
     /** Chaîne, version et flux en cours, partagés par les parties du lecteur. */
@@ -282,6 +288,21 @@ class PlayerViewModel(
     }
 
     /**
+     * « Lire avec le lecteur de l'appli » (options, moteur VLC en cours) : retour au lecteur de base, au même
+     * endroit (film) ou au direct. Choix de l'utilisateur : VLC n'est plus repris tout seul pour ce titre.
+     */
+    fun useAppPlayer() {
+        val playback = vlc ?: return
+        val live = state.value.isLive
+        if (!live) session.startPositionMs = playback.player.currentPosition.coerceAtLeast(0)
+        releaseVlc()
+        vlcTried = true
+        container.logger.info(TAG, "Moteur VLC quitté : lecteur de l'appli")
+        mutableState.update { it.copy(error = null, audioProblem = null, unsupportedAudio = null, buffering = true) }
+        start(session.playingAsHls)
+    }
+
+    /**
      * Le moteur VLC lit le titre en cours, au même endroit, dans le même écran : le lecteur de l'appli s'arrête
      * (une seule connexion au fournisseur). @return faux s'il lit déjà, ou s'il a déjà échoué sur ce titre.
      */
@@ -386,12 +407,21 @@ class PlayerViewModel(
         }
     }
 
-    /** Chaîne suivante (+1) ou précédente (-1) de la playlist, en boucle. */
+    /** Chaîne suivante (+1) ou précédente (-1) de la playlist (des favoris, si ouverte depuis eux), en boucle. */
     fun zap(direction: Int) {
         val current = session.listed ?: return
         if (current.kind != ContentKind.LIVE.name) return
         viewModelScope.launch {
             val dao = container.channelDao
+            if (fromFavorites) {
+                val favorites = dao.observeFavoriteChannels(current.sourceId, System.currentTimeMillis()).first()
+                val target = FavoriteZapping.next(favorites, current.itemKey, direction)
+                if (target != null) {
+                    if (target.id != current.id) load(target.id)
+                    return@launch
+                }
+                // Chaîne retirée des favoris entre-temps : zapping dans toute la playlist.
+            }
             // Ordre de la liste « Toutes » : depuis la place de la chaîne en cours dans cette liste.
             val position = current.variantKey.takeIf { it.isNotEmpty() }?.let { dao.listedPosition(current.sourceId, it) } ?: current.position
             val target = if (direction > 0) {
@@ -405,7 +435,7 @@ class PlayerViewModel(
 
     fun openMenu() {
         val current = session.listed ?: return
-        channelMenu.open(current)
+        channelMenu.open(current, fromFavorites)
     }
 
     fun closeMenu() = channelMenu.close()
@@ -418,6 +448,10 @@ class PlayerViewModel(
     fun hideProgramme() = channelMenu.hideProgramme()
 
     fun playFromMenu(id: Long) {
+        // Chaîne choisie dans la catégorie « Favoris » du menu : on y reste ; ailleurs, la playlist entière.
+        val favorites = channelMenu.menu.value.category == Category.Favorites
+        fromFavorites = favorites
+        handle[ARG_FAVORITES] = favorites
         closeMenu()
         if (id != session.listed?.id) load(id)
     }
@@ -976,6 +1010,9 @@ class PlayerViewModel(
         /** Replay : début et fin du programme passé (millisecondes), 0 pour une lecture normale. */
         const val ARG_REPLAY_START = "replayStart"
         const val ARG_REPLAY_STOP = "replayStop"
+
+        /** Chaîne ouverte depuis les favoris : menu des chaînes et zapping restent dans les favoris. */
+        const val ARG_FAVORITES = "favorites"
 
         /** Demander s'il faut reprendre un film ou un épisode commencé. */
         const val RESUME_ASK = "ask"

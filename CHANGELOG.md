@@ -4,6 +4,13 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.96
+- Chaîne lancée depuis les favoris (accueil, guide TV ou menu des chaînes) : « Retour » ouvre le menu sur les favoris, et haut/bas passe à la favorite suivante ou précédente, dans l’ordre choisi
+- Versions de secours : « RMC SPORT 1 BKP » ou « BEIN SPORTS 2 FHD++ (Très haute résolution) » sont maintenant des versions de la même chaîne. Si la chaîne ne marche pas, l’appli essaie d’abord son secours de même qualité, avant de passer en HD
+- FIFA+ : les versions FHD et HD, qui ne diffusent pas la même chose, restent deux chaînes séparées
+- Options du lecteur : avec le moteur VLC, le bouton devient « Lire avec le lecteur de l’appli » pour revenir au lecteur de base
+- La playlist est relue une fois au premier lancement après la mise à jour, pour regrouper ces versions
+
 ## 0.2.95
 - Films et séries : la qualité annoncée par la playlist (4K, FHD, HD, SD) s’affiche sur la vignette, en haut à gauche, et sur la fiche à côté de l’année. Elle est lue dans le nom du film (« Avatar 4K »), sinon dans celui de sa catégorie (« FILMS 4K ») ; rien n’est affiché si la playlist ne l’indique pas
 - La playlist est relue une fois au premier lancement après la mise à jour, pour y lire ces qualités

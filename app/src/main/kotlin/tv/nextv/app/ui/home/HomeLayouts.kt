@@ -407,7 +407,7 @@ internal sealed interface ShelfSpec {
 internal fun shelfList(content: ShelfContent): List<ShelfSpec> = buildList {
     when (content.section) {
         HomeSection.TV -> {
-            if (content.favoriteChannels.isNotEmpty()) add(ShelfSpec.Channels("favorites", R.string.home_favorites, content.favoriteChannels))
+            if (content.favoriteChannels.isNotEmpty()) add(ShelfSpec.Channels(FAVORITES_ROW, R.string.home_favorites, content.favoriteChannels))
             if (content.recentChannels.isNotEmpty()) add(ShelfSpec.Channels("recent", R.string.home_recent, content.recentChannels))
         }
         HomeSection.MOVIES, HomeSection.SERIES -> {
@@ -486,11 +486,14 @@ private fun RankBadge(rank: Int, modifier: Modifier = Modifier) {
     )
 }
 
+/** Clé de la rangée des favoris. */
+internal const val FAVORITES_ROW = "favorites"
+
 /** Clé de la rangée d'une catégorie dans [shelves] (`null` : pas de rangée pour elle). */
 internal fun rowKeyOf(category: Category, content: ShelfContent, shelves: List<ShelfSpec>): String? {
     val key = when (category) {
         Category.All -> shelves.firstOrNull()?.key
-        Category.Favorites -> "favorites"
+        Category.Favorites -> FAVORITES_ROW
         Category.Recent -> "recent"
         Category.ContinueWatching -> "continue"
         is Category.Group -> content.groups.firstOrNull { it.title.orEmpty() == category.title }?.let { "group:" + (it.title ?: NO_GROUP_KEY) }
@@ -968,7 +971,7 @@ internal fun ShelfChannel(
         .onFocusChanged { if (it.isFocused) actions.onChannelFocus(channel) }
     val onClick = {
         lastOpened.value = OpenedItem(channel.itemKey, index, row)
-        actions.onPlayChannel(channel.id)
+        if (row == FAVORITES_ROW) actions.onPlayFavoriteChannel(channel.id) else actions.onPlayChannel(channel.id)
     }
     val onLongClick = { actions.onToggleFavorite(ContentKind.LIVE, channel.itemKey, channel.title, channel.logoUrl) }
     if (style == ShelfStyle.PREMIUM) {

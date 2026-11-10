@@ -121,6 +121,8 @@ fun GuideScreen(
     onPlay: (Long) -> Unit,
     modifier: Modifier = Modifier,
     onReplay: (Long, Long, Long) -> Unit = { _, _, _ -> },
+    /** Chaîne ouverte depuis la catégorie « Favoris » : le lecteur reste dans les favoris. */
+    onPlayFavorite: (Long) -> Unit = onPlay,
 ) {
     val context = LocalContext.current
     val viewModel = appViewModel(key = "guide-$sourceId") { container, _ -> GuideViewModel(container, sourceId, context.resources) }
@@ -135,7 +137,10 @@ fun GuideScreen(
         onSelectGroup = viewModel::selectGroup,
         tonight = tonight,
         onTonightDay = { viewModel.tonightDay.value = it },
-        onPlay = onPlay,
+        onPlay = { id ->
+            val favorites = selectedGroup == GuideViewModel.FAVORITES || selectedGroup == GuideViewModel.FAVORITES_TONIGHT
+            if (favorites) onPlayFavorite(id) else onPlay(id)
+        },
         onReplay = { channel, programme -> onReplay(channel.id, programme.startMillis, programme.stopMillis) },
         modifier = modifier,
         describe = viewModel::describe,

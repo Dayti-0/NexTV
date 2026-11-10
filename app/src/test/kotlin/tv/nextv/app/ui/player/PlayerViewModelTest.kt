@@ -16,6 +16,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import tv.nextv.app.AppContainer
+import tv.nextv.app.ui.home.Category
 import tv.nextv.core.model.Channel
 import tv.nextv.core.model.ContentKind
 import tv.nextv.core.model.SourceLocation
@@ -128,6 +129,59 @@ class PlayerViewModelTest {
         viewModel.onStart()
         idle()
         assertEquals("TF1", viewModel.state.value.channelName)
+        store.clear()
+    }
+
+    /**
+     * Chaîne ouverte depuis les favoris : haut/bas zappe dans les favoris (dans leur ordre, en boucle) et « Retour »
+     * ouvre le menu sur les favoris ; ouverte d'ailleurs, le menu reste sur sa catégorie.
+     */
+    @Test
+    fun aChannelOpenedFromTheFavoritesStaysInTheFavorites() {
+        val sourceId = runBlocking {
+            val id = container.sourceRepository.add(SourceInput(name = "Favoris", location = SourceLocation.Remote("http://127.0.0.1:9/fav.m3u")))
+            container.playlistStore.replaceChannels(
+                id,
+                listOf("TF1" to "TNT", "France 2" to "TNT", "M6" to "TNT", "Arte" to "TNT").mapIndexed { index, (name, group) ->
+                    Channel(position = index, name = name, stream = StreamDescriptor("http://127.0.0.1:9/live/$index.ts"), groupTitle = group, title = name)
+                },
+            )
+            // Favoris dans l'ordre choisi : Arte, puis TF1 (France 2 et M6 n'en sont pas).
+            listOf("live:arte", "live:tf1").forEach { key -> container.favorites.toggle(id, ContentKind.LIVE, key, key, null) }
+            id
+        }
+        val tf1 = runBlocking { checkNotNull(container.channelDao.primaryIdByKey(sourceId, "live:tf1")) }
+        val viewModel = PlayerViewModel(
+            container,
+            SavedStateHandle(mapOf(PlayerViewModel.ARG_CHANNEL_ID to tf1, PlayerViewModel.ARG_FAVORITES to true)),
+            application,
+        )
+        val store = ViewModelStore().apply { put("player", viewModel) }
+        viewModel.onStart()
+        idle()
+        assertEquals("TF1", viewModel.state.value.channelName)
+        // Bas depuis TF1 (dernière favorite) : retour à Arte, pas France 2.
+        viewModel.zap(1)
+        idle()
+        assertEquals("Arte", viewModel.state.value.channelName)
+        viewModel.zap(-1)
+        idle()
+        assertEquals("TF1", viewModel.state.value.channelName)
+        viewModel.openMenu()
+        idle()
+        assertEquals(Category.Favorites, viewModel.menu.value.category)
+        assertEquals(1, viewModel.menu.value.initialIndex)
+        // Chaîne choisie dans une autre catégorie du menu : zapping dans toute la playlist.
+        viewModel.selectMenuCategory(Category.Group("TNT"))
+        viewModel.playFromMenu(runBlocking { checkNotNull(container.channelDao.primaryIdByKey(sourceId, "live:france 2")) })
+        idle()
+        assertEquals("France 2", viewModel.state.value.channelName)
+        viewModel.zap(1)
+        idle()
+        assertEquals("M6", viewModel.state.value.channelName)
+        viewModel.openMenu()
+        idle()
+        assertEquals(Category.Group("TNT"), viewModel.menu.value.category)
         store.clear()
     }
 

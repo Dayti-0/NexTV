@@ -525,14 +525,11 @@ fun PlayerScreen(onBack: () -> Unit) {
             },
             onDismiss = { optionsVisible = false },
             modifier = Modifier.align(Alignment.TopEnd),
-            onVlc = if (vlc == null) {
-                {
-                    optionsVisible = false
-                    viewModel.useVlc()
-                }
-            } else {
-                null
+            onVlc = {
+                optionsVisible = false
+                if (vlc == null) viewModel.useVlc() else viewModel.useAppPlayer()
             },
+            vlcActive = vlc != null,
             lowerAdVolume = state.lowerAdVolume,
             onLowerAdVolume = viewModel::setLowerAdVolume,
             qualityTarget = qualityTarget,
@@ -655,8 +652,12 @@ fun PlayerOptionsPanel(
     lowerAdVolume: Boolean = false,
     onLowerAdVolume: (Boolean) -> Unit = {},
     onBackToLive: (() -> Unit)? = null,
-    /** « Lire avec le moteur VLC » (son ou image que le lecteur de l'appli lit mal). */
+    /**
+     * « Lire avec le moteur VLC » (son ou image que le lecteur de l'appli lit mal), ou, [vlcActive], « Lire avec
+     * le lecteur de l'appli » pour revenir au lecteur de base.
+     */
     onVlc: (() -> Unit)? = null,
+    vlcActive: Boolean = false,
     qualityTarget: QualityTarget = QualityTarget.BEST,
     playingQuality: String? = null,
     onQualityTarget: ((QualityTarget) -> Unit)? = null,
@@ -753,7 +754,9 @@ fun PlayerOptionsPanel(
                 if (isLive) OptionRow(stringResource(R.string.player_last_channel), selected = false, onClick = onPreviousChannel)
                 if (isLive) OptionRow(stringResource(R.string.player_lower_ads), selected = lowerAdVolume) { onLowerAdVolume(!lowerAdVolume) }
                 OptionRow(stringResource(R.string.player_info_title), selected = infoVisible, onClick = onToggleInfo)
-                onVlc?.let { OptionRow(stringResource(R.string.player_use_vlc), selected = false, onClick = it) }
+                onVlc?.let {
+                    OptionRow(stringResource(if (vlcActive) R.string.player_use_app_player else R.string.player_use_vlc), selected = false, onClick = it)
+                }
             }
         }
     }
