@@ -49,17 +49,33 @@ internal class ResumeController(
         resumeMode = PlayerViewModel.RESUME_ASK
         session.startPositionMs = 0
         if (mode == PlayerViewModel.RESUME_NO) return false
-        val progress = container.progress.get(requested.sourceId, requested.itemKey) ?: return false
-        val sameItem = progress.channelId == requested.id
+        var progress = container.progress.get(requested.sourceId, requested.itemKey) ?: return false
+        // Film : la reprise vaut pour toutes ses copies (la clé est celle du film, pas de sa ligne dans la playlist).
+        val sameItem = progress.channelId == requested.id || requested.kind == ContentKind.MOVIE.name
+        if (!sameItem && !container.progress.isLinked(progress, container.channelDao)) {
+            // Série dont l'épisode en cours n'est plus à la même place (playlist actualisée) : il est retrouvé par
+            // sa saison et son numéro ; introuvable, l'épisode demandé se lit normalement.
+            container.progress.relink(requested.sourceId, container.channelDao)
+            progress = container.progress.get(requested.sourceId, requested.itemKey) ?: return false
+            if (!container.progress.isLinked(progress, container.channelDao)) return false
+            if (progress.channelId == requested.id) {
+                if (mode == PlayerViewModel.RESUME_YES) {
+                    session.startPositionMs = progress.positionMs
+                    return false
+                }
+                if (progress.positionMs <= 0) return false
+            }
+        }
+        val sameEpisode = sameItem || progress.channelId == requested.id
         if (mode == PlayerViewModel.RESUME_YES) {
-            if (sameItem) {
+            if (sameEpisode) {
                 session.startPositionMs = progress.positionMs
                 return false
             }
             resumeOther(progress)
             return true
         }
-        if (sameItem && progress.positionMs <= 0) return false
+        if (sameEpisode && progress.positionMs <= 0) return false
         pendingResume = requested to progress
         state.update {
             it.copy(
@@ -68,7 +84,7 @@ internal class ResumeController(
                     title = progress.title,
                     resumeLabel = progress.episodeLabel,
                     positionMs = progress.positionMs,
-                    startLabel = if (sameItem) null else episodeLabel(requested),
+                    startLabel = if (sameEpisode) null else episodeLabel(requested),
                 ),
             )
         }
@@ -86,7 +102,7 @@ internal class ResumeController(
                     session.startPositionMs = 0
                     host.playVariant(requested)
                 }
-                progress.channelId == requested.id -> {
+                progress.channelId == requested.id || requested.kind == ContentKind.MOVIE.name -> {
                     session.startPositionMs = progress.positionMs
                     host.playVariant(requested)
                 }

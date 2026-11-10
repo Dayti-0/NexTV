@@ -36,6 +36,13 @@ interface WatchedDao {
 
     @Query("DELETE FROM watched WHERE sourceId = :sourceId AND itemKey = :itemKey")
     suspend fun delete(sourceId: Long, itemKey: String)
+
+    /** Tout ce qui a été vu dans une playlist (sauvegarde). */
+    @Query("SELECT * FROM watched WHERE sourceId = :sourceId")
+    suspend fun all(sourceId: Long): List<WatchedEntity>
+
+    @Query("SELECT watchedAt FROM watched WHERE sourceId = :sourceId AND itemKey = :itemKey")
+    suspend fun watchedAt(sourceId: Long, itemKey: String): Long?
 }
 
 @Database(entities = [WatchedEntity::class], version = 1, exportSchema = true)
@@ -55,6 +62,14 @@ class WatchedRepository(database: WatchedDatabase, private val clock: () -> Long
     suspend fun mark(sourceId: Long, key: String) = dao.put(WatchedEntity(sourceId, key, clock()))
 
     suspend fun unmark(sourceId: Long, key: String) = dao.delete(sourceId, key)
+
+    /** Tout ce qui a été vu dans une playlist (sauvegarde). */
+    suspend fun all(sourceId: Long): List<WatchedEntity> = dao.all(sourceId)
+
+    /** « Déjà vu » venu d'une sauvegarde : la date la plus récente est gardée. */
+    suspend fun restore(sourceId: Long, key: String, watchedAt: Long) {
+        if ((dao.watchedAt(sourceId, key) ?: Long.MIN_VALUE) < watchedAt) dao.put(WatchedEntity(sourceId, key, watchedAt))
+    }
 
     fun observeKeys(sourceId: Long): Flow<Set<String>> = dao.observeKeys(sourceId).map { it.toSet() }.distinctUntilChanged()
 

@@ -152,6 +152,69 @@ class PlayerViewModelTest {
     }
 
     @Test
+    fun aMovieResumesEvenWhenItsRowNumberChanged() {
+        val (_, movie) = playlist()
+        runBlocking {
+            val entity = checkNotNull(container.channelDao.get(movie))
+            // Reprise enregistrée avant une actualisation de la playlist : elle vise un numéro de ligne qui n'existe plus.
+            container.progress.save(
+                tv.nextv.app.data.progress.ProgressEntity(entity.sourceId, entity.itemKey, entity.kind, 424_242L, "Le Film", null, null, 600_000, 3_600_000, 1),
+            )
+        }
+        val (viewModel, store) = open(movie)
+        viewModel.onStart()
+        idle()
+        // La question « reprendre / recommencer » est posée pour ce film…
+        assertNotNull(viewModel.state.value.resumePrompt)
+        viewModel.answerResume(true)
+        idle()
+        // … et « Reprendre » lit ce film, au lieu d'ouvrir un titre introuvable.
+        assertNull(viewModel.state.value.resumePrompt)
+        assertEquals("Le Film", viewModel.state.value.channelName)
+        assertTrue(viewModel.state.value.error != application.getString(tv.nextv.app.R.string.player_channel_missing))
+        store.clear()
+    }
+
+    @Test
+    fun aSeriesResumesItsEpisodeEvenWhenItsRowNumberChanged() {
+        val (first, second) = runBlocking {
+            val sourceId = container.sourceRepository.add(SourceInput(name = "Séries", location = SourceLocation.Remote("http://127.0.0.1:9/series.m3u")))
+            container.playlistStore.replaceChannels(
+                sourceId,
+                listOf(1, 2).map { number ->
+                    Channel(
+                        position = number,
+                        name = "Lupin S01 E0$number",
+                        stream = StreamDescriptor("http://127.0.0.1:9/series/$number.mkv"),
+                        kind = ContentKind.SERIES,
+                        title = "Lupin",
+                        episode = tv.nextv.core.model.EpisodeInfo("Lupin", 1, number),
+                    )
+                },
+            )
+            val one = checkNotNull(container.channelDao.episodeIdByKey(sourceId, "series:lupin", 1, 1))
+            val two = checkNotNull(container.channelDao.episodeIdByKey(sourceId, "series:lupin", 1, 2))
+            // Épisode 2 en cours, noté sous un numéro de ligne qui n'existe plus (playlist actualisée depuis).
+            container.progress.save(
+                tv.nextv.app.data.progress.ProgressEntity(sourceId, "series:lupin", ContentKind.SERIES.name, 424_242L, "Lupin", "S01E02", null, 600_000, 3_000_000, 1),
+            )
+            one to two
+        }
+        // La série est ouverte par son premier épisode : l'épisode en cours est retrouvé par sa saison et son numéro.
+        val (viewModel, store) = open(first)
+        viewModel.onStart()
+        idle()
+        val prompt = checkNotNull(viewModel.state.value.resumePrompt)
+        assertEquals("S01E02", prompt.resumeLabel)
+        viewModel.answerResume(true)
+        idle()
+        assertEquals(second, runBlocking { container.progress.get(checkNotNull(container.channelDao.get(second)).sourceId, "series:lupin") }?.channelId)
+        assertTrue(viewModel.state.value.error != application.getString(tv.nextv.app.R.string.player_channel_missing))
+        assertTrue(viewModel.state.value.vod?.subtitle.orEmpty().startsWith("S01E02"))
+        store.clear()
+    }
+
+    @Test
     fun aMissingChannelShowsAMessage() {
         val (viewModel, store) = open(987_654L)
         viewModel.onStart()

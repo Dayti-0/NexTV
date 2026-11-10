@@ -178,6 +178,9 @@ data class GroupVisibilityRow(val title: String?, val count: Int, val hidden: Bo
 
 data class ChannelUrlRow(val id: Long, val streamUrl: String)
 
+/** Identité d'une ligne : sa playlist, son type et sa clé stable (voir [ItemKeys]). */
+data class ChannelIdentityRow(val id: Long, val sourceId: Long, val kind: String, val itemKey: String)
+
 /** Chaîne affichée dans les listes (meilleure version), avec le programme en cours s'il est connu. */
 data class ChannelListRow(
     val id: Long,
@@ -624,6 +627,28 @@ interface ChannelDao {
         """,
     )
     suspend fun franceTroisCandidates(sourceId: Long): List<ItemNameRow>
+
+    /**
+     * Identité des lignes [ids] encore présentes (au plus quelques centaines) : pour vérifier qu'une reprise de
+     * lecture vise toujours le bon titre après une actualisation de la playlist.
+     */
+    @Query("SELECT id, sourceId, kind, itemKey FROM channels WHERE id IN (:ids)")
+    suspend fun identities(ids: List<Long>): List<ChannelIdentityRow>
+
+    /** Film désigné par sa clé : sa première copie dans l'ordre de la playlist. */
+    @Query("SELECT id FROM channels WHERE sourceId = :sourceId AND kind = 'MOVIE' AND itemKey = :itemKey ORDER BY position + 0 LIMIT 1")
+    suspend fun movieIdByKey(sourceId: Long, itemKey: String): Long?
+
+    /** Épisode d'une série désigné par sa saison ([season] `null` : épisodes sans saison) et son numéro. */
+    @Query(
+        """
+        SELECT id FROM channels
+        WHERE sourceId = :sourceId AND kind = 'SERIES' AND itemKey = :itemKey
+          AND IFNULL(season, -1) = IFNULL(:season, -1) AND episode = :episode
+        ORDER BY position + 0 LIMIT 1
+        """,
+    )
+    suspend fun episodeIdByKey(sourceId: Long, itemKey: String, season: Int?, episode: Int): Long?
 
     /** Meilleure version d'une chaîne désignée par sa clé (chaîne précédente, dernière chaîne regardée). */
     @Query("SELECT id FROM channels WHERE sourceId = :sourceId AND kind = 'LIVE' AND isPrimary = 1 AND itemKey = :itemKey LIMIT 1")

@@ -626,12 +626,30 @@ class HomeViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** Films et séries commencés, du plus récent au plus ancien. */
-    val continueMovies: StateFlow<List<ProgressEntity>> = sourceId.flatMapLatest { id ->
-        if (id == null) flowOf(emptyList()) else container.progress.observeAll(id, ContentKind.MOVIE.name)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val continueMovies: StateFlow<List<ProgressEntity>> = continueWatching(ContentKind.MOVIE)
 
-    val continueSeries: StateFlow<List<ProgressEntity>> = sourceId.flatMapLatest { id ->
-        if (id == null) flowOf(emptyList()) else container.progress.observeAll(id, ContentKind.SERIES.name)
+    val continueSeries: StateFlow<List<ProgressEntity>> = continueWatching(ContentKind.SERIES)
+
+    /**
+     * Reprises d'un type, sans celles dont le film ou l'épisode n'est plus dans la playlist (titre retiré par le
+     * fournisseur) : « Reprendre » ouvrirait un titre introuvable. Elles reviennent si le titre revient. Relu à
+     * chaque reprise enregistrée et à chaque actualisation de la playlist.
+     */
+    private fun continueWatching(kind: ContentKind): StateFlow<List<ProgressEntity>> = sourceId.flatMapLatest { id ->
+        if (id == null) {
+            flowOf(emptyList())
+        } else {
+            combine(
+                container.progress.observeAll(id, kind.name),
+                container.playlistStore.observeSource(id).map { it?.status?.lastSuccessAtMillis }.distinctUntilChanged(),
+            ) { rows, _ -> rows }.mapLatest { rows ->
+                if (rows.isEmpty()) return@mapLatest rows
+                val present = runCatching {
+                    rows.map { it.channelId }.distinct().chunked(SQL_VARIABLES).flatMap { dao.identities(it) }.associateBy { it.id }
+                }.getOrNull() ?: return@mapLatest rows
+                rows.filter { row -> present[row.channelId]?.let { it.sourceId == row.sourceId && it.itemKey == row.itemKey } == true }
+            }
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** Retire un film ou une série de « Reprendre la lecture ». */
@@ -719,6 +737,9 @@ class HomeViewModel(
         const val POSTER_QUEUE_SIZE = 40
 
         const val PAGE_SIZE = 60
+
+        /** Variables d'une requête SQL (anciennes versions de SQLite : 999 au plus). */
+        const val SQL_VARIABLES = 500
         const val SEARCH_DEBOUNCE_MILLIS = 300L
         const val NOW_REFRESH_MILLIS = 30_000L
         const val PREVIEW_DELAY_MILLIS = 900L

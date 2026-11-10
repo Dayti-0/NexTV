@@ -2,17 +2,23 @@ package tv.nextv.app.data.backup
 
 import tv.nextv.app.data.catalog.FavoritesRepository
 import kotlinx.coroutines.flow.first
+import tv.nextv.app.data.db.ChannelDao
 import tv.nextv.app.data.db.FavoriteDao
 import tv.nextv.app.data.db.FavoriteEntity
 import tv.nextv.app.data.db.HiddenGroupDao
 import tv.nextv.app.data.db.HiddenGroupEntity
 import tv.nextv.app.data.db.RoomPlaylistStore
+import tv.nextv.app.data.progress.ProgressEntity
+import tv.nextv.app.data.progress.ProgressRepository
+import tv.nextv.app.data.progress.WatchedRepository
 import tv.nextv.app.data.settings.SettingsRepository
 import tv.nextv.core.backup.Backup
 import tv.nextv.core.backup.BackupCodec
 import tv.nextv.core.backup.FavoriteBackup
 import tv.nextv.core.backup.HiddenGroupBackup
 import tv.nextv.core.backup.PlaylistBackup
+import tv.nextv.core.backup.ProgressBackup
+import tv.nextv.core.backup.WatchedBackup
 import tv.nextv.core.model.ContentKind
 import tv.nextv.core.model.EpgSettings
 import tv.nextv.core.model.SourceLocation
@@ -26,7 +32,10 @@ data class RestoreResult(val added: Int, val total: Int)
 
 /**
  * Sauvegarde et restauration : playlists distantes (avec leurs identifiants), favoris, catégories
- * masquées et réglages. Une playlist déjà présente (même adresse) est complétée, pas dupliquée.
+ * masquées, reprises de lecture, « Déjà vu » et réglages. Une playlist déjà présente (même adresse) est
+ * complétée, pas dupliquée.
+ *
+ * @param inTransaction exécute un bloc d'écritures de la base des playlists d'un seul tenant (tout ou rien).
  */
 class BackupManager(
     private val playlistStore: RoomPlaylistStore,
@@ -34,6 +43,10 @@ class BackupManager(
     private val favoriteDao: FavoriteDao,
     private val hiddenGroupDao: HiddenGroupDao,
     private val settings: SettingsRepository,
+    private val progress: ProgressRepository,
+    private val watched: WatchedRepository,
+    private val channelDao: ChannelDao,
+    private val inTransaction: suspend (suspend () -> Unit) -> Unit = { block -> block() },
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
 
@@ -56,6 +69,10 @@ class BackupManager(
                 hiddenGroups = ContentKind.entries.flatMap { kind ->
                     hiddenGroupDao.observeTitles(source.id, kind.name).first().map { HiddenGroupBackup(kind.name, it) }
                 },
+                progress = progress.all(source.id).map {
+                    ProgressBackup(it.itemKey, it.kind, it.title, it.episodeLabel, it.logoUrl, it.positionMs, it.durationMs, it.updatedAt)
+                },
+                watched = watched.all(source.id).map { WatchedBackup(it.itemKey, it.watchedAt) },
             )
         }
         return BackupCodec.encode(Backup(clock(), playlists, settings.exportPreferences()))
@@ -84,23 +101,52 @@ class BackupManager(
                 } catch (e: InvalidSourceInputException) {
                     continue
                 }
-            for (favorite in playlist.favorites) {
-                favoriteDao.insert(
-                    FavoriteEntity(
+            // Favoris et catégories masquées d'une playlist : d'un seul tenant (tout, ou rien si l'écriture échoue).
+            inTransaction {
+                for (favorite in playlist.favorites) {
+                    favoriteDao.insert(
+                        FavoriteEntity(
+                            sourceId = id,
+                            kind = favorite.kind,
+                            itemKey = favorite.itemKey,
+                            title = favorite.title,
+                            logoUrl = favorite.logoUrl,
+                            position = favorite.position,
+                        ),
+                    )
+                }
+                playlist.hiddenGroups.forEach { hiddenGroupDao.hide(HiddenGroupEntity(id, it.kind, it.title)) }
+            }
+            // Reprises : le film ou l'épisode (numéro de ligne, propre à chaque appareil) est retrouvé par sa clé,
+            // tout de suite si la playlist est déjà chargée, sinon après son premier chargement.
+            for (item in playlist.progress) {
+                if (item.kind != ContentKind.MOVIE.name && item.kind != ContentKind.SERIES.name) continue
+                progress.restore(
+                    ProgressEntity(
                         sourceId = id,
-                        kind = favorite.kind,
-                        itemKey = favorite.itemKey,
-                        title = favorite.title,
-                        logoUrl = favorite.logoUrl,
-                        position = favorite.position,
+                        itemKey = item.itemKey,
+                        kind = item.kind,
+                        channelId = UNLINKED,
+                        title = item.title,
+                        episodeLabel = item.episodeLabel,
+                        logoUrl = item.logoUrl,
+                        positionMs = item.positionMs,
+                        durationMs = item.durationMs,
+                        updatedAt = item.updatedAt,
                     ),
                 )
             }
-            playlist.hiddenGroups.forEach { hiddenGroupDao.hide(HiddenGroupEntity(id, it.kind, it.title)) }
+            progress.relink(id, channelDao)
+            runCatching { playlist.watched.forEach { watched.restore(id, it.itemKey, it.watchedAt) } }
             if (playlist.active) activeId = id
         }
         settings.importPreferences(backup.settings)
         activeId?.let { settings.setActivePlaylist(it) }
         return RestoreResult(added = added, total = backup.playlists.size)
+    }
+
+    private companion object {
+        /** Reprise restaurée pas encore rattachée à son titre (aucune ligne ne porte ce numéro). */
+        const val UNLINKED = 0L
     }
 }

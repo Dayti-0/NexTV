@@ -4,6 +4,7 @@ import android.content.Context
 import tv.nextv.app.data.football.EventTurnStore
 import android.os.Build
 import android.util.Xml
+import androidx.room.withTransaction
 import java.io.File
 import java.util.TimeZone
 import java.util.concurrent.ConcurrentHashMap
@@ -192,14 +193,24 @@ class AppContainer(context: Context) {
     /** Filtres des réglages appliqués aux listes de chaînes (4K masquée, région de France 3). */
     val channelFilters = ChannelFilters(channelDao, hiddenGroupDao)
 
-    /** Sauvegarde et restauration des playlists, favoris, catégories masquées et réglages. */
-    val backup = BackupManager(playlistStore, sourceRepository, database.favoriteDao(), hiddenGroupDao, settings)
-
     /** Reprise de lecture des films et séries (base distincte, sans migration de celle des playlists). */
     val progress = ProgressRepository(ProgressDatabase.create(appContext))
 
     /** Films et épisodes regardés jusqu'au bout (badge « Déjà vu »). */
     val watched = WatchedRepository(WatchedDatabase.create(appContext))
+
+    /** Sauvegarde et restauration des playlists, favoris, catégories masquées, reprises, « Déjà vu » et réglages. */
+    val backup = BackupManager(
+        playlistStore = playlistStore,
+        sources = sourceRepository,
+        favoriteDao = database.favoriteDao(),
+        hiddenGroupDao = hiddenGroupDao,
+        settings = settings,
+        progress = progress,
+        watched = watched,
+        channelDao = channelDao,
+        inTransaction = { block -> database.withTransaction { block() } },
+    )
 
     /** Mises à jour de l'application (versions publiées sur GitHub). */
     val updater = AppUpdater(
@@ -279,6 +290,13 @@ class AppContainer(context: Context) {
                 // Une écriture impossible (stockage plein) n'arrête pas la surveillance : nouvel essai au changement suivant.
                 safely("Filtres des chaînes") { sources.forEach { (id, _) -> channelFilters.apply(id, hideUhd, region) } }
             }
+        }
+
+        // Reprises de lecture : rattachées à leurs films et épisodes au lancement et après chaque mise à jour d'une
+        // playlist (leur numéro de ligne change quand l'adresse du flux change).
+        applicationScope.launch {
+            sourceRepository.sources.map { sources -> sources.map { it.id to it.status?.lastSuccessAtMillis } }.distinctUntilChanged()
+                .collect { sources -> safely("Reprises de lecture") { sources.forEach { (id, _) -> progress.relink(id, channelDao) } } }
         }
 
         // Actualisations automatiques tant que l'application tourne (les TV restent souvent allumées) :

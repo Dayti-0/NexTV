@@ -26,7 +26,29 @@ data class PlaylistBackup(
     val active: Boolean = false,
     val favorites: List<FavoriteBackup> = emptyList(),
     val hiddenGroups: List<HiddenGroupBackup> = emptyList(),
+    /** Films et séries commencés (reprise de lecture). */
+    val progress: List<ProgressBackup> = emptyList(),
+    /** Films et épisodes regardés jusqu'au bout (« Déjà vu »). */
+    val watched: List<WatchedBackup> = emptyList(),
 )
+
+/**
+ * Reprise d'un film, ou d'une série (son épisode en cours : [episodeLabel], « S01E08 »). Le titre est désigné par
+ * sa clé stable ([itemKey]), jamais par son numéro de ligne, qui diffère d'un appareil à l'autre.
+ */
+data class ProgressBackup(
+    val itemKey: String,
+    val kind: String,
+    val title: String,
+    val episodeLabel: String?,
+    val logoUrl: String?,
+    val positionMs: Long,
+    val durationMs: Long,
+    val updatedAt: Long,
+)
+
+/** Film (sa clé) ou épisode (clé de la série, saison et numéro) regardé jusqu'au bout. */
+data class WatchedBackup(val itemKey: String, val watchedAt: Long)
 
 data class FavoriteBackup(val kind: String, val itemKey: String, val title: String, val logoUrl: String?, val position: Int)
 
@@ -82,6 +104,16 @@ object BackupCodec {
             ),
         )
         .put("hiddenGroups", JSONArray(playlist.hiddenGroups.map { JSONObject().put("kind", it.kind).put("title", it.title) }))
+        .put(
+            "progress",
+            JSONArray(
+                playlist.progress.map {
+                    JSONObject().put("itemKey", it.itemKey).put("kind", it.kind).put("title", it.title).putOpt("episodeLabel", it.episodeLabel)
+                        .putOpt("logoUrl", it.logoUrl).put("positionMs", it.positionMs).put("durationMs", it.durationMs).put("updatedAt", it.updatedAt)
+                },
+            ),
+        )
+        .put("watched", JSONArray(playlist.watched.map { JSONObject().put("itemKey", it.itemKey).put("watchedAt", it.watchedAt) }))
 
     private fun playlistOf(json: JSONObject): PlaylistBackup? {
         val url = json.text("url") ?: return null
@@ -106,6 +138,22 @@ object BackupCodec {
             hiddenGroups = json.optJSONArray("hiddenGroups").objects().mapNotNull { group ->
                 // Titre vide : éléments sans groupe.
                 HiddenGroupBackup(group.text("kind") ?: return@mapNotNull null, if (group.isNull("title")) "" else group.optString("title"))
+            },
+            // Absents d'une sauvegarde plus ancienne : listes vides.
+            progress = json.optJSONArray("progress").objects().mapNotNull { progress ->
+                ProgressBackup(
+                    itemKey = progress.text("itemKey") ?: return@mapNotNull null,
+                    kind = progress.text("kind") ?: return@mapNotNull null,
+                    title = progress.text("title").orEmpty(),
+                    episodeLabel = progress.text("episodeLabel"),
+                    logoUrl = progress.text("logoUrl"),
+                    positionMs = progress.optLong("positionMs").coerceAtLeast(0),
+                    durationMs = progress.optLong("durationMs").coerceAtLeast(0),
+                    updatedAt = progress.optLong("updatedAt"),
+                )
+            },
+            watched = json.optJSONArray("watched").objects().mapNotNull { watched ->
+                WatchedBackup(watched.text("itemKey") ?: return@mapNotNull null, watched.optLong("watchedAt"))
             },
         )
     }

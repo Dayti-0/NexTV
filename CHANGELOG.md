@@ -4,6 +4,12 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.91
+- « Reprendre » un film ou une série après un changement d’adresse des flux (autre serveur, autre mot de passe) : le film ou l’épisode est retrouvé par son titre, au lieu d’ouvrir « chaîne introuvable ». Les reprises sont rattachées au lancement et après chaque mise à jour de la playlist
+- « Reprendre la lecture » : un titre retiré de la playlist par le fournisseur n’y apparaît plus (il revient si le titre revient)
+- Sauvegarde : elle contient aussi les reprises de lecture et les « Déjà vu », retrouvés sur un autre appareil une fois la playlist chargée
+- Restauration d’une sauvegarde : un fichier abîmé ou modifié ne peut plus bloquer le lancement de l’appli (les réglages d’un mauvais type sont ignorés), et les favoris d’une playlist sont restaurés d’un seul tenant
+
 ## 0.2.90
 - Zapping : la mémoire du retour en arrière (←) est réutilisée d’une chaîne à l’autre au lieu d’être réservée de nouveau à chaque chaîne (32 Mo à chaque fois) ; moitié moins sur les petits appareils. Moins de risque de fermeture par manque de mémoire sur Fire TV
 - Aperçu de l’accueil : l’image d’une chaîne survolée arrive plus vite (le même lecteur sert d’une chaîne à l’autre)

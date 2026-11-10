@@ -11,6 +11,8 @@ import androidx.room.RoomDatabase
 import androidx.room.Upsert
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
+import tv.nextv.app.data.db.ChannelDao
+import tv.nextv.core.model.ContentKind
 
 /**
  * Lecture en cours d'un film, ou de la série (une ligne par série : l'épisode en cours).
@@ -55,6 +57,13 @@ interface ProgressDao {
 
     @Query("DELETE FROM progress WHERE sourceId = :sourceId AND itemKey = :itemKey")
     suspend fun delete(sourceId: Long, itemKey: String)
+
+    /** Toutes les reprises d'une playlist (sauvegarde, rattachement après une actualisation). */
+    @Query("SELECT * FROM progress WHERE sourceId = :sourceId")
+    suspend fun all(sourceId: Long): List<ProgressEntity>
+
+    @Query("UPDATE progress SET channelId = :channelId WHERE sourceId = :sourceId AND itemKey = :itemKey")
+    suspend fun setChannel(sourceId: Long, itemKey: String, channelId: Long)
 }
 
 @Database(entities = [ProgressEntity::class], version = 1, exportSchema = true)
@@ -101,6 +110,46 @@ class ProgressRepository(database: ProgressDatabase, private val clock: () -> Lo
 
     suspend fun clear(sourceId: Long, itemKey: String) = write { dao.delete(sourceId, itemKey) }
 
+    /** Toutes les reprises d'une playlist (sauvegarde). */
+    suspend fun all(sourceId: Long): List<ProgressEntity> = dao.all(sourceId)
+
+    /**
+     * Reprise venue d'une sauvegarde : gardée si aucune plus récente n'existe déjà. Son film ou son épisode
+     * ([ProgressEntity.channelId]) est retrouvé ensuite par [relink], une fois la playlist chargée.
+     */
+    suspend fun restore(progress: ProgressEntity) = write {
+        val existing = dao.get(progress.sourceId, progress.itemKey)
+        if (existing == null || existing.updatedAt < progress.updatedAt) dao.put(progress)
+    }
+
+    /** La reprise vise encore un titre de la playlist, et le bon (même clé). */
+    suspend fun isLinked(progress: ProgressEntity, channels: ChannelDao): Boolean =
+        channels.identities(listOf(progress.channelId)).any { it.sourceId == progress.sourceId && it.itemKey == progress.itemKey }
+
+    /**
+     * Rattache les reprises de la playlist à leurs films et épisodes. Une reprise retient le numéro de ligne du
+     * titre ([ProgressEntity.channelId]), qui change quand l'adresse de son flux change (autre serveur, autre mot
+     * de passe, sauvegarde restaurée) : « Reprendre » ouvrait alors un titre introuvable. Le titre est retrouvé
+     * par sa clé (la même que celle des favoris), et l'épisode par sa saison et son numéro.
+     *
+     * Une reprise dont le titre a disparu de la playlist est laissée telle quelle : elle sera rattachée s'il
+     * revient.
+     */
+    suspend fun relink(sourceId: Long, channels: ChannelDao) = write {
+        val rows = dao.all(sourceId)
+        if (rows.isEmpty()) return@write
+        val present = rows.map { it.channelId }.distinct().chunked(LOOKUP_CHUNK).flatMap { channels.identities(it) }.associateBy { it.id }
+        for (row in rows) {
+            val current = present[row.channelId]
+            if (current != null && current.sourceId == sourceId && current.itemKey == row.itemKey) continue
+            val target = when (row.kind) {
+                ContentKind.MOVIE.name -> channels.movieIdByKey(sourceId, row.itemKey)
+                else -> episodeOf(row.episodeLabel)?.let { (season, episode) -> channels.episodeIdByKey(sourceId, row.itemKey, season, episode) }
+            }
+            if (target != null && target != row.channelId) dao.setChannel(sourceId, row.itemKey, target)
+        }
+    }
+
     /**
      * Écriture de la reprise : faite toutes les quelques secondes pendant un film, elle ne doit jamais le faire
      * planter (stockage plein, base illisible) ; la position est simplement perdue cette fois-là.
@@ -117,6 +166,15 @@ class ProgressRepository(database: ProgressDatabase, private val clock: () -> Lo
 
     companion object {
         private const val TAG = "NixTV/Progress"
+        private const val LOOKUP_CHUNK = 500
+        private val EPISODE_LABEL = Regex("^(?:S(\\d+))?E(\\d+)$")
+
+        /** Saison (`null` : sans saison) et numéro d'un épisode d'après son libellé (« S01E08 », « E08 »). */
+        internal fun episodeOf(label: String?): Pair<Int?, Int>? {
+            val match = EPISODE_LABEL.matchEntire(label ?: return null) ?: return null
+            val episode = match.groupValues[2].toIntOrNull() ?: return null
+            return match.groupValues[1].toIntOrNull() to episode
+        }
         const val MIN_POSITION_MS = 30_000L
         const val END_MARGIN_MS = 2 * 60_000L
     }
