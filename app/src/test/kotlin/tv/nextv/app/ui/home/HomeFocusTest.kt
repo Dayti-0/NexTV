@@ -13,6 +13,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.isDisplayed
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
@@ -783,6 +784,63 @@ class HomeFocusTest {
     private fun enterStreamingContent() {
         press(Key.DirectionDown)
         press(Key.DirectionRight)
+    }
+
+    /**
+     * Réorganisation des favoris (Live Center, liste) : la dernière chaîne, soulevée, monte jusqu'en haut ; la liste
+     * la suit, elle reste à l'écran et sélectionnée.
+     */
+    @Test
+    fun aMovedFavoriteStaysOnScreen() {
+        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().setInTouchMode(false)
+        val favorites = androidx.compose.runtime.mutableStateListOf(*SampleData.channels.take(20).toTypedArray())
+        val moving = favorites.last()
+        compose.setContent {
+            NexTvTheme(ThemeStyle.NIGHT) {
+                HomeContent(
+                    section = HomeSection.TV,
+                    groups = groups,
+                    category = Category.Favorites,
+                    query = "",
+                    channels = remember { flowOf(PagingData.from(SampleData.channels)) }.collectAsLazyPagingItems(),
+                    favoriteChannels = favorites.toList(),
+                    movies = remember { flowOf(PagingData.from(SampleData.movies)) }.collectAsLazyPagingItems(),
+                    favoriteMovies = emptyList(),
+                    series = remember { flowOf(PagingData.from(SampleData.series)) }.collectAsLazyPagingItems(),
+                    favoriteSeries = emptyList(),
+                    favoriteKeys = favorites.map { it.itemKey }.toSet(),
+                    reorder = ReorderState(active = true, movingKey = moving.itemKey),
+                    now = SampleData.NOW,
+                    snackbarHostState = remember { SnackbarHostState() },
+                    actions = HomeActions(onMove = { _, key, offset ->
+                        val from = favorites.indexOfFirst { it.itemKey == key }
+                        val to = (from + offset).coerceIn(0, favorites.lastIndex)
+                        favorites.add(to, favorites.removeAt(from))
+                    }),
+                    guide = {},
+                    football = {},
+                    layout = HomeLayout.LIVE_CENTER,
+                    gridColumns = GridColumns(),
+                )
+            }
+        }
+        compose.waitForIdle()
+        // Sélection sur la chaîne soulevée (la dernière) : → dans la liste, ↓ jusqu'en bas.
+        repeat(3) { if (focusedText()?.contains(favorites.first().title) != true) press(Key.DirectionRight) }
+        println("Liste : ${focusedText()}")
+        repeat(40) { if (focusedText()?.contains(moving.title) != true) press(Key.DirectionDown) }
+        println("Soulevée : ${focusedText()}")
+        assertTrue("Pas sur la dernière : ${focusedText()}", focusedText()?.contains(moving.title) == true)
+        repeat(favorites.size) { press(Key.DirectionUp) }
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
+        assertEquals(moving.itemKey, favorites.first().itemKey)
+        println("En haut : ${focusedText()}")
+        assertTrue("Plus sélectionnée : ${focusedText()}", focusedText()?.contains(moving.title) == true)
+        compose.onNode(isFocused()).assertIsDisplayed()
+        val bounds = compose.onNode(isFocused()).getBoundsInRoot()
+        val root = compose.onRoot().getBoundsInRoot()
+        assertTrue("Hors de l'écran : $bounds", bounds.top >= root.top && bounds.bottom <= root.bottom)
     }
 
     private fun press(key: Key) {

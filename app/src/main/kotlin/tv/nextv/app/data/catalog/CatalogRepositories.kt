@@ -190,16 +190,24 @@ class FavoritesRepository(private val database: NexTvDatabase) {
         const val GUIDE_SELECTION = "GUIDE"
     }
 
-    /** Déplace un favori de [offset] places (négatif : vers le début). */
-    suspend fun move(sourceId: Long, kind: ContentKind, itemKey: String, offset: Int) {
+    /**
+     * Déplace un favori de [offset] places (négatif : vers le début) parmi ceux affichés ([shownKeys], dans leur
+     * ordre ; `null` : tous). Les favoris qui ne s'affichent plus (chaîne retirée de la playlist, ou regroupée avec
+     * une autre version) passent après : sans cela, un déplacement pouvait échanger sa place avec l'un d'eux, et
+     * rien ne bougeait à l'écran (la dernière chaîne semblait ne pas pouvoir bouger).
+     */
+    suspend fun move(sourceId: Long, kind: ContentKind, itemKey: String, offset: Int, shownKeys: List<String>? = null) {
         database.withTransaction {
-            val items = dao.list(sourceId, kind.name).toMutableList()
-            val from = items.indexOfFirst { it.itemKey == itemKey }
+            val all = dao.list(sourceId, kind.name)
+            val shown = shownKeys?.toSet()
+            val visible = (if (shown == null) all else all.filter { it.itemKey in shown }).toMutableList()
+            val hidden = if (shown == null) emptyList() else all.filter { it.itemKey !in shown }
+            val from = visible.indexOfFirst { it.itemKey == itemKey }
             if (from < 0) return@withTransaction
-            val to = (from + offset).coerceIn(0, items.lastIndex)
-            if (to == from) return@withTransaction
-            items.add(to, items.removeAt(from))
-            items.forEachIndexed { index, item -> if (item.position != index) dao.setPosition(item.id, index) }
+            val to = (from + offset).coerceIn(0, visible.lastIndex)
+            if (to == from && hidden.isEmpty()) return@withTransaction
+            visible.add(to, visible.removeAt(from))
+            (visible + hidden).forEachIndexed { index, item -> if (item.position != index) dao.setPosition(item.id, index) }
         }
     }
 }

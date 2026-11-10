@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.98
+- Favoris, « Réorganiser » : la dernière chaîne se déplace de nouveau, et une chaîne ne peut plus être montée au-delà de la première place. Les favoris qui ne s’affichent plus (chaîne retirée de la playlist ou regroupée avec une autre version) ne comptent plus dans le déplacement
+
 ## 0.2.97
 - Appui long (par exemple pour retirer un favori) : en relâchant OK, l’élément suivant ne s’ouvre plus. Vaut pour toute l’appli
 - Accueil Streaming : plus de boutons « Regarder », « Bande-annonce » et « Plus » sur le bandeau ; la sélection démarre sur la première affiche (OK ouvre sa fiche)

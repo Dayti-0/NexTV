@@ -256,6 +256,29 @@ class DaoQueriesTest {
         assertEquals(listOf("TF1 FHD"), dao.guideFavoriteChannels(sourceId).map { it.name })
     }
 
+    /**
+     * Réorganisation : un favori qui ne s'affiche plus (chaîne disparue de la playlist) ne compte pas. La dernière
+     * chaîne affichée monte d'une place à chaque appui, et rien ne passe au-dessus de la première.
+     */
+    @Test
+    fun `favourites move among the shown ones`() = runBlocking {
+        val repository = tv.nextv.app.data.catalog.FavoritesRepository(db)
+        // Ordre : M6, (chaîne disparue), TF1.
+        listOf("live:m6", "live:gone", "live:tf1").forEach { repository.toggle(sourceId, ContentKind.LIVE, it, it, null) }
+        val dao = db.channelDao()
+        suspend fun shown() = dao.observeFavoriteChannels(sourceId, 1_500).first().map { it.itemKey }
+        assertEquals(listOf("live:m6", "live:tf1"), shown())
+        // TF1 (la dernière) monte : elle passe devant M6 du premier coup.
+        repository.move(sourceId, ContentKind.LIVE, "live:tf1", -1, shown())
+        assertEquals(listOf("live:tf1", "live:m6"), shown())
+        // Encore plus haut : elle reste la première.
+        repository.move(sourceId, ContentKind.LIVE, "live:tf1", -1, shown())
+        assertEquals(listOf("live:tf1", "live:m6"), shown())
+        // Et redescend en dernière place.
+        repository.move(sourceId, ContentKind.LIVE, "live:tf1", 1, shown())
+        assertEquals(listOf("live:m6", "live:tf1"), shown())
+    }
+
     @Test
     fun `guide versions list the best visible version of a channel first`() = runBlocking {
         val dao = db.channelDao()

@@ -725,9 +725,15 @@ class HomeViewModel(
         reorder.update { it.copy(movingKey = if (it.movingKey == itemKey) null else itemKey) }
     }
 
+    /** Déplace un favori parmi ceux affichés (la liste de l'écran). */
     fun moveFavorite(kind: ContentKind, itemKey: String, offset: Int) {
         val id = sourceId.value ?: return
-        viewModelScope.launch { container.favorites.move(id, kind, itemKey, offset) }
+        val shown = when (kind) {
+            ContentKind.LIVE -> favoriteChannels.value.map { it.itemKey }
+            ContentKind.MOVIE -> favoriteMovies.value.map { it.itemKey }
+            ContentKind.SERIES -> favoriteSeries.value.map { it.itemKey }
+        }
+        viewModelScope.launch { container.favorites.move(id, kind, itemKey, offset, shown.takeIf { itemKey in it }) }
     }
 
     private fun <T : Any> pager(source: () -> androidx.paging.PagingSource<Int, T>): Flow<PagingData<T>> =
