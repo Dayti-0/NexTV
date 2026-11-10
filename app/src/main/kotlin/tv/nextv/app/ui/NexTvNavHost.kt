@@ -12,6 +12,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
+import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -92,6 +93,12 @@ fun NexTvNavHost() {
     }
     // Playlist transmise par adb : éditeur prérempli, après l'écran de démarrage (qui remplace la pile).
     val container = appContainer()
+    // Écran affiché (modèle de la route, sans numéro de chaîne) : noté pour « Dernier incident ».
+    DisposableEffect(navController, container) {
+        val listener = NavController.OnDestinationChangedListener { _, destination, _ -> container.crashLog?.screen(destination.route) }
+        navController.addOnDestinationChangedListener(listener)
+        onDispose { navController.removeOnDestinationChangedListener(listener) }
+    }
     val playlistImport by container.playlistImport.collectAsState()
     LaunchedEffect(playlistImport) {
         if (playlistImport == null) return@LaunchedEffect

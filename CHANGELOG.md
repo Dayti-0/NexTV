@@ -4,6 +4,11 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.88
+- « Dernier incident » (Réglages) : la vraie cause d’un plantage n’est plus coupée (elle se trouvait en bas de la trace, au-delà des 40 lignes gardées)
+- « Dernier incident » : les fermetures par le système sont notées aussi, avec leur raison (mémoire insuffisante, appli qui ne répond plus, bibliothèque native), l’écran affiché à ce moment-là (guide, lecteur…) et la mémoire utilisée. Sur Android 11 et plus, la raison vient du système ; sur les appareils plus anciens, l’appli constate seulement qu’elle a été fermée pendant qu’on s’en servait (appareil éteint et mise à jour exclus)
+- Bandeau Streaming : le titre et le résumé gardent leur texte pendant le fondu vers le titre suivant
+
 ## 0.2.87
 - Stockage de l’appareil plein : l’appli ne se ferme plus pendant une actualisation de la playlist ou du guide (même automatique, pendant un film). Un message le dit, et les chaînes et le guide précédents sont gardés
 - Pause et retour en arrière (←) du direct : plus de blocage de l’image au moment d’appuyer, et plus de fermeture de l’appli quand le stockage est plein (la pause reste alors une simple pause)

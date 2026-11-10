@@ -82,7 +82,7 @@ class AppContainer(context: Context) {
      */
     private val backgroundErrors = CoroutineExceptionHandler { _, error ->
         runCatching { logger.error("App", "Tâche de fond interrompue", error) }
-        crashLog?.record(error)
+        crashLog?.record(error, fatal = false)
     }
 
     /** Portée des tâches qui doivent survivre à la navigation (actualisations). */

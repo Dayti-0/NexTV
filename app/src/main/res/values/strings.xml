@@ -456,6 +456,8 @@
     <string name="preview_volume_medium">Normal</string>
     <string name="settings_crash">Dernier incident</string>
     <string name="settings_crash_help">NixTV s’est fermé de façon inattendue %1$s (version %2$s). Une photo de ce cadre aide à corriger le problème.</string>
+    <string name="settings_crash_system_help">NixTV a été fermé par le système %1$s (version %2$s). Une photo de ce cadre aide à corriger le problème.</string>
+    <string name="settings_crash_background_help">Une tâche de fond a échoué %1$s (version %2$s), sans fermer NixTV. Une photo de ce cadre aide à corriger le problème.</string>
     <string name="settings_crash_clear">Effacer</string>
     <string name="settings_playlist_updated">Playlist actualisée : %1$d entrées</string>
     <string name="settings_playback">Lecture</string>

@@ -223,6 +223,11 @@ class HomeViewModel(
 
     val section = MutableStateFlow(HomeSection.TV)
 
+    init {
+        // Section affichée : notée pour « Dernier incident » (où l'application en était si le système la ferme).
+        viewModelScope.launch { section.collect { container.crashLog?.section(it.name.lowercase()) } }
+    }
+
     private val categories = MutableStateFlow<Map<HomeSection, Category>>(emptyMap())
     private val queries = MutableStateFlow<Map<HomeSection, String>>(emptyMap())
 

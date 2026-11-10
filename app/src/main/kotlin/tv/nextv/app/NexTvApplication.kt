@@ -1,6 +1,8 @@
 package tv.nextv.app
 
+import android.app.Activity
 import android.app.Application
+import android.os.Bundle
 import okio.Path.Companion.toOkioPath
 import coil3.request.allowRgb565
 import coil3.request.crossfade
@@ -24,14 +26,47 @@ class NexTvApplication : Application(), SingletonImageLoader.Factory {
 
     /** Dernier plantage (réglages). Installé en premier : un plantage au démarrage est aussi enregistré. */
     val crashLog: CrashLog by lazy {
-        CrashLog(File(filesDir, CRASH_FILE)) { text -> if (::container.isInitialized) container.redactor.redact(text) else Redactor().redact(text) }
+        CrashLog(
+            file = File(filesDir, CRASH_FILE),
+            memory = { SystemExits.memory(this) },
+            redact = { text -> if (::container.isInitialized) container.redactor.redact(text) else Redactor().redact(text) },
+        )
     }
 
     override fun onCreate() {
         super.onCreate()
         crashLog.install()
+        // Fermeture précédente par le système (mémoire, blocage…) : notée dans « Dernier incident ».
+        SystemExits.check(this, crashLog)
         container = AppContainer(this)
         container.start()
+        // Session notée tant que l'application est à l'écran : où elle en était si le système la ferme.
+        val boot = SystemExits.bootCount(this)
+        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+            private var started = 0
+
+            override fun onActivityStarted(activity: Activity) {
+                if (started++ == 0) crashLog.foreground(boot)
+            }
+
+            override fun onActivityStopped(activity: Activity) {
+                if (--started <= 0) {
+                    started = 0
+                    crashLog.background()
+                }
+            }
+
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
+            override fun onActivityResumed(activity: Activity) = Unit
+            override fun onActivityPaused(activity: Activity) = Unit
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
+            override fun onActivityDestroyed(activity: Activity) = Unit
+        })
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        SystemExits.pressureName(level)?.let(crashLog::memoryPressure)
     }
 
     /** Les logos passent par le même client HTTP (proxy « playlists et logos » compris). */

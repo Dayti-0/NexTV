@@ -148,21 +148,23 @@ internal fun StreamingHero(
                 fontWeight = FontWeight.Bold,
             )
             // Changement de contenu : le texte se fond, sans saut.
+            // Le fondu ne joue qu'au changement de titre ; chaque texte garde le sien pendant qu'il s'efface.
             AnimatedContent(
-                spotlight?.item?.itemKey,
+                spotlight,
                 transitionSpec = { fadeIn(tween(350)) togetherWith fadeOut(tween(200)) },
+                contentKey = { it?.item?.itemKey },
                 label = "heroText",
-            ) { _ ->
+            ) { shown ->
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
-                        spotlight?.item?.title ?: allLabel(section),
+                        shown?.item?.title ?: allLabel(section),
                         style = MaterialTheme.typography.displaySmall,
                         fontWeight = FontWeight.Bold,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    spotlight?.let { MetaLine(it) }
-                    spotlight?.overview?.let { overview ->
+                    shown?.let { MetaLine(it) }
+                    shown?.overview?.let { overview ->
                         Text(
                             overview,
                             style = MaterialTheme.typography.bodyMedium,

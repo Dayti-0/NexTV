@@ -80,6 +80,7 @@ import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import tv.nextv.app.CrashLog
 import tv.nextv.app.R
 import tv.nextv.app.data.settings.PlaylistRefresh
 import tv.nextv.app.data.settings.PreviewVolume
@@ -322,7 +323,12 @@ fun SettingsContent(
             // Dernier plantage : en tête, pour pouvoir le signaler (photo de l'écran).
             SettingsPage.INCIDENT -> state.lastCrash?.let { crash ->
                 SectionCard(stringResource(R.string.settings_crash), icon = Icons.Filled.Warning) {
-                    InfoText(stringResource(R.string.settings_crash_help, relativeTime(crash.atMillis, now).lowercaseFirst(), crash.version))
+                    val help = when (crash.kind) {
+                        CrashLog.Kind.CRASH -> R.string.settings_crash_help
+                        CrashLog.Kind.SYSTEM -> R.string.settings_crash_system_help
+                        CrashLog.Kind.BACKGROUND -> R.string.settings_crash_background_help
+                    }
+                    InfoText(stringResource(help, relativeTime(crash.atMillis, now).lowercaseFirst(), crash.version))
                     Text(crash.summary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
                     Text(
                         crash.details,
