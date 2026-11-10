@@ -34,6 +34,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.Player
+import kotlinx.coroutines.delay
+import androidx.compose.runtime.LaunchedEffect
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
@@ -175,6 +177,43 @@ private fun ProgrammeLine(programme: GuideProgramme, now: Long) {
 @AndroidXOptIn(UnstableApi::class)
 @Composable
 internal fun PreviewVideo(player: Player, modifier: Modifier = Modifier, zoom: Boolean = false) {
+    // Son sans image : le flux a démarré pendant que l'écran de l'aperçu changeait (catégorie ouverte dans
+    // Streaming), et le décodeur attend la prochaine image complète, parfois 20 s. Au bout de quelques secondes
+    // de son sans image, l'aperçu repart au direct : l'image arrive aussitôt, comme en changeant de chaîne.
+    LaunchedEffect(player) {
+        var rendered = false
+        // Temps passé sans image depuis l'arrivée de l'aperçu (ou de sa nouvelle chaîne, ou de la dernière reprise).
+        var waited = 0L
+        var restarts = 0
+        val listener = object : Player.Listener {
+            override fun onRenderedFirstFrame() {
+                rendered = true
+            }
+
+            override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
+                rendered = false
+                restarts = 0
+                waited = 0L
+            }
+        }
+        player.addListener(listener)
+        try {
+            while (true) {
+                delay(PREVIEW_FRAME_CHECK_MILLIS)
+                if (rendered || restarts >= PREVIEW_MAX_RESTARTS) continue
+                waited += PREVIEW_FRAME_CHECK_MILLIS
+                // Le son joue depuis un moment, toujours pas d'image (une radio, sans vidéo, n'est pas concernée).
+                val hasVideo = player.currentTracks.containsType(androidx.media3.common.C.TRACK_TYPE_VIDEO)
+                if (player.isPlaying && hasVideo && waited >= PREVIEW_NO_IMAGE_MILLIS) {
+                    restarts++
+                    waited = 0L
+                    player.seekToDefaultPosition()
+                }
+            }
+        } finally {
+            player.removeListener(listener)
+        }
+    }
     AndroidView(
         factory = { context ->
             PlayerView(context).apply {
@@ -200,5 +239,10 @@ internal fun PreviewVideo(player: Player, modifier: Modifier = Modifier, zoom: B
         modifier = modifier,
     )
 }
+
+/** Surveillance de l'image de l'aperçu : fréquence, son sans image toléré, reprises au direct au plus. */
+private const val PREVIEW_FRAME_CHECK_MILLIS = 500L
+private const val PREVIEW_NO_IMAGE_MILLIS = 2_000L
+private const val PREVIEW_MAX_RESTARTS = 2
 
 private fun timeOf(millis: Long): String = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(millis))
