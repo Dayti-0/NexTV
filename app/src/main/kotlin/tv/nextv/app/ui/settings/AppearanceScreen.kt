@@ -59,6 +59,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
@@ -203,9 +204,9 @@ fun AppearanceContent(
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = window.horizontalPadding, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                // Interfaces : trois cartes illustrées.
+                // 1. Interface de l'accueil : trois cartes illustrées (schéma, nom, description courte).
                 Heading(stringResource(R.string.appearance_interface))
                 if (window.isWide) {
                     // Écran large : les trois interfaces côte à côte.
@@ -221,40 +222,64 @@ fun AppearanceContent(
                         }
                     }
                 }
-                run {
-                    // Chaînes en liste (logo, nom, programme) ou en mosaïque de vignettes : Live Center, et la
-                    // section TV de Streaming et Classique (films et séries y restent en rangées).
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(stringResource(R.string.appearance_channels), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(end = 6.dp))
-                        listOf(false to R.string.appearance_channels_list, true to R.string.appearance_channels_mosaic).forEach { (mosaic, label) ->
-                            val selected = mosaic == channelMosaic
-                            PillButton(
-                                stringResource(label),
-                                { onChannelMosaic(mosaic) },
-                                icon = if (selected) Icons.Filled.Check else null,
-                                style = if (selected) PillStyle.Primary else PillStyle.Secondary,
-                                modifier = Modifier.resetPreviewOnFocus(),
-                            )
+
+                // 2. Chaînes et affiches : liste ou mosaïque, vignettes par ligne, sur une ligne, avec un aperçu qui suit.
+                Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Heading(stringResource(R.string.appearance_lists))
+                    Text(stringResource(R.string.appearance_lists_help), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+                    FlowRow(
+                        Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(28.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        // Chaînes en liste (logo, nom, programme) ou en mosaïque de vignettes.
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text(stringResource(R.string.appearance_channels), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(end = 4.dp))
+                            listOf(false to R.string.appearance_channels_list, true to R.string.appearance_channels_mosaic).forEach { (mosaic, label) ->
+                                val selected = mosaic == channelMosaic
+                                PillButton(
+                                    stringResource(label),
+                                    { onChannelMosaic(mosaic) },
+                                    icon = if (selected) Icons.Filled.Check else null,
+                                    style = if (selected) PillStyle.Primary else PillStyle.Secondary,
+                                    modifier = Modifier.resetPreviewOnFocus(),
+                                )
+                            }
+                        }
+                        // Vignettes par ligne (mosaïque des chaînes, films et séries) : exactement ce nombre à l'écran.
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text(stringResource(R.string.appearance_per_row), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(end = 4.dp))
+                            GridColumns.PER_ROW.forEach { count ->
+                                val selected = count == perRow
+                                PillButton(
+                                    count.toString(),
+                                    { onPerRow(count) },
+                                    icon = if (selected) Icons.Filled.Check else null,
+                                    style = if (selected) PillStyle.Primary else PillStyle.Secondary,
+                                    modifier = Modifier.resetPreviewOnFocus(),
+                                )
+                            }
                         }
                     }
-                    // Vignettes par ligne (mosaïque des chaînes, films et séries) : exactement ce nombre à l'écran.
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(stringResource(R.string.appearance_per_row), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(end = 6.dp))
-                        GridColumns.PER_ROW.forEach { count ->
-                            val selected = count == perRow
-                            PillButton(
-                                count.toString(),
-                                { onPerRow(count) },
-                                icon = if (selected) Icons.Filled.Check else null,
-                                style = if (selected) PillStyle.Primary else PillStyle.Secondary,
-                                modifier = Modifier.resetPreviewOnFocus(),
-                            )
-                        }
+                    if (window.isWide) {
+                        GridSketch(
+                            channelMosaic,
+                            perRow,
+                            Modifier.width(220.dp).aspectRatio(16f / 9f).clip(MaterialTheme.shapes.medium).background(MaterialTheme.colorScheme.surfaceContainer),
+                        )
                     }
                 }
 
-                Heading(stringResource(R.string.appearance_palette))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                // 3. Couleurs : « Par défaut » et « Revenir à » sur la ligne du titre, puis toutes les palettes sur une ligne.
+                FlowRow(
+                    Modifier.padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    itemVerticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Heading(stringResource(R.string.appearance_palette), Modifier.padding(end = 10.dp))
                     PillButton(
                         stringResource(R.string.appearance_default),
                         { onTheme(ThemeStyle.DEFAULT) },
@@ -335,8 +360,56 @@ private val CATEGORY_GAP = 18.dp
 private fun Modifier.resetPreviewOnFocus(): Modifier = onFocusChanged { if (it.isFocused) ThemePreview.style = null }
 
 @Composable
-private fun Heading(text: String) {
-    Text(text, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+private fun Heading(text: String, modifier: Modifier = Modifier) {
+    Text(text, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = modifier)
+}
+
+/**
+ * Aperçu des réglages « Chaînes » et « Vignettes par ligne », aux couleurs du thème : en haut les chaînes (en liste,
+ * ou en mosaïque de [perRow] vignettes), en bas une rangée de [perRow] affiches.
+ */
+@Composable
+private fun GridSketch(mosaic: Boolean, perRow: Int, modifier: Modifier) {
+    val colors = MaterialTheme.colorScheme
+    Column(modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (mosaic) {
+            Row(Modifier.fillMaxWidth().weight(0.45f), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                repeat(perRow) { index ->
+                    Box(
+                        Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(3.dp))
+                            .background(if (index == 0) colors.surfaceContainerHighest else colors.surfaceContainerHigh)
+                            .then(if (index == 0) Modifier.border(1.dp, colors.primary, RoundedCornerShape(3.dp)) else Modifier),
+                    ) {
+                        Box(Modifier.align(Alignment.Center).fillMaxWidth(0.45f).fillMaxHeight(0.35f).clip(RoundedCornerShape(2.dp)).background(colors.onSurfaceVariant.copy(alpha = 0.45f)))
+                    }
+                }
+            }
+        } else {
+            Column(Modifier.fillMaxWidth().weight(0.45f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                repeat(2) { index ->
+                    Row(
+                        Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(3.dp))
+                            .background(if (index == 0) colors.surfaceContainerHighest else colors.surfaceContainerHigh)
+                            .then(if (index == 0) Modifier.border(1.dp, colors.primary, RoundedCornerShape(3.dp)) else Modifier)
+                            .padding(3.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(Modifier.fillMaxHeight().aspectRatio(1.4f).clip(RoundedCornerShape(2.dp)).background(colors.onSurfaceVariant.copy(alpha = 0.45f)))
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Block(colors.onSurface.copy(alpha = 0.7f), height = 3, fraction = 0.5f)
+                            Block(colors.onSurfaceVariant.copy(alpha = 0.5f), height = 2, fraction = 0.8f)
+                        }
+                    }
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth().weight(0.55f), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            repeat(perRow) {
+                Box(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(3.dp)).background(colors.surfaceContainerHigh))
+            }
+        }
+    }
 }
 
 /**
@@ -435,7 +508,7 @@ private fun Pill(background: Color, content: Color, text: String) {
 
 /** Interface de l'accueil : schéma, nom et description. */
 @Composable
-internal fun LayoutCard(layout: HomeLayout, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, lines: Int = 4) {
+internal fun LayoutCard(layout: HomeLayout, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, lines: Int = 3) {
     FocusSurface(
         onClick = onClick,
         modifier = modifier.resetPreviewOnFocus(),
@@ -445,7 +518,8 @@ internal fun LayoutCard(layout: HomeLayout, selected: Boolean, onClick: () -> Un
         focusScale = 1.04f,
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            LayoutSketch(layout, Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(MaterialTheme.shapes.medium).background(MaterialTheme.colorScheme.background))
+            // Schéma un peu plus large que haut : les trois cartes et les réglages dessous tiennent sur l'écran.
+            LayoutSketch(layout, Modifier.fillMaxWidth().aspectRatio(2f).clip(MaterialTheme.shapes.medium).background(MaterialTheme.colorScheme.background))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(homeLayoutLabel(layout), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 if (selected) Icon(Icons.Filled.Check, contentDescription = stringResource(R.string.appearance_current), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
@@ -456,6 +530,7 @@ internal fun LayoutCard(layout: HomeLayout, selected: Boolean, onClick: () -> Un
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 minLines = lines,
                 maxLines = lines,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
@@ -483,44 +558,61 @@ private fun LayoutSketch(layout: HomeLayout, modifier: Modifier) {
                     Block(colors.onSurfaceVariant.copy(alpha = 0.5f), height = 3, fraction = 0.9f)
                 }
             }
+            // Streaming : grand visuel en haut (titre et résumé à gauche, image à droite, sans boutons), puis le Top 10
+            // (grands chiffres) et une rangée d'affiches.
             HomeLayout.STREAMING -> Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Box(
-                    Modifier.fillMaxWidth().weight(0.42f).clip(RoundedCornerShape(4.dp))
-                        .background(Brush.horizontalGradient(listOf(colors.surfaceContainerHigh, colors.primary.copy(alpha = 0.55f)))),
-                ) {
-                    Column(Modifier.align(Alignment.CenterStart).padding(6.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Block(colors.onSurface.copy(alpha = 0.8f), height = 5, width = 50)
-                        Block(colors.primary, height = 5, width = 22)
+                Row(Modifier.fillMaxWidth().weight(0.4f)) {
+                    Column(Modifier.weight(0.5f).fillMaxHeight().padding(top = 4.dp, end = 6.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Block(colors.primary, height = 3, width = 18)
+                        Block(colors.onSurface.copy(alpha = 0.85f), height = 6, fraction = 0.8f)
+                        Block(colors.onSurfaceVariant.copy(alpha = 0.6f), height = 3, fraction = 0.95f)
+                        Block(colors.onSurfaceVariant.copy(alpha = 0.6f), height = 3, fraction = 0.7f)
+                    }
+                    Box(
+                        Modifier.weight(0.5f).fillMaxHeight().clip(RoundedCornerShape(4.dp))
+                            .background(Brush.horizontalGradient(listOf(colors.background, colors.primary.copy(alpha = 0.55f), colors.secondary.copy(alpha = 0.4f)))),
+                    )
+                }
+                Row(Modifier.fillMaxWidth().weight(0.36f), horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+                    repeat(4) { index ->
+                        Text(
+                            "${index + 1}",
+                            color = colors.onSurface.copy(alpha = 0.6f),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Black,
+                            maxLines = 1,
+                        )
+                        Box(
+                            Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(3.dp))
+                                .background(if (index == 0) colors.surfaceContainerHighest else colors.surfaceContainer)
+                                .then(if (index == 0) Modifier.border(1.dp, colors.primary, RoundedCornerShape(3.dp)) else Modifier),
+                        )
                     }
                 }
-                repeat(2) { row ->
-                    Row(Modifier.fillMaxWidth().weight(0.29f), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        repeat(7) { index ->
-                            Box(
-                                Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(3.dp))
-                                    .background(if (row == 0 && index == 1) colors.surfaceContainerHighest else colors.surfaceContainer)
-                                    .then(if (row == 0 && index == 1) Modifier.border(1.dp, colors.primary, RoundedCornerShape(3.dp)) else Modifier),
-                            )
-                        }
-                    }
+                Row(Modifier.fillMaxWidth().weight(0.24f), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    repeat(7) { Box(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(3.dp)).background(colors.surfaceContainer)) }
                 }
             }
+            // Classique : menu d'accueil en grandes tuiles (TV, Guide, Films, Séries, Foot) et raccourcis dessous.
             HomeLayout.PREMIUM -> Box(
                 Modifier.fillMaxSize().clip(RoundedCornerShape(4.dp))
-                    .background(Brush.linearGradient(listOf(colors.primary.copy(alpha = 0.35f), colors.background, colors.secondary.copy(alpha = 0.25f)))),
+                    .background(Brush.linearGradient(listOf(colors.primary.copy(alpha = 0.3f), colors.background, colors.secondary.copy(alpha = 0.2f)))),
             ) {
-                Column(Modifier.align(Alignment.TopStart).padding(8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Block(colors.onSurface.copy(alpha = 0.9f), height = 8, width = 70)
-                    Block(colors.onSurfaceVariant.copy(alpha = 0.7f), height = 3, width = 90)
-                    Block(colors.onSurfaceVariant.copy(alpha = 0.7f), height = 3, width = 60)
-                }
-                Row(Modifier.align(Alignment.BottomStart).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    repeat(4) { index ->
-                        Box(
-                            Modifier.size(width = 38.dp, height = 24.dp).clip(RoundedCornerShape(4.dp))
-                                .background(if (index == 0) colors.surfaceContainerHighest else colors.surfaceContainer.copy(alpha = 0.8f))
-                                .then(if (index == 0) Modifier.border(1.dp, colors.onSurface.copy(alpha = 0.8f), RoundedCornerShape(4.dp)) else Modifier),
-                        )
+                Column(Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Block(colors.onSurface.copy(alpha = 0.85f), height = 6, width = 54)
+                    Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        repeat(5) { index ->
+                            Box(
+                                Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(5.dp))
+                                    .background(if (index == 0) colors.surfaceContainerHighest else colors.surfaceContainer.copy(alpha = 0.85f))
+                                    .then(if (index == 0) Modifier.border(1.dp, colors.primary, RoundedCornerShape(5.dp)) else Modifier),
+                            ) {
+                                Box(Modifier.align(Alignment.Center).size(9.dp).clip(CircleShape).background(colors.primary.copy(alpha = 0.7f)))
+                            }
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        repeat(4) { Box(Modifier.size(width = 26.dp, height = 8.dp).clip(CircleShape).background(colors.surfaceContainerHigh)) }
                     }
                 }
             }

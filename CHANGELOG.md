@@ -4,6 +4,12 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.102
+- Réglages › Apparence refait : schémas des trois interfaces à jour (Streaming sans boutons, avec son Top 10 ; Classique avec son menu en grandes tuiles) et descriptions plus courtes
+- Apparence : « Chaînes et affiches » regroupe liste ou mosaïque et vignettes par ligne, avec une phrase qui dit où ça s’applique et un petit aperçu qui change en direct
+- Apparence : « Par défaut » et « Revenir à… » sont sur la ligne du titre « Couleurs » ; toutes les couleurs restent sur une seule ligne
+- La couleur « Classique (bleu) » s’appelle maintenant « Bleu », et sa famille « Essentielles » (pour ne pas confondre avec l’interface Classique)
+
 ## 0.2.101
 - L’interface « Cinéma Premium » s’appelle maintenant « Classique »
 - Classique : « Favoris » du menu d’accueil ouvre une fenêtre avec trois onglets, Films, Séries et Chaînes TV, comme « Reprendre la lecture ». OK ouvre la fiche d’un film ou d’une série ; sur une chaîne, elle se lance et haut/bas passe aux autres chaînes favorites. Appui long : retirer des favoris
