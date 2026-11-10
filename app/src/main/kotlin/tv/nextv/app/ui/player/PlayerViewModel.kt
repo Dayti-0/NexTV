@@ -107,6 +107,27 @@ class PlayerViewModel(
     private var multicastLock: WifiManager.MulticastLock? = null
     private var loadJob: Job? = null
 
+    // Tout ce dont se servent l'ouverture de la chaîne et les surveillances lancées à la création (bloc `init`,
+    // plus bas) est déclaré ici, au-dessus : une propriété déclarée après lui serait encore vide à ce moment-là.
+
+    /** Écran du lecteur affiché (ni veille, ni autre application au premier plan). */
+    private val started = MutableStateFlow(false)
+
+    /** L'écran a déjà été affiché : ensuite, « pas affiché » veut dire quitté (et non pas encore ouvert). */
+    private var shownOnce = false
+
+    /** Flux à ouvrir au retour sur l'écran (son ouverture est arrivée pendant qu'il était quitté) : repli HLS ou non. */
+    private var startWhenShown: Boolean? = null
+
+    /** Relances du direct interrompu : combien, et après quelle attente. */
+    private val liveRetries = LiveRetries()
+    private var liveRetryJob: Job? = null
+    private var liveStableJob: Job? = null
+
+    /** Direct fermé en quittant l'écran (veille, autre application) : à rouvrir au retour. */
+    private var reopenLiveOnStart = false
+
+
     /** Qualité visée (réglage commun à toutes les chaînes), modifiable depuis les options. */
     val qualityTarget: StateFlow<QualityTarget> = container.settings.qualityTarget
         .stateIn(viewModelScope, SharingStarted.Eagerly, QualityTarget.BEST)
@@ -191,6 +212,7 @@ class PlayerViewModel(
     )
 
     init {
+        // Attention : rien de ce qui est déclaré plus bas dans la classe n'est encore prêt ici.
         load(channelId)
         // Ces surveillances s'arrêtent quand l'écran n'est plus affiché (veille, autre application).
         viewModelScope.launch {
@@ -232,15 +254,6 @@ class PlayerViewModel(
             }
         }
     }
-
-    /** Écran du lecteur affiché (ni veille, ni autre application au premier plan). */
-    private val started = MutableStateFlow(false)
-
-    /** L'écran a déjà été affiché : ensuite, « pas affiché » veut dire quitté (et non pas encore ouvert). */
-    private var shownOnce = false
-
-    /** Flux à ouvrir au retour sur l'écran (son ouverture est arrivée pendant qu'il était quitté) : repli HLS ou non. */
-    private var startWhenShown: Boolean? = null
 
     private suspend fun awaitStarted() {
         if (!started.value) started.first { it }
@@ -854,14 +867,6 @@ class PlayerViewModel(
 
     /** Direct proprement dit : ni replay ni « Depuis le début » (enregistrements du serveur, qui ont une fin). */
     private val watchingLive: Boolean get() = state.value.isLive && delayed.replay == null && !delayed.restarting
-
-    /** Relances du direct interrompu : combien, et après quelle attente. */
-    private val liveRetries = LiveRetries()
-    private var liveRetryJob: Job? = null
-    private var liveStableJob: Job? = null
-
-    /** Direct fermé en quittant l'écran (veille, autre application) : à rouvrir au retour. */
-    private var reopenLiveOnStart = false
 
     private fun resetLiveRetries() {
         liveRetryJob?.cancel()

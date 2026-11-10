@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.89
+- Correction urgente : l’appli se fermait à l’ouverture d’un film ou d’une chaîne (erreur introduite dans la 0.2.87). Le lecteur s’ouvre de nouveau normalement
+
 ## 0.2.88
 - « Dernier incident » (Réglages) : la vraie cause d’un plantage n’est plus coupée (elle se trouvait en bas de la trace, au-delà des 40 lignes gardées)
 - « Dernier incident » : les fermetures par le système sont notées aussi, avec leur raison (mémoire insuffisante, appli qui ne répond plus, bibliothèque native), l’écran affiché à ce moment-là (guide, lecteur…) et la mémoire utilisée. Sur Android 11 et plus, la raison vient du système ; sur les appareils plus anciens, l’appli constate seulement qu’elle a été fermée pendant qu’on s’en servait (appareil éteint et mise à jour exclus)
