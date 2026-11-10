@@ -55,6 +55,12 @@ class MetadataRepository(
     /** Bande-annonce d'une saison de série (identifiant YouTube, langue), `null` si TMDB n'en a pas. */
     suspend fun seasonTrailer(details: MediaDetails, season: Int): Pair<String, String>? = client.seasonTrailer(details.tmdbId, season)
 
+    /**
+     * Retire du cache les fiches lues depuis plus de [PURGE_AGE] (titres disparus des playlists, recherches
+     * anciennes) : sans cela, il ne fait que grossir. Une fiche encore consultée est relue avant (30 jours).
+     */
+    suspend fun purge(): Int = dao.deleteOlderThan(clock() - PURGE_AGE)
+
     /** Fiche déjà en cache et encore valable, sans appel réseau (`null` sinon). */
     suspend fun cachedDetails(cacheKey: String, type: MediaType): MediaDetails? {
         val cached = dao.get(cacheKey)?.takeIf { it.found } ?: return null
@@ -142,6 +148,7 @@ class MetadataRepository(
         const val DAY = 24 * 60 * 60_000L
         const val FOUND_TTL = 30 * DAY
         const val NOT_FOUND_TTL = 7 * DAY
+        const val PURGE_AGE = 90 * DAY
         const val TRENDING_TTL = 6 * 60 * 60_000L
 
         /** Distributions gardées en mémoire (fiches ouvertes pendant la session). */

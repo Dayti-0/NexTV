@@ -282,6 +282,20 @@ class DaoQueriesTest {
             assertEquals(text, regexVersion(text), ItemKeys.normalize(text))
     }
 
+    @Test
+    fun oldMetadataSheetsArePurged() = runBlocking {
+        val day = 24 * 60 * 60_000L
+        val now = 1_800_000_000_000L
+        val dao = db.tmdbDao()
+        dao.put(TmdbCacheEntity(cacheKey = "movie:ancien", found = true, fetchedAt = now - 120 * day, title = "Ancien"))
+        dao.put(TmdbCacheEntity(cacheKey = "movie:inconnu", found = false, fetchedAt = now - 95 * day))
+        dao.put(TmdbCacheEntity(cacheKey = "movie:recent", found = true, fetchedAt = now - 40 * day, title = "Récent"))
+        // Fiches lues depuis plus de trois mois : retirées ; les autres restent (même expirées, elles servent hors ligne).
+        assertEquals(2, dao.deleteOlderThan(now - 90 * day))
+        assertEquals(null, dao.get("movie:ancien"))
+        assertEquals("Récent", dao.get("movie:recent")?.title)
+    }
+
     private suspend fun ChannelDao.observeAllGroupsOnce(): Map<String?, Int> =
         observeAllGroups(sourceId, "SERIES").first().associate { it.title to it.count }
 }

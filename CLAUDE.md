@@ -52,13 +52,30 @@ Commandes :
   le défilement n'est pas celui d'une télé.
 - Pour une capture ponctuelle dans un test temporaire, passer `-Proborazzi.test.record=true`.
 
+## Pièges déjà rencontrés
+
+- Dans une classe Kotlin, une propriété déclarée **après** le bloc `init` est encore vide quand `init` s'exécute.
+  `PlayerViewModel.init` appelle `load()` : tout ce que `load()` et les surveillances utilisent doit être déclaré
+  au-dessus (la 0.2.87 plantait à chaque ouverture du lecteur pour cette raison).
+- Tout changement d'un écran ou d'un modèle doit passer par un test qui l'ouvre vraiment : `PlayerViewModelTest`
+  (film, chaîne, veille, touches), `ApplicationStartTest` (lancement réel de l'application et de l'activité),
+  `GuideNavigationTest` (navigation à la télécommande). Les tests unitaires seuls ne voient pas ces erreurs.
+- libVLC : jamais `stop()` ni `release()` sur le fil principal (application figée, « ne répond plus »).
+- Base Room : augmenter `NexTvDatabase.VERSION` demande d'ajouter la migration à `MIGRATIONS` et le schéma
+  `app/schemas/…json` au dépôt (`MigrationsTest` le vérifie). Sans migration, l'application ne démarre plus.
+- Le lint ne tourne pas toujours ici (dépôt Maven qui limite les requêtes) : regarder le résultat de la CI après
+  chaque envoi (`Android build & lint`), et corriger dans la version suivante.
+
 ## Publier une version
 
 - Écrire d'abord la section `## X.Y.Z` de `CHANGELOG.md` (en français, une ligne par changement visible) : elle
   devient les notes de la version, seules affichées par l'application avant la mise à jour.
 - Pousser une branche `release/vX.Y.Z` sur le commit à publier : le workflow « Release » construit l'APK signé et
   crée la version GitHub, que l'application propose en mise à jour.
-- Numéro : la dernière version + 1 (`git ls-remote --heads origin 'release/*'`).
+- Numéro : la dernière version + 1 (`git ls-remote --heads origin 'release/*'`). Le numéro interne (versionCode)
+  est calculé à partir de ce nom par le workflow (0.2.94 → 20094) : ne jamais publier un numéro plus petit que le
+  précédent.
+- Le workflow « Release » lance les tests du module `core` avant de construire l'APK.
 - L'utilisateur a demandé que chaque correction validée soit publiée sans attendre son accord, et le plus vite
   possible : dès que les tests locaux passent, pousser `main` et la branche `release/vX.Y.Z` en même temps, sans
   attendre la CI (elle ne fait que compiler, le lint et les captures ; la publication prend ~10 min). Si la CI
@@ -67,6 +84,9 @@ Commandes :
 
 ## Repères dans le code
 
+- Journal « Dernier incident » : `CrashLog.kt` (trace réduite sans perdre la cause, erreurs de fond) et
+  `SystemExits.kt` (fermetures par le système : raison, écran affiché, mémoire). C'est lui qu'il faut demander en
+  photo pour tout plantage.
 - Lecteur : `ui/player/PlayerViewModel.kt` avec `PlayerEngine` (un seul ExoPlayer par écran, une source réseau par
   flux via `PlayerFactory.mediaSource`), `DelayedPlaybackController` (pause, différé, replay, avance rapide),
   `AutoQualityController`, `ResumeController`, `ChannelMenuController`.

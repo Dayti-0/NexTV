@@ -40,7 +40,8 @@ android {
     }
 
     signingConfigs {
-        // Clé de test fixe (dépôt privé) pour les versions de test et de debug : chaque version
+        // Clé de test fixe, publique (le dépôt l'est) : pour les versions de test et de debug seulement, jamais
+        // pour une version publiée (signée avec la clé privée du projet, voir le workflow « Release »). Chaque version
         // s'installe par-dessus la précédente, sans désinstaller ni perdre playlists et réglages.
         getByName("debug") {
             storeFile = file("nextv-test.keystore")

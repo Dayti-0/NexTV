@@ -60,6 +60,18 @@ jobs:
           fi
           echo "TAG=$TAG" >> "$GITHUB_ENV"
           echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
+          # Numéro interne de la version (versionCode), tiré de son nom : 0.2.94 → 20094. Il augmente avec chaque
+          # version, quel que soit le workflow (le compteur d'exécutions repartirait de 1 si le workflow était recréé,
+          # et Android refuserait alors les mises à jour). 10# : « 08 » se lit en décimal, pas en octal.
+          BASE="${TAG#v}"
+          BASE="${BASE%%-*}"
+          IFS=. read -r MAJOR MINOR PATCH <<< "$BASE"
+          VERSION_CODE=$(( 10#$MAJOR * 1000000 + 10#$MINOR * 10000 + 10#$PATCH ))
+          if [ "$VERSION_CODE" -le 1000 ]; then
+            echo "::error::Numéro de version interne trop petit : $VERSION_CODE (les versions publiées vont jusqu'à quelques centaines)"
+            exit 1
+          fi
+          echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
           if [ -n "$RELEASES_TOKEN" ]; then
             echo "UPDATE_REPO=$RELEASES_REPO" >> "$GITHUB_ENV"
           else
@@ -100,7 +112,11 @@ jobs:
           echo "NEXTV_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
           echo "PRIVATE_KEY=1" >> "$GITHUB_ENV"
 
-      # Les tests tournent déjà dans la CI à chaque envoi : la publication ne les refait pas.
+      # Tests du cœur (playlists, guide, réseau, sauvegarde : une minute environ) : une version dont ils échouent
+      # n'est pas publiée. Ceux de l'application (plus longs) tournent dans la CI à chaque envoi.
+      - name: Test core module
+        run: ./gradlew -p core test --stacktrace
+
       - name: Build release APK
         env:
           NEXTV_KEYSTORE_PASSWORD: ${{ secrets.NEXTV_KEYSTORE_PASSWORD || secrets.NEXTV_KEY_PASSPHRASE }}
@@ -113,7 +129,7 @@ jobs:
         run: |
           ./gradlew :app:assembleRelease --stacktrace \
             -Pnextv.versionName="$VERSION" \
-            -Pnextv.versionCode="${GITHUB_RUN_NUMBER}" \
+            -Pnextv.versionCode="${VERSION_CODE}" \
             -Pnextv.updateRepo="${UPDATE_REPO}"
 
       - name: Prepare release assets

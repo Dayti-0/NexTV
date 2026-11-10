@@ -77,7 +77,7 @@ class AppUpdater(
             return
         }
         job = scope.launch(Dispatchers.IO) {
-            val apk = File(context.cacheDir, "updates/NexTV-${release.version}.apk")
+            val apk = File(context.cacheDir, "$DOWNLOAD_FOLDER/NexTV-${release.version}.apk")
             apk.parentFile?.listFiles()?.forEach { it.delete() }
             mutableState.value = UpdateState.Downloading(release, 0, release.apkSize)
             var shown = 0L
@@ -154,9 +154,12 @@ class AppUpdater(
         UpdateError.CORRUPTED -> UpdateFailure.CORRUPTED
     }
 
-    private companion object {
-        const val TAG = "Update"
-        const val PROGRESS_STEP_BYTES = 256 * 1024L
+    companion object {
+        /** Dossier (dans le cache) du fichier téléchargé ; vidé au lancement de l'application. */
+        const val DOWNLOAD_FOLDER = "updates"
+
+        private const val TAG = "Update"
+        private const val PROGRESS_STEP_BYTES = 256 * 1024L
     }
 }
 

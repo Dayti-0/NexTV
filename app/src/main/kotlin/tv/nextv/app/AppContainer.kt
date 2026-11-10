@@ -271,8 +271,18 @@ class AppContainer(context: Context) {
             settings.tmdbApiKey.collect { redactor.registerSecret(it) }
         }
         redactor.registerSecret(BuildConfig.TMDB_API_KEY.takeIf { it.isNotBlank() })
+        // Clé football-data.org : masquée dans les journaux comme les autres secrets.
+        applicationScope.launch {
+            settings.footballApiKey.collect { redactor.registerSecret(it) }
+        }
+        redactor.registerSecret(BuildConfig.FOOTBALL_API_KEY.takeIf { it.isNotBlank() })
         // Différé resté sur le disque (application fermée pendant une pause du direct) : jusqu'à plusieurs Go.
-        applicationScope.launch(Dispatchers.IO) { runCatching { File(appContext.cacheDir, TIMESHIFT_FILE).delete() } }
+        applicationScope.launch(Dispatchers.IO) {
+            runCatching { File(appContext.cacheDir, TIMESHIFT_FILE).delete() }
+            // Fichier d'une mise à jour déjà installée (ou d'un téléchargement abandonné) : plusieurs dizaines de Mo.
+            runCatching { File(appContext.cacheDir, AppUpdater.DOWNLOAD_FOLDER).listFiles()?.forEach { it.delete() } }
+            safely("Cache des fiches") { metadata.purge() }
+        }
         applicationScope.launch {
             safely("Masquage des identifiants") { sourceRepository.registerStoredSecrets() }
             safely("Noms des playlists") { sourceRepository.cleanStoredNames() }

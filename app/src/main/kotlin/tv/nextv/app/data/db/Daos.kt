@@ -70,6 +70,17 @@ private const val LISTED =
     "$NOT_HIDDEN AND CASE WHEN :filterGroup = 1 THEN IFNULL(c.groupTitle, '') = :group AND $BEST_IN_GROUP ELSE $BEST_VISIBLE END"
 
 /**
+ * Programme en cours (`p`) de la chaîne `c` à l'heure `:now`, dans le guide en vigueur de sa playlist ; absent
+ * si le guide n'en connaît pas. Écrit une seule fois pour les trois listes de chaînes qui l'affichent.
+ */
+private const val NOW_PROGRAMME =
+    "LEFT JOIN programmes p ON p.id = (" +
+        "SELECT p2.id FROM programmes p2 JOIN sources s ON s.id = p2.sourceId " +
+        "WHERE p2.sourceId = c.sourceId AND p2.generation = s.epgGeneration AND p2.epgChannelId = c.epgChannelId " +
+        "AND p2.startMillis <= :now AND p2.stopMillis > :now " +
+        "ORDER BY p2.startMillis DESC LIMIT 1)"
+
+/**
  * Liste des chaînes avec le programme en cours ([ChannelDao.pageChannels]). Requête brute : les
  * paramètres nommés deviennent des paramètres numérotés (`?1`… dans l'ordre de [PAGE_CHANNELS_PARAMETERS]).
  */
@@ -81,12 +92,7 @@ internal val PAGE_CHANNELS: String = numberParameters(
         c.quality, c.variantCount, c.itemKey,
         p.title AS nowTitle, p.startMillis AS nowStart, p.stopMillis AS nowStop
     FROM channels c
-    LEFT JOIN programmes p ON p.id = (
-        SELECT p2.id FROM programmes p2 JOIN sources s ON s.id = p2.sourceId
-        WHERE p2.sourceId = c.sourceId AND p2.generation = s.epgGeneration AND p2.epgChannelId = c.epgChannelId
-          AND p2.startMillis <= :now AND p2.stopMillis > :now
-        ORDER BY p2.startMillis DESC LIMIT 1
-    )
+    $NOW_PROGRAMME
     WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND $LISTED
       AND (:query = '' OR c.name LIKE '%' || :query || '%' ESCAPE '\'
         OR (:key != '' AND c.itemKey LIKE 'live:%' || :key || '%'))
@@ -474,12 +480,7 @@ interface ChannelDao {
             p.title AS nowTitle, p.startMillis AS nowStart, p.stopMillis AS nowStop
         FROM favorites f
         CROSS JOIN channels c ON c.sourceId = f.sourceId AND c.itemKey = f.itemKey AND c.kind = 'LIVE' AND c.isPrimary = 1
-        LEFT JOIN programmes p ON p.id = (
-            SELECT p2.id FROM programmes p2 JOIN sources s ON s.id = p2.sourceId
-            WHERE p2.sourceId = c.sourceId AND p2.generation = s.epgGeneration AND p2.epgChannelId = c.epgChannelId
-              AND p2.startMillis <= :now AND p2.stopMillis > :now
-            ORDER BY p2.startMillis DESC LIMIT 1
-        )
+        $NOW_PROGRAMME
         WHERE f.sourceId = :sourceId AND f.kind = 'LIVE'
         ORDER BY f.position
         """,
@@ -493,12 +494,7 @@ interface ChannelDao {
             c.quality, c.variantCount, c.itemKey,
             p.title AS nowTitle, p.startMillis AS nowStart, p.stopMillis AS nowStop
         FROM channels c
-        LEFT JOIN programmes p ON p.id = (
-            SELECT p2.id FROM programmes p2 JOIN sources s ON s.id = p2.sourceId
-            WHERE p2.sourceId = c.sourceId AND p2.generation = s.epgGeneration AND p2.epgChannelId = c.epgChannelId
-              AND p2.startMillis <= :now AND p2.stopMillis > :now
-            ORDER BY p2.startMillis DESC LIMIT 1
-        )
+        $NOW_PROGRAMME
         WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.isPrimary = 1 AND c.itemKey IN (:itemKeys)
         """,
     )
@@ -864,6 +860,10 @@ data class CachedPoster(val cacheKey: String, val posterUrl: String?)
 interface TmdbDao {
     @Query("SELECT * FROM tmdb_cache WHERE cacheKey = :cacheKey")
     suspend fun get(cacheKey: String): TmdbCacheEntity?
+
+    /** Retire les fiches lues avant [before] (titres qui ne sont plus consultés) ; rend leur nombre. */
+    @Query("DELETE FROM tmdb_cache WHERE fetchedAt < :before")
+    suspend fun deleteOlderThan(before: Long): Int
 
     /** Affiches des fiches en cache (et titres que TMDB ne connaît pas : [CachedPoster.posterUrl] vide). */
     @Query("SELECT cacheKey, CASE WHEN found = 1 THEN posterUrl ELSE NULL END AS posterUrl FROM tmdb_cache")

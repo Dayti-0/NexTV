@@ -4,6 +4,11 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.94
+- Place libérée sur l’appareil : le fichier d’une mise à jour déjà installée est supprimé au lancement, et les fiches de films et séries qui ne sont plus consultées depuis trois mois sont retirées du cache
+- Journaux : la clé football-data.org y est masquée comme les autres identifiants
+- Publication des versions : les tests des playlists, du guide et de la sauvegarde sont lancés avant chaque version, et le numéro interne des versions ne dépend plus d’un compteur qui pouvait repartir de zéro
+
 ## 0.2.93
 - Guide TV plus léger et plus fluide : seules les cases proches de l’heure affichée sont dessinées (les autres le sont en s’en approchant), et les résumés ne sont lus que pour le programme sélectionné. Même affichage, même navigation ; beaucoup moins de mémoire utilisée sur Fire TV
 - Guide TV : la grille se met à jour dès qu’un nouveau guide est importé (elle pouvait garder l’ancien jusqu’à la demi-heure suivante)
