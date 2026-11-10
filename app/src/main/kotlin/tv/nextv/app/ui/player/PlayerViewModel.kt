@@ -62,8 +62,11 @@ import tv.nextv.core.stream.QualityTarget
 class PlayerViewModel(
     private val container: AppContainer,
     private val handle: SavedStateHandle,
-    private val context: Context,
+    context: Context,
 ) : ViewModel() {
+
+    /** Contexte de l'application : ce modèle survit à l'activité, qu'il ne doit pas retenir. */
+    private val context: Context = context.applicationContext
 
     private var channelId: Long = checkNotNull(handle.get<Long>(ARG_CHANNEL_ID))
 
@@ -130,6 +133,7 @@ class PlayerViewModel(
             override fun onReady() {
                 quality.onReady()
                 rememberServer()
+                liveIsPlaying()
             }
             override fun onEnded() = this@PlayerViewModel.onEnded()
             override fun onError(error: PlaybackException) = handleError(error)
@@ -188,8 +192,10 @@ class PlayerViewModel(
 
     init {
         load(channelId)
+        // Ces surveillances s'arrêtent quand l'écran n'est plus affiché (veille, autre application).
         viewModelScope.launch {
             while (true) {
+                awaitStarted()
                 refreshProgrammes()
                 // Match en cours dans le bandeau : score relu plus souvent (un but s'affiche vite).
                 delay(if (state.value.match?.live == true) MATCH_REFRESH_MILLIS else PROGRAMME_REFRESH_MILLIS)
@@ -199,6 +205,7 @@ class PlayerViewModel(
         viewModelScope.launch {
             while (true) {
                 delay(QUALITY_CHECK_MILLIS)
+                awaitStarted()
                 delayed.updateWatchedAt()
                 // Épisode : le suivant est proposé 40 s avant la fin.
                 resume.checkUpNext()
@@ -220,9 +227,23 @@ class PlayerViewModel(
         viewModelScope.launch {
             while (true) {
                 delay(PROGRESS_SAVE_MILLIS)
+                awaitStarted()
                 resume.save()
             }
         }
+    }
+
+    /** Écran du lecteur affiché (ni veille, ni autre application au premier plan). */
+    private val started = MutableStateFlow(false)
+
+    /** L'écran a déjà été affiché : ensuite, « pas affiché » veut dire quitté (et non pas encore ouvert). */
+    private var shownOnce = false
+
+    /** Flux à ouvrir au retour sur l'écran (son ouverture est arrivée pendant qu'il était quitté) : repli HLS ou non. */
+    private var startWhenShown: Boolean? = null
+
+    private suspend fun awaitStarted() {
+        if (!started.value) started.first { it }
     }
 
     fun selectAudio(choice: TrackChoice) {
@@ -391,6 +412,9 @@ class PlayerViewModel(
         // Autre titre (ou nouvel essai) : de nouveau le lecteur de l'appli, VLC seulement s'il le faut.
         releaseVlc()
         vlcTried = false
+        resetLiveRetries()
+        reopenLiveOnStart = false
+        startWhenShown = null
         delayed.beforeLoad(otherChannel = id != channelId)
         // Nouveau titre : les essais après un échec de décodage repartent de zéro.
         codecTries = CodecTries()
@@ -578,6 +602,12 @@ class PlayerViewModel(
 
     private fun start(forceHls: Boolean) {
         val playbackRequest = session.request ?: return
+        // Écran quitté pendant l'ouverture (veille, autre application) : rien ne joue en arrière-plan, le flux
+        // sera ouvert au retour.
+        if (shownOnce && !started.value) {
+            startWhenShown = forceHls
+            return
+        }
         session.playingAsHls = forceHls || playbackRequest.stream.format == StreamFormat.HLS
         // Position de départ seulement pour une reprise : un direct démarre au plus près du direct.
         // Direct : les dernières secondes sont gardées pour revenir en arrière (←).
@@ -614,6 +644,8 @@ class PlayerViewModel(
         if (failure != null && recoverFromCodecFailure(failure, player)) return
         // Autre version de la même chaîne, de qualité inférieure, si elle existe.
         if (quality.onError()) return
+        // Direct qui jouait, coupé (réseau, serveur) : rouvert quelques fois avant d'afficher l'erreur.
+        if (failure == null && error.errorCode in RETRIABLE_LIVE_ERRORS && retryLive(error.errorCodeName)) return
         val viaProxy = container.httpClients.usesProxy(RequestPurpose.STREAM) &&
             format != StreamFormat.RTSP && format != StreamFormat.UDP
         val message = failure?.let { resources.describeCodecFailure(it) } ?: resources.describePlaybackError(error, viaProxy)
@@ -719,6 +751,19 @@ class PlayerViewModel(
     }
 
     fun onStart() {
+        started.value = true
+        shownOnce = true
+        if (reopenLiveOnStart) {
+            // Direct fermé à la sortie (veille…) : la chaîne est rouverte, au direct.
+            reopenLiveOnStart = false
+            load(session.listed?.id ?: channelId)
+            return
+        }
+        startWhenShown?.let { forceHls ->
+            startWhenShown = null
+            start(forceHls)
+            return
+        }
         vlc?.let { playback ->
             if (resumeOnStart) playback.player.play()
             return
@@ -732,7 +777,20 @@ class PlayerViewModel(
     }
 
     fun onStop() {
+        started.value = false
         val player = currentPlayer() ?: return
+        if (vlc == null && watchingLive && state.value.error == null) {
+            // Direct : le flux est fermé plutôt que mis en pause. La connexion au fournisseur (souvent une seule
+            // permise) et le décodeur sont rendus pendant la veille ; mis en pause, le lecteur rejouait au retour
+            // d'anciennes images avant de tomber en erreur. Un différé en cours s'arrête aussi (plus d'enregistrement
+            // en arrière-plan). La chaîne est rouverte au retour.
+            reopenLiveOnStart = true
+            liveRetryJob?.cancel()
+            liveStableJob?.cancel()
+            delayed.stopTimeshift()
+            engine.stop()
+            return
+        }
         resumeOnStart = player.playWhenReady
         player.pause()
         viewModelScope.launch { resume.save() }
@@ -780,7 +838,74 @@ class PlayerViewModel(
 
     private fun onEnded() {
         if (delayed.onEnded()) return
-        if (!state.value.isLive) resume.onVodEnded()
+        if (!state.value.isLive) {
+            resume.onVodEnded()
+            return
+        }
+        // Direct fermé par le serveur (flux continu qui se termine) : rouvert, sinon l'image resterait figée
+        // sans un mot. Moteur VLC : il se reconnecte lui-même.
+        if (vlc != null || !watchingLive) return
+        if (!retryLive("flux terminé")) {
+            mutableState.update { it.copy(buffering = false, error = resources.getString(R.string.player_error_stream_ended)) }
+        }
+    }
+
+    // --- Relance du direct et veille ----------------------------------------------------------------
+
+    /** Direct proprement dit : ni replay ni « Depuis le début » (enregistrements du serveur, qui ont une fin). */
+    private val watchingLive: Boolean get() = state.value.isLive && delayed.replay == null && !delayed.restarting
+
+    /** Relances du direct interrompu : combien, et après quelle attente. */
+    private val liveRetries = LiveRetries()
+    private var liveRetryJob: Job? = null
+    private var liveStableJob: Job? = null
+
+    /** Direct fermé en quittant l'écran (veille, autre application) : à rouvrir au retour. */
+    private var reopenLiveOnStart = false
+
+    private fun resetLiveRetries() {
+        liveRetryJob?.cancel()
+        liveStableJob?.cancel()
+        liveRetries.newChannel()
+    }
+
+    /** Le flux joue : après [LIVE_STABLE_MILLIS] sans coupure, les relances repartent de zéro. */
+    private fun liveIsPlaying() {
+        if (!watchingLive || delayed.playingTimeshift) return
+        liveRetries.playing()
+        if (liveStableJob?.isActive == true) return
+        liveStableJob = viewModelScope.launch {
+            delay(LIVE_STABLE_MILLIS)
+            liveRetries.stable()
+        }
+    }
+
+    /**
+     * Le direct qui jouait s'est arrêté (coupure du réseau, flux fermé par le serveur) : il est rouvert après une
+     * courte attente, quelques fois au plus tant qu'il n'a pas rejoué sans coupure ([LiveRetries]). Une chaîne qui
+     * ne démarre pas du tout n'est pas concernée : son erreur s'affiche tout de suite.
+     *
+     * @return faux quand ce n'est pas le cas, ou que les essais sont épuisés (le message d'erreur s'affiche).
+     */
+    private fun retryLive(reason: String): Boolean {
+        if (!watchingLive || vlc != null || session.request == null) return false
+        val wait = liveRetries.next() ?: return false
+        liveStableJob?.cancel()
+        container.logger.info(TAG, "Direct interrompu ($reason) : relance ${liveRetries.done}")
+        mutableState.update { it.copy(buffering = true, error = null) }
+        liveRetryJob?.cancel()
+        liveRetryJob = viewModelScope.launch {
+            delay(wait)
+            // Écran quitté entre-temps : la chaîne sera rouverte au retour.
+            if (!started.value) {
+                reopenLiveOnStart = true
+                return@launch
+            }
+            // Le chargement qui suit n'est pas une connexion qui faiblit (qualité automatique).
+            quality.onUserRestart()
+            start(forceHls = session.playingAsHls)
+        }
+        return true
     }
 
     /** Choix fait dans la question « reprendre / recommencer ». */
@@ -856,6 +981,22 @@ class PlayerViewModel(
         private const val MAX_AUDIO_TRIES = 3
         private const val MAX_DECODER_TRIES = 2
         private const val MAX_COPY_TRIES = 3
+
+        /** Lecture sans coupure pendant ce temps : les relances repartent de zéro. */
+        private const val LIVE_STABLE_MILLIS = 30_000L
+
+        /** Erreurs d'un direct qu'une réouverture peut régler : réseau, serveur, flux abîmé. Pas le décodage. */
+        private val RETRIABLE_LIVE_ERRORS = setOf(
+            PlaybackException.ERROR_CODE_IO_UNSPECIFIED,
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+            PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
+            PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE,
+            PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE,
+            PlaybackException.ERROR_CODE_TIMEOUT,
+            PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+            PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED,
+        )
 
         /** Même période que la section Foot : la réponse de football-data.org est partagée. */
         private const val FOOTBALL_WINDOW_MILLIS = 8 * 24 * 60 * 60_000L

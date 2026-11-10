@@ -9,16 +9,20 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import java.io.File
+import java.io.IOException
 import kotlin.math.abs
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import tv.nextv.app.AppContainer
 import tv.nextv.app.R
 import tv.nextv.app.data.db.ChannelEntity
+import tv.nextv.app.player.LiveRecording
 import tv.nextv.app.player.PlaybackRequest
 import tv.nextv.app.player.TimeshiftBuffer
 import tv.nextv.app.player.TimeshiftRecorder
@@ -125,16 +129,21 @@ internal class DelayedPlaybackController(
         private set
 
     /** Le direct est enregistré pour le différé (pause, puis lecture décalée). */
-    val recording: Boolean get() = timeshift != null || liveShift != null
+    val recording: Boolean get() = timeshift != null || liveShift != null || shiftPending
 
     /**
      * Retour en arrière dans le direct en cours ([PlayerEngine.liveRecording]) : l'heure d'arrivée de ce qui
      * a été relu en premier. `null` : pas de lecture décalée de ce genre.
      */
     private var liveShift: Long? = null
-    private var liveShiftRecording: tv.nextv.app.player.LiveRecording? = null
+    private var liveShiftRecording: LiveRecording? = null
     private var pendingRewindSeconds = 0
     private var rewindJob: Job? = null
+
+    /** Passage du direct gardé sur le disque (copie hors du fil principal), et recul demandé avec lui. */
+    private var shiftJob: Job? = null
+    private var shiftPendingSeconds = 0
+    private val shiftPending: Boolean get() = shiftJob?.isActive == true
 
     /** Programme passé revu (pas « Depuis le début ») : le programme du direct n'est pas affiché. */
     val replayingPast: Boolean get() = replay != null && !restarting
@@ -358,7 +367,9 @@ internal class DelayedPlaybackController(
     private fun pauseLive(player: ExoPlayer) {
         // Direct gardé en mémoire : la même connexion enregistre la suite, rien n'est reperdu à la reprise.
         if (liveShift == null && !restarting && replay == null && engine.liveRecording != null) {
-            if (shiftLive(extraSeconds = 0, play = false)) {
+            if (shiftLive(extraSeconds = 0, pause = true)) {
+                // L'image se fige tout de suite ; la relecture depuis le disque prend la suite dès qu'il est prêt.
+                player.pause()
                 state.update { it.copy(paused = true, pausedAtMillis = System.currentTimeMillis()) }
                 return
             }
@@ -369,14 +380,27 @@ internal class DelayedPlaybackController(
         // Flux continu (MPEG-TS…) : le serveur le coupe si on cesse de le lire. Il est donc
         // enregistré pendant la pause, puis relu depuis l'enregistrement.
         // « Depuis le début » : l'enregistrement est celui du serveur, il suffit d'arrêter la lecture.
-        if (!restarting && timeshift == null && playback != null && !session.playingAsHls && playback.stream.format in RECORDABLE_FORMATS) {
-            // Le lecteur libère d'abord sa connexion (l'image reste affichée) : beaucoup de
-            // fournisseurs n'acceptent qu'une connexion à la fois.
-            player.stop()
-            val buffer = TimeshiftBuffer(File(context.cacheDir, TIMESHIFT_FILE), timeshiftLimit())
-            val call = container.playerFactory.liveCall(playback)
-            timeshift = buffer
-            recorder = TimeshiftRecorder(call, buffer).also { it.start() }
+        if (!restarting && timeshift == null && !shiftPending && playback != null && !session.playingAsHls && playback.stream.format in RECORDABLE_FORMATS) {
+            // Stockage plein ou fichier refusé : simple pause (le lecteur garde ce qu'il a déjà reçu).
+            val limit = timeshiftLimit()
+            val buffer = if (limit >= MIN_TIMESHIFT_BYTES) {
+                try {
+                    TimeshiftBuffer(File(context.cacheDir, TIMESHIFT_FILE), limit)
+                } catch (e: IOException) {
+                    container.logger.warn(TAG, "Différé impossible : enregistrement refusé", e)
+                    null
+                }
+            } else {
+                null
+            }
+            if (buffer != null) {
+                // Le lecteur libère d'abord sa connexion (l'image reste affichée) : beaucoup de
+                // fournisseurs n'acceptent qu'une connexion à la fois.
+                player.stop()
+                val call = container.playerFactory.liveCall(playback)
+                timeshift = buffer
+                recorder = TimeshiftRecorder(call, buffer).also { it.start() }
+            }
         }
         state.update { it.copy(paused = true, pausedAtMillis = now) }
     }
@@ -424,41 +448,70 @@ internal class DelayedPlaybackController(
             delay(REWIND_DEBOUNCE_MILLIS)
             val total = pendingRewindSeconds
             pendingRewindSeconds = 0
-            shiftLive(total, play = !state.value.paused)
+            shiftLive(total, pause = false)
         }
         return true
     }
 
     /**
-     * Relit le direct gardé [extraSeconds] avant ce qui est à l'écran : à la première fois, la connexion
-     * continue d'enregistrer la suite sur le disque. [play] faux : prêt, en pause.
+     * Relit le direct gardé [extraSeconds] avant ce qui est à l'écran. À la première fois, les secondes gardées
+     * en mémoire passent sur le disque (hors du fil principal : jusqu'à 32 Mo à écrire), puis la connexion
+     * continue d'y enregistrer la suite. [pause] : demandé par la mise en pause (prêt, en pause).
+     *
+     * @return faux si ce n'est pas possible (pas de direct gardé, plus assez de place sur l'appareil).
      */
-    private fun shiftLive(extraSeconds: Int, play: Boolean): Boolean {
+    private fun shiftLive(extraSeconds: Int, pause: Boolean): Boolean {
         val recording = liveShiftRecording ?: engine.liveRecording ?: return false
         val player = engine.current ?: return false
         val now = SystemClock.elapsedRealtime()
+        // Recul demandé pendant un passage sur le disque encore en cours : il s'ajoute.
+        val seconds = extraSeconds + if (shiftPending) shiftPendingSeconds else 0
         // Heure d'arrivée de ce qui est à l'écran : en direct, ce qui est arrivé il y a « tampon d'avance » ;
         // en différé, le début de la relecture plus la position atteinte.
         val shown = liveShift?.let { it + player.currentPosition }
             ?: (now - (player.bufferedPosition - player.currentPosition).coerceAtLeast(0))
         // Un peu plus loin : l'image ne reprend qu'à la prochaine image complète du flux.
-        val wanted = shown - extraSeconds * 1_000L - if (extraSeconds > 0) KEYFRAME_MARGIN_MILLIS else 0
-        if (recording.disk == null) {
-            recording.startDisk(File(context.cacheDir, TIMESHIFT_FILE), timeshiftLimit())
-            recording.requestTakeOver()
+        val wanted = shown - seconds * 1_000L - if (seconds > 0) KEYFRAME_MARGIN_MILLIS else 0
+        if (recording.disk != null) {
+            applyShift(recording, wanted, play = !pause && !state.value.paused)
+            return true
         }
+        val limit = timeshiftLimit()
+        if (limit < MIN_TIMESHIFT_BYTES) return false
+        // Retenu dès maintenant : un arrêt (autre chaîne, retour au direct) pendant la copie le supprime aussi.
+        liveShiftRecording = recording
+        shiftPendingSeconds = seconds
+        shiftJob?.cancel()
+        shiftJob = scope.launch {
+            val disk = withContext(Dispatchers.IO) { recording.startDisk(File(context.cacheDir, TIMESHIFT_FILE), limit) }
+            if (disk == null || engine.liveRecording !== recording) {
+                // Stockage plein, ou flux rouvert entre-temps : le direct continue comme avant (la pause reste
+                // une simple pause du lecteur).
+                if (disk == null) container.logger.warn(TAG, "Retour en arrière impossible : enregistrement refusé")
+                if (liveShiftRecording === recording) liveShiftRecording = null
+                if (disk != null) recording.stop()
+                return@launch
+            }
+            recording.requestTakeOver()
+            // En pause si elle a été demandée et qu'elle dure encore.
+            applyShift(recording, wanted, play = !state.value.paused)
+        }
+        return true
+    }
+
+    /** Relit l'enregistrement (déjà sur le disque) à partir de l'heure d'arrivée [wanted]. */
+    private fun applyShift(recording: LiveRecording, wanted: Long, play: Boolean) {
         val position = recording.positionAt(wanted)
         val arrival = recording.timeAt(position)
         liveShift = arrival
         liveShiftRecording = recording
         playingTimeshift = true
         engine.playLiveRecording(recording, position, play)
-        val delayMs = (now - arrival).coerceAtLeast(0)
+        val delayMs = (SystemClock.elapsedRealtime() - arrival).coerceAtLeast(0)
         state.update {
             val pausedFor = it.pausedAtMillis?.let { at -> (System.currentTimeMillis() - at).coerceAtLeast(0) } ?: 0
             it.copy(liveDelayMs = (delayMs - pausedFor).coerceAtLeast(0))
         }
-        return true
     }
 
     /** Retour au direct : fin du différé, de « Depuis le début » ou du replay. */
@@ -470,7 +523,8 @@ internal class DelayedPlaybackController(
             return
         }
         val wasDelayed = state.value.liveDelayMs > 0 || state.value.paused
-        val hadRecording = timeshift != null || liveShift != null
+        // Passage sur le disque en cours : son arrêt met fin à ce direct gardé, le flux est donc rouvert.
+        val hadRecording = timeshift != null || liveShift != null || shiftPending
         stopTimeshift()
         if (!wasDelayed && !hadRecording) return
         val player = engine.current
@@ -701,6 +755,9 @@ internal class DelayedPlaybackController(
         timeshift = null
         rewindJob?.cancel()
         pendingRewindSeconds = 0
+        shiftJob?.cancel()
+        shiftJob = null
+        shiftPendingSeconds = 0
         liveShiftRecording?.stop()
         liveShiftRecording = null
         liveShift = null
@@ -727,6 +784,9 @@ internal class DelayedPlaybackController(
         const val TAG = "Player"
         const val TIMESHIFT_FILE = "timeshift.ts"
         const val TIMESHIFT_MAX_BYTES = 4L * 1024 * 1024 * 1024
+
+        /** Moins de place que cela pour le différé (appareil presque plein) : pas d'enregistrement. */
+        const val MIN_TIMESHIFT_BYTES = 64L * 1024 * 1024
         val RECORDABLE_FORMATS = setOf(StreamFormat.PROGRESSIVE, StreamFormat.UNKNOWN)
         const val MINUTE_MILLIS = 60_000L
         const val MINUTE_SECONDS = 60

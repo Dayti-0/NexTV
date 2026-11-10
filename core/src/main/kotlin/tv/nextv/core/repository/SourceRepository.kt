@@ -189,10 +189,44 @@ class SourceRepository(
      * Recharge la playlist puis, si demandé, le guide EPG.
      * @param progress avancement réel de chaque étape (octets reçus, chaînes enregistrées…).
      */
-    suspend fun refresh(id: Long, includeEpg: Boolean = true, progress: ProgressListener? = null): RefreshResult = withRefreshLock(id) {
-        val source = store.getSource(id) ?: return@withRefreshLock RefreshResult.NotFound
+    suspend fun refresh(id: Long, includeEpg: Boolean = true, progress: ProgressListener? = null): RefreshResult =
+        withRefreshLock(id) { guarded(id) { refreshLocked(id, includeEpg, progress) } }
+
+    /**
+     * Une actualisation ne fait jamais planter l'application : une erreur inattendue (stockage plein, base
+     * illisible…) devient un échec, les données précédentes restant en place.
+     */
+    private suspend fun guarded(id: Long, block: suspend () -> RefreshResult): RefreshResult = try {
+        block()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        val error = SourceError.of(e)
+        logger.warn(TAG, "Actualisation de la source $id interrompue : ${error.code}", e)
+        RefreshResult.Failure(error)
+    }
+
+    /** Enregistre l'échec dans le statut de la source ; sans effet si même cela est impossible (stockage plein). */
+    private suspend fun recordFailure(id: Long, status: SourceStatus) {
+        try {
+            store.updateStatus(id, status)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logger.warn(TAG, "Statut de la source $id non enregistré", e)
+        }
+    }
+
+    private suspend fun refreshLocked(id: Long, includeEpg: Boolean, progress: ProgressListener?): RefreshResult {
+        val source = store.getSource(id) ?: return RefreshResult.NotFound
         val credentials = if (source.hasCredentials) credentialStore.get(id)?.also(::registerSecrets) else null
         val attemptAt = clock()
+
+        suspend fun failed(error: SourceError, cause: Throwable): RefreshResult {
+            logger.warn(TAG, "Échec de l'actualisation de la source $id (${describe(source.location)}) : ${error.code}", cause)
+            recordFailure(id, source.status.copy(lastAttemptAtMillis = attemptAt, error = error))
+            return RefreshResult.Failure(error)
+        }
 
         val loaded = try {
             coroutineScope {
@@ -204,10 +238,10 @@ class SourceRepository(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            val error = (e as? SourceException)?.error ?: SourceError.Unknown(e.javaClass.simpleName)
-            logger.warn(TAG, "Échec de l'actualisation de la source $id (${describe(source.location)}) : ${error.code}", e)
-            store.updateStatus(id, source.status.copy(lastAttemptAtMillis = attemptAt, error = error))
-            return@withRefreshLock RefreshResult.Failure(error)
+            return failed((e as? SourceException)?.error ?: SourceError.Unknown(e.javaClass.simpleName), e)
+        } catch (e: OutOfMemoryError) {
+            // Playlist trop grosse pour la mémoire de l'appareil : la précédente reste en place.
+            return failed(SourceError.OutOfMemory, e)
         }
 
         // Le serveur n'a accepté qu'un User-Agent de lecteur courant : il est retenu pour la source
@@ -220,7 +254,14 @@ class SourceRepository(
 
         val total = loaded.channels.size.toLong()
         progress?.onProgress(LoadProgress(LoadStep.SAVING, 0, total))
-        store.replaceChannels(id, loaded.channels) { saved -> progress?.onProgress(LoadProgress(LoadStep.SAVING, saved.toLong(), total)) }
+        try {
+            store.replaceChannels(id, loaded.channels) { saved -> progress?.onProgress(LoadProgress(LoadStep.SAVING, saved.toLong(), total)) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Stockage plein, base illisible : l'écriture est annulée d'un bloc, les chaînes précédentes restent.
+            return failed(SourceError.of(e), e)
+        }
         progress?.onProgress(LoadProgress(LoadStep.SAVING, total, total))
         var status = source.status.copy(
             lastAttemptAtMillis = attemptAt,
@@ -238,7 +279,7 @@ class SourceRepository(
             status = status.copy(epg = epg.status)
             store.updateStatus(id, status)
         }
-        RefreshResult.Success(loaded.channels.size, loaded.warnings, status.epg)
+        return RefreshResult.Success(loaded.channels.size, loaded.warnings, status.epg)
     }
 
     private suspend fun archiveDays(source: PlaylistSource): Map<String, Int>? = try {
@@ -254,8 +295,11 @@ class SourceRepository(
      * Met à jour le guide EPG. Avec un guide commun ([epgFeed]), il n'est retéléchargé que s'il est
      * trop ancien (ou si [force]) et réimporté seulement s'il a changé depuis le dernier import.
      */
-    suspend fun refreshEpg(id: Long, force: Boolean = false, progress: ProgressListener? = null): RefreshResult = withRefreshLock(id) {
-        val source = store.getSource(id) ?: return@withRefreshLock RefreshResult.NotFound
+    suspend fun refreshEpg(id: Long, force: Boolean = false, progress: ProgressListener? = null): RefreshResult =
+        withRefreshLock(id) { guarded(id) { refreshEpgLocked(id, force, progress) } }
+
+    private suspend fun refreshEpgLocked(id: Long, force: Boolean, progress: ProgressListener?): RefreshResult {
+        val source = store.getSource(id) ?: return RefreshResult.NotFound
         val credentials = if (source.hasCredentials) credentialStore.get(id)?.also(::registerSecrets) else null
         val outcome = importEpg(
             source,
@@ -268,7 +312,7 @@ class SourceRepository(
         )
         val status = source.status.copy(epg = outcome.status)
         store.updateStatus(id, status)
-        outcome.failure?.let { RefreshResult.Failure(it) }
+        return outcome.failure?.let { RefreshResult.Failure(it) }
             ?: RefreshResult.Success(status.channelCount, status.warnings, outcome.status)
     }
 
@@ -276,7 +320,40 @@ class SourceRepository(
     suspend fun refreshAll(): Map<Long, RefreshResult> =
         store.getSources().associate { it.id to refresh(it.id) }
 
+    /**
+     * Importe le guide. Une erreur inattendue (stockage plein…) devient un échec du guide seul : le guide
+     * précédent reste en place, et la playlist n'est pas remise en cause.
+     */
     private suspend fun importEpg(
+        source: PlaylistSource,
+        credentials: Credentials?,
+        headerUrls: List<String>,
+        previous: EpgStatus,
+        channelsChanged: Boolean,
+        force: Boolean,
+        progress: ProgressListener?,
+    ): EpgOutcome = try {
+        importEpgOrThrow(source, credentials, headerUrls, previous, channelsChanged, force, progress)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        val error = SourceError.of(e)
+        logger.warn(TAG, "Import du guide de la source ${source.id} interrompu : ${error.code}", e)
+        EpgOutcome(previous.copy(lastAttemptAtMillis = clock(), error = error), failure = error)
+    }
+
+    /** Écarte les programmes déjà écrits d'un import interrompu ; un échec ici n'en cache pas la cause. */
+    private suspend fun abortQuietly(session: EpgImportSession) {
+        withContext(NonCancellable) {
+            try {
+                session.abort()
+            } catch (e: Exception) {
+                logger.warn(TAG, "Programmes d'un import interrompu non retirés", e)
+            }
+        }
+    }
+
+    private suspend fun importEpgOrThrow(
         source: PlaylistSource,
         credentials: Credentials?,
         headerUrls: List<String>,
@@ -336,12 +413,12 @@ class SourceRepository(
                 }
             }
             if (succeeded == 0) {
-                session.abort()
+                abortQuietly(session)
                 return EpgOutcome(previous.copy(lastAttemptAtMillis = attemptAt, error = firstError), failure = firstError)
             }
             session.commit(mapping, guideOnly.filterKeys { it !in mapping.values })
         } catch (e: Throwable) {
-            withContext(NonCancellable) { session.abort() }
+            abortQuietly(session)
             throw e
         }
         val status = EpgStatus(
@@ -391,11 +468,11 @@ class SourceRepository(
             )
             return EpgOutcome(status, failure = null)
         } catch (e: SourceException) {
-            withContext(NonCancellable) { session.abort() }
+            abortQuietly(session)
             logger.warn(TAG, "Import du guide impossible : ${e.error.code}", e)
             return EpgOutcome(previous.copy(lastAttemptAtMillis = attemptAt, error = e.error), failure = e.error)
         } catch (e: Throwable) {
-            withContext(NonCancellable) { session.abort() }
+            abortQuietly(session)
             throw e
         }
     }

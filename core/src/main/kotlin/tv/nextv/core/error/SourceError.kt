@@ -100,6 +100,19 @@ sealed class SourceError(val code: String) {
         override val detail get() = limitBytes.toString()
     }
 
+    // --- Appareil ---------------------------------------------------------------------------
+
+    /**
+     * Enregistrement impossible sur l'appareil (stockage plein, base illisible…). [type] est le nom de la
+     * classe d'exception. Les données déjà enregistrées sont conservées.
+     */
+    data class Storage(val type: String?) : SourceError("storage") {
+        override val detail get() = type
+    }
+
+    /** Contenu trop gros pour la mémoire de l'appareil. */
+    data object OutOfMemory : SourceError("out_of_memory")
+
     data class Unknown(val type: String?) : SourceError("unknown") {
         override val detail get() = type
     }
@@ -136,7 +149,26 @@ sealed class SourceError(val code: String) {
             "no_channels" -> NoChannels
             "invalid_xmltv" -> InvalidXmltv
             "too_large" -> TooLarge(detail?.toLongOrNull() ?: 0)
+            "storage" -> Storage(detail)
+            "out_of_memory" -> OutOfMemory
             else -> Unknown(detail)
+        }
+
+        /**
+         * Erreur pour une exception inattendue : [Storage] si elle vient de l'enregistrement sur l'appareil
+         * (base SQLite, fichier), sinon [Unknown].
+         */
+        fun of(e: Throwable): SourceError {
+            if (e is SourceException) return e.error
+            if (e is OutOfMemoryError) return OutOfMemory
+            var cause: Throwable? = e
+            while (cause != null) {
+                if (cause is java.io.IOException || cause.javaClass.name.contains("sqlite", ignoreCase = true)) {
+                    return Storage(cause.javaClass.simpleName)
+                }
+                cause = cause.cause?.takeIf { it !== cause }
+            }
+            return Unknown(e.javaClass.simpleName)
         }
     }
 }

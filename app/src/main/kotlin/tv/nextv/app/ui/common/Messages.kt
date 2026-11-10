@@ -52,6 +52,8 @@ fun Resources.describe(error: SourceError): String = when (error) {
     SourceError.NoChannels -> getString(R.string.error_no_channels)
     SourceError.InvalidXmltv -> getString(R.string.error_invalid_xmltv)
     is SourceError.TooLarge -> getString(R.string.error_too_large, error.limitBytes / (1024 * 1024))
+    is SourceError.Storage -> getString(R.string.error_storage)
+    SourceError.OutOfMemory -> getString(R.string.error_out_of_memory)
     is SourceError.Unknown -> getString(R.string.error_unknown)
 }
 

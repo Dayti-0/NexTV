@@ -20,6 +20,11 @@ class InMemoryPlaylistStore : PlaylistStore {
     val epgMapping = mutableMapOf<Long, Map<Long, String>>()
     private var nextChannelId = 1L
 
+    /** Pannes simulées (stockage plein) : levées à l'enregistrement des chaînes ou des programmes. */
+    var failOnReplaceChannels: Exception? = null
+    var failOnProgrammeWrite: Exception? = null
+    var failOnStatusUpdate: Exception? = null
+
     override fun observeSources(): Flow<List<PlaylistSource>> = state.map { it.values.sortedBy(PlaylistSource::id) }
 
     override suspend fun getSources() = state.value.values.sortedBy(PlaylistSource::id)
@@ -47,10 +52,12 @@ class InMemoryPlaylistStore : PlaylistStore {
     }
 
     override suspend fun replaceChannels(sourceId: Long, channels: List<Channel>, onSaved: (Int) -> Unit) {
+        failOnReplaceChannels?.let { throw it }
         this.channels[sourceId] = channels.map { nextChannelId++ to it }
     }
 
     override suspend fun updateStatus(sourceId: Long, status: SourceStatus) {
+        failOnStatusUpdate?.let { throw it }
         state.update { current -> current + (sourceId to current.getValue(sourceId).copy(status = status)) }
     }
 
@@ -61,6 +68,7 @@ class InMemoryPlaylistStore : PlaylistStore {
         private val pending = mutableListOf<Programme>()
 
         override suspend fun write(batch: List<Programme>) {
+            failOnProgrammeWrite?.let { throw it }
             pending += batch
         }
 

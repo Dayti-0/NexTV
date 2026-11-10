@@ -7,6 +7,8 @@ import android.util.Xml
 import java.io.File
 import java.util.TimeZone
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -74,8 +76,17 @@ class AppContainer(context: Context) {
     /** Dernier plantage enregistré (absent hors de l'application, dans les tests). */
     val crashLog: CrashLog? get() = (appContext as? NexTvApplication)?.crashLog
 
+    /**
+     * Tâche de fond en erreur (stockage plein, base illisible…) : notée dans le journal et dans « Dernier
+     * incident », sans fermer l'application (une actualisation automatique ne doit pas interrompre un film).
+     */
+    private val backgroundErrors = CoroutineExceptionHandler { _, error ->
+        runCatching { logger.error("App", "Tâche de fond interrompue", error) }
+        crashLog?.record(error)
+    }
+
     /** Portée des tâches qui doivent survivre à la navigation (actualisations). */
-    val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default + backgroundErrors)
 
     val redactor = Redactor()
     val logger: Logger = RedactingLogger(AndroidLogger(verbose = BuildConfig.DEBUG), redactor)
@@ -249,8 +260,8 @@ class AppContainer(context: Context) {
         }
         redactor.registerSecret(BuildConfig.TMDB_API_KEY.takeIf { it.isNotBlank() })
         applicationScope.launch {
-            sourceRepository.registerStoredSecrets()
-            sourceRepository.cleanStoredNames()
+            safely("Masquage des identifiants") { sourceRepository.registerStoredSecrets() }
+            safely("Noms des playlists") { sourceRepository.cleanStoredNames() }
         }
 
         // Filtres des réglages (4K masquée, région de France 3) : à chaque changement, et après chaque
@@ -262,7 +273,8 @@ class AppContainer(context: Context) {
                 sourceRepository.sources.map { sources -> sources.map { it.id to it.status?.lastSuccessAtMillis } }.distinctUntilChanged(),
                 ::Triple,
             ).collectLatest { (hideUhd, region, sources) ->
-                sources.forEach { (id, _) -> channelFilters.apply(id, hideUhd, region) }
+                // Une écriture impossible (stockage plein) n'arrête pas la surveillance : nouvel essai au changement suivant.
+                safely("Filtres des chaînes") { sources.forEach { (id, _) -> channelFilters.apply(id, hideUhd, region) } }
             }
         }
 
@@ -271,16 +283,29 @@ class AppContainer(context: Context) {
         applicationScope.launch {
             while (true) {
                 delay(PERIODIC_CHECK_MILLIS)
-                val active = settings.activePlaylistId.firstOrNull() ?: continue
-                val lastSuccess = sourceRepository.getSource(active)?.status?.lastSuccessAtMillis
-                if (settings.playlistRefresh.first().dueWhileRunning(lastSuccess, System.currentTimeMillis())) {
-                    // Playlist puis guide.
-                    refreshController.refresh(active)
-                } else {
-                    // Ne retélécharge le guide que s'il a vieilli.
-                    refreshController.refreshEpg(active)
+                safely("Actualisation périodique") {
+                    val active = settings.activePlaylistId.firstOrNull() ?: return@safely
+                    val lastSuccess = sourceRepository.getSource(active)?.status?.lastSuccessAtMillis
+                    if (settings.playlistRefresh.first().dueWhileRunning(lastSuccess, System.currentTimeMillis())) {
+                        // Playlist puis guide.
+                        refreshController.refresh(active)
+                    } else {
+                        // Ne retélécharge le guide que s'il a vieilli.
+                        refreshController.refreshEpg(active)
+                    }
                 }
             }
+        }
+    }
+
+    /** Étape d'une tâche de fond permanente : une erreur est notée, la tâche continue. */
+    private suspend fun safely(what: String, block: suspend () -> Unit) {
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logger.warn("App", "$what : échec", e)
         }
     }
 

@@ -343,6 +343,7 @@
     <string name="player_quality_unknown">qualité standard</string>
     <string name="player_channel_missing">Cette chaîne n’existe plus (playlist actualisée ou supprimée).</string>
     <string name="player_error_connection">Connexion au serveur du flux impossible.</string>
+    <string name="player_error_stream_ended">Le serveur a arrêté la diffusion de cette chaîne.</string>
     <string name="player_error_timeout">Le serveur du flux ne répond pas (délai dépassé).</string>
     <string name="player_error_proxy_hint">La lecture passe par le proxy configuré : vérifiez qu’il est joignable.</string>
     <string name="player_error_auth">Le serveur du flux exige une authentification ou a refusé les identifiants.</string>
@@ -655,6 +656,8 @@
     <string name="error_no_channels">La playlist ne contient aucune chaîne.</string>
     <string name="error_invalid_xmltv">Ce contenu n’est pas un guide XMLTV valide.</string>
     <string name="error_too_large">Contenu trop volumineux (limite : %1$d Mo).</string>
+    <string name="error_storage">Enregistrement impossible sur l’appareil (stockage plein ?). Libérez de la place puis réessayez : les données précédentes sont conservées.</string>
+    <string name="error_out_of_memory">Contenu trop volumineux pour la mémoire de l’appareil : les données précédentes sont conservées.</string>
     <string name="error_unknown">Erreur inattendue.</string>
 
     <plurals name="football_other_channels">

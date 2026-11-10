@@ -191,6 +191,9 @@ class LiveRecording(tailBytes: Int) {
     private val ring = ByteArray(tailBytes)
     private val lock = Any()
 
+    /** Protège le passage sur le disque face à un arrêt simultané ([startDisk] hors du fil principal, [stop] dessus). */
+    private val diskLock = Any()
+
     /** Octets reçus depuis le début du flux. */
     @Volatile
     var total: Long = 0
@@ -232,8 +235,15 @@ class LiveRecording(tailBytes: Int) {
                     System.arraycopy(bytes, offset + copied, ring, at, n)
                     copied += n
                 }
-            } else if (!diskBuffer.append(if (offset == 0) bytes else bytes.copyOfRange(offset, offset + length), length)) {
-                stopped = true
+            } else {
+                val more = try {
+                    diskBuffer.append(if (offset == 0) bytes else bytes.copyOfRange(offset, offset + length), length)
+                } catch (e: IOException) {
+                    // Stockage plein, fichier retiré : l'enregistrement s'arrête là (la lecture du différé le signale).
+                    diskBuffer.finish(e)
+                    false
+                }
+                if (!more) stopped = true
             }
             total += length
             if (now - lastSample >= SAMPLE_MILLIS || sampleCount == 0) {
@@ -280,29 +290,52 @@ class LiveRecording(tailBytes: Int) {
 
     /**
      * Passe à l'enregistrement sur le disque ([file], au plus [maxBytes]) : les secondes en mémoire y sont
-     * recopiées, puis tout ce qui arrive y est écrit.
+     * recopiées, puis tout ce qui arrive y est écrit. Jusqu'à 32 Mo à écrire : à appeler hors du fil
+     * principal.
+     *
+     * @return `null` si c'est impossible (stockage plein, fichier refusé) ou si [stop] est arrivé entre-temps :
+     * rien n'est alors gardé sur le disque, et le direct continue comme avant.
      */
-    fun startDisk(file: File, maxBytes: Long): TimeshiftBuffer = synchronized(lock) {
+    fun startDisk(file: File, maxBytes: Long): TimeshiftBuffer? = synchronized(lock) {
         disk?.let { return it }
-        val buffer = TimeshiftBuffer(file, maxBytes)
-        val from = oldest()
-        var position = from
-        val chunk = ByteArray(CHUNK)
-        while (position < total) {
-            val n = minOf((total - position).toInt(), CHUNK)
-            var copied = 0
-            while (copied < n) {
-                val at = ((position + copied) % ring.size).toInt()
-                val m = minOf(n - copied, ring.size - at)
-                System.arraycopy(ring, at, chunk, copied, m)
-                copied += m
+        if (stopped) return null
+        var buffer: TimeshiftBuffer? = null
+        try {
+            val created = TimeshiftBuffer(file, maxBytes)
+            buffer = created
+            val from = oldest()
+            var position = from
+            val chunk = ByteArray(CHUNK)
+            while (position < total) {
+                if (stopped) {
+                    created.release()
+                    return null
+                }
+                val n = minOf((total - position).toInt(), CHUNK)
+                var copied = 0
+                while (copied < n) {
+                    val at = ((position + copied) % ring.size).toInt()
+                    val m = minOf(n - copied, ring.size - at)
+                    System.arraycopy(ring, at, chunk, copied, m)
+                    copied += m
+                }
+                created.append(chunk, n)
+                position += n
             }
-            buffer.append(chunk, n)
-            position += n
+            // Arrêt demandé pendant la copie : soit [stop] voit l'enregistrement et le supprime, soit il est supprimé ici.
+            synchronized(diskLock) {
+                if (stopped) {
+                    created.release()
+                    return null
+                }
+                diskBase = from
+                disk = created
+            }
+            created
+        } catch (e: IOException) {
+            runCatching { buffer?.release() }
+            null
         }
-        diskBase = from
-        disk = buffer
-        buffer
     }
 
     /** À la fermeture de sa source par le lecteur, la connexion du direct continue d'écrire ici ([takeOver]). */
@@ -345,9 +378,12 @@ class LiveRecording(tailBytes: Int) {
 
     /** Fin du différé : la connexion est fermée et l'enregistrement supprimé. */
     fun stop() {
-        stopped = true
+        val recorded = synchronized(diskLock) {
+            stopped = true
+            disk
+        }
         pump?.interrupt()
-        disk?.release()
+        recorded?.release()
     }
 
     private companion object {

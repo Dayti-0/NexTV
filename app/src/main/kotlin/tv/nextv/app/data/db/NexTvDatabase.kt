@@ -18,8 +18,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         HiddenGroupEntity::class,
         GuideOnlyChannelEntity::class,
     ],
-    version = 10,
-    exportSchema = false,
+    version = NexTvDatabase.VERSION,
+    // Schéma de chaque version gardé dans app/schemas : il sert à écrire et à tester la migration suivante.
+    exportSchema = true,
 )
 abstract class NexTvDatabase : RoomDatabase() {
     abstract fun sourceDao(): SourceDao
@@ -117,11 +118,28 @@ abstract class NexTvDatabase : RoomDatabase() {
                 "WHERE e.sourceId = channels.sourceId AND e.kind = 'SERIES' AND e.itemKey = channels.itemKey) " +
                 "WHERE kind = 'SERIES'"
 
+        /**
+         * Version du schéma. L'augmenter demande d'ajouter sa migration à [MIGRATIONS] : sans elle, l'application
+         * refuse de démarrer (et le test des migrations échoue) au lieu d'effacer en silence playlists, favoris et
+         * identifiants.
+         */
+        const val VERSION = 10
+
+        /** Première version dont les données sont conservées (la 1, version de test, est rechargée depuis la playlist). */
+        const val FIRST_MIGRATED_VERSION = 2
+
+        /** Une migration par version, sans trou de [FIRST_MIGRATED_VERSION] à [VERSION]. */
+        val MIGRATIONS: List<Migration> =
+            listOf(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+
         fun create(context: Context): NexTvDatabase =
             Room.databaseBuilder(context.applicationContext, NexTvDatabase::class.java, "nextv.db")
-                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
-                // Versions de test antérieures (1) : les données sont rechargées depuis la playlist.
-                .fallbackToDestructiveMigration(dropAllTables = true)
+                .addMigrations(*MIGRATIONS.toTypedArray())
+                // Version de test antérieure (1) seulement : les données sont rechargées depuis la playlist.
+                .fallbackToDestructiveMigrationFrom(dropAllTables = true, 1)
+                // Version plus ancienne de l'application installée par-dessus une plus récente : elle ne sait
+                // pas lire la base, qui est recréée.
+                .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
                 .build()
     }
 }

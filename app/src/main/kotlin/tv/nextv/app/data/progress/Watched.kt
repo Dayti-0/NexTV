@@ -38,7 +38,7 @@ interface WatchedDao {
     suspend fun delete(sourceId: Long, itemKey: String)
 }
 
-@Database(entities = [WatchedEntity::class], version = 1, exportSchema = false)
+@Database(entities = [WatchedEntity::class], version = 1, exportSchema = true)
 abstract class WatchedDatabase : RoomDatabase() {
     abstract fun watchedDao(): WatchedDao
 

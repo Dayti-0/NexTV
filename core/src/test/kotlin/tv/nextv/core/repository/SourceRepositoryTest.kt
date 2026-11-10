@@ -169,6 +169,58 @@ class SourceRepositoryTest {
         assertEquals(now, status.lastSuccessAtMillis)
     }
 
+    /** Exception du même nom que celle d'Android quand le stockage est plein. */
+    private class SQLiteFullException : RuntimeException("database or disk is full")
+
+    @Test
+    fun `a full storage while saving channels is a failure that keeps the previous ones`() = runBlocking {
+        route("/list.m3u", playlistWithEpg("/none.xml"))
+        val id = repository.add(SourceInput(name = "IPTV", location = SourceLocation.Remote(server.url("/list.m3u").toString())))
+        repository.refresh(id)
+        val before = store.channels.getValue(id)
+
+        store.failOnReplaceChannels = SQLiteFullException()
+        val result = repository.refresh(id)
+
+        assertEquals(RefreshResult.Failure(SourceError.Storage("SQLiteFullException")), result)
+        assertEquals(before, store.channels.getValue(id))
+        assertEquals(SourceError.Storage("SQLiteFullException"), store.source(id).status.error)
+        assertFalse(repository.refreshing.value.contains(id))
+    }
+
+    @Test
+    fun `a refresh never throws when even the status cannot be saved`() = runBlocking {
+        route("/list.m3u", playlistWithEpg("/none.xml"))
+        val id = repository.add(SourceInput(name = "IPTV", location = SourceLocation.Remote(server.url("/list.m3u").toString())))
+        repository.refresh(id)
+
+        store.failOnReplaceChannels = SQLiteFullException()
+        store.failOnStatusUpdate = SQLiteFullException()
+
+        assertEquals(RefreshResult.Failure(SourceError.Storage("SQLiteFullException")), repository.refresh(id))
+        assertEquals(RefreshResult.Failure(SourceError.Storage("SQLiteFullException")), repository.refreshEpg(id))
+    }
+
+    @Test
+    fun `a full storage while saving the guide fails the guide only and keeps the previous one`() = runBlocking {
+        route("/list.m3u", playlistWithEpg("/guide.xml"))
+        route("/guide.xml", guide, contentType = "application/xml")
+        val id = repository.add(SourceInput(name = "IPTV", location = SourceLocation.Remote(server.url("/list.m3u").toString())))
+        repository.refresh(id)
+        val before = store.programmes.getValue(id)
+        assertEquals(2, before.size)
+
+        store.failOnProgrammeWrite = SQLiteFullException()
+        val refreshed = repository.refresh(id) as RefreshResult.Success
+        assertEquals(SourceError.Storage("SQLiteFullException"), refreshed.epg.error)
+        assertEquals(before, store.programmes.getValue(id))
+
+        val guideOnly = repository.refreshEpg(id)
+        assertEquals(RefreshResult.Failure(SourceError.Storage("SQLiteFullException")), guideOnly)
+        assertEquals(before, store.programmes.getValue(id))
+        assertNull(store.source(id).status.error)
+    }
+
     @Test
     fun `an epg failure does not fail the playlist`() = runBlocking {
         route("/list.m3u", playlistWithEpg("/missing.xml"))

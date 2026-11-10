@@ -1,6 +1,7 @@
 package tv.nextv.app.data.progress
 
 import android.content.Context
+import android.util.Log
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Entity
@@ -8,6 +9,7 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Upsert
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -55,7 +57,7 @@ interface ProgressDao {
     suspend fun delete(sourceId: Long, itemKey: String)
 }
 
-@Database(entities = [ProgressEntity::class], version = 1, exportSchema = false)
+@Database(entities = [ProgressEntity::class], version = 1, exportSchema = true)
 abstract class ProgressDatabase : RoomDatabase() {
     abstract fun progressDao(): ProgressDao
 
@@ -86,18 +88,35 @@ class ProgressRepository(database: ProgressDatabase, private val clock: () -> Lo
         // Durée inconnue : flux en direct (même rangé avec les films ou les séries), rien à reprendre.
         if (progress.durationMs <= 0) return
         val finished = progress.durationMs - progress.positionMs < END_MARGIN_MS || progress.positionMs >= progress.durationMs * 95 / 100
-        when {
-            finished -> dao.delete(progress.sourceId, progress.itemKey)
-            progress.positionMs >= MIN_POSITION_MS -> dao.put(progress.copy(updatedAt = clock()))
+        write {
+            when {
+                finished -> dao.delete(progress.sourceId, progress.itemKey)
+                progress.positionMs >= MIN_POSITION_MS -> dao.put(progress.copy(updatedAt = clock()))
+            }
         }
     }
 
     /** Épisode terminé : la série reprendra au début de l'épisode suivant. */
-    suspend fun saveNext(progress: ProgressEntity) = dao.put(progress.copy(positionMs = 0, durationMs = 0, updatedAt = clock()))
+    suspend fun saveNext(progress: ProgressEntity) = write { dao.put(progress.copy(positionMs = 0, durationMs = 0, updatedAt = clock())) }
 
-    suspend fun clear(sourceId: Long, itemKey: String) = dao.delete(sourceId, itemKey)
+    suspend fun clear(sourceId: Long, itemKey: String) = write { dao.delete(sourceId, itemKey) }
+
+    /**
+     * Écriture de la reprise : faite toutes les quelques secondes pendant un film, elle ne doit jamais le faire
+     * planter (stockage plein, base illisible) ; la position est simplement perdue cette fois-là.
+     */
+    private suspend fun write(block: suspend () -> Unit) {
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Reprise de lecture non enregistrée", e)
+        }
+    }
 
     companion object {
+        private const val TAG = "NixTV/Progress"
         const val MIN_POSITION_MS = 30_000L
         const val END_MARGIN_MS = 2 * 60_000L
     }

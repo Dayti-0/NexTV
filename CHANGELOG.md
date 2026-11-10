@@ -4,6 +4,14 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.87
+- Stockage de l’appareil plein : l’appli ne se ferme plus pendant une actualisation de la playlist ou du guide (même automatique, pendant un film). Un message le dit, et les chaînes et le guide précédents sont gardés
+- Pause et retour en arrière (←) du direct : plus de blocage de l’image au moment d’appuyer, et plus de fermeture de l’appli quand le stockage est plein (la pause reste alors une simple pause)
+- Direct interrompu (coupure du réseau, flux fermé par le serveur) : la chaîne est relancée toute seule, trois fois au plus, au lieu de rester figée sans message ou d’afficher tout de suite une erreur
+- Retour de veille, ou d’une autre appli, pendant un direct : la chaîne repart au direct (elle rejouait d’anciennes images puis tombait en erreur). La connexion au fournisseur est libérée pendant la veille ; un direct laissé en pause reprend au direct
+- Mise à jour de l’appli : playlists, favoris et identifiants ne peuvent plus être effacés en silence lors d’un changement de la base de données
+- Fichier de réglages abîmé (coupure de courant) : l’appli se lance quand même, avec les réglages par défaut
+
 ## 0.2.86
 - Son (ou image) que le lecteur ne sait pas lire : le moteur de VLC prend le relais tout seul, au même endroit du film, dans le même écran et avec les mêmes commandes (pause, avance, reprise, épisode suivant). « Son et image lus par le moteur VLC » s’affiche quelques secondes
 - Options du lecteur : « Lire avec le moteur VLC » pour le choisir soi-même

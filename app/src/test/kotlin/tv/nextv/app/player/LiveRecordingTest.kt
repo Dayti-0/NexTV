@@ -7,6 +7,7 @@ import androidx.media3.datasource.BaseDataSource
 import androidx.media3.datasource.DataSpec
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -47,7 +48,7 @@ class LiveRecordingTest {
     fun diskStartsWithTheBytesKeptInMemory() {
         val recording = LiveRecording(tailBytes = 100)
         recording.append(bytes(0, 250), 0, 250, now = 1_000)
-        val disk = recording.startDisk(File(folder.root, "shift.ts"), maxBytes = 10_000)
+        val disk = checkNotNull(recording.startDisk(File(folder.root, "shift.ts"), maxBytes = 10_000))
         assertEquals(150, recording.diskBase)
         recording.append(bytes(250, 50), 0, 50, now = 2_000)
         assertEquals(150L, disk.written)
@@ -58,6 +59,47 @@ class LiveRecordingTest {
         while (got < 150) got += disk.read(reader, got.toLong(), read, got, 150 - got)
         assertArrayEquals(bytes(150, 150), read)
         recording.stop()
+    }
+
+    @Test
+    fun diskRefusedLeavesTheLiveUntouched() {
+        val recording = LiveRecording(tailBytes = 100)
+        recording.append(bytes(0, 250), 0, 250, now = 1_000)
+        // Fichier impossible à créer (dossier absent : stockage refusé) : pas d'exception, rien sur le disque.
+        assertNull(recording.startDisk(File(folder.root, "absent/shift.ts"), maxBytes = 10_000))
+        assertNull(recording.disk)
+        // Le direct continue d'être gardé en mémoire, et un nouvel essai reste possible.
+        recording.append(bytes(250, 50), 0, 50, now = 2_000)
+        assertEquals(300, recording.total)
+        assertEquals(200, recording.oldest())
+        val disk = checkNotNull(recording.startDisk(File(folder.root, "shift.ts"), maxBytes = 10_000))
+        assertEquals(100L, disk.written)
+        recording.stop()
+    }
+
+    @Test
+    fun stoppedRecordingKeepsNothingOnDisk() {
+        val recording = LiveRecording(tailBytes = 100)
+        recording.append(bytes(0, 250), 0, 250, now = 1_000)
+        recording.stop()
+        val file = File(folder.root, "shift.ts")
+        // Arrêt (autre chaîne, retour au direct) arrivé avant la copie : elle n'a pas lieu.
+        assertNull(recording.startDisk(file, maxBytes = 10_000))
+        assertNull(recording.disk)
+        assertTrue("fichier laissé sur le disque", !file.exists())
+    }
+
+    @Test
+    fun stopRemovesTheRecordingFromDisk() {
+        val recording = LiveRecording(tailBytes = 100)
+        recording.append(bytes(0, 250), 0, 250, now = 1_000)
+        val file = File(folder.root, "shift.ts")
+        checkNotNull(recording.startDisk(file, maxBytes = 10_000))
+        assertTrue(file.exists())
+        recording.stop()
+        assertTrue("fichier laissé sur le disque", !file.exists())
+        // Ce qui arrive encore après l'arrêt ne fait pas d'erreur.
+        recording.append(bytes(250, 50), 0, 50, now = 2_000)
     }
 
     @Test

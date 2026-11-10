@@ -106,6 +106,8 @@ kotlin {
 
 ksp {
     arg("room.generateKotlin", "true")
+    // Schéma de chaque version des bases, gardé dans le dépôt (migrations écrites et testées à partir de lui).
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 dependencies {
