@@ -100,19 +100,31 @@ class StartupViewModel(
         // Fréquence choisie dans les réglages (« à chaque démarrage », 12 h… 7 jours).
         // Mise à jour qui change le regroupement des chaînes (« TF1 (Résolution 4K) » avec TF1) : playlist relue tout de suite.
         val regroup = container.settings.catalogImportVersion.first() < QualityParser.VERSION
-        if (regroup) container.settings.setCatalogImportVersion(QualityParser.VERSION)
         val stale = regroup || container.settings.playlistRefresh.first().dueAtStart(lastSuccess, System.currentTimeMillis())
         // Mise à jour qui change les règles d'import du guide (chaînes des matchs…) : réimport tout de suite.
         val reimportGuide = container.settings.epgImportVersion.first() < EpgImporter.VERSION
-        if (reimportGuide) container.settings.setEpgImportVersion(EpgImporter.VERSION)
+        // Les nouvelles règles ne sont notées comme appliquées qu'une fois la relecture réussie : hors ligne à ce
+        // lancement, elle est retentée au suivant (elle était sinon perdue jusqu'à la prochaine actualisation).
+        val settings = container.settings
+        val recordVersions: suspend (RefreshResult, Boolean) -> Unit = { result, playlistReloaded ->
+            if (result is RefreshResult.Success) {
+                if (regroup && playlistReloaded) settings.setCatalogImportVersion(QualityParser.VERSION)
+                if (reimportGuide && result.epg.error == null) settings.setEpgImportVersion(EpgImporter.VERSION)
+            }
+        }
         if (hasData && !forceRefresh) {
             // Données déjà enregistrées : accueil immédiat, actualisation (playlist ou guide) en arrière-plan.
-            if (stale) container.refreshController.refresh(source.id) else container.refreshController.refreshEpg(source.id, force = reimportGuide)
+            if (stale) {
+                container.refreshController.refresh(source.id) { recordVersions(it, true) }
+            } else {
+                container.refreshController.refreshEpg(source.id, force = reimportGuide) { recordVersions(it, false) }
+            }
             finish(source.id)
             return
         }
         // Premier chargement, ou adresse modifiée : playlist puis guide, avec la progression à l'écran.
         val result = container.sourceRepository.refresh(source.id, includeEpg = true, progress = listener)
+        recordVersions(result, true)
         if (result is RefreshResult.Failure) {
             val message = resources.describe(result.error)
             mutableState.update { it.copy(error = StartupError(message, canContinue = hasData)) }

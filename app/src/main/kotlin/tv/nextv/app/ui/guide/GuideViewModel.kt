@@ -42,6 +42,11 @@ data class GuideProgramme(
     val year: Int? = null,
     /** Image du programme donnée par le guide. */
     val imageUrl: String? = null,
+    /**
+     * Numéro du programme dans la base, pour ceux de la grille : leur [description] n'est pas chargée avec eux
+     * mais lue à la demande ([GuideViewModel.describe]). 0 : programme complet (ou sans description à lire).
+     */
+    val id: Long = 0,
 )
 
 @Immutable
@@ -139,12 +144,27 @@ class GuideViewModel(
     /** Demi-heure en cours : la grille n'est rechargée qu'à son changement (ou à celui de la catégorie). */
     private val slot = clock.map { it - it % HALF_HOUR }.distinctUntilChanged()
 
+    /** Dernier import du guide : la grille est relue quand il change (ses programmes ont été remplacés). */
+    private val guideImport = container.playlistStore.observeSource(sourceId)
+        .map { it?.status?.epg?.lastSuccessAtMillis }
+        .distinctUntilChanged()
+
     val state: StateFlow<GuideUiState> = combine(
-        combine(selectedGroup, slot, hiddenGroups) { group, slot, _ -> group to slot }
+        combine(selectedGroup, slot, hiddenGroups, guideImport) { group, slot, _, _ -> group to slot }
             .mapLatest { (group, slot) -> if (group.isTonight()) GuideUiState(loading = false) else load(group, slot) },
         clock,
     ) { loaded, now -> loaded.copy(now = now) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), GuideUiState())
+
+    /**
+     * Programme de la grille avec sa description, lue à la demande (programme sélectionné, fiche ouverte). Rendu
+     * tel quel s'il est déjà complet, ou si la description ne peut pas être lue.
+     */
+    suspend fun describe(programme: GuideProgramme): GuideProgramme {
+        if (programme.id == 0L || programme.description != null) return programme
+        val description = runCatching { container.programmeDao.description(programme.id) }.getOrNull() ?: return programme
+        return programme.copy(description = description)
+    }
 
     /**
      * Programme du soir, lu seulement quand « Ce soir » est affiché. Soirée changée depuis le dernier affichage
@@ -264,9 +284,10 @@ class GuideViewModel(
                 limit = MAX_CHANNELS,
             )
         }
+        // Sans les descriptions (lues à la demande, [describe]) : deux jours de programmes de centaines de chaînes.
         val programmes = rows.map { it.epgChannelId }.distinct()
             .chunked(SQL_VARIABLES_PER_QUERY)
-            .flatMap { ids -> container.programmeDao.inWindow(sourceId, ids, windowStart, windowEnd) }
+            .flatMap { ids -> container.programmeDao.gridWindow(sourceId, ids, windowStart, windowEnd) }
             .groupBy { it.epgChannelId }
         val channels = rows.map { row ->
             GuideChannel(
@@ -275,7 +296,7 @@ class GuideViewModel(
                 number = row.channelNumber,
                 logoUrl = row.logoUrl,
                 programmes = programmes[row.epgChannelId].orEmpty().map {
-                    GuideProgramme(it.title, it.startMillis, it.stopMillis, it.subtitle, it.description, it.category, it.year, it.imageUrl)
+                    GuideProgramme(it.title, it.startMillis, it.stopMillis, it.subtitle, description = null, it.category, it.year, it.imageUrl, id = it.id)
                 },
                 catchupDays = row.catchupDays,
                 itemKey = row.itemKey,

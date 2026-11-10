@@ -349,12 +349,21 @@ class RefreshController(
     private val mutableEvents = MutableSharedFlow<Event>(extraBufferCapacity = 16)
     val events: SharedFlow<Event> = mutableEvents.asSharedFlow()
 
-    fun refresh(sourceId: Long) {
-        scope.launch { mutableEvents.emit(Event(sourceId, repository.refresh(sourceId))) }
+    /** @param onResult appelé avec le résultat, avant qu'il ne soit diffusé (suites à donner à une réussite). */
+    fun refresh(sourceId: Long, onResult: suspend (RefreshResult) -> Unit = {}) {
+        scope.launch {
+            val result = repository.refresh(sourceId)
+            onResult(result)
+            mutableEvents.emit(Event(sourceId, result))
+        }
     }
 
-    fun refreshEpg(sourceId: Long, force: Boolean = false) {
-        scope.launch { mutableEvents.emit(Event(sourceId, repository.refreshEpg(sourceId, force), epgOnly = true)) }
+    fun refreshEpg(sourceId: Long, force: Boolean = false, onResult: suspend (RefreshResult) -> Unit = {}) {
+        scope.launch {
+            val result = repository.refreshEpg(sourceId, force)
+            onResult(result)
+            mutableEvents.emit(Event(sourceId, result, epgOnly = true))
+        }
     }
 
     fun refreshAll() {

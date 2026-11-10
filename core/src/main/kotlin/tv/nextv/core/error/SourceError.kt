@@ -100,6 +100,14 @@ sealed class SourceError(val code: String) {
         override val detail get() = limitBytes.toString()
     }
 
+    /**
+     * Playlist reçue avec beaucoup moins d'entrées que la précédente ([received] au lieu de [expected]) :
+     * sans doute une réponse coupée en route. Elle n'est pas enregistrée du premier coup.
+     */
+    data class Incomplete(val received: Int, val expected: Int) : SourceError("incomplete") {
+        override val detail get() = "$received/$expected"
+    }
+
     // --- Appareil ---------------------------------------------------------------------------
 
     /**
@@ -149,6 +157,10 @@ sealed class SourceError(val code: String) {
             "no_channels" -> NoChannels
             "invalid_xmltv" -> InvalidXmltv
             "too_large" -> TooLarge(detail?.toLongOrNull() ?: 0)
+            "incomplete" -> Incomplete(
+                detail?.substringBefore('/')?.toIntOrNull() ?: 0,
+                detail?.substringAfter('/', "")?.toIntOrNull() ?: 0,
+            )
             "storage" -> Storage(detail)
             "out_of_memory" -> OutOfMemory
             else -> Unknown(detail)

@@ -222,7 +222,7 @@ class SourceRepository(
         val credentials = if (source.hasCredentials) credentialStore.get(id)?.also(::registerSecrets) else null
         val attemptAt = clock()
 
-        suspend fun failed(error: SourceError, cause: Throwable): RefreshResult {
+        suspend fun failed(error: SourceError, cause: Throwable? = null): RefreshResult {
             logger.warn(TAG, "Échec de l'actualisation de la source $id (${describe(source.location)}) : ${error.code}", cause)
             recordFailure(id, source.status.copy(lastAttemptAtMillis = attemptAt, error = error))
             return RefreshResult.Failure(error)
@@ -242,6 +242,18 @@ class SourceRepository(
         } catch (e: OutOfMemoryError) {
             // Playlist trop grosse pour la mémoire de l'appareil : la précédente reste en place.
             return failed(SourceError.OutOfMemory, e)
+        }
+
+        // Réponse coupée en route sans erreur du réseau (certains serveurs ferment la connexion au milieu de la
+        // liste) : une playlist qui perd d'un coup plus de la moitié de ses entrées n'est pas enregistrée, la
+        // précédente reste. Si la suivante est aussi courte, c'est bien la nouvelle liste : elle est acceptée.
+        // Pas de contrôle quand la playlist vient d'être modifiée (autre adresse, autre contenu attendu).
+        val previousCount = source.status.channelCount
+        val lastSuccess = source.status.lastSuccessAtMillis
+        if (lastSuccess != null && source.updatedAtMillis <= lastSuccess && source.status.error !is SourceError.Incomplete &&
+            previousCount >= DROP_CHECK_MIN_ENTRIES && loaded.channels.size < previousCount * DROP_CHECK_RATIO
+        ) {
+            return failed(SourceError.Incomplete(received = loaded.channels.size, expected = previousCount))
         }
 
         // Le serveur n'a accepté qu'un User-Agent de lecteur courant : il est retenu pour la source
@@ -311,7 +323,9 @@ class SourceRepository(
             progress = progress,
         )
         val status = source.status.copy(epg = outcome.status)
-        store.updateStatus(id, status)
+        // Guide déjà à jour : rien n'est réécrit. Chaque écriture de la playlist fait relire les listes de chaînes
+        // affichées, alors que seule l'heure de cette vérification aurait changé.
+        if (!outcome.unchanged) store.updateStatus(id, status)
         return outcome.failure?.let { RefreshResult.Failure(it) }
             ?: RefreshResult.Success(status.channelCount, status.warnings, outcome.status)
     }
@@ -451,7 +465,7 @@ class SourceRepository(
             lastImport >= feed.updatedAtMillis && attemptAt - lastImport < EPG_REIMPORT_MILLIS
         if (upToDate) {
             progress?.onProgress(LoadProgress(LoadStep.EPG_IMPORT, 1, 1))
-            return EpgOutcome(previous.copy(lastAttemptAtMillis = attemptAt, error = feed.error), failure = null)
+            return EpgOutcome(previous.copy(lastAttemptAtMillis = attemptAt, error = feed.error), failure = null, unchanged = feed.error == previous.error)
         }
 
         val session = store.beginEpgImport(source.id)
@@ -477,8 +491,11 @@ class SourceRepository(
         }
     }
 
-    /** @property failure erreur si aucun guide n'a pu être importé (le guide précédent est conservé). */
-    private class EpgOutcome(val status: EpgStatus, val failure: SourceError?)
+    /**
+     * @property failure erreur si aucun guide n'a pu être importé (le guide précédent est conservé).
+     * @property unchanged le guide était à jour : rien n'a été importé, seul le moment de la vérification diffère.
+     */
+    private class EpgOutcome(val status: EpgStatus, val failure: SourceError?, val unchanged: Boolean = false)
 
     private fun validate(input: SourceInput): SourceInput =
         when (val result = SourceInputValidator.validate(input)) {
@@ -523,6 +540,10 @@ class SourceRepository(
 
     private companion object {
         const val TAG = "SourceRepository"
+
+        /** Contrôle des playlists reçues incomplètes : à partir de ce nombre d'entrées, et en dessous de cette part. */
+        const val DROP_CHECK_MIN_ENTRIES = 200
+        const val DROP_CHECK_RATIO = 0.5
 
         /** Le guide importé ne couvre qu'une fenêtre de quelques jours : il est réimporté chaque jour. */
         const val EPG_REIMPORT_MILLIS = 24 * 60 * 60_000L

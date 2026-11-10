@@ -56,8 +56,12 @@ class InMemoryPlaylistStore : PlaylistStore {
         this.channels[sourceId] = channels.map { nextChannelId++ to it }
     }
 
+    /** Écritures du statut (chacune fait relire les listes affichées dans l'application). */
+    var statusUpdates = 0
+
     override suspend fun updateStatus(sourceId: Long, status: SourceStatus) {
         failOnStatusUpdate?.let { throw it }
+        statusUpdates++
         state.update { current -> current + (sourceId to current.getValue(sourceId).copy(status = status)) }
     }
 

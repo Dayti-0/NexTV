@@ -221,6 +221,60 @@ class SourceRepositoryTest {
         assertNull(store.source(id).status.error)
     }
 
+    private fun bigPlaylist(entries: Int) = buildString {
+        append("#EXTM3U\n")
+        repeat(entries) { append("#EXTINF:-1,Chaîne $it\nhttp://s/$it.ts\n") }
+    }
+
+    @Test
+    fun `a playlist that suddenly loses most of its entries is not saved at once`() = runBlocking {
+        route("/list.m3u", bigPlaylist(300))
+        val id = repository.add(SourceInput(name = "IPTV", location = SourceLocation.Remote(server.url("/list.m3u").toString())))
+        assertEquals(300, (repository.refresh(id, includeEpg = false) as RefreshResult.Success).channelCount)
+
+        // Réponse coupée en route (le serveur ferme la connexion sans erreur) : la liste précédente est gardée.
+        route("/list.m3u", bigPlaylist(100))
+        assertEquals(RefreshResult.Failure(SourceError.Incomplete(received = 100, expected = 300)), repository.refresh(id, includeEpg = false))
+        assertEquals(300, store.channels.getValue(id).size)
+        assertEquals(SourceError.Incomplete(100, 300), store.source(id).status.error)
+        assertEquals(300, store.source(id).status.channelCount)
+
+        // Liste complète de nouveau : enregistrée, l'erreur disparaît.
+        route("/list.m3u", bigPlaylist(310))
+        assertEquals(310, (repository.refresh(id, includeEpg = false) as RefreshResult.Success).channelCount)
+        assertNull(store.source(id).status.error)
+    }
+
+    @Test
+    fun `a playlist that stays short is accepted the second time`() = runBlocking {
+        route("/list.m3u", bigPlaylist(300))
+        val id = repository.add(SourceInput(name = "IPTV", location = SourceLocation.Remote(server.url("/list.m3u").toString())))
+        repository.refresh(id, includeEpg = false)
+
+        // Le fournisseur a vraiment réduit sa liste : refusée une fois, acceptée à l'actualisation suivante.
+        route("/list.m3u", bigPlaylist(100))
+        assertTrue(repository.refresh(id, includeEpg = false) is RefreshResult.Failure)
+        assertEquals(100, (repository.refresh(id, includeEpg = false) as RefreshResult.Success).channelCount)
+        assertEquals(100, store.channels.getValue(id).size)
+    }
+
+    @Test
+    fun `a small drop or a small playlist is saved as usual`() = runBlocking {
+        route("/list.m3u", bigPlaylist(300))
+        val id = repository.add(SourceInput(name = "IPTV", location = SourceLocation.Remote(server.url("/list.m3u").toString())))
+        repository.refresh(id, includeEpg = false)
+        // Quelques chaînes retirées : rien d'anormal.
+        route("/list.m3u", bigPlaylist(200))
+        assertEquals(200, (repository.refresh(id, includeEpg = false) as RefreshResult.Success).channelCount)
+
+        // Petite playlist (liste personnelle) : pas de contrôle.
+        route("/small.m3u", bigPlaylist(50))
+        val small = repository.add(SourceInput(name = "Perso", location = SourceLocation.Remote(server.url("/small.m3u").toString())))
+        repository.refresh(small, includeEpg = false)
+        route("/small.m3u", bigPlaylist(5))
+        assertEquals(5, (repository.refresh(small, includeEpg = false) as RefreshResult.Success).channelCount)
+    }
+
     @Test
     fun `an epg failure does not fail the playlist`() = runBlocking {
         route("/list.m3u", playlistWithEpg("/missing.xml"))
@@ -387,10 +441,12 @@ class SourceRepositoryTest {
         )
         assertTrue(server.takeRequestPaths().none { it == "/ignored.xml" }) // le guide de l'en-tête est ignoré
 
-        // Guide inchangé : pas de réimport.
+        // Guide inchangé : pas de réimport, et rien n'est réécrit (les listes affichées ne sont pas relues).
         store.programmes.remove(id)
+        val writes = store.statusUpdates
         withFeed.refreshEpg(id)
         assertEquals(null, store.programmes[id])
+        assertEquals(writes, store.statusUpdates)
 
         // Guide mis à jour : réimport.
         feedUpdatedAt = now + 1

@@ -230,6 +230,19 @@ data class EpisodeRow(
     val streamSupport: String,
 )
 
+/** Programme de la grille du guide : tout sauf la description, lue à la demande ([ProgrammeDao.description]). */
+data class GridProgrammeRow(
+    val id: Long,
+    val epgChannelId: String,
+    val startMillis: Long,
+    val stopMillis: Long,
+    val title: String,
+    val subtitle: String?,
+    val category: String?,
+    val year: Int?,
+    val imageUrl: String?,
+)
+
 /** Programme du guide susceptible de diffuser un match (section Foot). */
 data class FootballProgrammeRow(
     val epgChannelId: String,
@@ -900,6 +913,27 @@ interface ProgrammeDao {
         """,
     )
     suspend fun inWindow(sourceId: Long, epgChannelIds: List<String>, from: Long, to: Long): List<ProgrammeEntity>
+
+    /**
+     * Programmes de la grille du guide dans la fenêtre [from, to[ : comme [inWindow], sans la description. La
+     * grille couvre deux jours de centaines de chaînes : leurs descriptions (le gros du texte) pesaient des
+     * dizaines de Mo en mémoire pour n'en afficher qu'une à la fois.
+     */
+    @Query(
+        """
+        SELECT p.id, p.epgChannelId, p.startMillis, p.stopMillis, p.title, p.subtitle, p.category, p.year, p.imageUrl
+        FROM programmes p
+        JOIN sources s ON s.id = p.sourceId AND p.generation = s.epgGeneration
+        WHERE p.sourceId = :sourceId AND p.stopMillis > :from AND p.startMillis < :to
+          AND p.epgChannelId IN (:epgChannelIds)
+        ORDER BY p.epgChannelId, p.startMillis
+        """,
+    )
+    suspend fun gridWindow(sourceId: Long, epgChannelIds: List<String>, from: Long, to: Long): List<GridProgrammeRow>
+
+    /** Description d'un programme de la grille (`null` : aucune, ou programme remplacé par un nouvel import du guide). */
+    @Query("SELECT description FROM programmes WHERE id = :id")
+    suspend fun description(id: Long): String?
 
     /**
      * Programmes qui peuvent être des matchs entre [from] et [to] : genre « Football », compétition

@@ -658,6 +658,7 @@
     <string name="error_no_channels">La playlist ne contient aucune chaîne.</string>
     <string name="error_invalid_xmltv">Ce contenu n’est pas un guide XMLTV valide.</string>
     <string name="error_too_large">Contenu trop volumineux (limite : %1$d Mo).</string>
+    <string name="error_incomplete">La playlist reçue semble incomplète (%1$d éléments au lieu de %2$d) : la précédente est gardée. Si c’est bien la nouvelle liste, actualisez encore une fois.</string>
     <string name="error_storage">Enregistrement impossible sur l’appareil (stockage plein ?). Libérez de la place puis réessayez : les données précédentes sont conservées.</string>
     <string name="error_out_of_memory">Contenu trop volumineux pour la mémoire de l’appareil : les données précédentes sont conservées.</string>
     <string name="error_unknown">Erreur inattendue.</string>

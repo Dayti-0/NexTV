@@ -4,6 +4,13 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.93
+- Guide TV plus léger et plus fluide : seules les cases proches de l’heure affichée sont dessinées (les autres le sont en s’en approchant), et les résumés ne sont lus que pour le programme sélectionné. Même affichage, même navigation ; beaucoup moins de mémoire utilisée sur Fire TV
+- Guide TV : la grille se met à jour dès qu’un nouveau guide est importé (elle pouvait garder l’ancien jusqu’à la demi-heure suivante)
+- Playlist reçue incomplète (connexion coupée en route) : si elle perd d’un coup plus de la moitié de ses éléments, elle n’est pas enregistrée et la précédente est gardée ; un message le dit. Si la liste est vraiment devenue plus courte, elle est acceptée à l’actualisation suivante
+- Listes de chaînes : elles ne sont plus relues toutes les trois heures quand le guide est déjà à jour
+- Après une mise à jour de l’appli qui change le regroupement des chaînes ou l’import du guide : la relecture est retentée au lancement suivant si elle a échoué (hors ligne)
+
 ## 0.2.92
 - Moteur VLC : l’appli ne se fige plus (« ne répond plus ») en quittant le lecteur ou en changeant de titre pendant une lecture par VLC
 - Moteur VLC : un flux qu’il n’arrive pas à ouvrir affiche « Lecture impossible, même avec le moteur VLC » au lieu de fermer le lecteur comme à la fin d’un film

@@ -46,7 +46,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import tv.nextv.app.ui.home.HomeVisit
@@ -135,7 +138,26 @@ fun GuideScreen(
         onPlay = onPlay,
         onReplay = { channel, programme -> onReplay(channel.id, programme.startMillis, programme.stopMillis) },
         modifier = modifier,
+        describe = viewModel::describe,
     )
+}
+
+/**
+ * [pair] avec la description de son programme, lue à la demande par [describe] (la grille ne charge pas les
+ * descriptions de ses milliers de programmes). Le programme s'affiche tout de suite, sa description le rejoint.
+ */
+@Composable
+private fun described(
+    pair: Pair<GuideChannel, GuideProgramme>?,
+    describe: suspend (GuideProgramme) -> GuideProgramme,
+): Pair<GuideChannel, GuideProgramme>? {
+    val full by produceState(pair, pair) { value = pair?.let { it.first to describe(it.second) } }
+    val read = full ?: return pair
+    // Autre programme sélectionné entre-temps : pas la description du précédent.
+    val current = pair ?: return null
+    val same = read.first.id == current.first.id && read.second.id == current.second.id &&
+        read.second.startMillis == current.second.startMillis && read.second.title == current.second.title
+    return if (same) read else current
 }
 
 /**
@@ -157,6 +179,8 @@ fun GuideContent(
     /** Programme du soir (catégorie « Ce soir »). */
     tonight: TonightUiState = TonightUiState(),
     onTonightDay: (Int) -> Unit = {},
+    /** Programme de la grille avec sa description (lue à la demande). */
+    describe: suspend (GuideProgramme) -> GuideProgramme = { it },
 ) {
     val window = rememberWindowInfo()
     val minuteWidth = if (window.isWide) 4.6.dp else 3.2.dp
@@ -223,7 +247,7 @@ fun GuideContent(
         } else {
             GuideGrid(
                 state = state,
-                highlighted = highlighted,
+                highlighted = described(highlighted, describe),
                 scroll = scroll,
                 minuteWidth = minuteWidth,
                 channelColumnWidth = channelColumnWidth,
@@ -238,7 +262,7 @@ fun GuideContent(
         }
     }
 
-    details?.let { (channel, programme) ->
+    described(details, describe)?.let { (channel, programme) ->
         ProgrammeSheet(
             channel = channel,
             programme = programme,
@@ -538,13 +562,37 @@ private fun GuideRow(
     val totalWidth = minutes(state.windowEnd - state.windowStart) * minuteWidth
     val shown = visibleProgrammes(channel, state)
     val requesters = remember(shown) { shown.associateWith { FocusRequester() } }
+    // Programme qui doit prendre le focus (haut / bas) : celui de l'heure visée, sinon le plus proche.
+    val focusTarget = remember(focusAt, shown) {
+        focusAt?.let { at ->
+            shown.firstOrNull { at >= it.startMillis && at < it.stopMillis }
+                ?: shown.minByOrNull { minOf(abs(it.startMillis - at), abs(it.stopMillis - at)) }
+        }
+    }
     if (focusAt != null) {
         LaunchedEffect(focusAt) {
-            val target = shown.firstOrNull { focusAt >= it.startMillis && focusAt < it.stopMillis }
-                ?: shown.minByOrNull { minOf(abs(it.startMillis - focusAt), abs(it.stopMillis - focusAt)) }
-            target?.let { runCatching { requesters.getValue(it).requestFocus() } }
+            focusTarget?.let { runCatching { requesters.getValue(it).requestFocus() } }
             onFocusAtDone()
         }
+    }
+    // Seules les cases proches de l'heure affichée sont dessinées : un écran de marge de chaque côté, plus la
+    // voisine de chaque bord (← → trouvent toujours la suivante). La ligne entière couvre deux jours, soit des
+    // dizaines de cases par chaîne pour une poignée à l'écran. Recalculé seulement quand une case entre dans cette
+    // zone ou en sort, pas à chaque pixel de défilement.
+    val minutePx = with(LocalDensity.current) { minuteWidth.toPx() }
+    val drawnRange by remember(shown, state.windowStart, minutePx) {
+        derivedStateOf {
+            val viewportPx = scroll.viewportSize.takeIf { it > 0 } ?: DEFAULT_VIEWPORT_PX
+            val visibleMillis = (viewportPx / minutePx * 60_000).toLong()
+            val margin = visibleMillis.coerceAtLeast(MIN_DRAWN_MARGIN_MILLIS)
+            val visibleStart = state.windowStart + (scroll.value / minutePx * 60_000).toLong()
+            drawnRange(shown, visibleStart - margin, visibleStart + visibleMillis + margin)
+        }
+    }
+    val drawn = remember(drawnRange, shown, focusTarget) {
+        val near = if (drawnRange.isEmpty()) emptyList() else shown.subList(drawnRange.first, drawnRange.last + 1)
+        // Le programme visé par haut / bas peut être loin (ligne sans programme à cette heure) : dessiné aussi.
+        if (focusTarget != null && focusTarget !in near) near + focusTarget else near
     }
     Row(Modifier.fillMaxWidth().height(rowHeight)) {
         FocusSurface(
@@ -587,7 +635,9 @@ private fun GuideRow(
                             modifier = Modifier.align(Alignment.CenterStart).padding(start = 12.dp),
                         )
                     }
-                    shown.forEach { programme ->
+                    drawn.forEach { programme ->
+                      // Chaque case garde son identité (et le focus) quand la zone dessinée glisse.
+                      key(programme.id, programme.startMillis, programme.stopMillis, programme.title) {
                         val start = maxOf(programme.startMillis, state.windowStart)
                         val end = minOf(programme.stopMillis, state.windowEnd)
                         val live = programme.isLive(state.now)
@@ -608,6 +658,7 @@ private fun GuideRow(
                             onClick = { onOpen(programme) },
                             onFocus = { onFocus(programme) },
                         )
+                      }
                     }
                     Box(
                         Modifier
@@ -852,6 +903,34 @@ private val SHEET_WIDTH = 640.dp
 private val SHEET_WIDTH_WIDE = 860.dp
 private val SHEET_ART_WIDTH = 220.dp
 private val SHEET_SCROLL_STEP = 120.dp
+
+/**
+ * Cases à dessiner d'une ligne du guide : celles qui touchent la période [from, to[ (ce qui est à l'écran et sa
+ * marge), plus la voisine de chaque bord, pour que le focus trouve toujours la case suivante avec ← →.
+ *
+ * @param programmes programmes de la ligne, dans l'ordre des heures.
+ * @return indices du premier et du dernier programme à dessiner ; vide pour une ligne sans programme.
+ */
+internal fun drawnRange(programmes: List<GuideProgramme>, from: Long, to: Long): IntRange {
+    if (programmes.isEmpty()) return IntRange.EMPTY
+    // Rien dans la période : les cases les plus proches de chaque côté restent atteignables.
+    var first = programmes.indexOfFirst { it.stopMillis > from }
+    if (first < 0) first = programmes.lastIndex
+    var last = programmes.indexOfLast { it.startMillis < to }
+    if (last < 0) last = 0
+    if (last < first) {
+        val swap = first
+        first = last
+        last = swap
+    }
+    return (first - 1).coerceAtLeast(0)..(last + 1).coerceAtMost(programmes.lastIndex)
+}
+
+/** Largeur prise pour l'écran tant qu'elle n'est pas mesurée (premier affichage). */
+private const val DEFAULT_VIEWPORT_PX = 1920
+
+/** Marge minimale dessinée de chaque côté de ce qui est à l'écran. */
+private const val MIN_DRAWN_MARGIN_MILLIS = 2 * 60 * 60_000L
 
 /** Programmes affichés d'une ligne : au moins une minute dans la fenêtre de la grille. */
 private fun visibleProgrammes(channel: GuideChannel, state: GuideUiState): List<GuideProgramme> =
