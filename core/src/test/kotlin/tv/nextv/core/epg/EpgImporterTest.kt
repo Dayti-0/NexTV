@@ -100,6 +100,82 @@ class EpgImporterTest {
     }
 
     @Test
+    fun `channels named differently by the provider are linked to the guide`() {
+        val guide = listOf(
+            XmltvChannel("TV5Monde.fr", listOf("TV5 Monde")),
+            XmltvChannel("TV5MondeInfo.fr", listOf("TV5 Monde Info")),
+            XmltvChannel("LEquipe21.fr", listOf("La chaine l’Équipe")),
+            XmltvChannel("FranceInfo.fr", listOf("franceinfo:")),
+            XmltvChannel("Europe1TV.fr", listOf("Europe 1 TV")),
+            XmltvChannel("BSmartTV.fr", listOf("BSmartTV")),
+            XmltvChannel("CanalPlusCinema.ch", listOf("Canal+ Cinema")),
+            XmltvChannel("CanalPlusCinema.fr", listOf("Canal+ Cinema")),
+            XmltvChannel("ScienceEtVieTV.fr", listOf("Science et Vie TV")),
+            XmltvChannel("Turbo2424.fr", listOf("Turbo 24/24")),
+            XmltvChannel("NationalGeographic.fr", listOf("National Geographic")),
+            XmltvChannel("PLANETEJustice.fr", listOf("Planète+ Crime Investigation")),
+            XmltvChannel("DiscoveryChannel.fr", listOf("Discovery Channel")),
+            XmltvChannel("LaUne.be", listOf("La Une")),
+        )
+        val channels = listOf(
+            EpgChannelRef(1, tvgId = null, tvgName = null, name = "FR| TV5 NEWS"),
+            EpgChannelRef(2, tvgId = null, tvgName = null, name = "FR| L'EQUIPE FHD"),
+            EpgChannelRef(3, tvgId = null, tvgName = null, name = "FR| FRANCE INFO TV"),
+            EpgChannelRef(4, tvgId = null, tvgName = null, name = "FR| EUROPE 1"),
+            EpgChannelRef(5, tvgId = null, tvgName = null, name = "FR| B SMART"),
+            // Même nom en France et en Suisse : la chaîne française.
+            EpgChannelRef(6, tvgId = null, tvgName = null, name = "FR| CANAL+ CINEMA(S) FHD"),
+            EpgChannelRef(7, tvgId = null, tvgName = null, name = "FR| SCIENCE & VIE TV"),
+            EpgChannelRef(8, tvgId = null, tvgName = null, name = "FR| TURBO"),
+            EpgChannelRef(9, tvgId = null, tvgName = null, name = "FR| NAT GEO HD"),
+            EpgChannelRef(10, tvgId = null, tvgName = null, name = "FR| PLANETE+ CI"),
+            EpgChannelRef(11, tvgId = null, tvgName = null, name = "FR| DISCOVERY FHD"),
+            EpgChannelRef(12, tvgId = null, tvgName = null, name = "BE| RTBF LA UNE"),
+            EpgChannelRef(13, tvgId = null, tvgName = null, name = "FR| TV5 MONDE FBS"),
+        )
+
+        val mapping = EpgImporter(parserFactory = { KXmlParser() }).match(channels, guide, emptySet())
+
+        assertEquals(
+            mapOf(
+                1L to "tv5mondeinfo.fr", 2L to "lequipe21.fr", 3L to "franceinfo.fr", 4L to "europe1tv.fr", 5L to "bsmarttv.fr",
+                6L to "canalpluscinema.fr", 7L to "scienceetvietv.fr", 8L to "turbo2424.fr", 9L to "nationalgeographic.fr",
+                10L to "planetejustice.fr", 11L to "discoverychannel.fr", 12L to "laune.be", 13L to "tv5monde.fr",
+            ),
+            mapping,
+        )
+    }
+
+    @Test
+    fun `a name that only looks like a guide channel is left without guide`() {
+        val guide = listOf(
+            XmltvChannel("InfoTV.af", listOf("InfoTV")),
+            XmltvChannel("Arte.fr", listOf("Arte")),
+            XmltvChannel("France2.fr", listOf("France 2")),
+            XmltvChannel("France24.fr", listOf("France 24")),
+            XmltvChannel("Europe1TV.fr", listOf("Europe 1 TV")),
+            XmltvChannel("TV5Monde.fr", listOf("TV5 Monde")),
+            XmltvChannel("EvasionCanada.ca", listOf("Evasion Channel")),
+            XmltvChannel("EvasionAfrique.af", listOf("Evasion TV")),
+        )
+        val channels = listOf(
+            // « La chaîne info » (LCI) : pas « Info TV ».
+            EpgChannelRef(1, tvgId = null, tvgName = null, name = "FR| LA CHAINE INFO"),
+            EpgChannelRef(2, tvgId = null, tvgName = null, name = "FR| ARTE CONCERT"),
+            // Les numéros ne se collent pas : « 2 » puis « 4K » n'est pas « 24 ».
+            EpgChannelRef(3, tvgId = null, tvgName = null, name = "FR| FRANCE 2 4K"),
+            EpgChannelRef(4, tvgId = null, tvgName = null, name = "FR| EUROPE 2"),
+            EpgChannelRef(5, tvgId = null, tvgName = null, name = "FR| TV5 MONDE CINEMA"),
+            // Deux chaînes étrangères du même nom, aucune française : dans le doute, rien.
+            EpgChannelRef(6, tvgId = null, tvgName = null, name = "FR| EVASION"),
+        )
+
+        val mapping = EpgImporter(parserFactory = { KXmlParser() }).match(channels, guide, emptySet())
+
+        assertEquals(mapOf(3L to "france2.fr"), mapping)
+    }
+
+    @Test
     fun `ligue 1+ match channels of a provider are linked to the numbered guide channels`() {
         val guide = listOf(
             XmltvChannel("Ligue1Plus.fr", listOf("Ligue 1+")),

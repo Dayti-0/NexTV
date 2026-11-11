@@ -4,6 +4,10 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.106
+- Guide TV : davantage de chaînes reçoivent leur programme. Les chaînes que la playlist nomme autrement que le guide sont maintenant reconnues : « TV5 NEWS » (TV5 Monde Info), « L'EQUIPE », « FRANCE INFO TV », « EUROPE 1 », « NAT GEO », « PLANETE+ CI », « SCIENCE & VIE TV », « CANAL+ CINEMA(S) », « LCP ASSEMBLEE NATIONALE », les chaînes « 24/24 » (Turbo, Zone Interdite…) et d'autres
+- Le guide est relu une fois au premier lancement après la mise à jour, pour relier ces chaînes à leur programme
+
 ## 0.2.105
 - Films et séries en mosaïque : le titre sous l’affiche s’affiche sur trois lignes au lieu d’une, il n’est presque plus coupé
 

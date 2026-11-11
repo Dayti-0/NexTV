@@ -189,12 +189,15 @@ class EpgImporter(
                 byName.putIfAbsent(normalizeName(name), id)
             }
         }
-        // Rapprochement souple, en dernier recours (« LIGUE 1+ MATCH 05 » → « Ligue 1+ 5 »).
+        // Rapprochement souple, en dernier recours (« LIGUE 1+ MATCH 05 » → « Ligue 1+ 5 », « L'EQUIPE » →
+        // « La chaine l'Équipe », « TV5 NEWS » → « TV5 Monde Info »).
         val loose = lazy(LazyThreadSafetyMode.NONE) {
+            val known = xmltvChannels.filter { normalizeId(it.id) !in excluded }
             ChannelNames.Index(
-                xmltvChannels.filter { normalizeId(it.id) !in excluded }
-                    .groupBy({ normalizeId(it.id) }) { it.displayNames.ifEmpty { listOf(it.id.substringBeforeLast('.')) } }
+                names = known.groupBy({ normalizeId(it.id) }) { it.displayNames.ifEmpty { listOf(it.id.substringBeforeLast('.')) } }
                     .mapValues { (_, names) -> names.flatten() },
+                // Identifiant sans domaine : souvent l'ancien nom (« LEquipe21 », « PlaneteJustice »).
+                formerNames = known.groupBy({ normalizeId(it.id) }) { it.id.substringBeforeLast('.') },
             )
         }
         for (channel in channels) {
@@ -216,7 +219,7 @@ class EpgImporter(
          * avec une version antérieure est réimporté dès le lancement suivant, sans attendre sa
          * réimportation quotidienne.
          */
-        const val VERSION = 5
+        const val VERSION = 6
 
         private const val CANCELLATION_CHECK_INTERVAL = 500
         private val NON_ALPHANUMERIC = Regex("[^\\p{L}\\p{Nd}]+")
@@ -228,10 +231,11 @@ class EpgImporter(
 
         /**
          * Minuscules, sans accents ni ponctuation ; « + » devient « plus » (« Canal+ » = « CanalPlus »,
-         * « Ligue 1+ ») et les zéros de tête des numéros disparaissent (« Ligue 1+ 05 » = « Ligue 1+ 5 »).
+         * « Ligue 1+ »), « & » devient « et » (« Science & Vie TV ») et les zéros de tête des numéros
+         * disparaissent (« Ligue 1+ 05 » = « Ligue 1+ 5 »).
          */
         fun normalizeName(name: String): String {
-            val decomposed = Normalizer.normalize(name.trim().lowercase().replace("+", "plus"), Normalizer.Form.NFD)
+            val decomposed = Normalizer.normalize(name.trim().lowercase().replace("+", "plus").replace("&", "et"), Normalizer.Form.NFD)
             return NON_ALPHANUMERIC.replace(LEADING_ZEROS.replace(DIACRITICS.replace(decomposed, ""), ""), "")
         }
     }
