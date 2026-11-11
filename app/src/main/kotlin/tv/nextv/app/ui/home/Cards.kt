@@ -43,6 +43,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import tv.nextv.app.R
@@ -307,7 +308,7 @@ fun PosterCard(
     moving: Boolean = false,
     /** Part déjà regardée (reprise de lecture), barre en bas de l'affiche. */
     progress: Float? = null,
-    /** Affiche étroite (nombreuses par ligne) : titre sur une ligne, sans sous-titre. */
+    /** Affiche étroite (nombreuses par ligne) : titre sur trois lignes, sans sous-titre. */
     compact: Boolean = false,
     /** Déjà vu jusqu'au bout : badge en haut à gauche. */
     watched: Boolean = false,
@@ -330,16 +331,19 @@ fun PosterCard(
                 progress?.let { LiveProgress(0, 1_000, (it * 1_000).toLong(), Modifier.align(Alignment.BottomCenter).padding(inset)) }
             }
             if (compact) {
+                // Affiche étroite : titre sur trois lignes (une seule coupait presque tous les titres), sans
+                // espacement entre les lettres ; trois lignes réservées pour que les affiches restent alignées.
                 Text(
                     title,
-                    style = MaterialTheme.typography.labelMedium,
-                    maxLines = 1,
+                    style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 0.sp, lineHeight = 15.sp),
+                    minLines = 3,
+                    maxLines = 3,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 5.dp),
+                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 4.dp),
                 )
             } else {
                 Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
-                    Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
                     subtitle?.let {
                         Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                     }

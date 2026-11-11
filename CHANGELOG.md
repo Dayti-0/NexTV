@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.105
+- Films et séries en mosaïque : le titre sous l’affiche s’affiche sur trois lignes au lieu d’une, il n’est presque plus coupé
+
 ## 0.2.104
 - Guide TV : plus de léger tremblement en descendant d'une chaîne à l'autre (l'en-tête du programme garde toujours la même hauteur)
 - « Ce soir » : sans numéros de chaîne (favoris hors TNT, par exemple), la colonne vide disparaît ; les chaînes et leurs programmes prennent la place

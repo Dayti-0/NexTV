@@ -169,6 +169,11 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
+    fun homeMoviesLiveCenterDense() = capture("07c_accueil_films_live_center_5_par_ligne") {
+        Home(HomeSection.MOVIES, Category.All, grid = GridColumns(perRow = 5))
+    }
+
+    @Test
     fun homeContinue() = capture("08b_reprendre") {
         Home(HomeSection.SERIES, Category.ContinueWatching)
     }
