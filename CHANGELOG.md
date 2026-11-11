@@ -4,6 +4,15 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.109
+- France 3 régionales : davantage d'éditions reçoivent leur programme. Les écritures abrégées ou fautives de la playlist sont reconnues : « BNORMANDIE », « NORD PDC », « CHAMP ARDENNE », « POITOUCHAR », « POTOU-CHARENTES », « PROV ALPES », « LANGUE-DOC », « RHONES-ALPES »…
+- Une édition régionale absente du guide affiche le programme national de France 3 (le même en dehors des journaux régionaux), au lieu de « Pas d'information »
+- La même région écrite de deux façons (« PARIS IDF » en HD et « PARIS ILE DE FRANCE » en FHD) ne fait plus qu'une vignette, avec ses qualités ; de même pour « LE FIGARO TV IDF » et « LE FIGARO IDF », qui reçoit aussi son programme
+- « France 3 Haute-Normandie » retrouve son nom (elle s'affichait « France 3 -Normandie »)
+- Réglages › Région de France 3 : chaque région n'apparaît qu'une fois ; la région déjà choisie est gardée
+- Les favoris, « L'essentiel » du guide et les chaînes récentes suivent les chaînes regroupées
+- La playlist et le guide sont relus une fois au premier lancement après la mise à jour
+
 ## 0.2.108
 - Films : un film que la playlist propose en plusieurs versions (« À la dérive (Truefrench) » et « À la dérive (FR) », la même en VOSTFR, en 4K…) n'apparaît plus qu'une fois dans les listes et la recherche, sous son vrai titre
 - Sur la fiche du film, un bouton « Version » fait passer de l'une à l'autre (OK pour changer) ; « Lecture » et « Reprendre » lisent celle qui est affichée. La version française est proposée d'abord

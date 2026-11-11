@@ -87,6 +87,58 @@ class QualityParserTest {
     }
 
     @Test
+    fun `haute stays in a channel name unless it qualifies the resolution`() {
+        // « France 3 Haute-Normandie FHD » s'affichait « France 3 -Normandie ».
+        val region = QualityParser.parse("FR| FRANCE 3 HAUTE-NORMANDIE FHD")
+        assertEquals("FR| FRANCE 3 HAUTE-NORMANDIE", region.baseName)
+        assertEquals(StreamQuality.FHD, region.quality)
+        assertEquals("fr france 3 haute normandie", region.variantKey)
+        assertEquals("FR| TV8 HAUTE SAVOIE", QualityParser.parse("FR| TV8 HAUTE SAVOIE HD").baseName)
+        // Avec « résolution », « définition » ou « qualité » : une mention de qualité, retirée.
+        assertEquals("FR| TF1", QualityParser.parse("FR| TF1 4K (Très haute définition)").baseName)
+        assertEquals("FR| M6", QualityParser.parse("FR| M6 FHD Haute qualité").baseName)
+    }
+
+    @Test
+    fun `channels whose names differ only by tv are one channel`() {
+        var position = 0
+        fun live(name: String) = QualityParser.parse(name).let { parsed ->
+            tv.nextv.core.model.Channel(
+                position = position++, name = name, stream = tv.nextv.core.model.StreamDescriptor("http://example.com/live/$position.ts"),
+                kind = ContentKind.LIVE, title = parsed.baseName, variantKey = LiveVariants.key(parsed.variantKey), quality = parsed.quality,
+            )
+        }
+        val channels = LiveVariants.unify(
+            listOf(
+                // Les deux vignettes de la photo : la même chaîne en HD et en FHD.
+                live("FR| LE FIGARO TV IDF HD"), live("FR| LE FIGARO IDF FHD"),
+                live("FR| BFM TV FHD"), live("FR| TV BREIZH HD"), live("FR| TF1 FHD"),
+                live("FR| USHUAIA TV HD"), live("FR| TV USHUAIA FHD"),
+                // Éditions régionales de France 3 écrites de deux façons.
+                live("FR| FRANCE 3 PARIS IDF HD"), live("FR| FRANCE 3 PARIS ILE DE FRANCE FHD"),
+                live("FR| FRANCE 3 POITOUCHAR HD"), live("FR| FRANCE 3 POTOU-CHARENTES FHD"),
+                live("FR| FRANCE 3 BNORMANDIE HD"), live("FR| FRANCE 3 BASSE-NORMANDIE FHD"), live("FR| FRANCE 3 HAUTE-NORMANDIE FHD"),
+                live("FR| FRANCE 3 FHD"),
+            ),
+        ).associate { it.name to it.variantKey }
+
+        assertEquals("fr le figaro idf", channels["FR| LE FIGARO TV IDF HD"])
+        assertEquals("fr le figaro idf", channels["FR| LE FIGARO IDF FHD"])
+        assertEquals(channels["FR| USHUAIA TV HD"], channels["FR| TV USHUAIA FHD"])
+        // Seule à porter son nom : sa clé ne change pas (ses favoris non plus).
+        assertEquals("fr bfm tv", channels["FR| BFM TV FHD"])
+        assertEquals("fr tv breizh", channels["FR| TV BREIZH HD"])
+        assertEquals("fr tf1", channels["FR| TF1 FHD"])
+
+        assertEquals("fr france 3 paris ile de france", channels["FR| FRANCE 3 PARIS IDF HD"])
+        assertEquals(channels["FR| FRANCE 3 PARIS IDF HD"], channels["FR| FRANCE 3 PARIS ILE DE FRANCE FHD"])
+        assertEquals(channels["FR| FRANCE 3 POITOUCHAR HD"], channels["FR| FRANCE 3 POTOU-CHARENTES FHD"])
+        assertEquals(channels["FR| FRANCE 3 BNORMANDIE HD"], channels["FR| FRANCE 3 BASSE-NORMANDIE FHD"])
+        assertNotEquals(channels["FR| FRANCE 3 BASSE-NORMANDIE FHD"], channels["FR| FRANCE 3 HAUTE-NORMANDIE FHD"])
+        assertEquals("fr france 3", channels["FR| FRANCE 3 FHD"])
+    }
+
+    @Test
     fun `fifa plus qualities are separate channels`() {
         // Un flux différent par qualité : pas des versions de la même chaîne.
         val fhd = QualityParser.parse("FR| FIFA+ FHD")
@@ -299,9 +351,75 @@ class FranceRegionsTest {
         assertEquals("bretagne", FranceRegions.regionOf("FR: F3 Bretagne")?.key)
         assertEquals("Corse ViaStella", FranceRegions.regionOf("FR| France 3 Corse ViaStella")?.label)
         // Nom mal écrit par la playlist : corrigé.
-        assertEquals("Languedoc", FranceRegions.regionOf("FR| FRANCE 3 LANGUE-DOC")?.label)
-        assertEquals("Languedoc", FranceRegions.regionOf("FR| France 3 Langue Doc HD")?.label)
-        assertEquals("Languedoc", FranceRegions.regionOf("FR| FRANCE 3 LANGUEDOC")?.label)
+        assertEquals("Languedoc-Roussillon", FranceRegions.regionOf("FR| FRANCE 3 LANGUE-DOC")?.label)
+        assertEquals("Languedoc-Roussillon", FranceRegions.regionOf("FR| France 3 Langue Doc HD")?.label)
+        assertEquals("Languedoc-Roussillon", FranceRegions.regionOf("FR| FRANCE 3 LANGUEDOC")?.label)
+    }
+
+    @Test
+    fun `the spellings of a region all name the same antenna`() {
+        // Les écritures des photos : une en HD, une autre en FHD, pour la même antenne.
+        val spellings = mapOf(
+            "basse normandie" to listOf("BNORMANDIE", "BASSE-NORMANDIE", "B-NORMANDIE", "Basse Normandie", "NORMANDIE CAEN", "Caen"),
+            "haute normandie" to listOf("HAUTE-NORMANDIE", "HNORMANDIE", "H NORMANDIE", "Normandie Rouen"),
+            "languedoc roussillon" to listOf("LANGUE-DOC", "LANGUEDOC", "LANGUEDOC-ROUSSILLON", "LANGUEDOC ROUSILLON", "LANGUEDOC ROUS", "Occitanie Montpellier"),
+            "champagne ardenne" to listOf("CHAMP ARDENNE", "CHAMP ARDE", "Champagne-Ardenne", "CHAMPAGNE ARDENNES", "CHAMPAGNE", "Grand Est Reims"),
+            "nord pas de calais" to listOf("NORD PDC", "NORD PAS-DE-CALAIS", "NORD PAS DE CALAIS", "NPDC", "NORD", "Hauts-de-France Lille"),
+            "paris ile de france" to listOf("PARIS IDF", "PARIS ILE DE FRANCE", "Paris Île-de-France", "IDF", "ILE DE FRANCE", "PARIS"),
+            "pays de la loire" to listOf("PAYS DE LA LOIRE", "Pays de Loire", "PAYS LOIRE", "PDL", "Nantes"),
+            "poitou charentes" to listOf("POITOUCHAR", "POTOU-CHARENTES", "POITOU-CHARENTES", "POITOU CHARENTE", "POITOU"),
+            "provence alpes" to listOf("PROV ALPES", "PROVENCE-ALPES", "PROVENCE ALPES", "PROVENCE", "Marseille"),
+            "rhone alpes" to listOf("RHONES-ALPES", "RHONE ALPES", "Rhône-Alpes", "Auvergne-Rhône-Alpes Lyon"),
+            "cote d azur" to listOf("COTE-D'AZUR", "COTE AZUR", "Côte d'Azur", "COTEDAZUR", "Nice"),
+            "corse via stella" to listOf("CORSE VIA STELLA", "Corse ViaStella", "CORSE", "VIA STELLA"),
+            "midi pyrenees" to listOf("MIDI PYRENEES", "MIDI-PYRENEES", "MIDI PYR", "Midi-Pyrénées", "Toulouse"),
+            "franche comte" to listOf("Franche-Comté", "FRANCHE COMTE", "F COMTE"),
+            "noa" to listOf("NOA", "NoA", "Nouvelle-Aquitaine"),
+            "alpes" to listOf("ALPES", "Grenoble"),
+            "centre" to listOf("CENTRE", "Centre-Val de Loire", "CENTRE VAL DE LOIRE"),
+            "bretagne" to listOf("BRETAGNE", "BRET"),
+        )
+        for ((key, names) in spellings) {
+            for (name in names) assertEquals(name, key, FranceRegions.regionOf("FR| FRANCE 3 $name FHD")?.key)
+        }
+        assertEquals("Nord-Pas-de-Calais", FranceRegions.regionOf("FR| FRANCE 3 NORD PDC")?.label)
+        assertEquals("Paris Île-de-France", FranceRegions.regionOf("FR| FRANCE 3 PARIS IDF HD")?.label)
+        // Identifiant du guide, écrit sans espaces.
+        assertEquals("basse normandie", FranceRegions.regionOfGuide("France3BasseNormandie")?.key)
+        assertEquals("noa", FranceRegions.regionOfGuide("France 3 NoA")?.key)
+        assertEquals("corse via stella", FranceRegions.regionOfGuide("France3CorseViaStella")?.key)
+    }
+
+    @Test
+    fun `a name that fits no antenna, or several, stays as written`() {
+        // « Normandie » seule : Basse ou Haute, rien n'est supposé. De même pour une lettre ou deux.
+        assertEquals("normandie", FranceRegions.regionOf("FR| FRANCE 3 NORMANDIE")?.key)
+        assertEquals("b", FranceRegions.regionOf("FR| FRANCE 3 B")?.key)
+        assertEquals("al", FranceRegions.regionOf("FR| FRANCE 3 AL")?.key)
+        assertEquals("provence alpes cote d azur", FranceRegions.regionOf("FR| FRANCE 3 Provence-Alpes-Côte d'Azur")?.key)
+        assertEquals("hauts de france", FranceRegions.regionOf("FR| FRANCE 3 HAUTS-DE-FRANCE")?.key)
+        assertEquals("Sat", FranceRegions.regionOf("FR| FRANCE 3 SAT")?.label)
+        // Deux antennes distinctes ne sont pas confondues.
+        assertEquals("alpes", FranceRegions.regionOf("FRANCE 3 ALPES")?.key)
+        assertEquals("aquitaine", FranceRegions.regionOf("FRANCE 3 AQUITAINE")?.key)
+        assertEquals("alsace", FranceRegions.regionOf("FRANCE 3 ALSACE")?.key)
+    }
+
+    @Test
+    fun `the version key of a regional edition carries the name of its antenna`() {
+        assertEquals("fr france 3 paris ile de france", FranceRegions.variantKey("fr france 3 paris idf"))
+        assertEquals("fr france 3 paris ile de france", FranceRegions.variantKey("fr f3 paris ile de france"))
+        assertEquals("fr france 3 basse normandie", FranceRegions.variantKey("fr france 3 bnormandie"))
+        assertEquals("france 3 alsace", FranceRegions.variantKey("france 3 alsace"))
+        // Chaîne nationale, région inconnue, autre chaîne : pas une édition régionale connue.
+        assertNull(FranceRegions.variantKey("fr france 3"))
+        assertNull(FranceRegions.variantKey("fr france 3 +1"))
+        assertNull(FranceRegions.variantKey("fr france 3 normandie"))
+        assertNull(FranceRegions.variantKey("fr france 24"))
+        assertNull(FranceRegions.variantKey("fr tf1"))
+        // Réglage « Région de France 3 » enregistré avec l'ancienne écriture.
+        assertEquals("paris ile de france", FranceRegions.keyOf("paris idf"))
+        assertEquals("normandie", FranceRegions.keyOf("normandie"))
     }
 
     @Test

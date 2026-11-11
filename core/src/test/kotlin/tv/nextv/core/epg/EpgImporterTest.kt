@@ -147,6 +147,65 @@ class EpgImporterTest {
     }
 
     @Test
+    fun `france 3 regional editions are linked whatever their spelling`() {
+        val guide = listOf(
+            XmltvChannel("France3.fr", listOf("France 3")),
+            XmltvChannel("France3BasseNormandie.fr", listOf("France 3 Basse-Normandie")),
+            XmltvChannel("France3HauteNormandie.fr", listOf("France 3 Haute-Normandie")),
+            XmltvChannel("France3LanguedocRoussillon.fr", listOf("France 3 Languedoc-Roussillon")),
+            XmltvChannel("France3ChampagneArdenne.fr", listOf("France 3 Champagne-Ardenne")),
+            XmltvChannel("France3NordPasDeCalais.fr", listOf("France 3 Nord-Pas-de-Calais")),
+            XmltvChannel("France3PoitouCharentes.fr", listOf("France 3 Poitou-Charentes")),
+            XmltvChannel("France3ProvenceAlpes.fr", listOf("France 3 Provence-Alpes")),
+            XmltvChannel("France3RhoneAlpes.fr", listOf("France 3 Rhône-Alpes")),
+            XmltvChannel("France3Alpes.fr", listOf("France 3 Alpes")),
+            // Écrit seulement par son identifiant.
+            XmltvChannel("France3ParisIleDeFrance.fr", emptyList()),
+            XmltvChannel("France3PaysDeLaLoire.fr", listOf("France 3 Pays de la Loire")),
+            XmltvChannel("France2.fr", listOf("France 2")),
+        )
+        // Les noms des photos, sans programme jusque-là.
+        val names = listOf(
+            "FR| FRANCE 3 BNORMANDIE HD" to "france3bassenormandie.fr",
+            "FR| FRANCE 3 HAUTE-NORMANDIE FHD" to "france3hautenormandie.fr",
+            "FR| FRANCE 3 LANGUE-DOC HD" to "france3languedocroussillon.fr",
+            "FR| FRANCE 3 LANGUEDOC-ROUSILLON FHD" to "france3languedocroussillon.fr",
+            "FR| FRANCE 3 CHAMP ARDENNE HD" to "france3champagneardenne.fr",
+            "FR| FRANCE 3 NORD PDC HD" to "france3nordpasdecalais.fr",
+            "FR| FRANCE 3 POITOUCHAR HD" to "france3poitoucharentes.fr",
+            "FR| FRANCE 3 POTOU-CHARENTES FHD" to "france3poitoucharentes.fr",
+            "FR| FRANCE 3 PROV ALPES HD" to "france3provencealpes.fr",
+            "FR| FRANCE 3 RHONES-ALPES FHD" to "france3rhonealpes.fr",
+            "FR| FRANCE 3 ALPES FHD" to "france3alpes.fr",
+            "FR| FRANCE 3 PARIS IDF HD" to "france3parisiledefrance.fr",
+            "FR| FRANCE 3 Pays de Loire FHD" to "france3paysdelaloire.fr",
+            // Antenne absente du guide : le programme national, le même hors décrochages.
+            "FR| FRANCE 3 PICARDIE FHD" to "france3.fr",
+            "FR| FRANCE 3 FHD" to "france3.fr",
+            "FR| FRANCE 2 FHD" to "france2.fr",
+        )
+        val channels = names.mapIndexed { index, (name, _) -> EpgChannelRef(index.toLong(), tvgId = null, tvgName = null, name = name) }
+
+        val mapping = EpgImporter(parserFactory = { KXmlParser() }).match(channels, guide, emptySet())
+
+        for ((index, entry) in names.withIndex()) assertEquals(entry.first, entry.second, mapping[index.toLong()])
+    }
+
+    @Test
+    fun `le figaro tv ile de france is linked under its names`() {
+        val channels = listOf(
+            EpgChannelRef(1, tvgId = null, tvgName = null, name = "FR| LE FIGARO TV IDF HD"),
+            EpgChannelRef(2, tvgId = null, tvgName = null, name = "FR| LE FIGARO IDF FHD"),
+        )
+        val importer = EpgImporter(parserFactory = { KXmlParser() })
+        // Guide à jour, ou resté à l'ancien nom de la chaîne.
+        for (guide in listOf(XmltvChannel("LeFigaroTVIDF.fr", listOf("Le Figaro TV Île-de-France")), XmltvChannel("BFMParis.fr", listOf("BFM Paris Île-de-France")))) {
+            val other = XmltvChannel("BFMTV.fr", listOf("BFM TV"))
+            assertEquals(guide.id, mapOf(1L to guide.id.lowercase(), 2L to guide.id.lowercase()), importer.match(channels, listOf(other, guide), emptySet()))
+        }
+    }
+
+    @Test
     fun `a name that only looks like a guide channel is left without guide`() {
         val guide = listOf(
             XmltvChannel("InfoTV.af", listOf("InfoTV")),

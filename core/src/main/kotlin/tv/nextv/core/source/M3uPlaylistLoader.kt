@@ -5,6 +5,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import tv.nextv.core.catalog.ContentClassifier
+import tv.nextv.core.catalog.LiveVariants
 import tv.nextv.core.catalog.QualityParser
 import tv.nextv.core.model.StreamQuality
 import tv.nextv.core.error.SourceError
@@ -149,7 +150,8 @@ class M3uPlaylistLoader(
             if (playlist.truncated) add(SourceWarning.TRUNCATED)
             if (unsupported) add(SourceWarning.UNSUPPORTED_STREAMS)
         }
-        return LoadedPlaylist(channels, playlist.epgUrls, warnings)
+        // Versions d'une chaîne écrites différemment d'une qualité à l'autre (« … TV IDF » et « … IDF ») : regroupées.
+        return LoadedPlaylist(LiveVariants.unify(channels), playlist.epgUrls, warnings)
     }
 
     /** @param strings textes déjà rencontrés (groupes…) : une seule copie en mémoire pour des milliers d'entrées. */
@@ -180,7 +182,7 @@ class M3uPlaylistLoader(
             channelNumber = attributes["tvg-chno"]?.takeIf { it.isNotBlank() },
             kind = classification.kind,
             title = quality?.baseName ?: classification.title,
-            variantKey = quality?.variantKey.orEmpty(),
+            variantKey = quality?.variantKey?.let(LiveVariants::key).orEmpty(),
             quality = if (live) quality?.quality else vodQuality(name, entry.group, groupQualities),
             year = classification.year,
             episode = classification.episode,

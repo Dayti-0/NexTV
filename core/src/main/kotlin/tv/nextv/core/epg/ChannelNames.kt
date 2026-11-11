@@ -151,5 +151,9 @@ object ChannelNames {
         "ABXplore" to listOf("ABXploreFR", "ABX"),
         "France 3 NOA" to listOf("France 3 Nouvelle Aquitaine"),
         "Les Marseillais" to listOf("LesMarseillais2424"),
+        // Ancienne BFM Paris Île-de-France.
+        "Le Figaro IDF" to listOf("Le Figaro TV Ile-de-France", "Le Figaro TV", "BFM Paris Ile-de-France", "BFM Paris"),
+        "Le Figaro Ile-de-France" to listOf("Le Figaro TV", "BFM Paris Ile-de-France", "BFM Paris"),
+        "Le Figaro Paris" to listOf("Le Figaro TV Ile-de-France", "Le Figaro TV", "BFM Paris Ile-de-France", "BFM Paris"),
     ).mapNotNull { (alias, targets) -> key(alias)?.let { it to targets.mapNotNull(::key) } }.toMap()
 }

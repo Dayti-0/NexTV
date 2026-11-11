@@ -16,9 +16,11 @@ object QualityParser {
      * Version des règles de regroupement : quand elle augmente, la playlist est relue au démarrage
      * suivant pour regrouper les chaînes selon les nouvelles règles (3 : qualité des films et des séries ;
      * 4 : versions de secours « BKP » et « FHD++ (Très haute résolution) » regroupées avec la chaîne ;
-     * 5 : versions d'un même film (« Truefrench », « FR », 4K, HD…) regroupées sous une seule affiche).
+     * 5 : versions d'un même film (« Truefrench », « FR », 4K, HD…) regroupées sous une seule affiche ;
+     * 6 : éditions régionales de France 3 regroupées sous le nom de leur antenne, « Haute » gardé dans les noms,
+     * chaînes dont les noms ne diffèrent que par « TV » regroupées).
      */
-    const val VERSION = 5
+    const val VERSION = 6
 
     data class Result(
         /** Nom sans les mentions de qualité ni de codec. */
@@ -51,8 +53,15 @@ object QualityParser {
      * réelle FHD ») : retirés seulement quand le nom annonce une qualité.
      */
     private val DESCRIPTIVE_TOKENS = setOf(
-        "RESOLUTION", "QUALITE", "QUALITY", "REEL", "REELLE", "NATIVE", "NATIF", "TRES", "HAUTE", "DEFINITION",
+        "RESOLUTION", "QUALITE", "QUALITY", "REEL", "REELLE", "NATIVE", "NATIF", "DEFINITION",
     )
+
+    /**
+     * « Très haute résolution » : ces deux mots ne sont retirés qu'avec le nom qu'ils qualifient ([DESCRIPTIVE_NOUNS]).
+     * Seuls, ils font partie du nom de la chaîne (« France 3 Haute-Normandie FHD » perdait « Haute »).
+     */
+    private val QUALIFIER_TOKENS = setOf("TRES", "HAUTE")
+    private val DESCRIPTIVE_NOUNS = setOf("RESOLUTION", "QUALITE", "QUALITY", "DEFINITION")
 
     /**
      * Version de secours d'une chaîne (« RMC SPORT 1 BKP FHD », « TF1 BACKUP2 ») : même chaîne, essayée quand la
@@ -84,6 +93,7 @@ object QualityParser {
         var best: StreamQuality? = null
         val kept = mutableListOf<String>()
         var descriptive = 0
+        var nouns = 0
         var backup = false
         val tokens = TOKEN.findAll(normalized).map { it.value }.toList()
         var i = 0
@@ -104,16 +114,22 @@ object QualityParser {
                 BACKUP_TOKEN.matches(upper) -> backup = true
                 else -> {
                     kept += token
-                    if (foldAccents(upper) in DESCRIPTIVE_TOKENS) descriptive++
+                    val folded = foldAccents(upper)
+                    if (folded in DESCRIPTIVE_TOKENS) descriptive++
+                    if (folded in DESCRIPTIVE_NOUNS) nouns++
                 }
             }
             i++
         }
         // « Résolution », « Qualité »… n'accompagnent qu'une mention de qualité : retirés avec elle.
         val dropDescriptive = best != null && descriptive > 0
-        if (dropDescriptive) kept.removeAll { foldAccents(it.uppercase()) in DESCRIPTIVE_TOKENS }
+        // « Très haute » : seulement avec « résolution », « définition » ou « qualité ».
+        val dropQualifiers = best != null && nouns > 0
+        if (dropDescriptive) {
+            kept.removeAll { word -> foldAccents(word.uppercase()).let { it in DESCRIPTIVE_TOKENS || (dropQualifiers && it in QUALIFIER_TOKENS) } }
+        }
         // Sans mention de qualité ni de codec (cas le plus fréquent des films), la recherche des mentions est sautée.
-        val baseName = stripTokens(normalized, hasTokens = kept.size != tokens.size, dropDescriptive, backup).ifBlank { name.trim() }
+        val baseName = stripTokens(normalized, hasTokens = kept.size != tokens.size, dropDescriptive, dropQualifiers, backup).ifBlank { name.trim() }
         val words = kept.map { foldAccents(it.lowercase()) }
         val shared = words.joinToString(" ")
         val key = if (best != null && words.any { it in SEPARATE_FEEDS }) "$shared ${best.label.lowercase()}" else shared
@@ -133,8 +149,11 @@ object QualityParser {
 
     /** Mots qui accompagnent une mention de qualité, accentués ou non ([DESCRIPTIVE_TOKENS]). */
     private val DESCRIPTIVE = Regex(
-        "(?iu)(?<![\\p{L}\\p{Nd}])(?:r[eé]solution|qualit[eé]|quality|r[eé]el(?:le)?|nati(?:ve|f)|tr[eèé]s|haute|d[eé]finition)(?![\\p{L}\\p{Nd}])",
+        "(?iu)(?<![\\p{L}\\p{Nd}])(?:r[eé]solution|qualit[eé]|quality|r[eé]el(?:le)?|nati(?:ve|f)|d[eé]finition)(?![\\p{L}\\p{Nd}])",
     )
+
+    /** « Très », « haute » ([QUALIFIER_TOKENS]). */
+    private val QUALIFIERS = Regex("(?iu)(?<![\\p{L}\\p{Nd}])(?:tr[eèé]s|haute)(?![\\p{L}\\p{Nd}])")
 
     /** Parenthèses ou crochets vidés par le retrait des mentions (« ( ) », « [ : ] »). */
     private val EMPTY_BRACKETS = Regex("[\\[(][\\s:.,;|/_-]*[\\])]")
@@ -142,10 +161,11 @@ object QualityParser {
     private val MARKS = Regex("\\p{Mn}+")
 
     /** Retire les mentions de qualité et de codec du nom, en conservant le reste tel quel. */
-    private fun stripTokens(name: String, hasTokens: Boolean, dropDescriptive: Boolean, backup: Boolean): String {
+    private fun stripTokens(name: String, hasTokens: Boolean, dropDescriptive: Boolean, dropQualifiers: Boolean, backup: Boolean): String {
         val withoutQuality = if (hasTokens) name.replace(STRIP, " ") else name
         val stripped = if (backup) withoutQuality.replace(BACKUP, " ") else withoutQuality
-        return (if (dropDescriptive) stripped.replace(DESCRIPTIVE, " ") else stripped)
+        val described = if (dropDescriptive) stripped.replace(DESCRIPTIVE, " ") else stripped
+        return (if (dropQualifiers) described.replace(QUALIFIERS, " ") else described)
             .replace(EMPTY_BRACKETS, " ")
             .replace(SPACES, " ")
             .trim()

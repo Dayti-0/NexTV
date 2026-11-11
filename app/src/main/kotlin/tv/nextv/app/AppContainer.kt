@@ -199,8 +199,8 @@ class AppContainer(context: Context) {
     /** Films et épisodes regardés jusqu'au bout (badge « Déjà vu »). */
     val watched = WatchedRepository(WatchedDatabase.create(appContext))
 
-    /** Favoris, reprises et « Déjà vu » des titres dont la clé a changé (versions d'un film regroupées). */
-    val itemKeyRelinker = tv.nextv.app.data.catalog.ItemKeyRelinker(database, progress, watched)
+    /** Favoris, reprises, « Déjà vu » et chaînes récentes dont la clé a changé (versions regroupées sous un autre nom). */
+    val itemKeyRelinker = tv.nextv.app.data.catalog.ItemKeyRelinker(database, progress, watched, settings)
 
     /** Sauvegarde et restauration des playlists, favoris, catégories masquées, reprises, « Déjà vu » et réglages. */
     val backup = BackupManager(

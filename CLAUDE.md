@@ -99,12 +99,16 @@ Commandes :
 - Guide TV et fiche programme : `ui/guide/`.
 - Chaînes reliées au guide : `core/epg/EpgImporter.match` puis `ChannelNames.kt` (noms « collés », table des autres
   appellations `ALIASES`). Toute nouvelle règle : augmenter `EpgImporter.VERSION` (le guide est relu au lancement).
+- France 3 régionales : `core/catalog/FranceRegions.kt` ramène toutes les écritures d'une région au nom de son antenne
+  (abréviations, lettre de travers, ville du siège) ; ce nom sert à la clé de version (`LiveVariants`, qui regroupe
+  aussi les noms ne différant que par « TV »), au guide (`EpgImporter.match`, avec repli sur France 3 national) et au
+  réglage « Région de France 3 ».
 - Versions d'un film (« Titre (Truefrench) », « Titre (FR) », la même en 4K) : `ContentClassifier` retire les mentions du
   titre (`versionOf` donne la mention et la préférence), `MovieCopies` (dans `RoomPlaylistStore.kt`) choisit la copie
   affichée à l'import, les requêtes `MOVIE_IN_GROUP` / `MOVIE_VISIBLE` de `Daos.kt` n'en gardent qu'une par film, la
   fiche propose les autres (`movieVersions`, bouton « Version »). Toute nouvelle règle qui change un titre : augmenter
-  `QualityParser.VERSION` (la playlist est relue au lancement) ; `ItemKeyRelinker` rattache les favoris, reprises et
-  « Déjà vu » enregistrés sous l'ancienne clé.
+  `QualityParser.VERSION` (la playlist est relue au lancement) ; `ItemKeyRelinker` rattache les favoris, reprises,
+  « Déjà vu » et chaînes récentes enregistrés sous l'ancienne clé (films, séries et chaînes).
 - « Baisser le son des pubs » : `core/audio/AdVolumeGuard.kt` (silences entre deux pubs ; les pubs ne sont pas plus
   fortes que le programme) et `LogoWatcher.kt` (logo de la chaîne, absent pendant les pubs), branchés par
   `AdVolumeAudioProcessor` et `VideoFrameSampler` (une image par seconde). Réglé sur de vraies coupures pub de 2024.

@@ -266,7 +266,10 @@ class SettingsRepository(
      * Région de France 3 gardée dans les listes (« Alpes », clé de [tv.nextv.core.catalog.FranceRegions]) ;
      * les autres éditions régionales sont masquées. `null` : toutes affichées.
      */
-    val france3Region: Flow<String?> = preferences.map { it[FRANCE3_REGION] }.distinctUntilChanged()
+    val france3Region: Flow<String?> = preferences
+        // Choix fait quand la région portait une autre écriture (« paris idf ») : la clé de son antenne.
+        .map { prefs -> prefs[FRANCE3_REGION]?.let(tv.nextv.core.catalog.FranceRegions::keyOf) }
+        .distinctUntilChanged()
 
     suspend fun setFrance3Region(region: String?) {
         edit { prefs -> if (region != null) prefs[FRANCE3_REGION] = region else prefs.remove(FRANCE3_REGION) }
@@ -343,6 +346,17 @@ class SettingsRepository(
             val previous = prefs[key]?.split('\n')?.filter { it.isNotEmpty() && it != itemKey }.orEmpty()
             prefs[key] = (listOf(itemKey) + previous).take(MAX_RECENT_CHANNELS).joinToString("\n")
         }
+    }
+
+    /**
+     * Chaînes récentes dont la clé a changé (versions d'une chaîne regroupées sous un autre nom) : [rename] donne la
+     * nouvelle clé, ou `null` pour garder l'ancienne.
+     */
+    suspend fun renameRecentChannels(sourceId: Long, rename: suspend (String) -> String?) {
+        val key = recentKey(sourceId)
+        val current = preferences.first()[key]?.split('\n')?.filter { it.isNotEmpty() }.orEmpty()
+        val renamed = current.map { rename(it) ?: it }.distinct()
+        if (renamed != current) edit { prefs -> prefs[key] = renamed.joinToString("\n") }
     }
 
     private fun recentKey(sourceId: Long) = stringPreferencesKey(RECENT_PREFIX + sourceId)

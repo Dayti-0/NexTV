@@ -4,22 +4,27 @@ import androidx.room.withTransaction
 import tv.nextv.app.data.db.NexTvDatabase
 import tv.nextv.app.data.progress.ProgressRepository
 import tv.nextv.app.data.progress.WatchedRepository
+import tv.nextv.app.data.settings.SettingsRepository
 import tv.nextv.core.catalog.ContentClassifier
+import tv.nextv.core.catalog.LiveVariants
+import tv.nextv.core.catalog.QualityParser
 import tv.nextv.core.model.ContentKind
 
 /**
- * Favoris, reprises de lecture et « Déjà vu » d'un film ou d'une série dont la clé a changé.
+ * Favoris, reprises de lecture, « Déjà vu » et chaînes récentes d'un titre ou d'une chaîne dont la clé a changé.
  *
- * La clé d'un titre vient de son titre nettoyé (et de son année pour un film). Quand le nettoyage s'améliore
- * (« À la dérive (FR) » devient « À la dérive », un film sans année prend celle de son autre copie), la clé change,
- * et ce qui avait été enregistré sous l'ancienne ne s'afficherait plus. Après chaque lecture de la playlist, ce
- * qui ne correspond plus à aucun titre est rattaché au même titre sans ses mentions de version, s'il existe.
- * Rien n'est touché sinon : un titre retiré de la playlist garde ses favoris pour son retour.
+ * La clé d'un titre vient de son titre nettoyé (et de son année pour un film), celle d'une chaîne de son nom sans
+ * mention de qualité. Quand ces règles s'améliorent (« À la dérive (FR) » devient « À la dérive », un film sans
+ * année prend celle de son autre copie, « France 3 Paris IDF » rejoint « France 3 Paris Île-de-France »), la clé
+ * change, et ce qui avait été enregistré sous l'ancienne ne s'afficherait plus. Après chaque lecture de la
+ * playlist, ce qui ne correspond plus à rien est rattaché au même titre ou à la même chaîne sous sa nouvelle
+ * clé, s'il existe. Rien n'est touché sinon : un titre retiré de la playlist garde ses favoris pour son retour.
  */
 class ItemKeyRelinker(
     private val database: NexTvDatabase,
     private val progress: ProgressRepository,
     private val watched: WatchedRepository,
+    private val settings: SettingsRepository? = null,
 ) {
     private val channels = database.channelDao()
     private val favorites = database.favoriteDao()
@@ -32,7 +37,8 @@ class ItemKeyRelinker(
             return found[key]
         }
 
-        for (kind in listOf(ContentKind.MOVIE.name, ContentKind.SERIES.name)) {
+        // Favoris (films, séries, chaînes) et chaînes de « L'essentiel » du guide.
+        for (kind in listOf(ContentKind.MOVIE.name, ContentKind.SERIES.name, ContentKind.LIVE.name, FavoritesRepository.GUIDE_SELECTION)) {
             for (favorite in favorites.list(sourceId, kind)) {
                 val key = target(favorite.itemKey) ?: continue
                 database.withTransaction {
@@ -54,10 +60,12 @@ class ItemKeyRelinker(
             watched.restore(sourceId, key + row.itemKey.substring(item.length), row.watchedAt)
             watched.unmark(sourceId, row.itemKey)
         }
+        settings?.renameRecentChannels(sourceId) { target(it) }
     }
 
     /** Clé actuelle du titre enregistré sous [key], ou `null` s'il est toujours là ou introuvable. */
     private suspend fun newKey(sourceId: Long, key: String): String? {
+        if (key.startsWith(LIVE_PREFIX)) return newLiveKey(sourceId, key)
         val movie = key.startsWith(MOVIE_PREFIX)
         if (!movie && !key.startsWith(SERIES_PREFIX)) return null
         val kind = if (movie) ContentKind.MOVIE.name else ContentKind.SERIES.name
@@ -78,8 +86,23 @@ class ItemKeyRelinker(
         return channels.itemKeysBetween(sourceId, kind, "$MOVIE_PREFIX$cleaned:", "$MOVIE_PREFIX$cleaned;").singleOrNull()
     }
 
+    /**
+     * Chaîne enregistrée sous une clé qui n'existe plus : la même chaîne sous la clé que les règles en vigueur lui
+     * donnent (région de France 3 au nom de son antenne), puis sans « tv » (« Le Figaro TV IDF » et « Le Figaro IDF »).
+     */
+    private suspend fun newLiveKey(sourceId: Long, key: String): String? {
+        val kind = ContentKind.LIVE.name
+        if (channels.hasItem(sourceId, kind, key)) return null
+        val written = key.removePrefix(LIVE_PREFIX)
+        val current = LiveVariants.key(QualityParser.parse(written).variantKey)
+        return listOfNotNull(current.takeIf { it != written }, LiveVariants.withoutGeneric(current))
+            .map { LIVE_PREFIX + it }
+            .firstOrNull { channels.hasItem(sourceId, kind, it) }
+    }
+
     private companion object {
         const val MOVIE_PREFIX = "movie:"
         const val SERIES_PREFIX = "series:"
+        const val LIVE_PREFIX = "live:"
     }
 }

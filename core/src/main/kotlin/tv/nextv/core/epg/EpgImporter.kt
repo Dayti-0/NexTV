@@ -2,6 +2,7 @@ package tv.nextv.core.epg
 
 import org.xmlpull.v1.XmlPullParser
 import tv.nextv.core.catalog.ContentClassifier
+import tv.nextv.core.catalog.FranceRegions
 import tv.nextv.core.model.Programme
 import java.io.InputStream
 import java.text.Normalizer
@@ -200,14 +201,30 @@ class EpgImporter(
                 formerNames = known.groupBy({ normalizeId(it.id) }) { it.id.substringBeforeLast('.') },
             )
         }
+        // Éditions régionales de France 3 du guide, par antenne : les playlists les écrivent de bien des façons
+        // (« NORD PDC », « BNORMANDIE », « POITOUCHAR », « PROV ALPES »), le guide aussi (« France3BasseNormandie »).
+        val regional = lazy(LazyThreadSafetyMode.NONE) {
+            val antennas = HashMap<String, String>()
+            for (xmltv in xmltvChannels.sortedBy { !it.id.endsWith(".fr", ignoreCase = true) }) {
+                val id = normalizeId(xmltv.id).takeIf { it !in excluded } ?: continue
+                for (name in xmltv.displayNames + xmltv.id.substringBeforeLast('.')) {
+                    FranceRegions.regionOfGuide(name)?.let { antennas.putIfAbsent(it.key, id) }
+                }
+            }
+            antennas
+        }
         for (channel in channels) {
             val byId = channel.tvgId?.let(::normalizeId)?.takeIf { it in ids }
             val names = listOfNotNull(channel.tvgName, channel.name)
+            val region = lazy(LazyThreadSafetyMode.NONE) { names.firstNotNullOfOrNull(FranceRegions::regionOf) }
             // Nom exact, puis sans préfixe de langue ni mention de qualité (« FR| LIGUE 1+ 5 FHD » → « Ligue 1+ 5 »).
             val matched = byId
                 ?: names.firstNotNullOfOrNull { byName[normalizeName(it)] }
                 ?: names.firstNotNullOfOrNull { byName[normalizeName(ContentClassifier.cleanTitle(it))] }
+                ?: region.value?.let { regional.value[it.key] }
                 ?: names.firstNotNullOfOrNull { loose.value.find(ContentClassifier.cleanTitle(it)) }
+                // Édition régionale absente du guide : le programme national de France 3, le même hors décrochages.
+                ?: region.value?.let { byName[FRANCE_3] }
             if (matched != null) result[channel.channelId] = matched
         }
         return result
@@ -219,7 +236,10 @@ class EpgImporter(
          * avec une version antérieure est réimporté dès le lancement suivant, sans attendre sa
          * réimportation quotidienne.
          */
-        const val VERSION = 6
+        const val VERSION = 7
+
+        /** Nom du guide de la chaîne nationale France 3 ([normalizeName]). */
+        private const val FRANCE_3 = "france3"
 
         private const val CANCELLATION_CHECK_INTERVAL = 500
         private val NON_ALPHANUMERIC = Regex("[^\\p{L}\\p{Nd}]+")
