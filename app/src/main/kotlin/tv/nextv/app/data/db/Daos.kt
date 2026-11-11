@@ -61,6 +61,41 @@ private const val CATCHUP_DAYS =
         "WHERE v.sourceId = c.sourceId AND v.variantKey = c.variantKey AND c.variantKey != ''), 0)) AS catchupDays"
 
 /*
+ * Un film peut exister en plusieurs copies (« À la dérive (Truefrench) » et « À la dérive (FR) », la même en 4K,
+ * la même dans une autre catégorie) : elles ont la même clé. Une seule s'affiche : la copie choisie à l'import
+ * (`isPrimary`, voir MovieCopies.best) si elle est dans la liste, sinon la première de la liste. Les autres se
+ * choisissent sur la fiche du film. Un film en une seule copie est sa propre copie choisie : rien n'est cherché
+ * pour lui (le cas de presque tous les films).
+ */
+
+/** Catégories de films masquées (sous-requête). */
+private const val HIDDEN_MOVIE_GROUPS = "(SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'MOVIE')"
+
+/** Catégorie du film `c` non masquée. */
+private const val MOVIE_GROUP_VISIBLE = "IFNULL(c.groupTitle, '') NOT IN $HIDDEN_MOVIE_GROUPS"
+
+/** `b` : autre copie du film `c`, affichée à sa place. */
+private const val PREFERRED_COPY =
+    "b.sourceId = c.sourceId AND b.kind = 'MOVIE' AND b.itemKey = c.itemKey AND (b.isPrimary = 1 OR b.position < c.position)"
+
+/** Film `c` affiché dans sa catégorie : une ligne par film de la catégorie. */
+private const val MOVIE_IN_GROUP =
+    "(c.isPrimary = 1 OR NOT EXISTS (SELECT 1 FROM channels b WHERE $PREFERRED_COPY " +
+        "AND IFNULL(b.groupTitle, '') = IFNULL(c.groupTitle, '')))"
+
+/**
+ * Film `c` affiché hors catégories masquées (« Tous les films », recherche, nouveautés) : une ligne par film.
+ * Sans catégorie de films masquée (le cas courant), c'est la copie choisie, sans rien chercher ; sinon, une autre
+ * copie la remplace quand elle est dans une catégorie masquée.
+ */
+private const val MOVIE_VISIBLE =
+    "(c.isPrimary = 1 OR (EXISTS $HIDDEN_MOVIE_GROUPS AND NOT EXISTS (SELECT 1 FROM channels b WHERE $PREFERRED_COPY " +
+        "AND IFNULL(b.groupTitle, '') NOT IN $HIDDEN_MOVIE_GROUPS)))"
+
+/** Colonnes d'un film dans les listes ([MovieRow]). */
+private const val MOVIE_COLUMNS = "c.id, c.title, c.year, c.logoUrl, c.groupTitle, c.itemKey, c.streamSupport, c.quality"
+
+/*
  * Favoris : `favorites f CROSS JOIN channels c` fait lire les quelques favoris d'abord, puis leur
  * ligne par l'index des clés (sans statistiques, SQLite parcourrait sinon toutes les chaînes).
  */
@@ -218,6 +253,16 @@ data class MovieRow(
     val quality: String? = null,
 )
 
+/** Copie d'un film dans la playlist (une de ses versions). */
+data class MovieVersionRow(
+    val id: Long,
+    val name: String,
+    val groupTitle: String?,
+    val quality: String?,
+    val streamUrl: String,
+    val isPrimary: Boolean,
+)
+
 /** Série (regroupement de ses épisodes). [id] : premier épisode. */
 data class SeriesRow(
     val id: Long,
@@ -358,15 +403,15 @@ interface ChannelDao {
     suspend fun count(sourceId: Long, kind: String): Int
 
     /**
-     * Groupes visibles d'un type de contenu (chaînes : une ligne par chaîne de la catégorie ; séries :
-     * une par série). Les groupes masqués n'apparaissent pas.
+     * Groupes visibles d'un type de contenu (chaînes : une ligne par chaîne de la catégorie ; films : une par
+     * film de la catégorie ; séries : une par série). Les groupes masqués n'apparaissent pas.
      */
     @Query(
         """
         SELECT c.groupTitle AS title, COUNT(*) AS count
         FROM channels c
         WHERE c.sourceId = :sourceId AND c.kind = :kind
-          AND CASE WHEN :kind = 'LIVE' THEN $BEST_IN_GROUP AND $VISIBLE_VERSION ELSE c.isPrimary = 1 END
+          AND CASE :kind WHEN 'LIVE' THEN $BEST_IN_GROUP AND $VISIBLE_VERSION WHEN 'MOVIE' THEN $MOVIE_IN_GROUP ELSE c.isPrimary = 1 END
           AND IFNULL(c.groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = :kind)
         GROUP BY c.groupTitle ORDER BY MIN(c.position)
         """,
@@ -383,7 +428,7 @@ interface ChannelDao {
             ) AS hidden
         FROM channels c
         WHERE c.sourceId = :sourceId AND c.kind = :kind
-          AND CASE WHEN :kind = 'LIVE' THEN $BEST_IN_GROUP ELSE c.isPrimary = 1 END
+          AND CASE :kind WHEN 'LIVE' THEN $BEST_IN_GROUP WHEN 'MOVIE' THEN $MOVIE_IN_GROUP ELSE c.isPrimary = 1 END
         GROUP BY c.groupTitle ORDER BY MIN(c.position)
         """,
     )
@@ -419,9 +464,9 @@ interface ChannelDao {
      */
     @Query(
         """
-        SELECT id, title, year, logoUrl, groupTitle, itemKey, streamSupport, quality FROM channels
-        WHERE sourceId = :sourceId AND kind = 'MOVIE' AND groupTitle IS :group
-        ORDER BY position + 0 LIMIT :limit
+        SELECT $MOVIE_COLUMNS FROM channels c
+        WHERE c.sourceId = :sourceId AND c.kind = 'MOVIE' AND c.groupTitle IS :group AND $MOVIE_IN_GROUP
+        ORDER BY c.position + 0 LIMIT :limit
         """,
     )
     suspend fun movieRow(sourceId: Long, group: String?, limit: Int): List<MovieRow>
@@ -429,10 +474,10 @@ interface ChannelDao {
     /** Films les plus récents (année de sortie), hors catégories masquées : rangée « Nouveautés ». */
     @Query(
         """
-        SELECT id, title, year, logoUrl, groupTitle, itemKey, streamSupport, quality FROM channels
-        WHERE sourceId = :sourceId AND kind = 'MOVIE' AND year >= :minYear
-          AND IFNULL(groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'MOVIE')
-        ORDER BY year DESC, position LIMIT :limit
+        SELECT $MOVIE_COLUMNS FROM channels c
+        WHERE c.sourceId = :sourceId AND c.kind = 'MOVIE' AND c.year >= :minYear
+          AND $MOVIE_GROUP_VISIBLE AND $MOVIE_VISIBLE
+        ORDER BY c.year DESC, c.position LIMIT :limit
         """,
     )
     suspend fun newestMovies(sourceId: Long, minYear: Int, limit: Int): List<MovieRow>
@@ -448,11 +493,12 @@ interface ChannelDao {
     )
     suspend fun newestSeries(sourceId: Long, minYear: Int, limit: Int): List<SeriesRow>
 
-    /** Films désignés par leur clé (tendances retrouvées dans la playlist). */
+    /** Films désignés par leur clé (tendances retrouvées dans la playlist) : la copie affichée de chacun d'abord. */
     @Query(
         """
-        SELECT id, title, year, logoUrl, groupTitle, itemKey, streamSupport, quality FROM channels
-        WHERE sourceId = :sourceId AND kind = 'MOVIE' AND itemKey IN (:itemKeys)
+        SELECT $MOVIE_COLUMNS FROM channels c
+        WHERE c.sourceId = :sourceId AND c.kind = 'MOVIE' AND c.itemKey IN (:itemKeys)
+        ORDER BY c.isPrimary DESC, c.position
         """,
     )
     suspend fun moviesByKey(sourceId: Long, itemKeys: List<String>): List<MovieRow>
@@ -506,18 +552,20 @@ interface ChannelDao {
 
     @Query(
         """
-        SELECT id, title, year, logoUrl, groupTitle, itemKey, streamSupport, quality FROM channels
-        WHERE sourceId = :sourceId AND kind = 'MOVIE'
-          AND IFNULL(groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'MOVIE')
-          AND (:filterGroup = 0 OR IFNULL(groupTitle, '') = :group)
-          AND (:query = '' OR title LIKE '%' || :query || '%' ESCAPE '\'
-            OR (:key != '' AND itemKey LIKE 'movie:%' || :key || '%'))
-        ORDER BY position
+        SELECT $MOVIE_COLUMNS FROM channels c
+        WHERE c.sourceId = :sourceId AND c.kind = 'MOVIE' AND $MOVIE_GROUP_VISIBLE
+          AND (:query = '' OR c.title LIKE '%' || :query || '%' ESCAPE '\'
+            OR (:key != '' AND c.itemKey LIKE 'movie:%' || :key || '%'))
+          AND CASE WHEN :filterGroup = 1 THEN IFNULL(c.groupTitle, '') = :group AND $MOVIE_IN_GROUP ELSE $MOVIE_VISIBLE END
+        ORDER BY c.position
         """,
     )
     fun pageMovies(sourceId: Long, filterGroup: Int, group: String, query: String, key: String): PagingSource<Int, MovieRow>
 
-    /** Films de la catégorie : [query] cherché dans le titre, et sans accents dans la clé du film (« a la derive » trouve « À la dérive »). */
+    /**
+     * Films de la catégorie, une ligne par film : [query] cherché dans le titre, et sans accents dans la clé du
+     * film (« a la derive » trouve « À la dérive »).
+     */
     fun pageMovies(sourceId: Long, filterGroup: Int, group: String, query: String): PagingSource<Int, MovieRow> =
         pageMovies(sourceId, filterGroup, group, query, searchKey(query))
 
@@ -527,7 +575,7 @@ interface ChannelDao {
         FROM favorites f JOIN channels c ON c.id = (
             SELECT c2.id FROM channels c2
             WHERE c2.sourceId = f.sourceId AND c2.itemKey = f.itemKey AND c2.kind = 'MOVIE'
-            ORDER BY c2.position LIMIT 1
+            ORDER BY c2.isPrimary DESC, c2.position LIMIT 1
         )
         WHERE f.sourceId = :sourceId AND f.kind = 'MOVIE'
         ORDER BY f.position
@@ -648,9 +696,38 @@ interface ChannelDao {
     @Query("SELECT id, sourceId, kind, itemKey FROM channels WHERE id IN (:ids)")
     suspend fun identities(ids: List<Long>): List<ChannelIdentityRow>
 
-    /** Film désigné par sa clé : sa première copie dans l'ordre de la playlist. */
-    @Query("SELECT id FROM channels WHERE sourceId = :sourceId AND kind = 'MOVIE' AND itemKey = :itemKey ORDER BY position + 0 LIMIT 1")
+    /** Film désigné par sa clé : la copie affichée dans les listes, sinon la première de la playlist. */
+    @Query("SELECT id FROM channels WHERE sourceId = :sourceId AND kind = 'MOVIE' AND itemKey = :itemKey ORDER BY isPrimary DESC, position + 0 LIMIT 1")
     suspend fun movieIdByKey(sourceId: Long, itemKey: String): Long?
+
+    /**
+     * Versions d'un film (ses copies dans la playlist), dans l'ordre de la playlist, hors catégories masquées ;
+     * la copie ouverte ([id]) y figure toujours.
+     */
+    @Query(
+        """
+        SELECT c.id, c.name, c.groupTitle, c.quality, c.streamUrl, c.isPrimary FROM channels c
+        WHERE c.sourceId = :sourceId AND c.kind = 'MOVIE' AND c.itemKey = :itemKey
+          AND (c.id = :id OR (c.streamSupport != 'UNSUPPORTED' AND $MOVIE_GROUP_VISIBLE))
+        ORDER BY c.position + 0
+        LIMIT 40
+        """,
+    )
+    suspend fun movieVersions(sourceId: Long, itemKey: String, id: Long): List<MovieVersionRow>
+
+    /** Un film ou une série de la playlist porte cette clé. */
+    @Query("SELECT EXISTS (SELECT 1 FROM channels WHERE sourceId = :sourceId AND kind = :kind AND itemKey = :itemKey)")
+    suspend fun hasItem(sourceId: Long, kind: String, itemKey: String): Boolean
+
+    /** Clés de la playlist comprises entre [from] (incluse) et [until] (exclue) : celles d'un titre, toutes années confondues. */
+    @Query(
+        """
+        SELECT DISTINCT itemKey FROM channels
+        WHERE sourceId = :sourceId AND kind = :kind AND itemKey >= :from AND itemKey < :until
+        LIMIT 10
+        """,
+    )
+    suspend fun itemKeysBetween(sourceId: Long, kind: String, from: String, until: String): List<String>
 
     /** Épisode d'une série désigné par sa saison ([season] `null` : épisodes sans saison) et son numéro. */
     @Query(
@@ -802,6 +879,13 @@ interface FavoriteDao {
 
     @Query("UPDATE favorites SET position = :position WHERE id = :id")
     suspend fun setPosition(id: Long, position: Int)
+
+    /** Change la clé d'un favori. @return 0 si un autre favori porte déjà cette clé (rien n'est changé). */
+    @Query("UPDATE OR IGNORE favorites SET itemKey = :itemKey WHERE id = :id")
+    suspend fun setKey(id: Long, itemKey: String): Int
+
+    @Query("DELETE FROM favorites WHERE id = :id")
+    suspend fun deleteById(id: Long)
 }
 
 /** Catégories masquées (les favoris restent toujours visibles). */

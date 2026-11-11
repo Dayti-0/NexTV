@@ -15,9 +15,10 @@ object QualityParser {
     /**
      * Version des règles de regroupement : quand elle augmente, la playlist est relue au démarrage
      * suivant pour regrouper les chaînes selon les nouvelles règles (3 : qualité des films et des séries ;
-     * 4 : versions de secours « BKP » et « FHD++ (Très haute résolution) » regroupées avec la chaîne).
+     * 4 : versions de secours « BKP » et « FHD++ (Très haute résolution) » regroupées avec la chaîne ;
+     * 5 : versions d'un même film (« Truefrench », « FR », 4K, HD…) regroupées sous une seule affiche).
      */
-    const val VERSION = 4
+    const val VERSION = 5
 
     data class Result(
         /** Nom sans les mentions de qualité ni de codec. */
@@ -74,6 +75,9 @@ object QualityParser {
     }
 
     private val TOKEN = Regex("[\\p{L}\\p{Nd}+]+")
+
+    /** [word] (en majuscules) est une mention de qualité ou de codec (« FHD », « 1080P », « HEVC »). */
+    internal fun isTechnical(word: String): Boolean = word in QUALITY_TOKENS || word in CODEC_TOKENS
 
     fun parse(name: String): Result {
         val normalized = normalizeSuperscripts(name)

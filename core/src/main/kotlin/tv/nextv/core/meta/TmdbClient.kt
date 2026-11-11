@@ -130,7 +130,9 @@ class TmdbClient(
                 // Série (aggregate_credits) : le rôle le plus joué ; film : le rôle.
                 val character = person.optStringOrNull("character")
                     ?: person.optJSONArray("roles").objects().maxByOrNull { it.optInt("episode_count") }?.optStringOrNull("character")
-                CastMember(name, character, person.optStringOrNull("profile_path")?.let { "${imageBaseUrl}w185$it" })
+                // Mentions anglaises du rôle (« (voice) », « Self ») : en français.
+                val role = if (language.startsWith("fr")) character?.let { Roles.toFrench(it, person.optInt("gender")) } else character
+                CastMember(name, role, person.optStringOrNull("profile_path")?.let { "${imageBaseUrl}w185$it" })
             }
             .take(limit)
     }

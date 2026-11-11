@@ -4,6 +4,14 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.108
+- Films : un film que la playlist propose en plusieurs versions (« À la dérive (Truefrench) » et « À la dérive (FR) », la même en VOSTFR, en 4K…) n'apparaît plus qu'une fois dans les listes et la recherche, sous son vrai titre
+- Sur la fiche du film, un bouton « Version » fait passer de l'une à l'autre (OK pour changer) ; « Lecture » et « Reprendre » lisent celle qui est affichée. La version française est proposée d'abord
+- Les favoris, les reprises de lecture et les « Déjà vu » enregistrés sous l'ancien titre suivent le film : les deux favoris d'un même film n'en font plus qu'un
+- La playlist est relue une fois au premier lancement après la mise à jour, pour regrouper ces films
+- Affiches : l'étiquette de qualité (4K, FHD, HD) est plus petite et cache moins l'image
+- Distribution : les mentions « (voice) », « (uncredited) », « Self »… sont en français (« (voix) », « (non crédité) », « Lui-même »)
+
 ## 0.2.107
 - « Baisser le son des pubs » refait. Les pubs ne sont pas plus fortes que le programme (l'ancienne méthode, qui guettait un son plus fort, ne pouvait pas les voir) : elles sont maintenant repérées au court silence qui sépare deux pubs
 - Le son est remis dès que le logo de la chaîne revient à l'image, à la reprise du programme. Sur une chaîne sans logo reconnu, il revient une trentaine de secondes après la dernière pub

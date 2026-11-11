@@ -3,7 +3,9 @@ package tv.nextv.app.ui.detail
 import android.app.Application
 import android.content.pm.PackageManager
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasText
@@ -106,6 +108,47 @@ class PremiumDetailFocusTest {
         press(Key.DirectionLeft)
         assertEquals(start, top(title), 1f)
         assertTrue("Haut coupé : $start", start >= 0f)
+    }
+
+    /**
+     * Film en plusieurs versions : → depuis « Lecture » mène au bouton « Version », OK passe à la suivante (la
+     * sélection reste dessus), et « Lecture » lit alors la version affichée.
+     */
+    @Test
+    fun versionButtonCyclesWithTheRemote() {
+        val versions = listOf(MovieVersion(1_000, "TRUEFRENCH", "UHD"), MovieVersion(1_001, "FR", null))
+        var played: Long? = null
+        compose.setContent {
+            var state by remember { androidx.compose.runtime.mutableStateOf(SampleData.movieDetail.copy(progress = null, versions = versions)) }
+            NexTvTheme(ThemeStyle.NIGHT) {
+                DetailContent(
+                    state = state,
+                    kind = ContentKind.MOVIE,
+                    snackbarHostState = remember { SnackbarHostState() },
+                    onPlay = { played = it },
+                    onTrailer = {},
+                    onToggleFavorite = {},
+                    onSelectSeason = {},
+                    onBack = {},
+                    onNextVersion = {
+                        val next = (state.selectedVersion + 1) % versions.size
+                        state = state.copy(selectedVersion = next, item = state.item?.copy(firstId = versions[next].id, quality = versions[next].quality))
+                    },
+                )
+            }
+        }
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
+        fun top(text: String) = compose.onAllNodes(hasText(text, substring = true), useUnmergedTree = true).fetchSemanticsNodes().minOf { it.positionInRoot.y }
+        // Sans reprise en cours, les boutons tiennent sur une ligne.
+        assertEquals("Boutons sur deux lignes", top("Lecture"), top("Bande-annonce"), 2f)
+        press(Key.DirectionRight)
+        assertTrue("Sélection : ${focusedText()}", focusedText().orEmpty().contains("Version : TRUEFRENCH (1/2)"))
+        press(Key.DirectionCenter)
+        assertTrue("Sélection : ${focusedText()}", focusedText().orEmpty().contains("Version : FR (2/2)"))
+        press(Key.DirectionLeft)
+        press(Key.DirectionCenter)
+        assertEquals(1_001L, played)
     }
 
     /** Distribution : en y descendant, le nom de l'acteur choisi est à l'écran (et pas seulement sa photo). */

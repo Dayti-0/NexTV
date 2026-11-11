@@ -3,11 +3,13 @@ package tv.nextv.app.data.db
 import androidx.room.withTransaction
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import tv.nextv.core.catalog.ContentClassifier
 import tv.nextv.core.epg.EpgChannelRef
 import tv.nextv.core.error.SourceError
 import tv.nextv.core.model.Channel
 import tv.nextv.core.model.ContentKind
 import tv.nextv.core.model.StreamQuality
+import tv.nextv.core.model.StreamSupport
 import tv.nextv.core.model.EpgSettings
 import tv.nextv.core.model.EpgStatus
 import tv.nextv.core.model.PlaylistSource
@@ -77,9 +79,10 @@ class RoomPlaylistStore(private val database: NexTvDatabase) : PlaylistStore {
             // ouvertes et le focus de l'accueil restent valables après une actualisation.
             val previousIds = existingIds(sourceId)
             channelDao.deleteForSource(sourceId)
-            val variants = VariantInfo.compute(channels)
+            val aligned = MovieCopies.alignYears(channels)
+            val variants = VariantInfo.compute(aligned)
             var saved = 0
-            channels.chunked(BATCH_SIZE).forEach { batch ->
+            aligned.chunked(BATCH_SIZE).forEach { batch ->
                 channelDao.insertAll(
                     batch.map {
                         toEntity(sourceId, it, previous[assignmentKey(it.tvgId, it.name)], variants.getValue(it.position))
@@ -302,6 +305,8 @@ class RoomPlaylistStore(private val database: NexTvDatabase) : PlaylistStore {
  * Version affichée (la meilleure qualité, puis la première dans la playlist) et nombre de versions.
  * Les épisodes d'une série sont les « versions » de la série : le premier la représente dans les
  * listes, avec le nombre d'épisodes (pas de regroupement à chaque page affichée).
+ * Les copies d'un film (« À la dérive (Truefrench) », « À la dérive (FR) », la même en 4K…) sont ses versions :
+ * une seule est affichée, les autres se choisissent sur sa fiche.
  */
 internal data class VariantInfo(val primary: Boolean, val count: Int) {
     companion object {
@@ -312,21 +317,87 @@ internal data class VariantInfo(val primary: Boolean, val count: Int) {
                 when {
                     channel.kind == ContentKind.LIVE && channel.variantKey.isNotEmpty() -> channel.variantKey
                     channel.kind == ContentKind.SERIES -> "\u0001" + ItemKeys.of(channel)
+                    channel.kind == ContentKind.MOVIE -> MovieCopies.groupKey(channel) ?: "\u0000${channel.position}"
                     else -> "\u0000${channel.position}"
                 }
             }
             for (group in groups.values) {
-                // Série : son premier épisode la représente, quelle que soit la qualité annoncée par chacun.
-                val best = if (group.first().kind == ContentKind.SERIES) {
-                    group.minBy { it.position }
-                } else {
-                    group.maxWith(compareBy<Channel> { StreamQuality.rankOf(it.quality) }.thenByDescending { it.position })
+                val best = when {
+                    // Série : son premier épisode la représente, quelle que soit la qualité annoncée par chacun.
+                    group.first().kind == ContentKind.SERIES -> group.minBy { it.position }
+                    group.size > 1 && group.first().kind == ContentKind.MOVIE -> MovieCopies.best(group)
+                    else -> group.maxWith(compareBy<Channel> { StreamQuality.rankOf(it.quality) }.thenByDescending { it.position })
                 }
                 group.forEach { result[it.position] = VariantInfo(primary = it === best, count = group.size) }
             }
             return result
         }
     }
+}
+
+/** Copies d'un même film dans la playlist (autre langue, autre qualité, autre catégorie). */
+internal object MovieCopies {
+
+    /** Clé commune aux copies d'un film ; `null` pour un titre sans lettre ni chiffre (jamais regroupé). */
+    fun groupKey(channel: Channel): String? =
+        ItemKeys.of(channel).takeUnless { it.startsWith(UNTITLED) }?.let { "\u0002$it" }
+
+    /** Début de la clé d'un film dont le titre n'a ni lettre ni chiffre (« movie: », titre vide, « : », année). */
+    private const val UNTITLED = "movie::"
+
+    /**
+     * Copie affichée dans les listes : lisible d'abord, puis en version française (ou sans mention de langue),
+     * de la meilleure qualité, la première de la playlist.
+     */
+    fun best(copies: List<Channel>): Channel {
+        var best = copies.first()
+        var bestScore = score(best)
+        for (index in 1 until copies.size) {
+            val copy = copies[index]
+            val score = score(copy)
+            if (score > bestScore || (score == bestScore && copy.position < best.position)) {
+                best = copy
+                bestScore = score
+            }
+        }
+        return best
+    }
+
+    /** Préférence d'une copie, calculée une fois par copie (des milliers de films en ont plusieurs). */
+    private fun score(copy: Channel): Int =
+        (if (copy.stream.support != StreamSupport.UNSUPPORTED) 1_000 else 0) +
+            ContentClassifier.versionOf(copy.name, copy.title).rank * 10 +
+            StreamQuality.rankOf(copy.quality)
+
+    /**
+     * Film écrit sans année alors qu'une autre copie la donne (« À la dérive (FR) » et « À la dérive (2018) ») :
+     * il prend cette année, et les deux copies ont la même clé. Rien n'est supposé quand le titre existe à
+     * plusieurs années (« Dune » de 1984 et de 2021).
+     */
+    fun alignYears(channels: List<Channel>): List<Channel> {
+        val years = HashMap<String, Int>()
+        var undated = false
+        for (channel in channels) {
+            if (channel.kind != ContentKind.MOVIE) continue
+            val year = channel.year
+            if (year == null) {
+                undated = true
+                continue
+            }
+            val title = ItemKeys.normalize(channel.title)
+            val known = years[title]
+            if (known == null) years[title] = year else if (known != year) years[title] = SEVERAL_YEARS
+        }
+        if (!undated || years.isEmpty()) return channels
+        return channels.map { channel ->
+            if (channel.kind != ContentKind.MOVIE || channel.year != null) return@map channel
+            val title = ItemKeys.normalize(channel.title)
+            val year = years[title]?.takeIf { it != SEVERAL_YEARS && title.isNotEmpty() }
+            if (year != null) channel.copy(year = year) else channel
+        }
+    }
+
+    private const val SEVERAL_YEARS = -1
 }
 
 /** Clés stables des favoris et du cache TMDB. */
@@ -340,7 +411,8 @@ object ItemKeys {
     /**
      * Minuscules sans accents, mots séparés par une espace (`[^a-z0-9]+` → « »). Appelé pour chaque
      * entrée de la playlist : un seul passage, sans expression régulière, et sans décomposition
-     * Unicode pour un texte ASCII (le cas courant).
+     * Unicode pour un texte ASCII (le cas courant). Les lettres des autres écritures (arabe, cyrillique,
+     * grec…) sont gardées : sans elles, tous ces titres avaient la même clé.
      */
     internal fun normalize(text: String): String {
         val lower = text.lowercase()
@@ -352,7 +424,7 @@ object ItemKeys {
         val out = StringBuilder(folded.length)
         var separator = false
         for (c in folded) {
-            if (c in 'a'..'z' || c in '0'..'9') {
+            if (c in 'a'..'z' || c in '0'..'9' || (c.code in OTHER_SCRIPTS && c.isLetterOrDigit())) {
                 if (separator && out.isNotEmpty()) out.append(' ')
                 separator = false
                 out.append(c)
@@ -364,4 +436,10 @@ object ItemKeys {
     }
 
     private val MARKS = Regex("\\p{Mn}+")
+
+    /**
+     * Écritures non latines, du grec jusqu'avant les formes « pleine largeur » : en dehors, seules les lettres de
+     * « a » à « z » comptent, comme avant (les clés des titres en lettres latines ne changent pas).
+     */
+    private val OTHER_SCRIPTS = 0x370 until 0xFF00
 }

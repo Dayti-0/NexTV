@@ -33,13 +33,37 @@ object ContentClassifier {
         """(?iu)[\s._\-:|]*(?:S(\d{1,2})[\s._\-]*E(\d{1,3})|(\d{1,2})x(\d{2,3})|saison\s*(\d{1,2})[\s._\-,]*(?:é|e)pisode\s*(\d{1,3}))\b""",
     )
     private val YEAR = Regex("""[(\[]?\b((?:19|20)\d{2})\b[)\]]?""")
-    private val LANGUAGE_PREFIX = Regex("""^\s*[\[|]?\s*(?:[A-Z]{2,3}|VOSTFR|MULTI)\s*[\]|]?\s*[:|\-–]\s+""")
+    private val LANGUAGE_PREFIX = Regex("""^\s*[\[|]?\s*((?:[A-Z]{2,3}|VOSTFR|MULTI))\s*[\]|]?\s*[:|\-–]\s+""")
     /** Mentions de version ou de langue, à la fin (« - MULTI », « (VOSTFR », « [VF] »). */
     private val TRAILING_NOISE = Regex("""(?i)[\s\-|:(\[]+(?:$VERSION_TAGS)\s*[)\]]?\s*$""")
 
-    /** Les mêmes mentions entre parenthèses ou crochets, n'importe où dans le titre. */
-    private val BRACKETED_NOISE = Regex("""(?i)\s*[(\[]\s*(?:$VERSION_TAGS)\s*[)\]]""")
-    private const val VERSION_TAGS = "vostfr|vost|vf|vff|vfq|vfi|vo|multi|multi-?subs?|truefrench|subfrench|french|dual"
+    /** Contenu d'une paire de parenthèses ou de crochets, n'importe où dans le titre. */
+    private val BRACKET = Regex("""\s*[(\[]([^()\[\]]*)[)\]]""")
+    private const val VERSION_TAGS = "vostfr|vost|stfr|vf|vff|vfq|vfi|vf2|vo|multi|multi-?subs?|true\\s?french|subfrench|french|dual"
+
+    /** Film en version française désignée par le seul code du pays (« Titre (FR) », « Titre - FR »). */
+    private val MOVIE_COUNTRY = Regex("""(?i)\s*[(\[]\s*FR\s*[)\]]|\s+[\-|:]\s*FR\s*$""")
+
+    /** Mots d'une mention de version entre parenthèses (« (Truefrench HDLight 1080p) ») : langue, puis source de la copie. */
+    private val VERSION_WORDS = setOf(
+        "VOSTFR", "VOST", "STFR", "VF", "VFF", "VFQ", "VFI", "VF2", "VO", "MULTI", "MULTISUB", "MULTISUBS", "TRUEFRENCH",
+        "SUBFRENCH", "FRENCH", "DUAL",
+    )
+    private val RELEASE_WORDS = setOf(
+        "HDLIGHT", "LIGHT", "BLURAY", "BDRIP", "BRRIP", "WEBRIP", "WEBDL", "WEB", "DL", "DVDRIP", "HDRIP", "REMUX", "CAM", "HDCAM",
+        "TS", "HDTS", "MD", "AC3", "DTS", "AAC", "10BIT", "TRUE",
+    )
+
+    /** Sources de copie sans autre sens possible : la parenthèse est retirée même sans mention de langue (« (BluRay 1080p) »). */
+    private val RELEASE_ONLY_WORDS = setOf("HDLIGHT", "BLURAY", "BDRIP", "BRRIP", "WEBRIP", "WEBDL", "DVDRIP", "HDRIP", "REMUX", "HDCAM", "HDTS")
+    private val WORD = Regex("[\\p{L}\\p{Nd}+]+")
+    private val YEAR_WORD = Regex("(?:19|20)\\d{2}")
+
+    /** Langues étrangères en préfixe (« EN: Avatar ») : la copie passe après la version française. */
+    private val FOREIGN_PREFIXES = setOf(
+        "EN", "ENG", "US", "UK", "GB", "DE", "GER", "ES", "ESP", "IT", "ITA", "PT", "BR", "AR", "ARA", "TR", "TUR", "NL", "PL", "RU",
+        "RO", "GR", "SE", "DK", "NO", "FI", "IN", "HI", "JP", "KR", "CN", "AL", "VO",
+    )
     private val NON_WORD = Regex("[^A-Z0-9]+")
     private val SPACES = Regex("\\s{2,}")
     private val MARKS = Regex("\\p{Mn}+")
@@ -74,7 +98,8 @@ object ContentClassifier {
             val (title, year) = extractYear(cleaned)
             return Result(ContentKind.SERIES, title, year, EpisodeInfo(title, null, null))
         }
-        val (title, year) = extractYear(cleaned)
+        // Film : « (FR) » désigne la version française, pas le titre.
+        val (title, year) = extractYear(MOVIE_COUNTRY.replace(cleaned, "").ifBlank { cleaned })
         return Result(ContentKind.MOVIE, title, year, null)
     }
 
@@ -148,10 +173,104 @@ object ContentClassifier {
     fun cleanTitle(name: String): String {
         var title = name.trim()
         repeat(2) { title = LANGUAGE_PREFIX.replace(title, "") }
-        title = BRACKETED_NOISE.replace(title, "")
+        title = stripVersionBrackets(title)
         title = TRAILING_NOISE.replace(title, "")
-        return QualityParser.parse(title).baseName.ifBlank { title }.trim()
+        title = QualityParser.parse(title).baseName.ifBlank { title }.trim()
+        // « Avatar VOSTFR 4K » : la mention de version précédait celle de qualité.
+        return TRAILING_NOISE.replace(title, "").ifBlank { title }.trim()
     }
+
+    /**
+     * Retire les parenthèses et crochets qui ne contiennent que des mentions de version (« (Truefrench) »,
+     * « [VOSTFR] », « (True French HDLight 1080p) »). Une année écrite avec elles est gardée (« (Truefrench 2018) »
+     * → « (2018) »). Les autres parenthèses font partie du titre (« Rick and Morty (US) »).
+     */
+    private fun stripVersionBrackets(title: String): String {
+        if ('(' !in title && '[' !in title) return title
+        return BRACKET.replace(title) { match ->
+            var version = false
+            var year: String? = null
+            for (found in WORD.findAll(match.groupValues[1])) {
+                val word = found.value.uppercase()
+                when {
+                    word in VERSION_WORDS || word in RELEASE_ONLY_WORDS -> version = true
+                    word in RELEASE_WORDS || QualityParser.isTechnical(word) -> Unit
+                    year == null && YEAR_WORD.matches(word) -> year = word
+                    else -> return@replace match.value
+                }
+            }
+            when {
+                !version -> match.value
+                year != null -> " ($year)"
+                else -> ""
+            }
+        }
+    }
+
+    /**
+     * Version d'un film d'après son nom dans la playlist (« À la dérive (Truefrench) », « EN: Avatar VOSTFR »).
+     *
+     * @property tag mention à afficher (« TRUEFRENCH », « VOSTFR », « FR »…), `null` si le nom n'en porte pas.
+     * @property rank préférence pour l'affiche du film : version française (ou sans mention) d'abord, puis
+     *   plusieurs langues, version sous-titrée, version originale ou autre langue.
+     */
+    data class Version(val tag: String?, val rank: Int)
+
+    fun versionOf(name: String): Version = versionOf(name, MOVIE_COUNTRY.replace(cleanTitle(name), ""))
+
+    /** @param title titre déjà nettoyé de [name] (celui du film) : il n'est pas nettoyé à nouveau pour chaque copie. */
+    fun versionOf(name: String, title: String): Version {
+        // Rien n'a été retiré du nom : pas de mention.
+        if (name == title) return Version(null, RANK_FRENCH)
+        val prefix = LANGUAGE_PREFIX.find(name.trim())?.groupValues?.get(1)?.uppercase()?.takeUnless { QualityParser.isTechnical(it) }
+        // Seuls les mots retirés du titre comptent : « The French Dispatch » n'est pas une version « FRENCH ».
+        val kept = WORD.findAll(title).mapTo(ArrayList()) { it.value.uppercase() }
+        val removed = WORD.findAll(name).map { it.value.uppercase() }.filterNot { kept.remove(it) }.toList()
+        val tag = when {
+            // « True French » en deux mots.
+            "TRUEFRENCH" in removed || removed.zipWithNext().any { (a, b) -> a == "TRUE" && b == "FRENCH" } -> "TRUEFRENCH"
+            else -> VERSION_ORDER.firstOrNull { it in removed }
+                ?: prefix?.takeIf { it == "FR" || it in FOREIGN_PREFIXES }
+                ?: "FR".takeIf { "FR" in removed }
+        }
+        val foreign = prefix != null && prefix in FOREIGN_PREFIXES
+        val rank = when (tag) {
+            "VOSTFR", "VOST", "STFR", "SUBFRENCH" -> RANK_SUBTITLED
+            "MULTI", "MULTISUB", "MULTISUBS", "DUAL" -> RANK_MULTI
+            "VFQ" -> if (foreign) RANK_FOREIGN else RANK_FRENCH - 1
+            null, "TRUEFRENCH", "VFF", "VF", "VFI", "VF2", "FRENCH", "FR" -> if (foreign) RANK_FOREIGN else RANK_FRENCH
+            else -> RANK_FOREIGN
+        }
+        return Version(tag, rank)
+    }
+
+    /**
+     * Titre déjà réduit à ses mots en minuscules (clé d'un favori ou d'une reprise), sans les mentions de version
+     * qui le terminent : « a la derive truefrench » et « a la derive fr » → « a la derive ». Sert à retrouver un
+     * titre enregistré avant que ces mentions soient retirées des titres.
+     *
+     * @param movie film : « fr » en fin de titre désigne la version française.
+     */
+    fun withoutVersionWords(words: String, movie: Boolean): String {
+        val kept = words.split(' ').filter { it.isNotEmpty() }.toMutableList()
+        while (kept.isNotEmpty()) {
+            val last = kept.last().uppercase()
+            val version = last in VERSION_WORDS || last in RELEASE_WORDS || QualityParser.isTechnical(last) || (movie && last == "FR")
+            if (!version) break
+            kept.removeAt(kept.lastIndex)
+        }
+        return kept.joinToString(" ")
+    }
+
+    private const val RANK_FRENCH = 4
+    private const val RANK_MULTI = 2
+    private const val RANK_SUBTITLED = 1
+    private const val RANK_FOREIGN = 0
+
+    /** Mentions de langue, de la plus précise à la plus vague : la première trouvée dans le nom est affichée. */
+    private val VERSION_ORDER = listOf(
+        "VFF", "VFQ", "VFI", "VF2", "VF", "VOSTFR", "SUBFRENCH", "STFR", "VOST", "MULTISUBS", "MULTISUB", "MULTI", "DUAL", "VO", "FRENCH",
+    )
 
     /** Sépare l'année (entre parenthèses ou en fin de titre) du titre. */
     private fun extractYear(title: String): Pair<String, Int?> {

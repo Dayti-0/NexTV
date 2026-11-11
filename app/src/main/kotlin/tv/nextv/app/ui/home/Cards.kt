@@ -400,17 +400,24 @@ internal data class PosterArt(
 
 internal val LocalPosterArt = androidx.compose.runtime.compositionLocalOf<PosterArt?> { null }
 
-/** Qualité annoncée par la playlist (« 4K », « FHD »…) sur une affiche ou une fiche ; rien si elle ne l'indique pas. */
+/**
+ * Qualité annoncée par la playlist (« 4K », « FHD »…) sur une affiche ou une fiche ; rien si elle ne l'indique pas.
+ * Sur une affiche, une petite étiquette qui laisse voir l'image ; [large] : sur la fiche, à côté de l'année.
+ */
 @Composable
 internal fun QualityBadge(quality: String?, modifier: Modifier = Modifier, compact: Boolean = false, large: Boolean = false) {
     val label = qualityLabel(quality) ?: return
     Text(
         label,
         modifier = modifier
-            .clip(androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
-            .background(Color.Black.copy(alpha = 0.72f))
-            .padding(horizontal = if (compact) 4.dp else if (large) 8.dp else 6.dp, vertical = if (large) 3.dp else 2.dp),
-        style = if (large) MaterialTheme.typography.labelLarge else MaterialTheme.typography.labelSmall,
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(if (large) 6.dp else 4.dp))
+            .background(Color.Black.copy(alpha = if (large) 0.72f else 0.6f))
+            .padding(horizontal = if (large) 8.dp else if (compact) 3.dp else 4.dp, vertical = if (large) 3.dp else 1.dp),
+        style = if (large) {
+            MaterialTheme.typography.labelLarge
+        } else {
+            MaterialTheme.typography.labelSmall.copy(fontSize = if (compact) 8.sp else 9.sp, lineHeight = 11.sp, letterSpacing = 0.sp)
+        },
         fontWeight = FontWeight.Bold,
         color = Color.White,
         maxLines = 1,

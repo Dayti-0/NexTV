@@ -113,6 +113,7 @@ fun DetailScreen(
             onSelectSeason = viewModel::selectSeason,
             onOpenItem = { onOpenItem(it.id, it.kind) },
             trailerAlternatives = viewModel::trailerAlternatives,
+            onNextVersion = viewModel::nextVersion,
         )
         return
     }
@@ -130,6 +131,7 @@ fun DetailScreen(
         onToggleFavorite = viewModel::toggleFavorite,
         onSelectSeason = viewModel::selectSeason,
         onBack = onBack,
+        onNextVersion = viewModel::nextVersion,
     )
     fullTrailer?.let { key ->
         val language = (state.metadata as? MetadataState.Available)?.details?.trailerLanguage
@@ -153,6 +155,8 @@ fun DetailContent(
     onResume: (Long) -> Unit = onPlay,
     /** Film recommencé depuis le début, sans question. */
     onRestart: (Long) -> Unit = onPlay,
+    /** Film en plusieurs versions : passe à la suivante. */
+    onNextVersion: () -> Unit = {},
 ) {
     val window = rememberWindowInfo()
     val item = state.item
@@ -249,7 +253,8 @@ fun DetailContent(
                                                 stringResource(R.string.player_resume_episode_at, progress.episodeLabel, formatClock(progress.positionMs))
                                             else -> stringResource(R.string.player_resume_next_episode, progress.episodeLabel)
                                         },
-                                        { onResume(progress.channelId) },
+                                        // Film en plusieurs versions : la reprise se fait dans celle qui est choisie.
+                                        { onResume(playTarget?.takeIf { state.versions.isNotEmpty() } ?: progress.channelId) },
                                         icon = Icons.Filled.PlayArrow,
                                         style = PillStyle.Primary,
                                         modifier = Modifier.focusRequester(playFocus),
@@ -272,6 +277,7 @@ fun DetailContent(
                                     enabled = playTarget != null,
                                     modifier = if (progress == null) Modifier.focusRequester(playFocus) else Modifier,
                                 )
+                                VersionButton(state, onNextVersion)
                                 details?.trailerYoutubeKey?.let { key ->
                                     PillButton(stringResource(R.string.detail_trailer), { onTrailer(key) }, icon = NexTvIcons.Movie)
                                 }
@@ -334,6 +340,24 @@ fun DetailContent(
             }
         }
     }
+}
+
+/**
+ * Film que la playlist propose en plusieurs versions (« Truefrench », « FR », « VOSTFR », 4K…) : la version choisie,
+ * et son rang. OK passe à la suivante ; « Lecture » et « Reprendre » lisent celle qui est affichée.
+ */
+@Composable
+internal fun VersionButton(state: DetailUiState, onNext: () -> Unit) {
+    val version = state.versions.getOrNull(state.selectedVersion) ?: return
+    val rank = state.selectedVersion + 1
+    PillButton(
+        if (version.label.isEmpty()) {
+            stringResource(R.string.detail_version_number, rank, state.versions.size)
+        } else {
+            stringResource(R.string.detail_version, version.label, rank, state.versions.size)
+        },
+        onNext,
+    )
 }
 
 /**

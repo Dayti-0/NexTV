@@ -18,6 +18,8 @@ import tv.nextv.app.AppContainer
 import tv.nextv.app.data.catalog.MetadataState
 import tv.nextv.app.data.progress.ProgressEntity
 import tv.nextv.app.data.db.EpisodeRow
+import tv.nextv.app.data.db.MovieVersionRow
+import tv.nextv.app.ui.home.qualityLabel
 import tv.nextv.core.catalog.ContentClassifier
 import tv.nextv.core.meta.CastMember
 import tv.nextv.core.meta.MediaType
@@ -40,6 +42,31 @@ data class PlaylistItem(
 
 data class Season(val number: Int?, val episodes: List<EpisodeRow>)
 
+/**
+ * Version d'un film : une de ses copies dans la playlist (« Truefrench », « FR », « VOSTFR », 4K…).
+ *
+ * @property label ce qui la distingue des autres (« TRUEFRENCH », « VOSTFR · 4K », sinon sa catégorie) ; vide
+ *   si rien ne la distingue (la fiche affiche alors son rang, « Version 2/3 »).
+ */
+data class MovieVersion(val id: Long, val label: String, val quality: String?)
+
+/**
+ * Versions d'un film à partir de ses copies ([rows], dans l'ordre de la playlist) : celle qui est ouverte
+ * ([openedId]) en premier, une seule par flux (la même copie rangée dans deux catégories ne compte qu'une fois).
+ */
+internal fun movieVersions(rows: List<MovieVersionRow>, openedId: Long): List<MovieVersion> {
+    val copies = rows.sortedByDescending { it.id == openedId }.distinctBy { it.streamUrl }
+    val base = copies.map { row ->
+        listOfNotNull(ContentClassifier.versionOf(row.name).tag, qualityLabel(row.quality)).joinToString(" · ")
+    }
+    return copies.mapIndexed { index, row ->
+        val unique = base[index].isNotEmpty() && base.count { it == base[index] } == 1
+        // Même langue et même qualité (ou rien d'écrit) : la catégorie les distingue.
+        val label = if (unique) base[index] else listOfNotNull(base[index].ifEmpty { null }, row.groupTitle?.trim()?.ifEmpty { null }).joinToString(" · ")
+        MovieVersion(row.id, label, row.quality)
+    }
+}
+
 data class DetailUiState(
     val item: PlaylistItem? = null,
     val metadata: MetadataState = MetadataState.Loading,
@@ -57,6 +84,9 @@ data class DetailUiState(
     val cast: List<CastMember> = emptyList(),
     /** Bandes-annonces des saisons lues sur TMDB (numéro de saison → identifiant YouTube, langue ; `null` : aucune). */
     val seasonTrailers: Map<Int, Pair<String, String>?> = emptyMap(),
+    /** Versions du film quand la playlist en a plusieurs (vide sinon) ; [PlaylistItem.firstId] est celle choisie. */
+    val versions: List<MovieVersion> = emptyList(),
+    val selectedVersion: Int = 0,
 ) {
     /** Bande-annonce du bouton : celle de la saison choisie si TMDB en a une, sinon celle du film ou de la série. */
     val trailer: Pair<String, String?>?
@@ -77,6 +107,9 @@ class DetailViewModel(
 
     private val mutableState = MutableStateFlow(DetailUiState())
     val state: StateFlow<DetailUiState> = mutableState.asStateFlow()
+
+    /** Vrai dès qu'une version a été choisie sur la fiche : la reprise en cours ne la change plus. */
+    private var versionChosen = false
 
     init {
         viewModelScope.launch { load() }
@@ -102,9 +135,19 @@ class DetailViewModel(
             mutableState.update { it.copy(seasons = seasons) }
         }
 
+        if (kind == ContentKind.MOVIE) {
+            val versions = movieVersions(container.channelDao.movieVersions(entity.sourceId, entity.itemKey, entity.id), entity.id)
+            if (versions.size > 1) mutableState.update { it.copy(versions = versions) }
+        }
+
         viewModelScope.launch {
             container.progress.observe(entity.sourceId, entity.itemKey).collect { progress ->
-                mutableState.update { it.copy(progress = progress) }
+                mutableState.update { state ->
+                    // Film commencé dans une autre version : c'est elle que la fiche propose, tant qu'aucune n'a été choisie.
+                    val watching = state.versions.indexOfFirst { it.id == progress?.channelId }
+                    val current = state.copy(progress = progress)
+                    if (watching >= 0 && !versionChosen) current.withVersion(watching) else current
+                }
             }
         }
         viewModelScope.launch {
@@ -173,6 +216,17 @@ class DetailViewModel(
     suspend fun trailerAlternatives(): List<Pair<String, String?>> {
         val details = (state.value.metadata as? MetadataState.Available)?.details ?: return emptyList()
         return runCatching { container.metadata.trailers(details) }.getOrDefault(emptyList())
+    }
+
+    /** Version suivante du film (le bouton « Version » fait le tour des versions). */
+    fun nextVersion() {
+        versionChosen = true
+        mutableState.update { if (it.versions.size > 1) it.withVersion((it.selectedVersion + 1) % it.versions.size) else it }
+    }
+
+    private fun DetailUiState.withVersion(index: Int): DetailUiState {
+        val version = versions.getOrNull(index) ?: return this
+        return copy(selectedVersion = index, item = item?.copy(firstId = version.id, quality = version.quality))
     }
 
     fun selectSeason(index: Int) {

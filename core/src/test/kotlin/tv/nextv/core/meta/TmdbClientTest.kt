@@ -242,4 +242,20 @@ class TmdbClientTest {
         val found = client.lookup(MediaType.MOVIE, "Avatar", null, exact = true) as TmdbResult.Found
         assertEquals(19995L, found.details.tmdbId)
     }
+
+    @Test
+    fun `english mentions of a role are shown in french`() {
+        assertEquals("Gus' Mom (voix)", Roles.toFrench("Gus' Mom (voice)", 1))
+        assertEquals("Rocket (voix, non crédité)", Roles.toFrench("Rocket (voice, uncredited)", 2))
+        assertEquals("Elsa (voix chantée)", Roles.toFrench("Elsa (singing voice)", 1))
+        assertEquals("Le président (images d'archives)", Roles.toFrench("Le président (archive footage)", 2))
+        assertEquals("Elle-même", Roles.toFrench("Self", 1))
+        assertEquals("Lui-même (non crédité)", Roles.toFrench("Himself (uncredited)", 0))
+        assertEquals("Dans son propre rôle", Roles.toFrench("Self", 0))
+        assertEquals("Narratrice (voix)", Roles.toFrench("Narrator (voice)", 1))
+        // Un nom de personnage n'est pas touché, même s'il contient ces mots.
+        assertEquals("Jake Sully", Roles.toFrench("Jake Sully", 2))
+        assertEquals("The Voice", Roles.toFrench("The Voice", 2))
+        assertEquals("Invoice Clerk (voix)", Roles.toFrench("Invoice Clerk (voice)", 2))
+    }
 }

@@ -199,6 +199,9 @@ class AppContainer(context: Context) {
     /** Films et épisodes regardés jusqu'au bout (badge « Déjà vu »). */
     val watched = WatchedRepository(WatchedDatabase.create(appContext))
 
+    /** Favoris, reprises et « Déjà vu » des titres dont la clé a changé (versions d'un film regroupées). */
+    val itemKeyRelinker = tv.nextv.app.data.catalog.ItemKeyRelinker(database, progress, watched)
+
     /** Sauvegarde et restauration des playlists, favoris, catégories masquées, reprises, « Déjà vu » et réglages. */
     val backup = BackupManager(
         playlistStore = playlistStore,
@@ -307,7 +310,13 @@ class AppContainer(context: Context) {
         // playlist (leur numéro de ligne change quand l'adresse du flux change).
         applicationScope.launch {
             sourceRepository.sources.map { sources -> sources.map { it.id to it.status?.lastSuccessAtMillis } }.distinctUntilChanged()
-                .collect { sources -> safely("Reprises de lecture") { sources.forEach { (id, _) -> progress.relink(id, channelDao) } } }
+                .collect { sources ->
+                    sources.forEach { (id, _) ->
+                        // D'abord les clés des titres renommés par un meilleur nettoyage (favoris, reprises, « Déjà vu »).
+                        safely("Favoris et reprises des titres renommés") { itemKeyRelinker.relink(id) }
+                        safely("Reprises de lecture") { progress.relink(id, channelDao) }
+                    }
+                }
         }
 
         // Actualisations automatiques tant que l'application tourne (les TV restent souvent allumées) :

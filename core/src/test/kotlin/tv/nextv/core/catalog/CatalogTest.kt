@@ -3,6 +3,7 @@ package tv.nextv.core.catalog
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import tv.nextv.core.model.ContentKind
 import tv.nextv.core.model.EpisodeInfo
@@ -202,6 +203,88 @@ class ContentClassifierTest {
     fun `parentheses that belong to the title are kept`() {
         val series = ContentClassifier.classify("Rick and Morty (US) S01E02", "http://p.example/series/u/p/4.mkv", "SERIES | ANIMATION")
         assertEquals("Rick and Morty (US)", series.title)
+        // « (FR) » ne désigne la version française que pour un film.
+        assertEquals("Skam (FR)", ContentClassifier.classify("Skam (FR) S01E02", "http://p.example/series/u/p/5.mkv", "SERIES").title)
+        assertEquals("Tron (Legacy)", movie("Tron (Legacy) (2010)").title)
+        assertEquals("The French Dispatch", movie("The French Dispatch (2021)").title)
+    }
+
+    private fun movie(name: String) = ContentClassifier.classify(name, "http://p.example/movie/u/p/1.mkv", "VOD | FILMS")
+
+    @Test
+    fun `versions of a film share its title and year`() {
+        // Les deux copies de la photo : la même affiche, deux mentions de version.
+        val names = listOf(
+            "À la dérive (Truefrench)",
+            "À la dérive (FR)",
+            "À la dérive (Truefrench 2018)",
+            "À la dérive (TRUEFRENCH HDLight 1080p)",
+            "À la dérive (True French)",
+            "À la dérive [FR]",
+            "À la dérive - FR",
+            "FR - À la dérive (VF HD)",
+            "À la dérive (Truefrench",
+            "À la dérive (BluRay 1080p)",
+            "À la dérive (2018) (TRUEFRENCH)",
+        )
+        for (name in names) assertEquals(name, "À la dérive", movie(name).title)
+        // Mention de version avant celle de qualité.
+        assertEquals("Avatar", movie("Avatar (2009) VOSTFR 4K").title)
+        assertEquals(2009, movie("Avatar (2009) VOSTFR 4K").year)
+        assertEquals("Avatar", movie("Avatar MULTI FHD").title)
+        assertEquals(2018, movie("À la dérive (Truefrench 2018)").year)
+        assertEquals(2018, movie("À la dérive (FR) (2018)").year)
+        assertEquals(2018, movie("À la dérive (2018) (TRUEFRENCH)").year)
+        assertNull(movie("À la dérive (FR)").year)
+    }
+
+    @Test
+    fun `the version of a film is read from its name`() {
+        fun tag(name: String) = ContentClassifier.versionOf(name).tag
+        fun rank(name: String) = ContentClassifier.versionOf(name).rank
+
+        assertEquals("TRUEFRENCH", tag("À la dérive (Truefrench)"))
+        assertEquals("TRUEFRENCH", tag("À la dérive (True French HDLight)"))
+        assertEquals("FR", tag("À la dérive (FR)"))
+        assertEquals("FR", tag("FR - À la dérive (2018)"))
+        assertEquals("VOSTFR", tag("FR: Avatar (2009) VOSTFR"))
+        assertEquals("MULTI", tag("Avatar (MULTI) 4K"))
+        assertEquals("EN", tag("EN: Avatar (2009)"))
+        assertNull(tag("Avatar (2009) FHD"))
+        // Un mot du titre n'est pas une mention de version.
+        assertNull(tag("The French Dispatch (2021)"))
+        assertEquals("VOSTFR", tag("The French Dispatch [VOSTFR]"))
+
+        // Avec le titre déjà nettoyé (import de la playlist) : même résultat, sans le nettoyer à nouveau.
+        assertEquals("TRUEFRENCH", ContentClassifier.versionOf("À la dérive (Truefrench 2018)", "À la dérive").tag)
+        assertEquals("VOSTFR", ContentClassifier.versionOf("FR: Avatar (2009) VOSTFR 4K", "Avatar").tag)
+        assertNull(ContentClassifier.versionOf("Avatar (2009) FHD", "Avatar").tag)
+        assertNull(ContentClassifier.versionOf("The French Dispatch (2021)", "The French Dispatch").tag)
+
+        // Version française (ou sans mention) d'abord, puis plusieurs langues, sous-titrée, autre langue.
+        assertEquals(rank("Avatar (2009)"), rank("Avatar (Truefrench)"))
+        assertEquals(rank("Avatar (FR)"), rank("Avatar (VF)"))
+        assertTrue(rank("Avatar (VF)") > rank("Avatar (VFQ)"))
+        assertTrue(rank("Avatar (VFQ)") > rank("Avatar (MULTI)"))
+        assertTrue(rank("Avatar (MULTI)") > rank("Avatar (VOSTFR)"))
+        assertTrue(rank("Avatar (VOSTFR)") > rank("EN: Avatar"))
+        assertEquals(rank("Avatar (VO)"), rank("EN: Avatar"))
+    }
+}
+
+class VersionWordsTest {
+
+    @Test
+    fun `version words that end a stored title are removed`() {
+        assertEquals("a la derive", ContentClassifier.withoutVersionWords("a la derive truefrench", movie = true))
+        assertEquals("a la derive", ContentClassifier.withoutVersionWords("a la derive fr", movie = true))
+        assertEquals("a la derive", ContentClassifier.withoutVersionWords("a la derive truefrench hdlight 1080p", movie = true))
+        assertEquals("avatar", ContentClassifier.withoutVersionWords("avatar", movie = true))
+        // Série : « (FR) » fait partie du titre.
+        assertEquals("skam fr", ContentClassifier.withoutVersionWords("skam fr", movie = false))
+        assertEquals("lupin", ContentClassifier.withoutVersionWords("lupin multi", movie = false))
+        // Un mot de version ailleurs qu'à la fin reste dans le titre.
+        assertEquals("the french dispatch", ContentClassifier.withoutVersionWords("the french dispatch", movie = true))
     }
 }
 

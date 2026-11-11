@@ -121,6 +121,8 @@ internal fun StreamingDetailContent(
     onOpenItem: (PosterItem) -> Unit,
     /** Autres bandes-annonces du titre, essayées si celle choisie ne se lit pas. */
     trailerAlternatives: suspend () -> List<Pair<String, String?>> = { emptyList() },
+    /** Film en plusieurs versions : passe à la suivante. */
+    onNextVersion: () -> Unit = {},
 ) {
     val colors = MaterialTheme.colorScheme
     val background = colors.background
@@ -239,6 +241,7 @@ internal fun StreamingDetailContent(
                             onToggleFavorite = onToggleFavorite,
                             onTrailer = { fullTrailer = true },
                             onToggleSound = { muted = !muted },
+                            onNextVersion = onNextVersion,
                         )
                     }
                 }
@@ -361,6 +364,7 @@ private fun DetailButtons(
     onToggleFavorite: () -> Unit,
     onTrailer: () -> Unit,
     onToggleSound: () -> Unit,
+    onNextVersion: () -> Unit,
 ) {
     val progress = state.progress
     val firstEpisode = state.seasons.getOrNull(state.selectedSeason)?.episodes?.firstOrNull()
@@ -375,7 +379,8 @@ private fun DetailButtons(
                     progress.positionMs > 0 -> stringResource(R.string.player_resume_episode_at, progress.episodeLabel, formatClock(progress.positionMs))
                     else -> stringResource(R.string.player_resume_next_episode, progress.episodeLabel)
                 },
-                { onResume(progress.channelId) },
+                // Film en plusieurs versions : la reprise se fait dans celle qui est choisie.
+                { onResume(playTarget?.takeIf { state.versions.isNotEmpty() } ?: progress.channelId) },
                 icon = Icons.Filled.PlayArrow,
                 style = PillStyle.Primary,
                 modifier = Modifier.focusRequester(playFocus),
@@ -397,6 +402,7 @@ private fun DetailButtons(
             enabled = playTarget != null,
             modifier = if (progress == null) Modifier.focusRequester(playFocus) else Modifier,
         )
+        VersionButton(state, onNextVersion)
         trailerKey?.let { PillButton(stringResource(R.string.hero_trailer), onTrailer, icon = NexTvIcons.Movie) }
         FavoriteButton(state.isFavorite, onToggleFavorite)
         AnimatedVisibility(trailerShown, enter = fadeIn(), exit = fadeOut()) {

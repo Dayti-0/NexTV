@@ -471,6 +471,41 @@ abstract class ScreenshotSuite(private val device: String) {
         )
     }
 
+    /** Film que la playlist propose en plusieurs versions : bouton « Version », avec la reprise en cours. */
+    private val movieVersions = SampleData.movieDetail.copy(
+        progress = SampleData.movieProgress,
+        versions = listOf(
+            tv.nextv.app.ui.detail.MovieVersion(1_000, "TRUEFRENCH", "UHD"),
+            tv.nextv.app.ui.detail.MovieVersion(1_001, "FR", null),
+            tv.nextv.app.ui.detail.MovieVersion(1_002, "VOSTFR · FHD", "FHD"),
+        ),
+    )
+
+    @Test
+    fun movieWithVersions() = capture("11d_fiche_film_versions") {
+        DetailContent(
+            state = movieVersions,
+            kind = ContentKind.MOVIE,
+            snackbarHostState = remember { SnackbarHostState() },
+            onPlay = {},
+            onTrailer = {},
+            onToggleFavorite = {},
+            onSelectSeason = {},
+            onBack = {},
+        )
+    }
+
+    @Test
+    fun streamingMovieWithVersions() = capture("11e_fiche_film_streaming_versions", ThemeStyle.CINEMA) {
+        tv.nextv.app.ui.detail.StreamingDetailContent(
+            state = movieVersions,
+            kind = ContentKind.MOVIE,
+            window = tv.nextv.app.ui.components.rememberWindowInfo(),
+            trailers = tv.nextv.app.ui.home.TrailerSettings(),
+            onPlay = {}, onResume = {}, onRestart = {}, onToggleFavorite = {}, onSelectSeason = {}, onOpenItem = {},
+        )
+    }
+
     @Test
     fun series() = capture("12_fiche_serie") {
         DetailContent(
