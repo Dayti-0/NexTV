@@ -816,8 +816,9 @@ private fun CatalogBody(
             paneShortcut = !reorder.active,
             glass = liveList,
             initialFocus = initialFocus,
-            // Mosaïque des chaînes (Streaming, Classique) : aperçu en bandeau au-dessus, mosaïque en pleine largeur.
-            banner = if (liveList && section == HomeSection.TV && gridColumns.liveCenterMosaic) {
+            // Mosaïque des chaînes (toutes les interfaces) : aperçu en bandeau au-dessus, mosaïque en pleine largeur
+            // (à côté du volet, les vignettes étaient trop étroites pour lire le nom des chaînes).
+            banner = if (section == HomeSection.TV && gridColumns.liveCenterMosaic) {
                 { bannerModifier -> LiveBanner(preview, previewPlayer, now, bannerModifier) }
             } else {
                 null
@@ -828,11 +829,13 @@ private fun CatalogBody(
         ) {
             // Chaînes : une par ligne avec leur programme, ou en mosaïque (réglages) ; films et séries : affiches.
             val channelList = section == HomeSection.TV && !gridColumns.liveCenterMosaic
+            // Live Center en mosaïque : pas de volet à droite, la marge du bord de l'écran revient.
+            val bannerOnTop = section == HomeSection.TV && gridColumns.liveCenterMosaic
             // Volet à droite : pas de marge de bord d'écran de ce côté, la place va aux vignettes.
             // Chaînes de Streaming / Classique : marges réduites entre les panneaux, la place va aux chaînes.
             CatalogGrid(
                 section, window, gridColumns.perRow, list = channelList,
-                endPadding = if (liveList) LIVE_LIST_GAP else LIVE_CENTER_GRID_END,
+                endPadding = if (liveList) LIVE_LIST_GAP else if (bannerOnTop) LIVE_CENTER_BANNER_END else LIVE_CENTER_GRID_END,
                 startPadding = if (liveList) LIVE_LIST_GAP else null,
                 body = body,
             )
@@ -1852,6 +1855,9 @@ private val GRID_SPACING = 16.dp
 
 /** Live Center : marge entre la grille et le volet de droite. */
 private val LIVE_CENTER_GRID_END = 16.dp
+
+/** Live Center en mosaïque (aperçu en bandeau, sans volet) : marge de droite de la mosaïque. */
+internal val LIVE_CENTER_BANNER_END = 24.dp
 
 /** Marge de la liste des chaînes entre ses panneaux (Streaming, Classique). */
 private val LIVE_LIST_GAP = 6.dp

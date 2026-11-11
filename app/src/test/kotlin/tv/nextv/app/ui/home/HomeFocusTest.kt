@@ -15,7 +15,9 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.isDisplayed
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import tv.nextv.app.ui.components.BottomFadeLength
@@ -215,12 +217,12 @@ class HomeFocusTest {
         enterStreamingContent()
         repeat(3) { press(Key.DirectionDown) }
         openDrawerWithLeft()
-        compose.onNodeWithText("CATÉGORIES").assertExists()
+        compose.onNodeWithTag(CATEGORY_DRAWER_TAG).assertExists()
         repeat(2) { press(Key.DirectionDown) }
         press(Key.DirectionLeft)
         val focusedLeft = compose.onNode(isFocused()).getBoundsInRoot().left
         println("← dans le volet : sélection à $focusedLeft")
-        assertTrue("Volet encore ouvert", compose.onAllNodesWithText("CATÉGORIES").fetchSemanticsNodes().isEmpty())
+        assertTrue("Volet encore ouvert", compose.onAllNodesWithTag(CATEGORY_DRAWER_TAG).fetchSemanticsNodes().isEmpty())
         assertTrue("Sélection hors du menu : $focusedLeft", focusedLeft < 100.dp)
     }
 
@@ -678,17 +680,18 @@ class HomeFocusTest {
     }
 
     /**
-     * Mosaïque du Live Center : droite passe à la chaîne suivante ; ☰, depuis n'importe quelle
-     * colonne, entre dans le volet de la chaîne choisie, sans en changer, et ☰ y ramène.
+     * Mosaïque du Live Center : l'aperçu est en bandeau au-dessus (plus de volet à droite), les vignettes prennent
+     * toute la largeur, assez larges pour lire le nom des chaînes ; droite passe à la chaîne suivante.
      */
     @Test
-    fun menuKeyOpensThePaneFromAnyMosaicChannel() {
+    fun liveCenterMosaicHasTheBannerOnTop() {
         val focused = mutableListOf<ChannelListRow>()
         compose.setContent {
-            Home(HomeLayout.LIVE_CENTER, HomeActions(onChannelFocus = { focused += it }), preview = SampleData.channelPreview, grid = GridColumns(liveCenterMosaic = true))
+            Home(HomeLayout.LIVE_CENTER, HomeActions(onChannelFocus = { focused += it }), preview = SampleData.channelPreview, grid = GridColumns(liveCenterMosaic = true, perRow = 5))
         }
         compose.waitForIdle()
         // Onglets → recherche → catégories, puis la mosaïque (première colonne).
+        // → depuis « Favoris » : dans la mosaïque (à cette hauteur, il n'y a à droite que le bandeau, puis les onglets).
         press(Key.DirectionDown)
         press(Key.DirectionDown)
         press(Key.DirectionRight)
@@ -700,18 +703,12 @@ class HomeFocusTest {
         val secondCard = compose.onNode(isFocused()).getBoundsInRoot()
         assertTrue("Droite : chaîne suivante (${first.title} → ${second.title})", second.id != first.id)
         assertTrue("Même ligne", secondCard.top == card.top)
-        // ☰ : le volet, la chaîne choisie ne change pas.
-        press(Key.Menu)
-        val pane = compose.onNode(isFocused()).getBoundsInRoot()
-        println("☰ : focus ${pane}, chaîne ${focused.last().title} (avant : ${second.title})")
-        assertEquals(second.id, focused.last().id)
-        assertTrue("Focus dans le volet : $pane", pane.left > card.right + 100.dp)
-        repeat(4) { press(Key.DirectionDown) }
-        assertTrue("« Plus tard » visible", compose.onNodeWithText("Journal de la nuit").isDisplayed())
-        // ☰ de nouveau : retour sur la chaîne choisie.
-        press(Key.Menu)
-        assertEquals(second.id, focused.last().id)
-        assertEquals(secondCard, compose.onNode(isFocused()).getBoundsInRoot())
+        // Bandeau au-dessus de la mosaïque, vignettes assez larges.
+        // Nom de la chaîne en grand dans le bandeau (le premier à l'écran ; il est aussi sur sa vignette).
+        val banner = compose.onAllNodesWithText(SampleData.channelPreview.channel.title, useUnmergedTree = true)[0].getBoundsInRoot()
+        println("Vignette : $card, bandeau : $banner")
+        assertTrue("Bandeau au-dessus des vignettes", banner.bottom < card.top)
+        assertTrue("Vignettes larges : ${card.right - card.left}", card.right - card.left > 110.dp)
     }
 
     /** Retour du lecteur : la liste revient à sa place et la chaîne ouverte reprend le focus. */
@@ -776,7 +773,7 @@ class HomeFocusTest {
     /** ← jusqu'à l'ouverture du volet des catégories (bord gauche de la rangée ou de la liste). */
     private fun openDrawerWithLeft() {
         repeat(10) {
-            if (compose.onAllNodesWithText("CATÉGORIES").fetchSemanticsNodes().isNotEmpty()) return
+            if (compose.onAllNodesWithTag(CATEGORY_DRAWER_TAG).fetchSemanticsNodes().isNotEmpty()) return
             press(Key.DirectionLeft)
         }
     }

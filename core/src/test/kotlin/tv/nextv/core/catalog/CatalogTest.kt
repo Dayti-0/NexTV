@@ -215,6 +215,10 @@ class FranceRegionsTest {
         assertEquals("cote d azur", FranceRegions.regionOf("France3 Côte d'Azur HD")?.key)
         assertEquals("bretagne", FranceRegions.regionOf("FR: F3 Bretagne")?.key)
         assertEquals("Corse ViaStella", FranceRegions.regionOf("FR| France 3 Corse ViaStella")?.label)
+        // Nom mal écrit par la playlist : corrigé.
+        assertEquals("Languedoc", FranceRegions.regionOf("FR| FRANCE 3 LANGUE-DOC")?.label)
+        assertEquals("Languedoc", FranceRegions.regionOf("FR| France 3 Langue Doc HD")?.label)
+        assertEquals("Languedoc", FranceRegions.regionOf("FR| FRANCE 3 LANGUEDOC")?.label)
     }
 
     @Test

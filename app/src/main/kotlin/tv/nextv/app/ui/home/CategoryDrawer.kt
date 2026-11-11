@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -28,7 +27,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
@@ -45,10 +43,8 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
-import tv.nextv.app.R
 
 /** Largeur du volet des catégories. */
 private val DRAWER_WIDTH = 320.dp
@@ -208,17 +204,15 @@ internal fun CategoryDrawer(
                     // Ouvert, le focus reste dans le volet : ↑ en haut, ↓ en bas ou ← ne le font plus sortir.
                     .focusProperties { onExit = { if (open) cancelFocusChange() } }
                     .focusRequester(railFocus)
-                    .focusGroup(),
+                    .focusGroup()
+                    .testTag(CATEGORY_DRAWER_TAG),
             ) {
-                Text(
-                    stringResource(R.string.nav_categories).uppercase(),
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = colors.primary,
-                    modifier = Modifier.align(Alignment.Start).padding(start = 22.dp, top = 18.dp, bottom = 2.dp),
-                )
-                rail(Modifier.fillMaxWidth().weight(1f), selectedFocus)
+                // Pas de titre « Catégories » : la liste commence tout en haut du volet.
+                rail(Modifier.fillMaxWidth().weight(1f).padding(top = 8.dp), selectedFocus)
             }
         }
     }
 }
+
+/** Repère du volet ouvert (tests). */
+internal const val CATEGORY_DRAWER_TAG = "category-drawer"

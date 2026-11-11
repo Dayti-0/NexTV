@@ -42,6 +42,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import tv.nextv.app.R
 import tv.nextv.app.ui.components.ChannelLogo
@@ -114,7 +115,8 @@ internal fun TonightView(
         }
         // Programme sélectionné : image, horaires, genre et résumé.
         Row(
-            Modifier.fillMaxWidth().heightIn(min = 92.dp).padding(horizontal = window.horizontalPadding, vertical = 8.dp),
+            // Hauteur fixe (deux lignes de résumé toujours réservées) : la liste ne bouge pas d'un programme à l'autre.
+            Modifier.fillMaxWidth().padding(horizontal = window.horizontalPadding, vertical = 8.dp).heightIn(min = DETAILS_MIN_HEIGHT),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -137,9 +139,14 @@ internal fun TonightView(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(programme.title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                (programme.description ?: programme.subtitle)?.let {
-                    Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                }
+                Text(
+                    programme.description ?: programme.subtitle ?: "",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    minLines = 2,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
             }
         }
@@ -147,9 +154,13 @@ internal fun TonightView(
             EmptyState(NexTvIcons.Guide, stringResource(R.string.tonight_empty_title), stringResource(R.string.tonight_empty_message))
             return@Column
         }
+        // Aucune chaîne numérotée (favoris hors TNT…) : pas de colonne de numéros vide, la chaîne et ses
+        // programmes prennent cette place.
+        val numbered = remember(state.rows) { state.rows.any { it.channel.number != null } }
+        val channelWidth = if (numbered) TONIGHT_CHANNEL_WIDTH else TONIGHT_CHANNEL_WIDTH - TONIGHT_NUMBER_WIDTH - 10.dp
         if (window.isWide) {
             Row(
-                Modifier.padding(start = window.horizontalPadding + TONIGHT_CHANNEL_WIDTH + 12.dp, end = window.horizontalPadding, bottom = 4.dp),
+                Modifier.padding(start = window.horizontalPadding + channelWidth + 12.dp, end = window.horizontalPadding, bottom = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 ColumnTitle(stringResource(R.string.tonight_first_part), Modifier.weight(1.15f))
@@ -168,6 +179,8 @@ internal fun TonightView(
                         row = row,
                         now = state.now,
                         wide = window.isWide,
+                        numbered = numbered,
+                        channelWidth = channelWidth,
                         firstFocus = firstBlock.takeIf { index == 0 && back?.get(0) != 0 },
                         backFocus = backFocus.takeIf { back?.get(0) == index },
                         backColumn = back?.get(1) ?: 0,
@@ -188,6 +201,8 @@ private fun TonightLine(
     row: TonightRow,
     now: Long,
     wide: Boolean,
+    numbered: Boolean,
+    channelWidth: Dp,
     firstFocus: FocusRequester?,
     onFocus: (GuideProgramme) -> Unit,
     onOpen: (GuideProgramme) -> Unit,
@@ -199,7 +214,7 @@ private fun TonightLine(
     fun requesterFor(column: Int): FocusRequester? = backFocus.takeIf { column == backColumn } ?: firstFocus.takeIf { column == 0 }
     if (wide) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            ChannelCell(channel, Modifier.width(TONIGHT_CHANNEL_WIDTH))
+            ChannelCell(channel, numbered, Modifier.width(channelWidth))
             row.first?.let { ProgrammeCell(it, now, main = true, Modifier.weight(1.15f).then(requesterFor(0)?.let { r -> Modifier.focusRequester(r) } ?: Modifier), onFocus, onOpen) }
             if (row.second != null) {
                 ProgrammeCell(row.second, now, main = false, Modifier.weight(1f).then(requesterFor(1)?.let { r -> Modifier.focusRequester(r) } ?: Modifier), onFocus, onOpen)
@@ -209,7 +224,7 @@ private fun TonightLine(
         }
     } else {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            ChannelCell(channel, Modifier.fillMaxWidth())
+            ChannelCell(channel, numbered, Modifier.fillMaxWidth())
             row.first?.let { ProgrammeCell(it, now, main = true, Modifier.fillMaxWidth().then(requesterFor(0)?.let { r -> Modifier.focusRequester(r) } ?: Modifier), onFocus, onOpen) }
             row.second?.let { ProgrammeCell(it, now, main = false, Modifier.fillMaxWidth().then(requesterFor(1)?.let { r -> Modifier.focusRequester(r) } ?: Modifier), onFocus, onOpen) }
         }
@@ -218,11 +233,13 @@ private fun TonightLine(
 
 /** Numéro TNT en grand, logo et nom : la chaîne se repère au premier coup d'œil. */
 @Composable
-private fun ChannelCell(channel: GuideChannel, modifier: Modifier) {
+private fun ChannelCell(channel: GuideChannel, numbered: Boolean, modifier: Modifier) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Box(Modifier.width(38.dp), contentAlignment = Alignment.Center) {
-            channel.number?.let {
-                Text(it, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Center)
+        if (numbered) {
+            Box(Modifier.width(TONIGHT_NUMBER_WIDTH), contentAlignment = Alignment.Center) {
+                channel.number?.let {
+                    Text(it, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Center)
+                }
             }
         }
         ChannelLogo(channel.logoUrl, channel.name, Modifier.size(width = 60.dp, height = 42.dp), monogramSize = 15.dp)
@@ -334,3 +351,6 @@ private fun daysBetween(from: Long, to: Long): Int {
 private fun shortTime(millis: Long): String = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(millis))
 
 private val TONIGHT_CHANNEL_WIDTH = 250.dp
+
+/** Colonne du numéro TNT, devant le logo. */
+private val TONIGHT_NUMBER_WIDTH = 38.dp

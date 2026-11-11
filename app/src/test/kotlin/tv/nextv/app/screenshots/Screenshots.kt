@@ -358,7 +358,8 @@ abstract class ScreenshotSuite(private val device: String) {
                 selectedGroup = GuideViewModel.FAVORITES_TONIGHT,
                 onSelectGroup = {},
                 onPlay = {},
-                tonight = SampleData.tonight,
+                // Favoris hors TNT : aucune chaîne numérotée, pas de colonne de numéros vide.
+                tonight = SampleData.tonight.copy(rows = SampleData.tonight.rows.map { it.copy(channel = it.channel.copy(number = null)) }),
             )
         }
     }

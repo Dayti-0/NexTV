@@ -141,6 +141,17 @@ internal fun LiveCenterSection(
     }
     val colors = MaterialTheme.colorScheme
     val panel = LIVE_PANEL_SHAPE
+    // Aperçu en bandeau : à droite des premières catégories, il n'y a que lui (pas sélectionnable) et les onglets
+    // au-dessus. → depuis les catégories va donc dans la mosaïque (sur la dernière chaîne choisie), pas aux onglets.
+    // Après les touches du champ de recherche (curseur pendant la saisie).
+    val railRight = if (banner != null) {
+        Modifier.onKeyEvent { event ->
+            if (event.key != Key.DirectionRight) return@onKeyEvent false
+            if (event.type == KeyEventType.KeyDown) runCatching { listFocus.requestFocus() }.isSuccess else true
+        }
+    } else {
+        Modifier
+    }
     Row(
         modifier
             .fillMaxSize()
@@ -169,7 +180,7 @@ internal fun LiveCenterSection(
         } else if (glass) {
             CategoryRail(
                 section, window, groups, recentCount, allCount, category, query, favoritesCount, resumeCount, actions,
-                Modifier.width(264.dp).clip(panel).background(colors.surfaceContainerLow.copy(alpha = 0.62f)).padding(top = 6.dp).onFocusChanged { railFocused = it.hasFocus },
+                Modifier.width(264.dp).clip(panel).background(colors.surfaceContainerLow.copy(alpha = 0.62f)).padding(top = 6.dp).onFocusChanged { railFocused = it.hasFocus }.then(railRight),
                 dense = true,
                 containerColor = Color.Transparent,
                 startPadding = 6.dp,
@@ -178,13 +189,20 @@ internal fun LiveCenterSection(
         } else {
             CategoryRail(
                 section, window, groups, recentCount, allCount, category, query, favoritesCount, resumeCount, actions,
-                Modifier.width(230.dp).onFocusChanged { railFocused = it.hasFocus },
+                Modifier.width(230.dp).onFocusChanged { railFocused = it.hasFocus }.then(railRight),
                 dense = true,
                 selectedFocus = selectedCategory,
             )
         }
         Column(Modifier.weight(1f).fillMaxHeight()) {
-            banner?.invoke(Modifier.fillMaxWidth().height(LIVE_BANNER_HEIGHT).clip(panel))
+            banner?.invoke(
+                Modifier
+                    .fillMaxWidth()
+                    // Live Center (colonnes pleines) : le bandeau s'aligne sur la mosaïque, à distance du bord.
+                    .then(if (glass) Modifier else Modifier.padding(start = 22.dp, end = LIVE_CENTER_BANNER_END - 6.dp, top = 10.dp))
+                    .height(LIVE_BANNER_HEIGHT)
+                    .clip(panel),
+            )
             // Pas de titre au-dessus de la liste : la catégorie et son nombre sont déjà dans la colonne de gauche.
             if (action != null) {
                 Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, top = 6.dp, bottom = 6.dp), horizontalArrangement = Arrangement.End) {
@@ -220,7 +238,8 @@ internal fun LiveCenterSection(
     }
 }
 
-private val LIVE_BANNER_HEIGHT = 196.dp
+/** Bandeau de l'aperçu, assez bas pour laisser voir deux rangées de chaînes entières. */
+private val LIVE_BANNER_HEIGHT = 128.dp
 
 /** Coins des panneaux translucides (Streaming, Classique). */
 private val LIVE_PANEL_SHAPE = RoundedCornerShape(22.dp)
@@ -234,23 +253,23 @@ private val LIVE_PANEL_SHAPE = RoundedCornerShape(22.dp)
 internal fun LiveBanner(preview: ChannelPreview?, player: Player?, now: Long, modifier: Modifier) {
     val colors = MaterialTheme.colorScheme
     Row(
-        modifier.background(colors.surfaceContainerLow.copy(alpha = 0.62f)).padding(14.dp),
-        horizontalArrangement = Arrangement.spacedBy(18.dp),
+        modifier.background(colors.surfaceContainerLow.copy(alpha = 0.62f)).padding(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             Modifier.fillMaxHeight().aspectRatio(16f / 9f).clip(MaterialTheme.shapes.large).background(Color.Black),
             contentAlignment = Alignment.Center,
         ) {
-            preview?.channel?.let { ChannelLogo(it.logoUrl, it.title, Modifier.fillMaxWidth(0.4f).aspectRatio(16f / 9f), monogramSize = 26.dp) }
+            preview?.channel?.let { ChannelLogo(it.logoUrl, it.title, Modifier.fillMaxWidth(0.4f).aspectRatio(16f / 9f), monogramSize = 18.dp) }
             if (player != null) PreviewVideo(player, Modifier.fillMaxSize())
         }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             if (preview == null) return@Column
             val channel = preview.channel
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                channel.channelNumber?.let { Text(it, style = MaterialTheme.typography.headlineSmall, color = colors.primary, fontWeight = FontWeight.Bold) }
-                Text(channel.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.weight(1f, fill = false).basicMarquee())
+                channel.channelNumber?.let { Text(it, style = MaterialTheme.typography.titleLarge, color = colors.primary, fontWeight = FontWeight.Bold) }
+                Text(channel.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.weight(1f, fill = false).basicMarquee())
                 qualityLabel(channel.quality)?.let { Badge(it, color = colors.secondary) }
             }
             val current = preview.current

@@ -472,7 +472,9 @@ private fun GuideGroupChip(name: String, selected: Boolean, star: Boolean = fals
 
 @Composable
 private fun ProgrammeDetails(highlighted: Pair<GuideChannel, GuideProgramme>?, now: Long, modifier: Modifier = Modifier) {
-    Row(modifier.fillMaxWidth().heightIn(min = 84.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+    // Hauteur fixe : l'image, la description (lue après coup) ou un résumé d'une seule ligne ne font plus
+    // bouger la grille d'un cheveu à chaque programme visé (léger tremblement en descendant).
+    Row(modifier.fillMaxWidth().heightIn(min = DETAILS_MIN_HEIGHT), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
         // Image du programme (guide, sinon TMDB pour un film ou une série).
         if (highlighted != null && rememberProgrammeImage(highlighted.second) != null) {
             ProgrammeArt(highlighted.second, Modifier.width(150.dp).aspectRatio(16f / 9f))
@@ -495,10 +497,19 @@ private fun ProgrammeDetailsText(channel: GuideChannel, programme: GuideProgramm
         overflow = TextOverflow.Ellipsis,
     )
     Text(programme.title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    (programme.description ?: programme.subtitle)?.let {
-        Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-    }
+    // Toujours deux lignes réservées, même sans résumé ou avant qu'il soit lu.
+    Text(
+        programme.description ?: programme.subtitle ?: "",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        minLines = 2,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+    )
 }
+
+/** Hauteur minimale de l'en-tête du guide : un peu plus que l'image (150 dp en 16:9). */
+internal val DETAILS_MIN_HEIGHT = 86.dp
 
 @Composable
 private fun TimeRuler(

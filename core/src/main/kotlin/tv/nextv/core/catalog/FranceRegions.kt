@@ -20,6 +20,15 @@ object FranceRegions {
         "regions", "region", "test", "vip", "multi", "eu",
     )
 
+    /**
+     * Régions que certaines playlists écrivent mal (« LANGUE-DOC », « Langue Doc ») : leur nom correct, d'après la
+     * clé sans espaces.
+     */
+    private val SPELLING = mapOf(
+        "languedoc" to "Languedoc",
+        "languedocroussillon" to "Languedoc-Roussillon",
+    )
+
     private val MARKS = Regex("\\p{Mn}+")
     private val WORD_START = Regex("""(?<![\p{L}'’])\p{L}""")
     private val NON_WORD = Regex("[^a-z0-9+]+")
@@ -32,7 +41,8 @@ object FranceRegions {
         val key = Normalizer.normalize(rest.lowercase(), Normalizer.Form.NFD).replace(MARKS, "").replace(NON_WORD, " ").trim()
         if (key.isEmpty() || key in NOT_REGIONS || key.split(' ').all { it in NOT_REGIONS }) return null
         // « PARIS ÎLE-DE-FRANCE » → « Paris Île-De-France ».
-        val label = if (rest == rest.uppercase()) WORD_START.replace(rest.lowercase()) { it.value.uppercase() } else rest
+        val label = SPELLING[key.replace(" ", "")]
+            ?: if (rest == rest.uppercase()) WORD_START.replace(rest.lowercase()) { it.value.uppercase() } else rest
         return Region(key, label)
     }
 }

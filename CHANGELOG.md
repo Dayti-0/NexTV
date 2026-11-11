@@ -4,6 +4,14 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.104
+- Guide TV : plus de léger tremblement en descendant d'une chaîne à l'autre (l'en-tête du programme garde toujours la même hauteur)
+- « Ce soir » : sans numéros de chaîne (favoris hors TNT, par exemple), la colonne vide disparaît ; les chaînes et leurs programmes prennent la place
+- Mosaïque des chaînes en Live Center : l'aperçu passe en bandeau en haut, comme en Classique ; les vignettes prennent toute la largeur et les noms se lisent mieux
+- Mosaïque des chaînes (toutes les interfaces) : l'aperçu en haut est moins haut, on voit deux rangées de chaînes entières
+- Streaming : le titre « Catégories » du volet est retiré, la liste commence tout en haut
+- Réglages › Région de France 3 : « Languedoc » bien écrit, même quand la playlist écrit « Langue-doc »
+
 ## 0.2.103
 - Mises à jour deux fois plus légères (environ 27 Mo au lieu de 51 Mo) : l’appli télécharge la version faite pour le processeur de l’appareil. Cette mise à jour-ci se télécharge encore en entier, les suivantes seront plus légères
 - Bande-annonce qui ne se lit pas (retirée, réservée à un pays ou aux adultes, ou qui ne démarre pas) : l’appli essaie toute seule les autres bandes-annonces du titre, et n’ouvre l’appli YouTube qu’en dernier recours
