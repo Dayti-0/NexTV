@@ -6,7 +6,10 @@ import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.BaseAudioProcessor
 import androidx.media3.common.util.UnstableApi
 import tv.nextv.core.audio.AdVolumeGuard
+import tv.nextv.core.audio.LogoState
+import tv.nextv.core.audio.LogoWatcher
 import java.nio.ByteBuffer
+import kotlin.math.min
 import kotlin.math.roundToInt
 
 /** Option « baisser le son des pubs », partagée entre le lecteur et le traitement du son. */
@@ -24,10 +27,34 @@ class AdVolumeControl {
     var stream: Int = 0
         private set
 
-    /** Nouveau flux (autre chaîne, autre version…) : le volume du précédent ne sert plus de référence. */
+    /** Logo de la chaîne à l'image ([frame]) : il disparaît pendant les pubs et revient avec le programme. */
+    @Volatile
+    var logo: LogoState = LogoState.UNKNOWN
+        private set
+
+    private val logoWatcher = LogoWatcher(FRAME_WIDTH, FRAME_HEIGHT)
+
+    /** Nouveau flux (autre chaîne, autre version…) : les silences et le logo du précédent ne comptent plus. */
     fun newStream() {
         stream++
         attenuating = false
+        synchronized(logoWatcher) {
+            logoWatcher.reset()
+            logo = LogoState.UNKNOWN
+        }
+    }
+
+    /**
+     * Image affichée par le lecteur, une fois par seconde environ : [FRAME_WIDTH] × [FRAME_HEIGHT] points,
+     * en niveaux de gris, ligne par ligne. Appelé hors du fil principal.
+     */
+    fun frame(gray: ByteArray) {
+        synchronized(logoWatcher) { logo = logoWatcher.frame(gray) }
+    }
+
+    companion object {
+        const val FRAME_WIDTH = 480
+        const val FRAME_HEIGHT = 270
     }
 }
 
@@ -64,14 +91,23 @@ class AdVolumeAudioProcessor(private val control: AdVolumeControl) : BaseAudioPr
         }
         val start = inputBuffer.position()
         val samples = size / 2
-        var energy = 0.0
-        for (i in 0 until samples) {
-            val sample = inputBuffer.getShort(start + 2 * i) / 32_768.0
-            energy += sample * sample
+        val channels = inputAudioFormat.channelCount.coerceAtLeast(1)
+        val sampleRate = inputAudioFormat.sampleRate.coerceAtLeast(1)
+        // Mesure par tranches de 20 ms : le silence entre deux pubs dure quelques dixièmes de seconde.
+        val slice = (sampleRate / 50).coerceAtLeast(1) * channels
+        guard.logo = control.logo
+        var target = gain
+        var offset = 0
+        while (offset < samples) {
+            val count = min(slice, samples - offset)
+            var energy = 0.0
+            for (i in offset until offset + count) {
+                val sample = inputBuffer.getShort(start + 2 * i) / 32_768.0
+                energy += sample * sample
+            }
+            target = guard.process(energy / count, (count / channels * 1_000L / sampleRate).coerceAtLeast(1))
+            offset += count
         }
-        val frames = samples / inputAudioFormat.channelCount.coerceAtLeast(1)
-        val millis = frames * 1_000L / inputAudioFormat.sampleRate.coerceAtLeast(1)
-        val target = guard.process(energy / samples.coerceAtLeast(1), millis)
         control.attenuating = guard.attenuating
         // Passage progressif de l'ancien gain au nouveau sur le bloc : pas de claquement.
         for (i in 0 until samples) {

@@ -1,5 +1,6 @@
 package tv.nextv.app.ui.player
 
+import android.view.SurfaceView
 import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -96,10 +97,13 @@ import androidx.media3.ui.PlayerView
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.abs
+import tv.nextv.app.player.VideoFrameSampler
 import tv.nextv.app.R
 import org.videolan.libvlc.util.VLCVideoLayout
 import tv.nextv.app.data.db.ChannelListRow
@@ -402,6 +406,24 @@ fun PlayerScreen(onBack: () -> Unit) {
                 })
             },
     ) {
+        var playerView by remember { mutableStateOf<PlayerView?>(null) }
+        // « Baisser le son des pubs » : une image par seconde pour suivre le logo de la chaîne, qui disparaît
+        // pendant les pubs et revient avec le programme. Chaînes en direct, lecteur de l'appli seulement.
+        val watchLogo = state.lowerAdVolume && state.isLive && vlc == null
+        LaunchedEffect(watchLogo, playerView) {
+            val view = playerView ?: return@LaunchedEffect
+            if (!watchLogo) return@LaunchedEffect
+            val sampler = VideoFrameSampler()
+            try {
+                while (true) {
+                    delay(LOGO_SAMPLE_MILLIS)
+                    val surface = view.videoSurfaceView as? SurfaceView ?: continue
+                    sampler.sample(surface)?.let { frame -> withContext(Dispatchers.Default) { viewModel.onVideoFrame(frame) } }
+                }
+            } finally {
+                sampler.release()
+            }
+        }
         AndroidView(
             factory = { viewContext ->
                 PlayerView(viewContext).apply {
@@ -410,6 +432,7 @@ fun PlayerScreen(onBack: () -> Unit) {
                     useController = false
                     isFocusable = false
                     descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+                    playerView = this
                 }
             },
             update = { view ->
@@ -1355,6 +1378,9 @@ private fun MenuChannelRow(
 }
 
 private const val BANNER_DURATION_MILLIS = 5_000L
+
+/** Rythme des images lues pour suivre le logo de la chaîne (« baisser le son des pubs »). */
+private const val LOGO_SAMPLE_MILLIS = 1_000L
 
 /** Film : pas d'un appui sur ← → (commandes masquées), et des touches avance / retour rapide de la télécommande. */
 private const val FILM_STEP_SECONDS = 10

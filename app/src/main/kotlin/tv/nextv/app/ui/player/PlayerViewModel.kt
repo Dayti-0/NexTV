@@ -375,6 +375,9 @@ class PlayerViewModel(
             ?: request.stream.url
     }
 
+    /** Image affichée par le lecteur (réduite, en niveaux de gris), pour suivre le logo de la chaîne pendant les pubs. */
+    fun onVideoFrame(gray: ByteArray) = engine.adVolume.frame(gray)
+
     fun setLowerAdVolume(enabled: Boolean) {
         viewModelScope.launch { container.settings.setLowerAdVolume(enabled) }
     }

@@ -466,7 +466,7 @@
     <string name="settings_playlist_updated">Playlist actualisée : %1$d entrées</string>
     <string name="settings_playback">Lecture</string>
     <string name="settings_lower_ads">Baisser le son des pubs</string>
-    <string name="settings_lower_ads_help">Quand le son devient nettement plus fort que le programme pendant quelques secondes (publicités), il est baissé presque au minimum, puis remis au niveau normal à la reprise. Le son Dolby envoyé tel quel à l’ampli n’est pas concerné.</string>
+    <string name="settings_lower_ads_help">Les pubs ne sont pas plus fortes que le programme : elles sont repérées au court silence entre deux pubs et au logo de la chaîne, qui disparaît pendant la page de pubs. Le son est alors baissé presque au minimum, puis remis dès que le logo revient (sans logo reconnu, une trentaine de secondes après la dernière pub). Il faut parfois une pub pour repérer la page. Chaînes en direct ; le son Dolby envoyé tel quel à l’ampli et le moteur VLC ne sont pas concernés.</string>
     <string name="settings_start_last_channel">Démarrer sur la dernière chaîne</string>
     <string name="settings_start_last_channel_help">À l’ouverture, la dernière chaîne regardée se lance directement, comme une télévision ; Retour mène à l’accueil.</string>
     <string name="settings_channel_preview">Aperçu de la chaîne sélectionnée</string>

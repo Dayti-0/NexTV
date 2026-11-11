@@ -97,3 +97,8 @@ Commandes :
 - Accueil : `ui/home/` (interfaces Live Center, Streaming, Classique) ; composants communs dans
   `ui/components/Components.kt` (fondus `bottomFade`, `FadingRow` / `edgeFade`).
 - Guide TV et fiche programme : `ui/guide/`.
+- Chaînes reliées au guide : `core/epg/EpgImporter.match` puis `ChannelNames.kt` (noms « collés », table des autres
+  appellations `ALIASES`). Toute nouvelle règle : augmenter `EpgImporter.VERSION` (le guide est relu au lancement).
+- « Baisser le son des pubs » : `core/audio/AdVolumeGuard.kt` (silences entre deux pubs ; les pubs ne sont pas plus
+  fortes que le programme) et `LogoWatcher.kt` (logo de la chaîne, absent pendant les pubs), branchés par
+  `AdVolumeAudioProcessor` et `VideoFrameSampler` (une image par seconde). Réglé sur de vraies coupures pub de 2024.
