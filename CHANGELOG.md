@@ -4,6 +4,13 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.118
+- Configuration rapide : OK sur une interface lance une vraie démonstration (chaînes, films et séries de démo, à parcourir à la télécommande), puis « Garder celle-ci » ou « Revenir au choix »
+- Configuration rapide : l’étape « C’est prêt » s’appelle maintenant « Prêt »
+- Foot, « Mes équipes » : bouton « Équipes suivies » pour voir les équipes ajoutées (et ne plus en suivre une)
+- Volet des catégories et menu de gauche de Streaming : l’écran derrière est légèrement flouté
+- Guide TV : ↓ et ↑ depuis un programme en cours vont au programme en cours de la chaîne voisine (et non plus à celui d’avant)
+
 ## 0.2.117
 - Chaînes 4K masquées : le lecteur, les favoris et les chaînes récentes montrent le logo et le nom de la version regardée (M6 et non M6 4K)
 - Interface Streaming : la touche ☰ de la télécommande ouvre le menu de gauche (et le referme)

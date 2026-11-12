@@ -26,6 +26,16 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import tv.nextv.app.ui.home.HomeLayout
+import tv.nextv.app.ui.home.LAYOUT_DEMO_TAG
+import androidx.activity.OnBackPressedDispatcher
+import androidx.activity.OnBackPressedDispatcherOwner
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.isRoot
+import androidx.compose.ui.test.onLast
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import tv.nextv.app.ui.theme.NexTvTheme
 import tv.nextv.app.ui.theme.ThemeStyle
 import tv.nextv.core.stream.QualityTarget
@@ -45,14 +55,28 @@ class QuickSetupTest {
     }
 
     private fun press(key: Key, times: Int = 1) = repeat(times) {
-        compose.onRoot().performKeyInput { pressKey(key) }
+        // Fenêtre de dialogue ouverte : les touches vont à elle (la dernière racine).
+        compose.onAllNodes(isRoot()).onLast().performKeyInput { pressKey(key) }
         compose.waitForIdle()
     }
 
     private fun texts(node: SemanticsNode): List<String> =
         node.config.getOrNull(SemanticsProperties.Text).orEmpty().map { it.text } + node.children.flatMap(::texts)
 
-    private fun focusedText(): String = texts(compose.onNode(isFocused(), useUnmergedTree = true).fetchSemanticsNode()).joinToString("\n")
+    // Fenêtre de dialogue ouverte : elle a son propre focus, au-dessus de l'écran (le dernier trouvé).
+    private fun focusedText(): String = texts(compose.onAllNodes(isFocused(), useUnmergedTree = true).fetchSemanticsNodes().last()).joinToString("\n")
+
+    private val backDispatcher = OnBackPressedDispatcher()
+    private fun backOwner(lifecycleOwner: LifecycleOwner) = object : OnBackPressedDispatcherOwner {
+        override val lifecycle get() = lifecycleOwner.lifecycle
+        override val onBackPressedDispatcher get() = backDispatcher
+    }
+
+    private fun back() {
+        compose.runOnIdle { backDispatcher.onBackPressed() }
+        compose.mainClock.advanceTimeBy(500)
+        compose.waitForIdle()
+    }
 
     @Test
     fun `each step is chosen with the remote, then finish closes it`() {
@@ -61,6 +85,7 @@ class QuickSetupTest {
         var quality by mutableStateOf(QualityTarget.BEST)
         var done = false
         compose.setContent {
+            CompositionLocalProvider(LocalOnBackPressedDispatcherOwner provides backOwner(LocalLifecycleOwner.current)) {
             NexTvTheme(ThemeStyle.NIGHT) {
                 QuickSetupContent(
                     step = step,
@@ -80,6 +105,7 @@ class QuickSetupTest {
                     onLastChannel = {},
                 )
             }
+            }
         }
         compose.waitForIdle()
         // Une touche pour quitter le mode tactile, puis « Commencer ».
@@ -89,15 +115,39 @@ class QuickSetupTest {
         press(Key.DirectionCenter)
         assertEquals(QuickSetupStep.INTERFACE, step)
 
-        // L'interface choisie a le focus ; → puis OK en choisit une autre.
+        // L'interface choisie a le focus ; → puis OK : démonstration de Classique, en plein écran.
         assertTrue(focusedText(), focusedText().startsWith("Live Center"))
         press(Key.DirectionRight)
+        press(Key.DirectionRight)
+        press(Key.DirectionCenter)
+        compose.onNodeWithTag(LAYOUT_DEMO_TAG).assertExists()
+        // Menu de Classique, puis une section ; Retour ramène au menu, puis propose de garder l'interface.
+        press(Key.DirectionCenter)
+        press(Key.DirectionDown)
+        back()
+        back()
+        assertEquals("Garder celle-ci", focusedText())
+        // « Revenir au choix » : rien n'est changé, les cartes reviennent.
+        press(Key.DirectionRight)
+        if (!focusedText().startsWith("Revenir")) press(Key.DirectionLeft)
+        assertEquals("Revenir au choix", focusedText())
+        press(Key.DirectionCenter)
+        compose.onNodeWithTag(LAYOUT_DEMO_TAG).assertDoesNotExist()
+        assertEquals(HomeLayout.LIVE_CENTER, layout)
+        assertEquals(QuickSetupStep.INTERFACE, step)
+
+        // Streaming : on y entre, on parcourt, Retour puis « Garder celle-ci » : choisie, étape suivante.
+        press(Key.DirectionRight)
+        assertTrue(focusedText(), focusedText().contains("Streaming"))
+        press(Key.DirectionCenter)
+        compose.onNodeWithTag(LAYOUT_DEMO_TAG).assertExists()
+        press(Key.DirectionDown)
+        press(Key.DirectionRight)
+        press(Key.DirectionDown)
+        back()
+        assertEquals("Garder celle-ci", focusedText())
         press(Key.DirectionCenter)
         assertEquals(HomeLayout.STREAMING, layout)
-        press(Key.DirectionDown)
-        if (!focusedText().startsWith("Suivant")) press(Key.DirectionRight)
-        assertEquals("Suivant", focusedText())
-        press(Key.DirectionCenter)
         assertEquals(QuickSetupStep.COLORS, step)
 
         // Lecture : la qualité choisie a le focus, → puis OK en choisit une autre.

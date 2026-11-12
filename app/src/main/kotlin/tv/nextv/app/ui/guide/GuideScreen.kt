@@ -358,6 +358,10 @@ private fun GuideGrid(
         focusedRow = index
         if (verticalMove) {
             verticalMove = false
+        } else if (programme.isLive(state.now)) {
+            // Programme en cours atteint par gauche / droite : haut / bas suivent la ligne du direct (le programme
+            // en cours de la chaîne voisine), pas son début (on tombait sur le programme précédent).
+            anchor = state.now
         } else if (anchor !in programme.startMillis until programme.stopMillis) {
             // Programme atteint par gauche / droite : son début, ou le bord gauche visible s'il commence avant.
             val leftEdge = state.windowStart + (scroll.value / minutePx * 60_000).toLong()

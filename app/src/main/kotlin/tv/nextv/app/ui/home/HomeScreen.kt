@@ -121,6 +121,7 @@ import tv.nextv.app.ui.components.ignoreHeldOk
 import tv.nextv.app.ui.components.BrandMark
 import tv.nextv.app.ui.components.EmptyState
 import tv.nextv.app.ui.components.FocusSurface
+import tv.nextv.app.ui.components.Frosted
 import tv.nextv.app.ui.components.fieldKeyboardOptions
 import tv.nextv.app.ui.components.RemoteTextField
 import tv.nextv.app.ui.components.openKeyboardOnOk
@@ -643,6 +644,8 @@ fun HomeContent(
                         },
                     ),
             ) {
+            // Menu de gauche ouvert : le contenu derrière est légèrement flouté.
+            Frosted(streamingNav && tabsFocused.value, Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().padding(start = if (streamingNav) STREAMING_NAV_WIDTH else 0.dp)) {
                 if (!streamingNav) topBar()
                 when {
@@ -710,6 +713,7 @@ fun HomeContent(
                         initialFocus = liveList && streamingNav && window.isTv,
                     )
                 }
+            }
             }
             if (streamingNav) {
                 // Menu ouvert : le contenu s'assombrit derrière lui, vers la gauche.

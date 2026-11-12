@@ -45,6 +45,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import tv.nextv.app.ui.components.Frosted
 
 /** Largeur du volet des catégories. */
 private val DRAWER_WIDTH = 320.dp
@@ -160,7 +161,10 @@ internal fun CategoryDrawer(
                     }
                     true
                 },
-        ) { content() }
+        ) {
+            // Volet ouvert : les rangées derrière sont légèrement floutées.
+            Frosted(open, Modifier.fillMaxSize()) { content() }
+        }
         // Voile sur les rangées, plus léger vers la droite : elles restent visibles derrière.
         AnimatedVisibility(open, enter = fadeIn(tween(220)), exit = fadeOut(tween(180))) {
             Box(

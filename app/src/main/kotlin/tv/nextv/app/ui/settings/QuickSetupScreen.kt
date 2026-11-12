@@ -65,6 +65,7 @@ import tv.nextv.app.ui.components.PillStyle
 import tv.nextv.app.ui.components.rememberWindowInfo
 import tv.nextv.app.ui.editor.ToggleRow
 import tv.nextv.app.ui.home.HomeLayout
+import tv.nextv.app.ui.home.LayoutDemo
 import tv.nextv.app.ui.theme.PaletteCategory
 import tv.nextv.app.ui.theme.ThemePreview
 import tv.nextv.app.ui.theme.ThemeStyle
@@ -166,7 +167,21 @@ fun QuickSetupContent(
     // Choix fait (OK sur une interface, une palette, une qualité) : la sélection passe à « Suivant ».
     val nextFocus = remember { FocusRequester() }
     val toNext = { runCatching { nextFocus.requestFocus() } }
-    LaunchedEffect(step) { runCatching { main.requestFocus() } }
+    // Interface en démonstration (OK sur sa carte) : le vrai accueil, avec un contenu inventé, en plein écran.
+    var demo by rememberSaveable { mutableStateOf<HomeLayout?>(null) }
+    LaunchedEffect(step, demo) { if (demo == null) runCatching { main.requestFocus() } }
+    demo?.let { tried ->
+        LayoutDemo(
+            layout = tried,
+            onKeep = {
+                onLayout(tried)
+                demo = null
+                onStep(steps[index + 1])
+            },
+            onClose = { demo = null },
+        )
+        return
+    }
 
     Row(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         if (window.isWide) {
@@ -215,7 +230,7 @@ fun QuickSetupContent(
                                 LayoutCard(
                                     option,
                                     selected = option == layout,
-                                    onClick = { onLayout(option); toNext() },
+                                    onClick = { demo = option },
                                     modifier = Modifier.weight(1f).then(if (option == layout) Modifier.focusRequester(main) else Modifier),
                                     lines = 6,
                                 )

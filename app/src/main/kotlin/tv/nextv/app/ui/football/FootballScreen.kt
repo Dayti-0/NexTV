@@ -150,6 +150,8 @@ fun FootballContent(
 ) {
     val window = rememberWindowInfo()
     var details by remember { mutableStateOf<FootballMatch?>(null) }
+    // Fenêtre des équipes suivies (« Mes équipes »).
+    var teamsOpen by remember { mutableStateOf(false) }
     val shown = state.matches.filter { if (myTeams) it.involves(favoriteTeams) else competition == null || it.competition == competition }
     fun count(choice: Competition?) = state.matches.count { choice == null || it.competition == choice }
     // Classement : championnats et coupes suivis par football-data.org.
@@ -166,6 +168,9 @@ fun FootballContent(
                 if (withTable) {
                     CompetitionChip(stringResource(R.string.football_matches), !showStandings) { onShowStandings(false) }
                     CompetitionChip(stringResource(R.string.football_standings), showStandings) { onShowStandings(true) }
+                }
+                if (myTeams && favoriteTeams.isNotEmpty()) {
+                    FollowedTeamsButton(favoriteTeams.size) { teamsOpen = true }
                 }
             }
             val body = Modifier.weight(1f)
@@ -255,6 +260,20 @@ fun FootballContent(
             }
             list(Modifier.weight(1f))
         }
+    }
+
+    if (teamsOpen) {
+        // Écussons connus d'après les matchs affichés (le réglage ne garde que les noms).
+        val crests = remember(state.matches) {
+            state.matches.flatMap { listOf(it.home to it.homeCrest, it.away to it.awayCrest) }
+                .mapNotNull { (team, crest) -> crest?.let { team to it } }.toMap()
+        }
+        FollowedTeamsSheet(
+            teams = favoriteTeams.sortedWith(String.CASE_INSENSITIVE_ORDER),
+            crests = crests,
+            onUnfollow = onToggleTeam,
+            onDismiss = { teamsOpen = false },
+        )
     }
 
     details?.let { match ->
@@ -881,6 +900,79 @@ private fun CompetitionItem(name: String, count: Int, competition: Competition?,
             competition?.let { CompetitionLogo(it, 30.dp) }
             Text(name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             Text(count.toString(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** « Mes équipes » : bouton des équipes suivies, avec leur nombre. */
+@Composable
+private fun FollowedTeamsButton(count: Int, onClick: () -> Unit) {
+    FocusSurface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        focusedColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+        focusScale = 1.05f,
+    ) {
+        Row(
+            Modifier.padding(start = 10.dp, end = 14.dp, top = 6.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(Icons.Filled.Star, contentDescription = null, tint = NexTvColors.Warning, modifier = Modifier.size(20.dp))
+            Text(stringResource(R.string.football_followed_teams, count), style = MaterialTheme.typography.labelLarge, maxLines = 1)
+        }
+    }
+}
+
+/** Équipes suivies : la liste, OK sur une équipe pour ne plus la suivre. */
+@Composable
+private fun FollowedTeamsSheet(teams: List<String>, crests: Map<String, String>, onUnfollow: (String) -> Unit, onDismiss: () -> Unit) {
+    // Plus aucune équipe : la fenêtre se ferme.
+    LaunchedEffect(teams.isEmpty()) { if (teams.isEmpty()) onDismiss() }
+    val first = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            modifier = Modifier.widthIn(max = 560.dp).ignoreHeldOk(),
+        ) {
+            Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(stringResource(R.string.football_followed_teams_title), style = MaterialTheme.typography.headlineSmall)
+                Text(
+                    stringResource(R.string.football_followed_teams_help),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                LazyColumn(Modifier.heightIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(vertical = 4.dp)) {
+                    items(teams, key = { it }) { team ->
+                        FocusSurface(
+                            onClick = { onUnfollow(team) },
+                            modifier = Modifier.fillMaxWidth().then(if (team == teams.first()) Modifier.focusRequester(first) else Modifier),
+                            shape = MaterialTheme.shapes.medium,
+                            color = MaterialTheme.colorScheme.surfaceContainer,
+                            focusScale = 1.02f,
+                        ) {
+                            Row(
+                                Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                ChannelLogo(crests[team], team, Modifier.size(32.dp), monogramSize = 11.dp)
+                                Text(team, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                Text(
+                                    stringResource(R.string.football_followed_teams_remove),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Icon(Icons.Filled.Star, contentDescription = null, tint = NexTvColors.Warning, modifier = Modifier.size(20.dp))
+                            }
+                        }
+                    }
+                }
+                PillButton(stringResource(R.string.action_close), onDismiss, style = PillStyle.Ghost)
+            }
         }
     }
 }

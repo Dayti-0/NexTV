@@ -155,6 +155,36 @@ class GuideNavigationTest {
         assertTrue(focusedText(), "Matinée" in focusedText() || "Long après-midi" in focusedText())
     }
 
+    /**
+     * Programme en cours atteint par ← / → : ↓ va au programme en cours de la chaîne du dessous (ligne du direct),
+     * pas à celui qui couvre le début du programme du dessus (il est fini).
+     */
+    @Test
+    fun downFromALiveProgrammeFollowsTheLiveLine() {
+        val shown = state.copy(
+            channels = listOf(
+                state.channels.first(),
+                GuideChannel(
+                    3,
+                    "Trois",
+                    "3",
+                    null,
+                    listOf(
+                        GuideProgramme("Fini", midnight + 13 * hour, midnight + 14 * hour + 2 * minute),
+                        GuideProgramme("En cours", midnight + 14 * hour + 2 * minute, midnight + 15 * hour),
+                    ),
+                ),
+            ),
+        )
+        show(shown)
+        press(Key.DirectionLeft)
+        assertTrue(focusedText(), "Une 13h30" in focusedText())
+        press(Key.DirectionRight)
+        assertTrue(focusedText(), "Une 14h00" in focusedText())
+        press(Key.DirectionDown)
+        assertTrue(focusedText(), "En cours" in focusedText())
+    }
+
     /** La description du programme sélectionné est lue à la demande et rejoint son titre. */
     @Test
     fun theDescriptionOfTheFocusedProgrammeIsReadOnDemand() {
