@@ -89,6 +89,10 @@ class TmdbClient(
     private class TmdbException(val error: TmdbError) : Exception(error.name)
     private class NotFoundException : Exception()
 
+    /** Bande-annonce dans la langue de l'interface (une VF, ou une VOSTFR qui a ses sous-titres dans l'image). */
+    fun isInterfaceLanguage(trailerLanguage: String?): Boolean =
+        !trailerLanguage.isNullOrEmpty() && trailerLanguage.substringBefore('-') == language.substringBefore('-')
+
     /** Recherche un film ou une série par titre (et année si connue), puis en lit la fiche. */
     /**
      * Fiche du film ou de la série [title]. [exact] : seulement un résultat portant exactement ce titre
@@ -350,13 +354,16 @@ class TmdbClient(
      */
     private fun trailer(videos: JSONArray?): JSONObject? = rankedTrailers(videos).firstOrNull()
 
-    /** Bandes-annonces puis teasers YouTube, dans la langue de l'interface d'abord, doublés plutôt que sous-titrés. */
+    /**
+     * Bandes-annonces et teasers YouTube, dans la langue de l'interface d'abord (un teaser en français passe avant
+     * une bande-annonce en anglais), puis les bandes-annonces avant les teasers, doublés plutôt que sous-titrés.
+     */
     private fun rankedTrailers(videos: JSONArray?): List<JSONObject> {
         val candidates = videos.objects().filter { it.optString("site").equals("YouTube", ignoreCase = true) && it.optStringOrNull("key") != null }
         val lang = language.substringBefore('-')
         val ranked = candidates.sortedWith(
-            compareByDescending<JSONObject> { it.optString("type") == "Trailer" }
-                .thenByDescending { it.optString("iso_639_1") == lang }
+            compareByDescending<JSONObject> { it.optString("iso_639_1") == lang }
+                .thenByDescending { it.optString("type") == "Trailer" }
                 .thenByDescending { !SUBTITLED.containsMatchIn(it.optString("name")) }
                 .thenByDescending { it.optBoolean("official") },
         )

@@ -276,7 +276,9 @@ private fun trailerView(
     webViewClient = object : WebViewClient() {
         override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
             view.visibility = View.GONE
-            onGone(detail.didCrash())
+            // Appelé seulement à partir d'Android 8, où l'on sait si la page a planté ou a été fermée par le système.
+            val crashed = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) detail.didCrash() else true
+            onGone(crashed)
             return true
         }
     }
@@ -323,7 +325,7 @@ private fun trailerView(
         html,body{margin:0;width:${width}px;height:${height}px;background:transparent;overflow:hidden}
         iframe{position:absolute;top:${top}px;left:${left}px;width:${playerWidth}px;height:${playerHeight}px;border:0;pointer-events:none}
         </style></head><body>
-        <iframe id="player" width="$playerWidth" height="$playerHeight" src="https://www.youtube-nocookie.com/embed/$key?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0&playsinline=1&iv_load_policy=3&disablekb=1&fs=0&hl=fr&cc_load_policy=${captions.loadPolicy}&enablejsapi=1&origin=https%3A%2F%2Fnixtv.app"
+        <iframe id="player" width="$playerWidth" height="$playerHeight" src="https://www.youtube-nocookie.com/embed/$key?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0&playsinline=1&iv_load_policy=3&disablekb=1&fs=0&hl=fr&cc_load_policy=${captions.loadPolicy}${if (captions == Captions.FRENCH) "&cc_lang_pref=fr" else ""}&enablejsapi=1&origin=https%3A%2F%2Fnixtv.app"
         allow="autoplay; encrypted-media" referrerpolicy="strict-origin-when-cross-origin"></iframe>
         <script>
         var player=null;
@@ -354,18 +356,29 @@ private fun trailerView(
         function pause(){call(function(){player.pauseVideo();});}
         function resume(){if(done||!allowed)return;call(function(){player.playVideo();});}
         var captions='${captions.name}';
+        // Sous-titres en français posés (piste française, ou traduction) ; en attendant, l'anglais.
         var captionsSet=false;
+        var fallbackSet=false;
         function track(list,lang){return list.filter(function(t){return (t.languageCode||'').indexOf(lang)==0;})[0];}
         function applyCaptions(p){
           if(captions=='OFF'){call(function(){p.setOption('captions','track',{});});return;}
           if(captions!='FRENCH'||captionsSet)return;
           call(function(){
-            // Piste française, sinon anglaise ; aucune autre (une piste coréenne n'aide pas).
             var list=p.getOption('captions','tracklist')||[];
             if(!list.length)return;
-            var t=track(list,'fr')||track(list,'en');
-            p.setOption('captions','track',t?{languageCode:t.languageCode}:{});
-            captionsSet=true;
+            // Piste française d'abord.
+            var fr=track(list,'fr');
+            if(fr){p.setOption('captions','track',{languageCode:fr.languageCode});captionsSet=true;return;}
+            // Sinon la traduction automatique de YouTube en français, depuis l'anglais (ou la piste qui existe).
+            var source=track(list,'en')||list[0];
+            var target=track(p.getOption('captions','translationLanguages')||[],'fr');
+            if(source&&target){
+              p.setOption('captions','track',{languageCode:source.languageCode,translationLanguage:target});
+              captionsSet=true;
+              return;
+            }
+            // Pas (encore) de traduction : l'anglais en attendant ; aucune autre langue (une piste coréenne n'aide pas).
+            if(!fallbackSet){var en=track(list,'en');p.setOption('captions','track',en?{languageCode:en.languageCode}:{});fallbackSet=true;}
           });
         }
         // Les pistes arrivent après le démarrage : réglées encore pendant les premières secondes.
@@ -405,7 +418,7 @@ private enum class Captions(val loadPolicy: Int) {
     /** Bande-annonce en français : aucun. */
     OFF(0),
 
-    /** Autre langue : en français (piste française, sinon anglaise, sinon aucun). */
+    /** Autre langue : en français (piste française, sinon traduction automatique de YouTube, sinon anglaise). */
     FRENCH(1),
 
     /** Langue inconnue : au choix de YouTube. */

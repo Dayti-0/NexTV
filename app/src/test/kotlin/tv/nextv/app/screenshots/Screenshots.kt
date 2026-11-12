@@ -471,18 +471,19 @@ abstract class ScreenshotSuite(private val device: String) {
         )
     }
 
-    /** Bande-annonce en bas de la fiche (interfaces Classique et Live Center) : une image vive tient lieu de vidéo. */
+    /**
+     * Bande-annonce en bas de la fiche (toutes les interfaces) : grande image sur toute la largeur, bouton de lecture
+     * au milieu de ce qui est à l'écran. Une image vive tient lieu de celle de la vidéo.
+     */
     @Test
     fun movieTrailer() = capture("11e_fiche_film_bande_annonce") {
         tv.nextv.app.ui.detail.DetailTrailerSection(
             trailerKey = "abc",
-            language = "fr",
             imageUrl = null,
-            trailers = tv.nextv.app.ui.home.TrailerSettings(autoplay = true),
-            active = true,
             opened = false,
             onOpen = {},
-            modifier = androidx.compose.ui.Modifier.fillMaxSize().background(androidx.compose.material3.MaterialTheme.colorScheme.background).padding(48.dp),
+            horizontalPadding = 48.dp,
+            modifier = androidx.compose.ui.Modifier.fillMaxSize().background(androidx.compose.material3.MaterialTheme.colorScheme.background).padding(top = 48.dp),
             preview = {
                 androidx.compose.foundation.layout.Box(
                     androidx.compose.ui.Modifier.fillMaxSize().background(
@@ -525,7 +526,6 @@ abstract class ScreenshotSuite(private val device: String) {
             state = movieVersions,
             kind = ContentKind.MOVIE,
             window = tv.nextv.app.ui.components.rememberWindowInfo(),
-            trailers = tv.nextv.app.ui.home.TrailerSettings(),
             onPlay = {}, onResume = {}, onRestart = {}, onToggleFavorite = {}, onSelectSeason = {}, onOpenItem = {},
         )
     }
@@ -556,7 +556,6 @@ abstract class ScreenshotSuite(private val device: String) {
             ),
             kind = ContentKind.MOVIE,
             window = tv.nextv.app.ui.components.rememberWindowInfo(),
-            trailers = tv.nextv.app.ui.home.TrailerSettings(),
             onPlay = {}, onResume = {}, onRestart = {}, onToggleFavorite = {}, onSelectSeason = {}, onOpenItem = {},
         )
     }
@@ -571,7 +570,6 @@ abstract class ScreenshotSuite(private val device: String) {
             ),
             kind = ContentKind.SERIES,
             window = tv.nextv.app.ui.components.rememberWindowInfo(),
-            trailers = tv.nextv.app.ui.home.TrailerSettings(),
             onPlay = {}, onResume = {}, onRestart = {}, onToggleFavorite = {}, onSelectSeason = {}, onOpenItem = {},
         )
     }

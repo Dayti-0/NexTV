@@ -68,13 +68,29 @@ class MetadataRepository(
     suspend fun cachedDetails(cacheKey: String, type: MediaType): MediaDetails? {
         val cached = dao.get(cacheKey)?.takeIf { it.found } ?: return null
         val current = cached.trailerKey == null || cached.trailerLanguage != null
-        return if (current && clock() - cached.fetchedAt < FOUND_TTL) cached.toDetails(type) else null
+        return if (current && clock() - cached.fetchedAt < cached.ttl()) cached.toDetails(type) else null
+    }
+
+    /**
+     * Durée de validité d'une fiche en cache. Titre récent sans bande-annonce en français : relue chaque jour, la VF
+     * d'un film qui vient de sortir arrive souvent sur TMDB quelques jours après la version originale.
+     */
+    private fun TmdbCacheEntity.ttl(): Long = when {
+        !found -> NOT_FOUND_TTL
+        isRecent(year) && !client.isInterfaceLanguage(trailerLanguage) -> FOREIGN_TRAILER_TTL
+        else -> FOUND_TTL
+    }
+
+    /** Sorti cette année ou l'an dernier. */
+    private fun isRecent(year: Int?): Boolean {
+        val now = java.util.Calendar.getInstance().apply { timeInMillis = clock() }.get(java.util.Calendar.YEAR)
+        return year != null && year >= now - 1
     }
 
     suspend fun details(cacheKey: String, type: MediaType, title: String, year: Int?, exact: Boolean = false): MetadataState {
         val now = clock()
         dao.get(cacheKey)?.let { cached ->
-            val ttl = if (cached.found) FOUND_TTL else NOT_FOUND_TTL
+            val ttl = cached.ttl()
             // Fiche lue avant que la langue de la bande-annonce soit retenue (et la VF préférée) : relue une fois.
             val current = !cached.found || cached.trailerKey == null || cached.trailerLanguage != null
             if (current && now - cached.fetchedAt < ttl) return if (cached.found) MetadataState.Available(cached.toDetails(type)) else MetadataState.NotFound
@@ -150,6 +166,7 @@ class MetadataRepository(
     private companion object {
         const val DAY = 24 * 60 * 60_000L
         const val FOUND_TTL = 30 * DAY
+        const val FOREIGN_TRAILER_TTL = DAY
         const val NOT_FOUND_TTL = 7 * DAY
         const val PURGE_AGE = 90 * DAY
         const val TRENDING_TTL = 6 * 60 * 60_000L

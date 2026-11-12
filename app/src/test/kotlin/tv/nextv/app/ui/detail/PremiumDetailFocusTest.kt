@@ -33,8 +33,9 @@ import tv.nextv.app.ui.theme.ThemeStyle
 import tv.nextv.core.model.ContentKind
 
 /**
- * Fiche de l'interface Classique, à la télécommande : long résumé, série (« Lire le premier épisode »,
- * « Bande-annonce », favoris). Les boutons tiennent sur une ligne, et passer de l'un à l'autre ne fait pas défiler.
+ * Fiche de l'interface Classique, à la télécommande : long résumé, série (« Lire le premier épisode », favoris ; la
+ * bande-annonce est en bas de la fiche). Les boutons tiennent sur une ligne, et passer de l'un à l'autre ne fait pas
+ * défiler.
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -95,12 +96,16 @@ class PremiumDetailFocusTest {
         compose.mainClock.advanceTimeBy(1_000)
         compose.waitForIdle()
         fun top(text: String) = compose.onAllNodes(hasText(text, substring = true), useUnmergedTree = true).fetchSemanticsNodes().minOf { it.positionInRoot.y }
-        val play = top("Lire le premier")
-        val trailer = top("Bande-annonce")
-        println("Boutons : lecture $play, bande-annonce $trailer ; sélection ${focusedText()}")
-        assertEquals("Boutons sur deux lignes", play, trailer, 2f)
+        fun center(description: String) = compose.onAllNodes(androidx.compose.ui.test.hasContentDescription(description), useUnmergedTree = true)
+            .fetchSemanticsNodes().minOf { it.boundsInRoot.center.y }
+        val play = compose.onAllNodes(hasText("Lire le premier", substring = true), useUnmergedTree = true).fetchSemanticsNodes().minOf { it.boundsInRoot.center.y }
+        val favorite = center("Ajouter aux favoris")
+        println("Boutons : lecture $play, favoris $favorite ; sélection ${focusedText()}")
+        assertEquals("Boutons sur deux lignes", play, favorite, 4f)
+        // Plus de bouton « Bande-annonce » en haut : elle est tout en bas de la fiche, sur toute la largeur.
+        assertTrue(compose.onAllNodes(hasText("Bande-annonce") and androidx.compose.ui.test.hasClickAction(), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
         val start = top(title)
-        repeat(2) {
+        repeat(1) {
             press(Key.DirectionRight)
             println("→ ${focusedText()} : titre à ${top(title)} (départ $start)")
             assertEquals("→ ${focusedText()}", start, top(title), 1f)
@@ -139,9 +144,10 @@ class PremiumDetailFocusTest {
         }
         compose.mainClock.advanceTimeBy(1_000)
         compose.waitForIdle()
-        fun top(text: String) = compose.onAllNodes(hasText(text, substring = true), useUnmergedTree = true).fetchSemanticsNodes().minOf { it.positionInRoot.y }
         // Sans reprise en cours, les boutons tiennent sur une ligne.
-        assertEquals("Boutons sur deux lignes", top("Lecture"), top("Bande-annonce"), 2f)
+        val favorite = compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("favoris", substring = true), useUnmergedTree = true).fetchSemanticsNodes().minOf { it.boundsInRoot.center.y }
+        val play = compose.onAllNodes(hasText("Lecture", substring = true), useUnmergedTree = true).fetchSemanticsNodes().minOf { it.boundsInRoot.center.y }
+        assertEquals("Boutons sur deux lignes", play, favorite, 4f)
         press(Key.DirectionRight)
         assertTrue("Sélection : ${focusedText()}", focusedText().orEmpty().contains("Version : TRUEFRENCH (1/2)"))
         press(Key.DirectionCenter)

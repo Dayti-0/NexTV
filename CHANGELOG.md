@@ -4,6 +4,12 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.129
+- Fiche d’un film ou d’une série : la bande-annonce est une grande image sur toute la largeur, tout en bas ; descendre jusqu’à elle l’ouvre en plein écran (le bouton « Bande-annonce » du haut disparaît)
+- Bandes-annonces : une version française passe avant une version anglaise, même si ce n’est qu’un teaser ; pour un film récent, l’appli revérifie chaque jour si une VF est arrivée
+- Bande-annonce en anglais sans sous-titres français : YouTube les traduit automatiquement en français
+- Appareils sous Android 7 (anciennes Fire TV) : correction d’une fermeture possible de l’application à l’ouverture du menu (flou)
+
 ## 0.2.128
 - Chaîne ouverte depuis son aperçu (OK) : plus de « Connexion lente » ni de baisse de qualité juste après l’ouverture
 - Passage de l’aperçu à la chaîne en grand sans temps d’arrêt : l’image et le son continuent pendant l’ouverture

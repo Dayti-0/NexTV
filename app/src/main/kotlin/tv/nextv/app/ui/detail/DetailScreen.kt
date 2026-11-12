@@ -41,9 +41,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import tv.nextv.app.ui.home.TrailerFullScreen
-import tv.nextv.app.ui.home.TrailerSettings
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -80,7 +78,6 @@ import tv.nextv.app.ui.home.HomeLayout
 import tv.nextv.app.ui.home.PosterImage
 import tv.nextv.app.ui.home.QualityBadge
 import tv.nextv.app.ui.theme.NexTvColors
-import tv.nextv.app.ui.theme.NexTvIcons
 import tv.nextv.core.meta.MediaDetails
 import tv.nextv.core.meta.TmdbError
 import tv.nextv.core.model.ContentKind
@@ -100,7 +97,6 @@ fun DetailScreen(
     val viewModel = appViewModel(key = "detail-$kind-$channelId") { container, _ -> DetailViewModel(container, channelId, kind) }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val layout by viewModel.layout.collectAsStateWithLifecycle()
-    val trailers by viewModel.trailers.collectAsStateWithLifecycle()
     val window = rememberWindowInfo()
     // Interface Streaming sur grand écran : fiche immersive (visuel, bande-annonce, épisodes en vignettes).
     if (layout == HomeLayout.STREAMING && window.isWide && !state.missing) {
@@ -108,7 +104,6 @@ fun DetailScreen(
             state = state,
             kind = kind,
             window = window,
-            trailers = trailers,
             onPlay = onPlay,
             onResume = onResume,
             onRestart = onRestart,
@@ -135,7 +130,6 @@ fun DetailScreen(
         onSelectSeason = viewModel::selectSeason,
         onBack = onBack,
         onNextVersion = viewModel::nextVersion,
-        trailers = trailers,
         trailerPaused = fullTrailer != null,
     )
     fullTrailer?.let { key ->
@@ -162,19 +156,15 @@ fun DetailContent(
     onRestart: (Long) -> Unit = onPlay,
     /** Film en plusieurs versions : passe à la suivante. */
     onNextVersion: () -> Unit = {},
-    /** Réglages des bandes-annonces : avec « Bande-annonce en fond », celle du titre est lue en bas de la fiche (OK : [onTrailer]). */
-    trailers: TrailerSettings = TrailerSettings(),
-    /** Bande-annonce ouverte en plein écran (bouton) : celle du bas de la fiche s'arrête. */
+    /** Bande-annonce ouverte en plein écran ([onTrailer], en descendant jusqu'à elle en bas de la fiche). */
     trailerPaused: Boolean = false,
-    /** Captures d'écran : image posée à la place de la vidéo du bas de la fiche. */
+    /** Captures d'écran : image posée à la place de celle de la bande-annonce, en bas de la fiche. */
     trailerPreview: (@Composable () -> Unit)? = null,
 ) {
     val window = rememberWindowInfo()
     val item = state.item
     val details = (state.metadata as? MetadataState.Available)?.details
     val listState = rememberLazyListState()
-    // La bande-annonce du bas ne se lit que quand son cadre est à l'écran (pas pendant qu'il est préparé hors écran).
-    val trailerOnScreen by remember { derivedStateOf { listState.layoutInfo.visibleItemsInfo.any { it.key == TRAILER_ITEM } } }
     val title = details?.title?.takeIf { it.isNotBlank() } ?: item?.title.orEmpty()
     val playFocus = remember { FocusRequester() }
     // Focus sur « Reprendre » s'il existe (la reprise est connue juste après la fiche), sinon sur « Lecture ».
@@ -292,9 +282,6 @@ fun DetailContent(
                                     modifier = if (progress == null) Modifier.focusRequester(playFocus) else Modifier,
                                 )
                                 VersionButton(state, onNextVersion)
-                                details?.trailerYoutubeKey?.let { key ->
-                                    PillButton(stringResource(R.string.detail_trailer), { onTrailer(key) }, icon = NexTvIcons.Movie)
-                                }
                                 // Grand écran : une étoile ronde (comme la fiche Streaming), pour que les boutons
                                 // tiennent sur une ligne ; « Ajouter aux favoris » écrit en entier ailleurs.
                                 if (window.isWide) {
@@ -330,10 +317,13 @@ fun DetailContent(
                         )
                     }
                 }
-                // Distribution (TMDB) : photo, nom et rôle.
+                // Distribution (TMDB) : photo, nom et rôle. Choisie, le haut de la bande-annonce se voit dessous.
                 if (state.cast.isNotEmpty()) {
-                    item {
-                        Column(Modifier.padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    item(key = CAST_ITEM) {
+                        Column(
+                            Modifier.padding(top = 16.dp).revealBelow(listState, CAST_ITEM, enabled = details?.trailerYoutubeKey != null),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
                             Text(
                                 stringResource(R.string.detail_cast),
                                 style = MaterialTheme.typography.titleMedium,
@@ -349,20 +339,18 @@ fun DetailContent(
                         }
                     }
                 }
-                // Bande-annonce (réglage « Bande-annonce en fond »), tout en bas.
+                // Bande-annonce, tout en bas, sur toute la largeur : y arriver la met en plein écran.
                 val trailerKey = details?.trailerYoutubeKey
-                if (trailerKey != null && trailers.autoplay && window.isWide) {
+                if (trailerKey != null) {
                     item(key = TRAILER_ITEM) {
                         DetailTrailerSection(
                             trailerKey = trailerKey,
-                            language = details.trailerLanguage,
                             imageUrl = details.backdropUrl,
-                            trailers = trailers,
-                            active = trailerOnScreen && !trailerPaused,
                             opened = trailerPaused,
                             onOpen = { onTrailer(trailerKey) },
+                            horizontalPadding = window.horizontalPadding,
                             preview = trailerPreview,
-                            modifier = Modifier.padding(start = window.horizontalPadding, end = window.horizontalPadding, top = 20.dp),
+                            modifier = Modifier.padding(top = 20.dp),
                         )
                     }
                 }
@@ -409,8 +397,9 @@ private class MinimalBringIntoView(private val margin: Float) : BringIntoViewSpe
     }
 }
 
-/** Clé de la bande-annonce dans la liste de la fiche. */
+/** Clés de la bande-annonce et de la distribution dans la liste de la fiche. */
 private const val TRAILER_ITEM = "trailer"
+private const val CAST_ITEM = "cast"
 
 /** Marge gardée autour de l'élément choisi en faisant défiler la fiche. */
 private val BRING_INTO_VIEW_MARGIN = 24.dp

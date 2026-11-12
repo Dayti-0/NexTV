@@ -22,7 +22,6 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import tv.nextv.app.screenshots.SampleData
 import tv.nextv.app.ui.components.rememberWindowInfo
-import tv.nextv.app.ui.home.TrailerSettings
 import tv.nextv.app.ui.theme.NexTvTheme
 import tv.nextv.app.ui.theme.ThemeStyle
 import tv.nextv.core.model.ContentKind
@@ -64,7 +63,6 @@ class StreamingDetailFocusTest {
                     state = series.copy(progress = progress),
                     kind = ContentKind.SERIES,
                     window = rememberWindowInfo(),
-                    trailers = TrailerSettings(),
                     onPlay = { played += it },
                     onResume = { resumed += it },
                     onRestart = {},
@@ -105,7 +103,6 @@ class StreamingDetailFocusTest {
                     state = SampleData.movieDetail,
                     kind = ContentKind.MOVIE,
                     window = rememberWindowInfo(),
-                    trailers = TrailerSettings(),
                     onPlay = {},
                     onResume = {},
                     onRestart = {},
@@ -140,7 +137,6 @@ class StreamingDetailFocusTest {
                     state = movie,
                     kind = ContentKind.MOVIE,
                     window = rememberWindowInfo(),
-                    trailers = TrailerSettings(),
                     onPlay = {},
                     onResume = {},
                     onRestart = {},
@@ -190,7 +186,6 @@ class StreamingDetailFocusTest {
                     state = movie,
                     kind = ContentKind.MOVIE,
                     window = rememberWindowInfo(),
-                    trailers = TrailerSettings(),
                     onPlay = {},
                     onResume = {},
                     onRestart = {},

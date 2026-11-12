@@ -86,7 +86,6 @@ import tv.nextv.app.ui.home.QualityBadge
 import tv.nextv.app.ui.home.PosterItem
 import tv.nextv.app.ui.home.StreamingPoster
 import tv.nextv.app.ui.home.TrailerFullScreen
-import tv.nextv.app.ui.home.TrailerSettings
 import tv.nextv.app.ui.home.WatchedBadge
 import tv.nextv.app.ui.player.formatClock
 import tv.nextv.app.ui.theme.NexTvColors
@@ -98,8 +97,8 @@ import java.text.NumberFormat
  * Fiche d'un film ou d'une série de l'interface Streaming, sur grand écran : grand visuel TMDB en haut à
  * droite (sa bande-annonce y démarre selon les réglages, muette ou non, bouton « Son »), fondu dans le
  * fond ; à gauche l'affiche, le titre, la note, l'année, les genres, la durée, l'accroche et le résumé,
- * puis « Reprendre » / « Regarder », « Depuis le début », « Bande-annonce » et « Favoris ». Série : les
- * saisons et leurs épisodes en vignettes (déjà vus, en cours) ; puis les titres similaires.
+ * puis « Reprendre » / « Regarder », « Depuis le début » et « Favoris ». Série : les saisons et leurs épisodes en
+ * vignettes (déjà vus, en cours) ; puis les titres similaires, et tout en bas la bande-annonce.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -107,7 +106,6 @@ internal fun StreamingDetailContent(
     state: DetailUiState,
     kind: ContentKind,
     window: WindowInfo,
-    trailers: TrailerSettings,
     onPlay: (Long) -> Unit,
     onResume: (Long) -> Unit,
     onRestart: (Long) -> Unit,
@@ -150,10 +148,8 @@ internal fun StreamingDetailContent(
         }
         focusDone = true
     }
-    // Bande-annonce : en bas de la fiche (une lecture, muette selon les réglages) ; plein écran avec OK ou « Bande-annonce ».
+    // Bande-annonce : en bas de la fiche, ouverte en plein écran en y descendant.
     var fullTrailer by remember { mutableStateOf(false) }
-    // Lue seulement quand son cadre est à l'écran (pas pendant qu'il est préparé hors écran).
-    val trailerOnScreen by remember { derivedStateOf { listState.layoutInfo.visibleItemsInfo.any { it.key == "trailer" } } }
     // Descendu dans les épisodes ou les titres similaires : le visuel s'efface un peu (lisibilité).
     val scrolled by remember { derivedStateOf { listState.firstVisibleItemIndex > 0 } }
     val dim by animateFloatAsState(if (scrolled) 0.55f else 0f, tween(300), label = "dim")
@@ -213,12 +209,10 @@ internal fun StreamingDetailContent(
                         CastLine(state.cast)
                         DetailButtons(
                             state, kind, playFocus,
-                            trailerKey = state.trailer?.first,
                             onPlay = onPlay,
                             onResume = onResume,
                             onRestart = onRestart,
                             onToggleFavorite = onToggleFavorite,
-                            onTrailer = { fullTrailer = true },
                             onNextVersion = onNextVersion,
                         )
                     }
@@ -260,9 +254,14 @@ internal fun StreamingDetailContent(
                     }
                 }
             }
+            // Rangée juste au-dessus de la bande-annonce : choisie, le haut de la bande-annonce se voit dessous.
+            val hasTrailer = state.trailer != null
             if (state.cast.isNotEmpty()) {
                 item(key = "cast") {
-                    Column(Modifier.padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(
+                        Modifier.padding(top = 16.dp).revealBelow(listState, "cast", enabled = hasTrailer && state.similar.isEmpty()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         Text(stringResource(R.string.detail_cast), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = padding))
                         LazyRow(
                             contentPadding = PaddingValues(horizontal = padding, vertical = 10.dp),
@@ -275,7 +274,10 @@ internal fun StreamingDetailContent(
             }
             if (state.similar.isNotEmpty()) {
                 item(key = "similar") {
-                    Column(Modifier.padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(
+                        Modifier.padding(top = 16.dp).revealBelow(listState, "similar", enabled = hasTrailer),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         Text(stringResource(R.string.detail_similar), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = padding))
                         LazyRow(
                             contentPadding = PaddingValues(horizontal = padding, vertical = 10.dp),
@@ -297,19 +299,18 @@ internal fun StreamingDetailContent(
                     }
                 }
             }
-            // Bande-annonce (réglage « Bande-annonce en fond »), tout en bas : y arriver la met en plein écran.
-            val trailerKey = details?.trailerYoutubeKey
-            if (trailerKey != null && trailers.autoplay) {
+            // Bande-annonce, tout en bas, sur toute la largeur : y arriver la met en plein écran (série : celle de la
+            // saison choisie si TMDB en a une).
+            val trailerKey = state.trailer?.first
+            if (trailerKey != null) {
                 item(key = "trailer") {
                     DetailTrailerSection(
                         trailerKey = trailerKey,
-                        language = details.trailerLanguage,
-                        imageUrl = details.backdropUrl,
-                        trailers = trailers,
-                        active = trailerOnScreen && !fullTrailer,
+                        imageUrl = details?.backdropUrl,
                         opened = fullTrailer,
                         onOpen = { fullTrailer = true },
-                        modifier = Modifier.padding(start = padding, end = padding, top = 20.dp),
+                        horizontalPadding = padding,
+                        modifier = Modifier.padding(top = 20.dp),
                     )
                 }
             }
@@ -349,12 +350,10 @@ private fun DetailButtons(
     state: DetailUiState,
     kind: ContentKind,
     playFocus: FocusRequester,
-    trailerKey: String?,
     onPlay: (Long) -> Unit,
     onResume: (Long) -> Unit,
     onRestart: (Long) -> Unit,
     onToggleFavorite: () -> Unit,
-    onTrailer: () -> Unit,
     onNextVersion: () -> Unit,
 ) {
     val progress = state.progress
@@ -394,7 +393,6 @@ private fun DetailButtons(
             modifier = if (progress == null) Modifier.focusRequester(playFocus) else Modifier,
         )
         VersionButton(state, onNextVersion)
-        trailerKey?.let { PillButton(stringResource(R.string.hero_trailer), onTrailer, icon = NexTvIcons.Movie) }
         FavoriteButton(state.isFavorite, onToggleFavorite)
     }
 }

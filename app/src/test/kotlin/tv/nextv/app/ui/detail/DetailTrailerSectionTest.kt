@@ -9,6 +9,8 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -17,7 +19,6 @@ import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -31,14 +32,14 @@ import org.robolectric.annotation.Config
 import tv.nextv.app.data.catalog.MetadataState
 import tv.nextv.app.screenshots.SampleData
 import tv.nextv.app.ui.home.TrailerMemory
-import tv.nextv.app.ui.home.TrailerSettings
 import tv.nextv.app.ui.theme.NexTvTheme
 import tv.nextv.app.ui.theme.ThemeStyle
 import tv.nextv.core.model.ContentKind
 
 /**
- * Fiche Classique / Live Center avec « Bande-annonce en fond » : la bande-annonce est en bas de la fiche. Rien ne se
- * lit tant qu'on n'y est pas descendu ; à la télécommande, ↓ y mène, le cadre est entier à l'écran et la lecture démarre.
+ * Bande-annonce en bas de la fiche, dans toutes les interfaces : une grande image sur toute la largeur de l'écran, qui
+ * dépasse en bas de la fiche (bouton de lecture dans sa partie visible). Rien ne se lit à cet endroit ; à la
+ * télécommande, ↓ jusqu'à elle l'ouvre en plein écran. Plus de bouton « Bande-annonce » en haut de la fiche.
  */
 @OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -75,6 +76,23 @@ class DetailTrailerSectionTest {
         compose.onNode(isFocused()).fetchSemanticsNode().config.toString().let { Regex("Text : \\[[^]]*]").find(it)?.value }
     }.getOrNull()
 
+    /** Image de la bande-annonce (surface cliquable qui porte le bouton de lecture). */
+    private fun trailerImage() = compose.onAllNodes(hasContentDescription("Bande-annonce") and hasClickAction()).fetchSemanticsNodes().singleOrNull()
+
+    /** Bouton de lecture : s'il est à l'écran, il est au milieu de la partie visible de l'image (jamais hors écran). */
+    private fun assertPlayButtonOnScreen() {
+        val image = trailerImage() ?: return
+        val screen = compose.onRoot().fetchSemanticsNode().boundsInRoot
+        // Pas encore à l'écran (préparée par la liste plus bas : partie visible vide) : rien à vérifier.
+        if (!image.layoutInfo.isPlaced || image.boundsInRoot.height <= 0f) return
+        val button = compose.onAllNodes(hasContentDescription("Bande-annonce"), useUnmergedTree = true).fetchSemanticsNodes()
+            .filter { !it.config.contains(androidx.compose.ui.semantics.SemanticsActions.OnClick) }
+            .minBy { it.boundsInRoot.width }
+        val center = button.boundsInRoot.center.y
+        println("image ${image.boundsInRoot}, bouton à $center (écran ${screen.bottom})")
+        assertTrue("bouton de lecture hors écran : $center", center > image.boundsInRoot.top && center < screen.bottom)
+    }
+
     private fun movie(): DetailUiState {
         val base = SampleData.movieDetail
         val available = base.metadata as MetadataState.Available
@@ -85,7 +103,7 @@ class DetailTrailerSectionTest {
         )
     }
 
-    /** Classique : rien n'est lu hors écran ; tout en bas, plein écran tout seul, une fois ; Retour, ↑ puis ↓ : de nouveau. */
+    /** Classique : plein écran tout seul en bas de la fiche, une fois ; Retour, ↑ puis ↓ : de nouveau. */
     @Test
     fun reachingTheBottomOpensTheTrailerFullScreen() {
         val opened = mutableListOf<String>()
@@ -102,33 +120,34 @@ class DetailTrailerSectionTest {
                     onToggleFavorite = {},
                     onSelectSeason = {},
                     onBack = {},
-                    trailers = TrailerSettings(autoplay = true, delayMillis = 2_000L),
                     trailerPaused = open.value,
                 )
             }
         }
         compose.mainClock.advanceTimeBy(4_000)
         compose.waitForIdle()
-        assertNull("bande-annonce lue hors de l'écran", webView())
-        // ↓ : la distribution (le cadre arrive à l'écran et se lit), puis le cadre : plein écran.
-        press(Key.DirectionDown)
-        println("↓ ${focusedText()}")
-        assertTrue("plein écran trop tôt", opened.isEmpty())
-        repeat(3) { if (opened.isEmpty()) press(Key.DirectionDown) }
+        // Plus de bouton « Bande-annonce » en haut : la bande-annonce est en bas de la fiche.
+        assertTrue(compose.onAllNodes(hasText("Bande-annonce") and hasClickAction(), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
+        repeat(5) {
+            if (opened.isEmpty()) {
+                press(Key.DirectionDown)
+                println("↓ ${focusedText()}")
+                if (opened.isEmpty()) assertPlayButtonOnScreen()
+            }
+        }
         assertEquals(listOf("trailer"), opened)
+        // Rien n'est lu en bas de la fiche : seulement le plein écran.
+        assertNull("vidéo lue dans la fiche", webView())
         // « Retour » : la fiche revient, sans rouvrir le plein écran.
         compose.runOnUiThread { open.value = false }
-        compose.mainClock.advanceTimeBy(1_000)
-        compose.waitForIdle()
-        assertEquals(1, opened.size)
-        // Cadre entier à l'écran (sélectionné au retour).
-        val screen = compose.onRoot().fetchSemanticsNode().boundsInRoot
-        val title = compose.onAllNodes(hasText("Bande-annonce"), useUnmergedTree = true).fetchSemanticsNodes().maxOf { it.boundsInRoot.top }
-        assertTrue("titre de la section hors écran : $title", title >= 0f && title < screen.bottom)
-        // La vidéo du cadre reprend à l'écran, en petit.
         compose.mainClock.advanceTimeBy(3_000)
         compose.waitForIdle()
-        assertNotNull("bande-annonce du cadre non lue", webView())
+        assertEquals(1, opened.size)
+        assertNull("vidéo lue dans la fiche", webView())
+        // L'image prend toute la largeur de l'écran.
+        val screen = compose.onRoot().fetchSemanticsNode().boundsInRoot
+        val image = checkNotNull(trailerImage()).boundsInRoot
+        assertEquals(screen.width, image.width, 1f)
         // ↑ puis ↓ : de nouveau en plein écran.
         press(Key.DirectionUp)
         press(Key.DirectionDown)
@@ -145,7 +164,6 @@ class DetailTrailerSectionTest {
                     state = movie(),
                     kind = ContentKind.MOVIE,
                     window = tv.nextv.app.ui.components.rememberWindowInfo(),
-                    trailers = TrailerSettings(autoplay = true, delayMillis = 2_000L),
                     onPlay = {},
                     onResume = {},
                     onRestart = {},
@@ -158,7 +176,8 @@ class DetailTrailerSectionTest {
         compose.mainClock.advanceTimeBy(2_000)
         compose.waitForIdle()
         assertTrue(compose.onAllNodes(androidx.compose.ui.test.isDialog()).fetchSemanticsNodes().isEmpty())
-        repeat(5) {
+        assertTrue(compose.onAllNodes(hasText("Bande-annonce") and hasClickAction(), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
+        repeat(6) {
             if (compose.onAllNodes(androidx.compose.ui.test.isDialog()).fetchSemanticsNodes().isEmpty()) {
                 press(Key.DirectionDown)
                 println("↓ ${focusedText()}")

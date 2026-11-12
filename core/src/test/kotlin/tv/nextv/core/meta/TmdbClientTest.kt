@@ -7,7 +7,9 @@ import mockwebserver3.MockWebServer
 import mockwebserver3.RecordedRequest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import tv.nextv.core.net.HttpClientProvider
@@ -66,6 +68,11 @@ class TmdbClientTest {
                         {"site":"Vimeo","type":"Trailer","key":"vimeo","iso_639_1":"fr"},
                         {"site":"YouTube","type":"Trailer","key":"fr-trailer","iso_639_1":"fr","name":"Bande-annonce (VF)"}]}""",
                     )
+                    path.endsWith("/movie/77/videos") -> json(
+                        """{"results":[
+                        {"site":"YouTube","type":"Trailer","key":"en-trailer","iso_639_1":"en","official":true},
+                        {"site":"YouTube","type":"Teaser","key":"fr-teaser","iso_639_1":"fr","name":"Teaser VF"}]}""",
+                    )
                     path.endsWith("/tv/42/season/4/videos") -> json(
                         """{"results":[{"site":"YouTube","type":"Teaser","key":"s4-teaser","iso_639_1":"en"},
                         {"site":"YouTube","type":"Trailer","key":"s4-trailer","iso_639_1":"fr","name":"Saison 4 (VF)"}]}""",
@@ -116,6 +123,18 @@ class TmdbClientTest {
             listOf("fr-trailer" to "fr", "en-trailer" to "en", "en-teaser" to "en"),
             client.trailers(tv.nextv.core.meta.MediaType.MOVIE, 19995),
         )
+    }
+
+    /** Film récent sans bande-annonce française, seulement un teaser : le teaser en français passe avant l'anglais. */
+    @Test
+    fun `a French teaser comes before an English trailer`() = runBlocking {
+        assertEquals(
+            listOf("fr-teaser" to "fr", "en-trailer" to "en"),
+            client.trailers(MediaType.MOVIE, 77),
+        )
+        assertTrue(client.isInterfaceLanguage("fr"))
+        assertFalse(client.isInterfaceLanguage("en"))
+        assertFalse(client.isInterfaceLanguage(null))
     }
 
     @Test

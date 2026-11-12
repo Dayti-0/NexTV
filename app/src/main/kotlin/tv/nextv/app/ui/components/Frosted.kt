@@ -81,7 +81,9 @@ private fun blurred(source: Bitmap, stripPx: Int, background: Int): ImageBitmap 
     val strip = stripPx.coerceIn(1, source.width)
     val width = (strip / FROST_SCALE).coerceAtLeast(1)
     val height = (source.height / FROST_SCALE).coerceAtLeast(1)
-    val readable = if (source.config == Bitmap.Config.HARDWARE) source.copy(Bitmap.Config.ARGB_8888, false) else source
+    // Image en mémoire graphique (Android 8 et après) : recopiée pour pouvoir la lire.
+    val hardware = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O && source.config == Bitmap.Config.HARDWARE
+    val readable = if (hardware) source.copy(Bitmap.Config.ARGB_8888, false) else source
     // Posée sur le fond de l'application : une image opaque. Floutés tels quels, les éléments translucides
     // (badges, halos) laissaient des traits de couleur sur leur bord, et le contenu net se voyait à travers.
     val small = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)

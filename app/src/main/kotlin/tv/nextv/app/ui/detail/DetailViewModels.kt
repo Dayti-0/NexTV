@@ -6,11 +6,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import tv.nextv.app.ui.home.toPoster
-import tv.nextv.app.ui.home.TrailerSettings
 import tv.nextv.app.ui.home.PosterItem
 import tv.nextv.app.ui.home.HomeLayout
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -214,14 +212,6 @@ class DetailViewModel(
     /** Interface choisie (la fiche Streaming a sa propre présentation). */
     val layout: StateFlow<HomeLayout> = container.settings.homeLayout
         .stateIn(viewModelScope, SharingStarted.Eagerly, HomeLayout.DEFAULT)
-
-    /** Bandes-annonces (fiche Streaming) : lecture automatique, son, délai. */
-    val trailers: StateFlow<TrailerSettings> = combine(
-        container.settings.trailerAutoplay,
-        container.settings.trailerSound,
-        container.settings.trailerDelaySeconds,
-    ) { autoplay, sound, delay -> TrailerSettings(autoplay, sound, delay * 1_000L) }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, TrailerSettings())
 
     private suspend fun similarInPlaylist(sourceId: Long, itemKey: String, details: MediaDetails): List<PosterItem> =
         recommendedInPlaylist(container, sourceId, kind, itemKey, details, SIMILAR_COUNT)
