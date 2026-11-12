@@ -25,6 +25,23 @@ enum class StreamQuality(val rank: Int, val label: String) {
         const val UNKNOWN_RANK = 2
 
         fun rankOf(quality: StreamQuality?): Int = quality?.rank ?: UNKNOWN_RANK
+
+        /**
+         * Qualité d'une image de [width] × [height] pixels (fichier lu, ou décrit par le serveur). La largeur
+         * compte autant que la hauteur : un film en 1920 × 800 (format cinéma) est en Full HD.
+         */
+        fun fromSize(width: Int?, height: Int?): StreamQuality? {
+            val w = width ?: 0
+            val h = height ?: 0
+            if (w <= 0 && h <= 0) return null
+            return when {
+                w >= 3200 || h >= 1800 -> UHD
+                w >= 1800 || h >= 1000 -> FHD
+                w >= 1200 || h >= 700 -> HD
+                w >= 600 || h >= 400 -> SD
+                else -> LOW
+            }
+        }
     }
 }
 

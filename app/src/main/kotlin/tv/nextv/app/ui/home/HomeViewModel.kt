@@ -548,6 +548,37 @@ class HomeViewModel(
         }
     }
 
+    /** Films affichés sans badge de qualité : leur fiche est demandée au serveur Xtream, un à la fois. */
+    private val qualityQueue = ArrayDeque<Long>()
+    private val qualitySignal = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.CONFLATED)
+    private val qualityAsked = HashSet<Long>()
+    private var qualityWorker: kotlinx.coroutines.Job? = null
+
+    fun requestQuality(item: PosterItem) {
+        if (item.kind != ContentKind.MOVIE || item.quality != null) return
+        synchronized(qualityQueue) {
+            if (!qualityAsked.add(item.id)) return
+            qualityQueue.addLast(item.id)
+            // Défilement rapide : les films passés depuis longtemps ne sont plus demandés.
+            while (qualityQueue.size > QUALITY_QUEUE_SIZE) qualityQueue.removeFirstOrNull()?.let { qualityAsked.remove(it) }
+        }
+        if (qualityWorker == null) {
+            qualityWorker = viewModelScope.launch {
+                while (true) {
+                    val id = synchronized(qualityQueue) { qualityQueue.removeLastOrNull() }
+                    if (id == null) {
+                        qualitySignal.receive()
+                        continue
+                    }
+                    val channel = runCatching { container.channelDao.get(id) }.getOrNull() ?: continue
+                    // La ligne mise à jour fait apparaître le badge dans les listes (base observée).
+                    runCatching { container.measuredQualities.probe(channel) }
+                }
+            }
+        }
+        qualitySignal.trySend(Unit)
+    }
+
     /** Affiche d'un film ou d'une série qui s'affiche dans une rangée : cherchée sur TMDB si elle n'est pas connue. */
     fun requestPoster(item: PosterItem) {
         if (item.kind == ContentKind.LIVE || !container.hasTmdbKey()) {
@@ -761,6 +792,7 @@ class HomeViewModel(
         /** Affiches TMDB cherchées en même temps, et titres en attente au plus. */
         const val POSTER_WORKERS = 4
         const val POSTER_QUEUE_SIZE = 40
+        const val QUALITY_QUEUE_SIZE = 40
 
         const val PAGE_SIZE = 60
 

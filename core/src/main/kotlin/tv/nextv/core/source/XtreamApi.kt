@@ -36,6 +36,11 @@ data class XtreamAccountInfo(
     val active: Boolean get() = authenticated && (status == null || status.equals("Active", ignoreCase = true))
 }
 
+/** Image d'un film décrite par le serveur Xtream (`get_vod_info`) ; tailles `null` si le serveur ne les donne pas. */
+data class VodVideo(val width: Int?, val height: Int?) {
+    val unknown: Boolean get() = width == null && height == null
+}
+
 /** Programme d'une chaîne d'après le guide du compte Xtream (`get_short_epg`). */
 data class XtreamProgramme(val title: String, val description: String?, val startMillis: Long, val stopMillis: Long)
 
@@ -72,6 +77,13 @@ class XtreamApi(
         call(source, action = "get_short_epg", callTimeoutMillis, mapOf("stream_id" to streamId, "limit" to limit.toString())) {
             parseShortEpg(it.body.string())
         }
+
+    /**
+     * Taille de l'image d'un film d'après sa fiche sur le serveur (`get_vod_info`, `info.video`), par l'identifiant
+     * de son flux. [VodVideo.unknown] : le serveur répond sans la donner ; `null` : pas de compte Xtream ou pas de réponse.
+     */
+    suspend fun vodVideo(source: PlaylistSource, streamId: String): VodVideo? =
+        call(source, action = "get_vod_info", callTimeoutMillis, mapOf("vod_id" to streamId)) { parseVodVideo(it.body.string()) }
 
     private suspend fun <T : Any> call(
         source: PlaylistSource,
@@ -126,6 +138,16 @@ class XtreamApi(
                     serverTimeZone = server?.text("timezone"),
                 )
             }
+        } catch (e: JSONException) {
+            null
+        }
+
+        /** Réponse de `get_vod_info` : `{"info":{"video":{"width":1920,"height":1080,…},…},…}`. `null` : illisible. */
+        fun parseVodVideo(body: String): VodVideo? = try {
+            val info = JSONObject(body).optJSONObject("info")
+            // Sans fiche, ou fiche sans image décrite (« video »: [] chez certains serveurs).
+            val video = info?.optJSONObject("video")
+            VodVideo(video?.number("width")?.toInt()?.takeIf { it > 0 }, video?.number("height")?.toInt()?.takeIf { it > 0 })
         } catch (e: JSONException) {
             null
         }

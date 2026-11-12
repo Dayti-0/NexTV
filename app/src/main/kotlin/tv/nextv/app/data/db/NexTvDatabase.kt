@@ -17,6 +17,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         TmdbCacheEntity::class,
         HiddenGroupEntity::class,
         GuideOnlyChannelEntity::class,
+        MeasuredQualityEntity::class,
     ],
     version = NexTvDatabase.VERSION,
     // Schéma de chaque version gardé dans app/schemas : il sert à écrire et à tester la migration suivante.
@@ -105,6 +106,17 @@ abstract class NexTvDatabase : RoomDatabase() {
             }
         }
 
+        /** Qualité des films et épisodes sans mention dans leur nom (lecture, fiche du serveur) : nouvelle table. */
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(MEASURED_QUALITY_SQL)
+            }
+        }
+
+        internal const val MEASURED_QUALITY_SQL = "CREATE TABLE IF NOT EXISTS `measured_quality` (`sourceId` INTEGER NOT NULL, " +
+            "`streamUrl` TEXT NOT NULL, `quality` TEXT NOT NULL, `fromPlayback` INTEGER NOT NULL, `measuredAt` INTEGER NOT NULL, " +
+            "PRIMARY KEY(`sourceId`, `streamUrl`), FOREIGN KEY(`sourceId`) REFERENCES `sources`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )"
+
         /**
          * Premier épisode de chaque série (ordre de la playlist) et nombre d'épisodes, comme à l'enregistrement.
          * `position + 0` : le minimum est lu dans l'index par clé, pas en parcourant l'index des positions
@@ -123,14 +135,14 @@ abstract class NexTvDatabase : RoomDatabase() {
          * refuse de démarrer (et le test des migrations échoue) au lieu d'effacer en silence playlists, favoris et
          * identifiants.
          */
-        const val VERSION = 10
+        const val VERSION = 11
 
         /** Première version dont les données sont conservées (la 1, version de test, est rechargée depuis la playlist). */
         const val FIRST_MIGRATED_VERSION = 2
 
         /** Une migration par version, sans trou de [FIRST_MIGRATED_VERSION] à [VERSION]. */
         val MIGRATIONS: List<Migration> =
-            listOf(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+            listOf(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
 
         fun create(context: Context): NexTvDatabase =
             Room.databaseBuilder(context.applicationContext, NexTvDatabase::class.java, "nextv.db")

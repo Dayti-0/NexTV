@@ -131,6 +131,13 @@ class DetailViewModel(
         val title = ContentClassifier.cleanTitle(rawTitle).ifBlank { rawTitle }
         val item = PlaylistItem(entity.sourceId, entity.id, title, entity.year, entity.logoUrl, entity.itemKey, entity.quality)
         mutableState.update { it.copy(item = item) }
+        // Film sans qualité dans son nom : sa fiche sur le serveur Xtream la donne souvent (badge de la fiche et des affiches).
+        if (kind == ContentKind.MOVIE && entity.quality == null) {
+            viewModelScope.launch {
+                val quality = runCatching { container.measuredQualities.probe(entity) }.getOrNull() ?: return@launch
+                mutableState.update { state -> state.copy(item = state.item?.copy(quality = quality.name)) }
+            }
+        }
 
         if (kind == ContentKind.SERIES) {
             val seasons = container.channelDao.episodes(entity.sourceId, entity.itemKey)

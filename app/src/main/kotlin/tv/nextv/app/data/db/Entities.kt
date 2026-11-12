@@ -227,3 +227,25 @@ object HeaderCodec {
         }
         .toMap()
 }
+
+/**
+ * Qualité d'un film ou d'un épisode dont le nom n'en dit rien, mesurée (fichier lu) ou lue sur sa fiche du serveur
+ * Xtream, par flux. Gardée à part : chaque actualisation de la playlist réécrit les chaînes et la reprend
+ * ([RoomPlaylistStore.replaceChannels]). [quality] vide : le serveur a répondu sans la donner (pas redemandé).
+ */
+@Entity(
+    tableName = "measured_quality",
+    primaryKeys = ["sourceId", "streamUrl"],
+    foreignKeys = [
+        ForeignKey(entity = SourceEntity::class, parentColumns = ["id"], childColumns = ["sourceId"], onDelete = ForeignKey.CASCADE),
+    ],
+)
+data class MeasuredQualityEntity(
+    val sourceId: Long,
+    val streamUrl: String,
+    /** Nom de [tv.nextv.core.model.StreamQuality], ou vide si inconnue. */
+    val quality: String,
+    /** Mesurée en lisant le fichier (plus sûr que la fiche du serveur, qu'elle remplace). */
+    val fromPlayback: Boolean,
+    val measuredAt: Long,
+)

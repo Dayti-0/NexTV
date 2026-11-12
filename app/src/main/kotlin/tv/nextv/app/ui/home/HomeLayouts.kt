@@ -986,6 +986,8 @@ internal fun posterDetail(item: PosterItem): String? =
 @Composable
 private fun posterImage(item: PosterItem): String? {
     val art = LocalPosterArt.current ?: return item.imageUrl
+    // Film sans qualité dans son nom : demandée au serveur, son badge apparaît quand elle arrive.
+    if (item.quality == null && item.kind == ContentKind.MOVIE) LaunchedEffect(item.id) { art.requestQuality(item) }
     art.posters[item.itemKey]?.let { return it }
     if (item.itemKey in art.missing) return item.imageUrl
     var waited by remember(item.itemKey) { mutableStateOf(false) }

@@ -749,6 +749,20 @@ interface ChannelDao {
     )
     suspend fun episodeIdByKey(sourceId: Long, itemKey: String, season: Int?, episode: Int): Long?
 
+    /** Qualités mesurées d'une playlist (reprises à chaque actualisation). */
+    @Query("SELECT * FROM measured_quality WHERE sourceId = :sourceId")
+    suspend fun measuredQualities(sourceId: Long): List<MeasuredQualityEntity>
+
+    @Query("SELECT * FROM measured_quality WHERE sourceId = :sourceId AND streamUrl = :streamUrl")
+    suspend fun measuredQuality(sourceId: Long, streamUrl: String): MeasuredQualityEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMeasuredQuality(entity: MeasuredQualityEntity)
+
+    /** Qualité trouvée d'une ligne qui n'en annonçait pas (son badge apparaît partout). */
+    @Query("UPDATE channels SET quality = :quality, qualityRank = :rank WHERE id = :id AND quality IS NULL")
+    suspend fun fillQuality(id: Long, quality: String, rank: Int)
+
     /** Meilleure version d'une chaîne désignée par sa clé (chaîne précédente, dernière chaîne regardée). */
     @Query("SELECT id FROM channels WHERE sourceId = :sourceId AND kind = 'LIVE' AND isPrimary = 1 AND itemKey = :itemKey LIMIT 1")
     suspend fun primaryIdByKey(sourceId: Long, itemKey: String): Long?

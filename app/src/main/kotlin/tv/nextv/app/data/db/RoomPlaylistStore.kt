@@ -79,7 +79,15 @@ class RoomPlaylistStore(private val database: NexTvDatabase) : PlaylistStore {
             // ouvertes et le focus de l'accueil restent valables après une actualisation.
             val previousIds = existingIds(sourceId)
             channelDao.deleteForSource(sourceId)
-            val aligned = MovieCopies.alignYears(channels)
+            // Films et épisodes sans qualité dans leur nom : celle déjà mesurée (lecture, fiche du serveur).
+            val measured = channelDao.measuredQualities(sourceId)
+                .mapNotNull { row -> runCatching { StreamQuality.valueOf(row.quality) }.getOrNull()?.let { row.streamUrl to it } }
+                .toMap()
+            val known = if (measured.isEmpty()) channels else channels.map { channel ->
+                if (channel.quality != null || channel.kind == ContentKind.LIVE) channel
+                else measured[channel.stream.url]?.let { channel.copy(quality = it) } ?: channel
+            }
+            val aligned = MovieCopies.alignYears(known)
             val variants = VariantInfo.compute(aligned)
             var saved = 0
             aligned.chunked(BATCH_SIZE).forEach { batch ->

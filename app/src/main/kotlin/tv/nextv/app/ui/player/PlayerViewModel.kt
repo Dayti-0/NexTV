@@ -254,6 +254,18 @@ class PlayerViewModel(
                 if (problem == AudioProblem.UNSUPPORTED || (problem == AudioProblem.NO_TRACK && !live)) switchToVlc()
             }
         }
+        // Film ou épisode dont le nom n'annonce pas de qualité : la taille de l'image lue donne son badge.
+        viewModelScope.launch {
+            mutableState.map { it.info.width to it.info.height }.distinctUntilChanged().collect { (width, height) ->
+                val playing = session.playing ?: return@collect
+                if (width == null && height == null) return@collect
+                runCatching {
+                    if (container.measuredQualities.recordPlayback(playing, width, height)) {
+                        session.playing = playing.copy(quality = StreamQuality.fromSize(width, height)?.name)
+                    }
+                }
+            }
+        }
         // Position des films et épisodes, pour la reprise de lecture.
         viewModelScope.launch {
             while (true) {

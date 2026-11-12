@@ -289,7 +289,8 @@ fun HomeScreen(
     // Affiches TMDB (celles des fiches) dans les rangées.
     val posters by viewModel.posters.collectAsStateWithLifecycle()
     val requestPoster = remember(viewModel) { { item: PosterItem -> viewModel.requestPoster(item) } }
-    val posterArt = remember(posters) { PosterArt(posters.first, posters.second, requestPoster) }
+    val requestQuality = remember(viewModel) { { item: PosterItem -> viewModel.requestQuality(item) } }
+    val posterArt = remember(posters) { PosterArt(posters.first, posters.second, requestPoster, requestQuality) }
 
     if (searching) {
         // Recherche de partout : mêmes pastilles « Déjà vu » et affiches que dans les rangées.

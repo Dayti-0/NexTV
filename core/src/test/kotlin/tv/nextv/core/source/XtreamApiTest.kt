@@ -152,4 +152,17 @@ class XtreamApiTest {
     fun `playlists that are not Xtream accounts have no account details`() = runBlocking {
         assertNull(api.accountInfo(PlaylistSource(name = "M3U", location = SourceLocation.Remote(primary.url("/liste.m3u").toString()))))
     }
+
+    /** Fiche d'un film : taille de l'image quand le serveur la donne, inconnue sinon (« video »: [] chez certains). */
+    @Test
+    fun vodVideoSize() {
+        assertEquals(
+            VodVideo(1920, 800),
+            XtreamApi.parseVodVideo("""{"info":{"name":"Film","video":{"index":0,"codec_name":"h264","width":1920,"height":800}},"movie_data":{"stream_id":12}}"""),
+        )
+        assertEquals(VodVideo(3840, 2160), XtreamApi.parseVodVideo("""{"info":{"video":{"width":"3840","height":"2160"}}}"""))
+        assertTrue(XtreamApi.parseVodVideo("""{"info":{"name":"Film","video":[]},"movie_data":{}}""")!!.unknown)
+        assertTrue(XtreamApi.parseVodVideo("""{"info":[],"movie_data":{}}""")!!.unknown)
+        assertNull(XtreamApi.parseVodVideo("<html>"))
+    }
 }

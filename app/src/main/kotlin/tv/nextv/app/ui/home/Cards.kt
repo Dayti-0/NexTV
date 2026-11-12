@@ -396,6 +396,8 @@ internal data class PosterArt(
     val posters: Map<String, String>,
     val missing: Set<String>,
     val request: (PosterItem) -> Unit,
+    /** Film affiché sans badge de qualité : la demander au serveur. */
+    val requestQuality: (PosterItem) -> Unit = {},
 )
 
 internal val LocalPosterArt = androidx.compose.runtime.compositionLocalOf<PosterArt?> { null }

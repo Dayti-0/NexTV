@@ -32,6 +32,7 @@ import kotlinx.coroutines.launch
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import tv.nextv.app.data.backup.BackupManager
+import tv.nextv.app.data.catalog.MeasuredQualities
 import tv.nextv.app.data.catalog.ChannelFilters
 import tv.nextv.app.data.catalog.FavoritesRepository
 import tv.nextv.app.data.catalog.MetadataRepository
@@ -130,6 +131,9 @@ class AppContainer(context: Context) {
 
     /** Comptes Xtream Codes : abonnement (date de fin, connexions simultanées) et chaînes avec replay. */
     val xtreamApi = XtreamApi(httpClients, logger)
+
+    /** Qualité des films et épisodes sans mention dans leur nom : mesurée à la lecture, ou lue sur le serveur. */
+    val measuredQualities = MeasuredQualities(channelDao, { playlistStore.getSource(it) }, xtreamApi::vodVideo)
 
     /** Section Foot : tour des chaînes « événement » (LALIGA 1 à 5…) retenu d'un jour à l'autre. */
     val eventTurns = EventTurnStore(appContext.getSharedPreferences("event_turns", Context.MODE_PRIVATE))
