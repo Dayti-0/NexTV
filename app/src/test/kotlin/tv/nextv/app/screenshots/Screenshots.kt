@@ -882,6 +882,18 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
+    fun editorKing() = capture("18c_edition_king") {
+        SourceEditorContent(
+            state = tv.nextv.app.ui.editor.EditorState(name = "King 365", mode = tv.nextv.app.ui.editor.LocationMode.KING, xtreamUsername = "exemple", xtreamPassword = "motdepasse"),
+            snackbarHostState = remember { SnackbarHostState() },
+            onEdit = {},
+            onPick = {},
+            onSave = {},
+            onBack = {},
+        )
+    }
+
+    @Test
     fun editorErrors() = capture("19_edition_erreur") {
         SourceEditorContent(
             state = SampleData.editorWithErrors,

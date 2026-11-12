@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import tv.nextv.app.AppContainer
+import tv.nextv.app.King
 import tv.nextv.core.error.InvalidUrlReason
 import tv.nextv.core.error.SourceError
 import tv.nextv.core.model.Credentials
@@ -26,8 +27,11 @@ import tv.nextv.core.repository.SourceInputField
 import tv.nextv.core.net.UserAgents
 import tv.nextv.core.source.XtreamAccount
 
-/** Lien de playlist, compte Xtream Codes (serveur, identifiant, mot de passe) ou fichier. */
-enum class LocationMode { URL, XTREAM, FILE }
+/**
+ * Lien de playlist, compte Xtream Codes (serveur, identifiant, mot de passe), compte King (identifiant et mot de
+ * passe, serveurs intégrés à l'application) ou fichier.
+ */
+enum class LocationMode { URL, XTREAM, KING, FILE }
 
 /** Suite à donner à l'enregistrement. */
 enum class SaveOutcome {
@@ -79,6 +83,12 @@ fun EditorState.withMode(target: LocationMode): EditorState = when {
     target == LocationMode.XTREAM && server.isBlank() ->
         XtreamAccount.parse(url)?.let { copy(mode = target, server = it.server, xtreamUsername = it.username, xtreamPassword = it.password) }
             ?: copy(mode = target)
+    // King : identifiant et mot de passe repris d'un compte Xtream ou d'un lien déjà saisis.
+    target == LocationMode.KING && xtreamUsername.isBlank() ->
+        XtreamAccount.parse(url)?.let { copy(mode = target, xtreamUsername = it.username, xtreamPassword = it.password) }
+            ?: copy(mode = target)
+    target == LocationMode.URL && url.isBlank() && mode == LocationMode.KING && xtreamUsername.isNotBlank() ->
+        copy(mode = target, url = King.playlistUrl(xtreamUsername.trim(), xtreamPassword).orEmpty())
     target == LocationMode.URL && url.isBlank() && !serverMissing ->
         copy(mode = target, url = XtreamAccount(server, xtreamUsername.trim(), xtreamPassword).playlistUrl().orEmpty())
     else -> copy(mode = target)
@@ -102,10 +112,15 @@ class SourceEditorViewModel(
             load(id)
         } else {
             container.playlistImport.getAndUpdate { null }?.let { import ->
+                // Compte King envoyé du téléphone : il s'ouvre dans l'onglet King.
+                val king = XtreamAccount.parse(import.url)?.takeIf { King.isKing(import.url) }
                 mutableState.update {
                     it.copy(
-                        name = import.name ?: Uri.parse(import.url).host.orEmpty(),
+                        name = import.name ?: if (king != null) King.DEFAULT_NAME else Uri.parse(import.url).host.orEmpty(),
+                        mode = if (king != null) LocationMode.KING else LocationMode.URL,
                         url = import.url,
+                        xtreamUsername = king?.username.orEmpty(),
+                        xtreamPassword = king?.password.orEmpty(),
                         username = import.username.orEmpty(),
                         password = import.password.orEmpty(),
                         imported = true,
@@ -131,6 +146,7 @@ class SourceEditorViewModel(
                     loading = false,
                     name = source.name,
                     mode = when {
+                        account != null && King.isKing(url) -> LocationMode.KING
                         account != null -> LocationMode.XTREAM
                         url != null -> LocationMode.URL
                         else -> LocationMode.FILE
@@ -185,6 +201,15 @@ class SourceEditorViewModel(
                 // Compte inchangé : lien d'origine conservé (pas de rechargement inutile).
                 SourceLocation.Remote(current.url.takeIf { XtreamAccount.parse(it) == XtreamAccount.parse(link) } ?: link)
             }
+            LocationMode.KING -> {
+                if (current.xtreamUsername.isBlank()) {
+                    mutableState.update { it.copy(errors = mapOf(SourceInputField.USERNAME to SourceError.InvalidUrl(InvalidUrlReason.EMPTY))) }
+                    return
+                }
+                val link = King.playlistUrl(current.xtreamUsername.trim(), current.xtreamPassword).orEmpty()
+                // Compte inchangé : lien d'origine conservé (il peut être sur un serveur de secours qui marche).
+                SourceLocation.Remote(current.url.takeIf { King.isKing(it) && XtreamAccount.parse(it)?.let { a -> a.username to a.password } == XtreamAccount.parse(link)?.let { a -> a.username to a.password } } ?: link)
+            }
             LocationMode.FILE -> current.document ?: SourceLocation.LocalDocument("")
         }
         val credentials = when {
@@ -196,13 +221,18 @@ class SourceEditorViewModel(
             else -> CredentialsChange.Keep
         }
         val input = SourceInput(
-            name = current.name,
+            name = current.name.ifBlank { if (current.mode == LocationMode.KING) King.DEFAULT_NAME else current.name },
             location = location,
             // Le guide des programmes est commun à toutes les playlists (xmltvfr.fr).
             epg = EpgSettings(location = null, useHeaderUrls = false),
             userAgent = current.userAgent,
             credentials = credentials,
-            mirrors = if (current.mode == LocationMode.FILE) emptyList() else current.mirrors.flatMap { it.split(',', ';', ' ', '\n') }.filter { it.isNotBlank() },
+            mirrors = when (current.mode) {
+                LocationMode.FILE -> emptyList()
+                // King : les autres serveurs du fournisseur, intégrés à l'application.
+                LocationMode.KING -> King.mirrorsFor((location as SourceLocation.Remote).url)
+                else -> current.mirrors.flatMap { it.split(',', ';', ' ', '\n') }.filter { it.isNotBlank() }
+            },
         )
 
         mutableState.update { it.copy(saving = true, errors = emptyMap()) }

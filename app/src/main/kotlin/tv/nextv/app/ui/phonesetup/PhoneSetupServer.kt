@@ -5,6 +5,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import tv.nextv.app.King
 import tv.nextv.app.PlaylistImport
 import tv.nextv.core.source.XtreamAccount
 import java.io.ByteArrayOutputStream
@@ -72,14 +73,14 @@ class PhoneSetupServer(private val onPlaylist: (PlaylistImport) -> Unit) {
             return
         }
         when (request.method) {
-            "GET" -> respond("200 OK", PhoneSetupPage.form(error = null))
+            "GET" -> respond("200 OK", PhoneSetupPage.form(error = null, king = King.available))
             "POST" -> when (val result = phoneImport(parseForm(request.body))) {
                 is PhoneImportResult.Ok -> {
                     used = true
                     onPlaylist(result.import)
                     respond("200 OK", PhoneSetupPage.message("C'est envoyé !", "Regardez la télé : il ne reste qu'à confirmer l'ajout de la playlist avec OK."))
                 }
-                is PhoneImportResult.Error -> respond("200 OK", PhoneSetupPage.form(error = result.message))
+                is PhoneImportResult.Error -> respond("200 OK", PhoneSetupPage.form(error = result.message, king = King.available))
             }
             else -> respond("405 Method Not Allowed", PhoneSetupPage.message("Requête refusée", ""))
         }
@@ -157,6 +158,17 @@ fun phoneImport(form: Map<String, String>): PhoneImportResult {
                 PhoneImportResult.Error("Le lien doit commencer par http:// ou https://")
             } else {
                 PhoneImportResult.Ok(PlaylistImport(url, name, null, null))
+            }
+        }
+        // Compte King : les serveurs sont dans l'application.
+        "king" -> {
+            val username = form["username"]?.trim().orEmpty()
+            val password = form["password"].orEmpty()
+            when {
+                username.isEmpty() || password.isEmpty() -> PhoneImportResult.Error("Remplissez l'identifiant et le mot de passe.")
+                else -> King.playlistUrl(username, password)
+                    ?.let { PhoneImportResult.Ok(PlaylistImport(it, name ?: King.DEFAULT_NAME, null, null)) }
+                    ?: PhoneImportResult.Error("Les serveurs King ne sont pas disponibles dans cette version.")
             }
         }
         else -> {

@@ -3,19 +3,21 @@ package tv.nextv.app.ui.phonesetup
 /** Pages HTML affichées sur le téléphone (formulaire, messages), lisibles sur un petit écran. */
 internal object PhoneSetupPage {
 
-    fun form(error: String?): String = page(
+    /** @param king onglet « King » (identifiant et mot de passe ; serveurs intégrés à l'application), choisi d'office. */
+    fun form(error: String?, king: Boolean = false): String = page(
         """
         <h1>Ajouter une playlist</h1>
         <p class="hint">Elle sera envoyée à la télé, sur le même Wi-Fi.</p>
         ${error?.let { "<p class=\"error\">${escape(it)}</p>" }.orEmpty()}
         <form method="post">
           <div class="tabs">
-            <label><input type="radio" name="mode" value="xtream" checked onchange="show()"> Compte Xtream</label>
+            ${if (king) """<label><input type="radio" name="mode" value="king" checked onchange="show()"> King</label>""" else ""}
+            <label><input type="radio" name="mode" value="xtream" ${if (king) "" else "checked"} onchange="show()"> Xtream</label>
             <label><input type="radio" name="mode" value="m3u" onchange="show()"> Lien M3U</label>
           </div>
           <label>Nom (facultatif)<input name="name" autocomplete="off" placeholder="Ma playlist"></label>
-          <div id="xtream">
-            <label>Serveur<input name="server" inputmode="url" autocapitalize="off" autocorrect="off" placeholder="http://serveur.com:8080"></label>
+          <div id="account">
+            <label id="server">Serveur<input name="server" inputmode="url" autocapitalize="off" autocorrect="off" placeholder="http://serveur.com:8080"></label>
             <label>Identifiant<input name="username" autocapitalize="off" autocorrect="off" autocomplete="off"></label>
             <label>Mot de passe<input name="password" type="password" autocomplete="off"></label>
           </div>
@@ -26,10 +28,12 @@ internal object PhoneSetupPage {
         </form>
         <script>
         function show(){
-          var m3u=document.querySelector('input[name=mode]:checked').value=='m3u';
-          document.getElementById('m3u').style.display=m3u?'block':'none';
-          document.getElementById('xtream').style.display=m3u?'none':'block';
+          var mode=document.querySelector('input[name=mode]:checked').value;
+          document.getElementById('m3u').style.display=mode=='m3u'?'block':'none';
+          document.getElementById('account').style.display=mode=='m3u'?'none':'block';
+          document.getElementById('server').style.display=mode=='xtream'?'flex':'none';
         }
+        show();
         </script>
         """,
     )

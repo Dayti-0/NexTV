@@ -32,6 +32,12 @@ android {
         val footballKey = providers.environmentVariable("NEXTV_FOOTBALL_API_KEY").orNull.orEmpty()
         buildConfigField("String", "FOOTBALL_API_KEY", "\"${footballKey.replace("\"", "")}\"")
 
+        // Serveurs du fournisseur King (secret CI, jamais dans le dépôt public) : principal puis secours, séparés par
+        // des espaces, virgules ou retours à la ligne. Vide : pas d'onglet « King ».
+        val kingServers = providers.environmentVariable("NEXTV_KING_SERVERS").orNull.orEmpty()
+            .split(Regex("[\\s,;]+")).filter { it.isNotBlank() }.joinToString(" ") { it.replace("\"", "").replace("\\", "") }
+        buildConfigField("String", "KING_SERVERS", "\"$kingServers\"")
+
         // Dépôt GitHub dont les versions publiées servent de mises à jour (lecture anonyme : dépôt public).
         val updateRepository = providers.gradleProperty("nextv.updateRepo").orNull ?: "Dayti-0/NexTV"
         buildConfigField("String", "UPDATE_REPOSITORY", "\"${updateRepository.replace("\"", "")}\"")

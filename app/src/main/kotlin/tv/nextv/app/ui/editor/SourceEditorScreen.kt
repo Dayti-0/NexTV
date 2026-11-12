@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -27,6 +28,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -66,6 +68,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import tv.nextv.app.King
 import tv.nextv.app.R
 import tv.nextv.app.ui.common.appViewModel
 import tv.nextv.app.ui.common.describe
@@ -180,28 +183,29 @@ fun SourceEditorContent(
                                 label = stringResource(R.string.editor_name),
                                 placeholder = stringResource(R.string.editor_name_hint),
                             )
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                ChoiceTile(
-                                    icon = NexTvIcons.Link,
-                                    title = stringResource(R.string.editor_mode_url_short),
-                                    subtitle = stringResource(R.string.editor_mode_url_hint),
-                                    selected = state.mode == LocationMode.URL,
-                                    onClick = { onEdit { it.withMode(LocationMode.URL) } },
-                                )
-                                ChoiceTile(
-                                    icon = Icons.Filled.Person,
-                                    title = stringResource(R.string.editor_mode_xtream_short),
-                                    subtitle = stringResource(R.string.editor_mode_xtream_hint),
-                                    selected = state.mode == LocationMode.XTREAM,
-                                    onClick = { onEdit { it.withMode(LocationMode.XTREAM) } },
-                                )
-                                ChoiceTile(
-                                    icon = NexTvIcons.Folder,
-                                    title = stringResource(R.string.editor_mode_file_short),
-                                    subtitle = stringResource(R.string.editor_mode_file_hint),
-                                    selected = state.mode == LocationMode.FILE,
-                                    onClick = { onEdit { it.withMode(LocationMode.FILE) } },
-                                )
+                            // Façon d'ajouter la playlist ; sur un écran étroit (téléphone), deux par ligne.
+                            val modes = buildList {
+                                add(ModeChoice(LocationMode.URL, NexTvIcons.Link, R.string.editor_mode_url_short, R.string.editor_mode_url_hint))
+                                add(ModeChoice(LocationMode.XTREAM, Icons.Filled.Person, R.string.editor_mode_xtream_short, R.string.editor_mode_xtream_hint))
+                                if (King.available || state.mode == LocationMode.KING) {
+                                    add(ModeChoice(LocationMode.KING, Icons.Filled.Star, R.string.editor_mode_king_short, R.string.editor_mode_king_hint))
+                                }
+                                add(ModeChoice(LocationMode.FILE, NexTvIcons.Folder, R.string.editor_mode_file_short, R.string.editor_mode_file_hint))
+                            }
+                            val perRow = if (window.widthDp < 600 && modes.size > 3) 2 else modes.size
+                            for (row in modes.chunked(perRow)) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    for (choice in row) {
+                                        ChoiceTile(
+                                            icon = choice.icon,
+                                            title = stringResource(choice.title),
+                                            subtitle = stringResource(choice.hint),
+                                            selected = state.mode == choice.mode,
+                                            onClick = { onEdit { it.withMode(choice.mode) } },
+                                        )
+                                    }
+                                    repeat(perRow - row.size) { Spacer(Modifier.weight(1f)) }
+                                }
                             }
                             when (state.mode) {
                                 LocationMode.URL -> AddressField(
@@ -215,6 +219,11 @@ fun SourceEditorContent(
                                     state = state,
                                     onEdit = onEdit,
                                     serverError = errorText(SourceInputField.LOCATION),
+                                    usernameMissing = state.errors.containsKey(SourceInputField.USERNAME),
+                                )
+                                LocationMode.KING -> KingFields(
+                                    state = state,
+                                    onEdit = onEdit,
                                     usernameMissing = state.errors.containsKey(SourceInputField.USERNAME),
                                 )
                                 LocationMode.FILE -> DocumentField(
@@ -243,12 +252,13 @@ fun SourceEditorContent(
                                 UserAgentFields(state, onEdit, errorText(SourceInputField.USER_AGENT))
                             }
                         }
-                        if (state.mode == LocationMode.XTREAM) {
+                        if (state.mode == LocationMode.XTREAM || state.mode == LocationMode.KING) {
                             SectionCard(stringResource(R.string.editor_section_connection), icon = Icons.Filled.Lock) {
                                 UserAgentFields(state, onEdit, errorText(SourceInputField.USER_AGENT))
                             }
                         }
-                        if (state.mode != LocationMode.FILE) {
+                        // King : serveurs de secours intégrés, rien à saisir.
+                        if (state.mode != LocationMode.FILE && state.mode != LocationMode.KING) {
                             SectionCard(
                                 stringResource(R.string.editor_section_mirrors),
                                 subtitle = stringResource(R.string.editor_mirrors_help),
@@ -418,6 +428,30 @@ private fun XtreamFields(
         label = stringResource(R.string.editor_xtream_server),
         error = serverError,
         help = stringResource(R.string.editor_xtream_server_help),
+    )
+    NexTvTextField(
+        value = state.xtreamUsername,
+        onValueChange = { value -> onEdit { it.copy(xtreamUsername = value) } },
+        label = stringResource(R.string.editor_xtream_username),
+        error = if (usernameMissing) stringResource(R.string.editor_xtream_username_missing) else null,
+    )
+    NexTvTextField(
+        value = state.xtreamPassword,
+        onValueChange = { value -> onEdit { it.copy(xtreamPassword = value) } },
+        // Toujours en clair : on voit ce qu'on tape à la télécommande.
+        label = stringResource(R.string.editor_password),
+    )
+}
+
+private class ModeChoice(val mode: LocationMode, val icon: ImageVector, val title: Int, val hint: Int)
+
+/** Compte King : identifiant et mot de passe seulement, les serveurs sont dans l'application. */
+@Composable
+private fun KingFields(state: EditorState, onEdit: ((EditorState) -> EditorState) -> Unit, usernameMissing: Boolean) {
+    Text(
+        stringResource(R.string.editor_king_help),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     NexTvTextField(
         value = state.xtreamUsername,

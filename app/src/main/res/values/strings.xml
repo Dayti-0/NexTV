@@ -60,6 +60,9 @@
     <string name="editor_mode_url_hint">Playlist en ligne (HTTP ou HTTPS)</string>
     <string name="editor_mode_xtream_short">Xtream Codes</string>
     <string name="editor_mode_xtream_hint">Serveur, identifiant et mot de passe</string>
+    <string name="editor_mode_king_short">King</string>
+    <string name="editor_mode_king_hint">Identifiant et mot de passe</string>
+    <string name="editor_king_help">Les adresses des serveurs King (principal et secours) sont déjà dans l’application : il suffit de l’identifiant et du mot de passe.</string>
     <string name="editor_xtream_server">Adresse du serveur</string>
     <string name="editor_xtream_server_help">Donnée par le fournisseur, avec le port s’il y en a un (« :8080 »).</string>
     <string name="editor_address_start_none">Aucun</string>

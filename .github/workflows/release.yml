@@ -124,6 +124,8 @@ jobs:
           NEXTV_TMDB_API_KEY: ${{ secrets.NEXTV_TMDB_API_KEY }}
           # Clé football-data.org facultative (section Foot), intégrée de la même façon.
           NEXTV_FOOTBALL_API_KEY: ${{ secrets.NEXTV_FOOTBALL_API_KEY }}
+          # Serveurs du fournisseur King (onglet « King » : identifiant et mot de passe seulement).
+          NEXTV_KING_SERVERS: ${{ secrets.NEXTV_KING_SERVERS }}
         run: |
           ./gradlew :core:test :app:assembleRelease --stacktrace \
             -Pnextv.versionName="$VERSION" \
