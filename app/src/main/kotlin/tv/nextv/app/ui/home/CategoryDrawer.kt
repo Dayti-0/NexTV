@@ -162,8 +162,8 @@ internal fun CategoryDrawer(
                     true
                 },
         ) {
-            // Volet ouvert : les rangées derrière sont légèrement floutées.
-            Frosted(open, Modifier.fillMaxSize()) { content() }
+            // Volet ouvert : les rangées sont légèrement floutées sous lui (pas le reste de l'écran).
+            Frosted(open, DRAWER_WIDTH, Modifier.fillMaxSize()) { content() }
         }
         // Voile sur les rangées, plus léger vers la droite : elles restent visibles derrière.
         AnimatedVisibility(open, enter = fadeIn(tween(220)), exit = fadeOut(tween(180))) {

@@ -56,7 +56,7 @@ import tv.nextv.app.ui.components.WindowInfo
 
 /** Largeur du menu de gauche de Streaming replié (icônes seules) : place laissée au contenu. */
 internal val STREAMING_NAV_WIDTH: Dp = 76.dp
-private val STREAMING_NAV_OPEN_WIDTH: Dp = 240.dp
+internal val STREAMING_NAV_OPEN_WIDTH: Dp = 240.dp
 
 /**
  * Menu de gauche de l'interface Streaming, comme celui de Netflix : replié en icônes, il s'ouvre avec

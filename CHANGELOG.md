@@ -4,6 +4,10 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.126
+- Menu de gauche et volet des catégories : le flou n’est plus posé que sous le menu, le reste de l’écran reste net
+- Flou sous le menu : plus de traits de couleur autour des badges et des cartes
+
 ## 0.2.125
 - Interface Classique : la touche ☰ de la télécommande ouvre le menu des catégories (films, séries), et le referme
 

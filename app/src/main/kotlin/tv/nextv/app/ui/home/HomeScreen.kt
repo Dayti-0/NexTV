@@ -656,8 +656,8 @@ fun HomeContent(
                         },
                     ),
             ) {
-            // Menu de gauche ouvert : le contenu derrière est légèrement flouté.
-            Frosted(streamingNav && tabsFocused.value, Modifier.fillMaxSize()) {
+            // Menu de gauche ouvert : le contenu est légèrement flouté sous lui (pas le reste de l'écran).
+            Frosted(streamingNav && tabsFocused.value, STREAMING_NAV_OPEN_WIDTH, Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().padding(start = if (streamingNav) STREAMING_NAV_WIDTH else 0.dp)) {
                 if (!streamingNav) topBar()
                 when {
