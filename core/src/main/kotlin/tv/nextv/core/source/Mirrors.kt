@@ -2,6 +2,7 @@ package tv.nextv.core.source
 
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import tv.nextv.core.error.SourceError
+import tv.nextv.core.net.ExplicitPort
 import tv.nextv.core.model.SourceLocation
 
 /**
@@ -12,7 +13,7 @@ import tv.nextv.core.model.SourceLocation
 object Mirrors {
 
     /** Racine d'un serveur (« http://hôte:port »), `null` si l'adresse est invalide. */
-    fun normalize(input: String): String? = XtreamAccount.serverUrl(input)?.toString()?.trimEnd('/')
+    fun normalize(input: String): String? = XtreamAccount.serverUrl(input)?.let { ExplicitPort.text(it, input) }?.trimEnd('/')
 
     /** L'emplacement de la playlist, puis le même sur chaque serveur de secours. */
     fun locations(location: SourceLocation, mirrors: List<String>): List<SourceLocation> {

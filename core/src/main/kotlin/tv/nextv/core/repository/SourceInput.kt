@@ -6,6 +6,7 @@ import tv.nextv.core.model.Credentials
 import tv.nextv.core.model.EpgSettings
 import tv.nextv.core.model.SourceLocation
 import tv.nextv.core.model.SourceType
+import tv.nextv.core.net.ExplicitPort
 import tv.nextv.core.net.RemoteUrlValidator
 import tv.nextv.core.source.Mirrors
 
@@ -64,7 +65,8 @@ object SourceInputValidator {
                     if (embedded != null && credentials !is CredentialsChange.Replace) {
                         credentials = CredentialsChange.Replace(embedded)
                     }
-                    SourceLocation.Remote(result.url.toString())
+                    // Port écrit (« :80 ») conservé tel quel.
+                    SourceLocation.Remote(ExplicitPort.text(result.url, location.url))
                 }
             }
             is SourceLocation.LocalDocument -> {

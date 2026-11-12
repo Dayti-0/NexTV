@@ -20,9 +20,9 @@ class XtreamAccountTest {
     }
 
     @Test
-    fun `default port, pasted path and parameters are dropped from the server`() {
+    fun `pasted path and parameters are dropped from the server, written port kept`() {
         assertEquals(
-            "http://iptv.example.com/get.php?username=u&password=p&type=m3u_plus&output=ts",
+            "http://iptv.example.com:80/get.php?username=u&password=p&type=m3u_plus&output=ts",
             XtreamAccount("http://iptv.example.com:80/get.php?username=old&password=old", "u", "p").playlistUrl(),
         )
     }
@@ -47,7 +47,7 @@ class XtreamAccountTest {
             XtreamAccount.parse("http://iptv.example.com:8080/get.php?username=user1&password=secret&type=m3u_plus&output=ts"),
         )
         assertEquals(
-            XtreamAccount("http://iptv.example.com", "user1", "secret"),
+            XtreamAccount("http://iptv.example.com:80", "user1", "secret"),
             XtreamAccount.parse("http://iptv.example.com:80/get.php?username=user1&password=secret&type=m3u_plus&output=ts"),
         )
         assertNull(XtreamAccount.parse("http://iptv.example.com/playlist.m3u"))

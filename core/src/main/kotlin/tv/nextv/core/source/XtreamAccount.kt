@@ -2,6 +2,7 @@ package tv.nextv.core.source
 
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import tv.nextv.core.net.ExplicitPort
 import tv.nextv.core.net.RemoteUrlValidator
 
 /**
@@ -20,7 +21,7 @@ class XtreamAccount(val server: String, val username: String, val password: Stri
         ?.addQueryParameter("type", "m3u_plus")
         ?.addQueryParameter("output", "ts")
         ?.build()
-        ?.toString()
+        ?.let { ExplicitPort.text(it, server) }
 
     override fun equals(other: Any?): Boolean =
         other is XtreamAccount && other.server == server && other.username == username && other.password == password
@@ -48,7 +49,7 @@ class XtreamAccount(val server: String, val username: String, val password: Stri
             if (parsed.pathSegments.lastOrNull() != "get.php") return null
             val username = parsed.queryParameter("username")?.takeIf { it.isNotEmpty() } ?: return null
             val password = parsed.queryParameter("password") ?: return null
-            val root = parsed.newBuilder().encodedPath("/").query(null).fragment(null).build().toString().trimEnd('/')
+            val root = ExplicitPort.text(parsed.newBuilder().encodedPath("/").query(null).fragment(null).build(), url).trimEnd('/')
             return XtreamAccount(root, username, password)
         }
     }
