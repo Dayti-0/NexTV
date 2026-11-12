@@ -18,9 +18,9 @@ object QualityParser {
      * 4 : versions de secours « BKP » et « FHD++ (Très haute résolution) » regroupées avec la chaîne ;
      * 5 : versions d'un même film (« Truefrench », « FR », 4K, HD…) regroupées sous une seule affiche ;
      * 6 : éditions régionales de France 3 regroupées sous le nom de leur antenne, « Haute » gardé dans les noms,
-     * chaînes dont les noms ne diffèrent que par « TV » regroupées).
+     * chaînes dont les noms ne diffèrent que par « TV » regroupées ; 7 : « (True FR) » reconnu comme Truefrench).
      */
-    const val VERSION = 6
+    const val VERSION = 7
 
     data class Result(
         /** Nom sans les mentions de qualité ni de codec. */

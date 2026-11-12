@@ -121,6 +121,14 @@ class MovieVersionsTest {
     }
 
     @Test
+    fun trueFrWrittenShortIsTheSameFilm() = runBlocking {
+        val id = playlist(movie("À la dérive (True FR) 2018"), movie("À la dérive  (FR) 2018"))
+        assertEquals(listOf("À la dérive"), listed(id))
+        val shown = dao.pageMovies(id, 0, "", "").all().single()
+        assertEquals(listOf("TRUEFRENCH", "FR"), movieVersions(dao.movieVersions(id, shown.itemKey, shown.id), shown.id).map { it.label })
+    }
+
+    @Test
     fun withUhdHiddenTheSheetOffersTheOtherVersionFirst() = runBlocking {
         val id = playlist(movie("Hunger Games (2012) 4K"), movie("Hunger Games (2012) FHD"))
 

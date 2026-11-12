@@ -39,7 +39,7 @@ object ContentClassifier {
 
     /** Contenu d'une paire de parenthèses ou de crochets, n'importe où dans le titre. */
     private val BRACKET = Regex("""\s*[(\[]([^()\[\]]*)[)\]]""")
-    private const val VERSION_TAGS = "vostfr|vost|stfr|vf|vff|vfq|vfi|vf2|vo|multi|multi-?subs?|true\\s?french|subfrench|french|dual"
+    private const val VERSION_TAGS = "vostfr|vost|stfr|vf|vff|vfq|vfi|vf2|vo|multi|multi-?subs?|true\\s?french|true\\s?fr|subfrench|french|dual"
 
     /** Film en version française désignée par le seul code du pays (« Titre (FR) », « Titre - FR »). */
     private val MOVIE_COUNTRY = Regex("""(?i)\s*[(\[]\s*FR\s*[)\]]|\s+[\-|:]\s*FR\s*$""")
@@ -47,7 +47,7 @@ object ContentClassifier {
     /** Mots d'une mention de version entre parenthèses (« (Truefrench HDLight 1080p) ») : langue, puis source de la copie. */
     private val VERSION_WORDS = setOf(
         "VOSTFR", "VOST", "STFR", "VF", "VFF", "VFQ", "VFI", "VF2", "VO", "MULTI", "MULTISUB", "MULTISUBS", "TRUEFRENCH",
-        "SUBFRENCH", "FRENCH", "DUAL",
+        "TRUEFR", "SUBFRENCH", "FRENCH", "DUAL",
     )
     private val RELEASE_WORDS = setOf(
         "HDLIGHT", "LIGHT", "BLURAY", "BDRIP", "BRRIP", "WEBRIP", "WEBDL", "WEB", "DL", "DVDRIP", "HDRIP", "REMUX", "CAM", "HDCAM",
@@ -190,14 +190,18 @@ object ContentClassifier {
         return BRACKET.replace(title) { match ->
             var version = false
             var year: String? = null
+            var previous: String? = null
             for (found in WORD.findAll(match.groupValues[1])) {
                 val word = found.value.uppercase()
                 when {
                     word in VERSION_WORDS || word in RELEASE_ONLY_WORDS -> version = true
+                    // « (True FR) » : Truefrench écrit en abrégé.
+                    word == "FR" && previous == "TRUE" -> version = true
                     word in RELEASE_WORDS || QualityParser.isTechnical(word) -> Unit
                     year == null && YEAR_WORD.matches(word) -> year = word
                     else -> return@replace match.value
                 }
+                previous = word
             }
             when {
                 !version -> match.value
@@ -227,8 +231,9 @@ object ContentClassifier {
         val kept = WORD.findAll(title).mapTo(ArrayList()) { it.value.uppercase() }
         val removed = WORD.findAll(name).map { it.value.uppercase() }.filterNot { kept.remove(it) }.toList()
         val tag = when {
-            // « True French » en deux mots.
-            "TRUEFRENCH" in removed || removed.zipWithNext().any { (a, b) -> a == "TRUE" && b == "FRENCH" } -> "TRUEFRENCH"
+            // « True French » en deux mots, « TrueFR », « True FR ».
+            "TRUEFRENCH" in removed || "TRUEFR" in removed ||
+                removed.zipWithNext().any { (a, b) -> a == "TRUE" && (b == "FRENCH" || b == "FR") } -> "TRUEFRENCH"
             else -> VERSION_ORDER.firstOrNull { it in removed }
                 ?: prefix?.takeIf { it == "FR" || it in FOREIGN_PREFIXES }
                 ?: "FR".takeIf { "FR" in removed }

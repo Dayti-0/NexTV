@@ -278,6 +278,8 @@ class ContentClassifierTest {
             "À la dérive (Truefrench",
             "À la dérive (BluRay 1080p)",
             "À la dérive (2018) (TRUEFRENCH)",
+            "À la dérive (True FR)",
+            "À la dérive (TrueFR)",
         )
         for (name in names) assertEquals(name, "À la dérive", movie(name).title)
         // Mention de version avant celle de qualité.
@@ -288,6 +290,10 @@ class ContentClassifierTest {
         assertEquals(2018, movie("À la dérive (FR) (2018)").year)
         assertEquals(2018, movie("À la dérive (2018) (TRUEFRENCH)").year)
         assertNull(movie("À la dérive (FR)").year)
+        // Écritures réelles d'une playlist : la même affiche pour les deux.
+        assertEquals("À la dérive", movie("À la dérive (True FR) 2018").title)
+        assertEquals("À la dérive", movie("À la dérive  (FR) 2018").title)
+        assertEquals(2018, movie("À la dérive (True FR) 2018").year)
     }
 
     @Test
@@ -298,6 +304,9 @@ class ContentClassifierTest {
         assertEquals("TRUEFRENCH", tag("À la dérive (Truefrench)"))
         assertEquals("TRUEFRENCH", tag("À la dérive (True French HDLight)"))
         assertEquals("FR", tag("À la dérive (FR)"))
+        assertEquals("TRUEFRENCH", tag("À la dérive (True FR) 2018"))
+        // « True » seul dans un titre n'est pas une mention.
+        assertNull(tag("True Lies (1994)"))
         assertEquals("FR", tag("FR - À la dérive (2018)"))
         assertEquals("VOSTFR", tag("FR: Avatar (2009) VOSTFR"))
         assertEquals("MULTI", tag("Avatar (MULTI) 4K"))
