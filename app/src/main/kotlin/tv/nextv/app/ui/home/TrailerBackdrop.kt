@@ -3,7 +3,9 @@ package tv.nextv.app.ui.home
 import android.annotation.SuppressLint
 import android.graphics.Color as AndroidColor
 import android.view.View
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
+import android.webkit.WebViewClient
 import android.webkit.WebView
 import androidx.compose.animation.core.animateFloatAsState
 import android.webkit.JavascriptInterface
@@ -14,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -80,6 +83,9 @@ internal fun TrailerBackdrop(
         delayPassed = true
     }
     DisposableEffect(key) { onDispose { onShown(false) } }
+    // Mémoire de l'appareil épuisée : pas de bande-annonce automatique pendant un moment (celle qui joue
+    // s'arrête, l'image reste). Le bouton « Bande-annonce » (sans délai) reste permis.
+    if (delayMillis > 0 && TrailerMemory.paused) return
     if (!load) return
     // Taille du cadre donnée au lecteur en pixels CSS (= dp) : sur la Fire TV, la page calcule mal la
     // hauteur disponible (100 %, vh), et la vidéo ne tenait qu'une bande en haut, ou rien (carré noir).
@@ -191,6 +197,8 @@ private fun TrailerPage(
     onFailed: () -> Unit,
 ) {
     var view by remember { mutableStateOf<WebView?>(null) }
+    // Moteur de la page arrêté par le système (mémoire) : la vue n'est plus utilisable, elle est retirée.
+    var gone by remember { mutableStateOf(false) }
     // Vue cachée (alpha) avant la fin du délai : la page y prépare la vidéo (une vidéo cachée dans la page
     // n'était jamais lancée), puis la signale prête quand elle joue depuis son début.
     var ready by remember { mutableStateOf(false) }
@@ -219,6 +227,7 @@ private fun TrailerPage(
     // Délai écoulé : la vidéo préparée repart de 0 et apparaît.
     LaunchedEffect(view, delayPassed) { if (delayPassed) view?.evaluateJavascript("allow()", null) }
     LaunchedEffect(visible) { shown(visible) }
+    if (gone) return
     AndroidView(
         factory = { context ->
             trailerView(
@@ -226,6 +235,15 @@ private fun TrailerPage(
                 onVisible = { ready = it },
                 onFinished = { ready = false; shown(false); finished() },
                 onFailed = { failed() },
+                onGone = { crashed ->
+                    gone = true
+                    view = null
+                    ready = false
+                    TrailerMemory.pause()
+                    noteRendererGone(context, crashed)
+                    shown(false)
+                    finished()
+                },
             ).also { view = it }
         },
         update = { web -> web.alpha = alpha },
@@ -248,8 +266,20 @@ private fun trailerView(
     onVisible: (Boolean) -> Unit,
     onFinished: () -> Unit,
     onFailed: () -> Unit,
+    /** Moteur de la page arrêté (vrai : planté ; faux : fermé par le système pour libérer de la mémoire). */
+    onGone: (Boolean) -> Unit,
 ): WebView = WebView(context).apply {
     alpha = 0f
+    // Le moteur de la page tourne dans un processus à part, que le système ferme en premier quand la mémoire
+    // manque (YouTube en prend beaucoup). Sans cette réponse, Android ferme toute l'application avec lui
+    // (« Fermeture brutale » sur la Fire TV, écran Films) : la vue est seulement retirée, l'image revient.
+    webViewClient = object : WebViewClient() {
+        override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+            view.visibility = View.GONE
+            onGone(detail.didCrash())
+            return true
+        }
+    }
     // La page signale quand montrer la vidéo (elle joue depuis son début), la cacher, et la fin.
     val web = this
     addJavascriptInterface(
@@ -404,6 +434,42 @@ private const val PRELOAD_AFTER_MILLIS = 600L
 internal fun warmUpWebView(context: android.content.Context) {
     runCatching { WebView(context).destroy() }
 }
+
+/**
+ * Bandes-annonces automatiques suspendues quand la mémoire de l'appareil est épuisée : signal « critique » du
+ * système, ou page de la bande-annonce fermée par lui. Une page YouTube prend plusieurs centaines de Mo, de quoi
+ * faire fermer l'application sur une Fire TV.
+ */
+internal object TrailerMemory {
+    private var pausedUntil by mutableLongStateOf(0L)
+
+    /** Horloge (remplacée dans les tests). */
+    var clock: () -> Long = android.os.SystemClock::elapsedRealtime
+
+    /** Lu dans une composition : elle se refait quand la suspension commence (pas à sa fin, relue au prochain contenu). */
+    val paused: Boolean get() = pausedUntil > clock()
+
+    /** À appeler sur le fil principal. */
+    fun pause() {
+        pausedUntil = clock() + TRAILER_MEMORY_PAUSE_MILLIS
+    }
+
+    internal fun reset() {
+        pausedUntil = 0L
+    }
+}
+
+/** Durée de la suspension des bandes-annonces automatiques après un manque de mémoire. */
+internal const val TRAILER_MEMORY_PAUSE_MILLIS = 10 * 60_000L
+
+/** Note dans « Dernier incident » (sans le remplacer s'il s'agit d'un plantage) la page arrêtée par le système. */
+private fun noteRendererGone(context: android.content.Context, crashed: Boolean) {
+    val app = context.applicationContext as? tv.nextv.app.NexTvApplication ?: return
+    val reason = if (crashed) "plantage de la page YouTube" else "fermée par le système, mémoire insuffisante"
+    app.crashLog.record(TrailerStoppedException("Bande-annonce arrêtée ($reason) : application gardée ouverte"), fatal = false)
+}
+
+private class TrailerStoppedException(message: String) : RuntimeException(message)
 
 /** Lecture qui ne démarre pas (réseau, page bloquée) : abandonnée au bout de ce temps. */
 private const val START_TIMEOUT_MILLIS = 20_000

@@ -4,6 +4,10 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.122
+- Fire TV : l’application ne se ferme plus d’un coup sur l’écran Films quand la mémoire manque (la bande-annonce du bandeau s’arrête et l’image revient)
+- Mémoire presque pleine : les bandes-annonces automatiques font une pause de 10 minutes (le bouton « Bande-annonce » marche toujours)
+
 ## 0.2.121
 - King : nouveaux serveurs intégrés ; une playlist King déjà enregistrée les reprend en secours au démarrage
 

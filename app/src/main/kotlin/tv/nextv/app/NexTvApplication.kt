@@ -15,6 +15,7 @@ import coil3.SingletonImageLoader
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import okhttp3.Call
 import okhttp3.Request
+import tv.nextv.app.ui.home.TrailerMemory
 import tv.nextv.core.log.Redactor
 import tv.nextv.core.net.RequestPurpose
 import java.io.File
@@ -67,6 +68,10 @@ class NexTvApplication : Application(), SingletonImageLoader.Factory {
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
         SystemExits.pressureName(level)?.let(crashLog::memoryPressure)
+        // Mémoire presque épuisée : la bande-annonce (page YouTube, très gourmande) s'arrête et les suivantes
+        // attendent ; c'est elle qui faisait fermer l'application par le système sur la Fire TV.
+        @Suppress("DEPRECATION")
+        if (level == TRIM_MEMORY_RUNNING_CRITICAL) TrailerMemory.pause()
     }
 
     /** Les logos passent par le même client HTTP (proxy « playlists et logos » compris). */
