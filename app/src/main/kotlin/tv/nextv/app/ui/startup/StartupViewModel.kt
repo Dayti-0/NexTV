@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import tv.nextv.app.King
 import tv.nextv.app.AppContainer
 import tv.nextv.app.ui.common.describe
 import tv.nextv.core.catalog.QualityParser
@@ -83,6 +84,8 @@ class StartupViewModel(
 
     private suspend fun run() {
         report(StartupStep.PREPARING, 0f)
+        // Playlists King : serveurs de secours à jour (liste de cette version de l'application).
+        runCatching { King.syncMirrors(container.playlistStore) }
         val sources = container.playlistStore.getSources()
         if (sources.isEmpty()) {
             mutableDestination.value = StartupDestination.WELCOME

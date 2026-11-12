@@ -25,6 +25,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import tv.nextv.core.repository.SourceInput
 import tv.nextv.app.AppContainer
 import tv.nextv.app.King
 import tv.nextv.app.PlaylistImport
@@ -124,5 +125,29 @@ class KingAccountTest {
         compose.onNodeWithText("Identifiant").assertExists()
         compose.onNodeWithText("Adresse du serveur").assertDoesNotExist()
         compose.onNodeWithText("Ajouter un serveur").assertDoesNotExist()
+    }
+
+    /**
+     * Nouveaux serveurs King dans une version plus récente : une playlist King déjà enregistrée les reprend au
+     * démarrage, une autre playlist n'est pas touchée.
+     */
+    @Test
+    fun `saved King playlists follow the servers of the app`() = runBlocking {
+        val container = AppContainer(RuntimeEnvironment.getApplication())
+        val store = container.playlistStore
+        val king = container.sourceRepository.add(
+            SourceInput("King", SourceLocation.Remote("http://king-a.test:80/get.php?username=moi&password=secret&type=m3u_plus"), mirrors = listOf("http://king-b.test:80")),
+        )
+        val other = container.sourceRepository.add(
+            SourceInput("Autre", SourceLocation.Remote("http://autre.test/get.php?username=a&password=b"), mirrors = listOf("http://autre-2.test")),
+        )
+        // Version suivante : un serveur ajouté (king-d), un retiré (king-b).
+        King.servers = King.parse("http://king-a.test:80 http://king-c.test http://king-d.test")
+
+        assertEquals(1, King.syncMirrors(store))
+        assertEquals(listOf("http://king-c.test", "http://king-d.test"), store.getSource(king)!!.mirrors)
+        assertEquals(listOf("http://autre-2.test"), store.getSource(other)!!.mirrors)
+        // Déjà à jour : rien à faire au démarrage suivant.
+        assertEquals(0, King.syncMirrors(store))
     }
 }

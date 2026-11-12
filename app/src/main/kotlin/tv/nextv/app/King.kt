@@ -1,6 +1,8 @@
 package tv.nextv.app
 
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import tv.nextv.core.model.SourceLocation
+import tv.nextv.core.repository.PlaylistStore
 import tv.nextv.core.source.Mirrors
 import tv.nextv.core.source.XtreamAccount
 
@@ -37,6 +39,25 @@ object King {
     fun mirrorsFor(url: String): List<String> {
         val server = XtreamAccount.parse(url)?.server
         return servers.filterNot { server != null && sameServer(it, server) }
+    }
+
+    /**
+     * Playlists King déjà enregistrées : leurs serveurs de secours suivent la liste de l'application (nouveaux serveurs
+     * ajoutés après coup, serveurs retirés). Sans cela, une playlist gardait ceux du jour de son ajout.
+     * Rend le nombre de playlists mises à jour.
+     */
+    suspend fun syncMirrors(store: PlaylistStore): Int {
+        if (!available) return 0
+        var updated = 0
+        for (source in store.getSources()) {
+            val url = (source.location as? SourceLocation.Remote)?.url ?: continue
+            if (!isKing(url)) continue
+            val wanted = mirrorsFor(url)
+            if (source.mirrors == wanted) continue
+            store.updateSourceDefinition(source.copy(mirrors = wanted))
+            updated++
+        }
+        return updated
     }
 
     private fun sameServer(a: String, b: String): Boolean {
