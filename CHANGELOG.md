@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.114
+- Recherche globale : les films déjà vus portent la pastille « Déjà vu », comme dans les rangées
+
 ## 0.2.113
 - Playlist et serveurs de secours : un port écrit à la fin de l'adresse (« :80 ») est conservé et réapparaît dans les réglages
 

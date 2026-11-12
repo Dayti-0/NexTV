@@ -59,6 +59,34 @@ class GlobalSearchTest {
         compose.onNodeWithText("Séries").assertDoesNotExist()
     }
 
+    /** Film déjà vu trouvé par la recherche : même pastille « Déjà vu » que dans les rangées. */
+    @Test
+    fun `watched film shows its badge`() {
+        val watched = SampleData.movies.first()
+        compose.setContent {
+            NexTvTheme(ThemeStyle.NIGHT) {
+                val channels = remember { flowOf(PagingData.from(emptyList<tv.nextv.app.data.db.ChannelListRow>())) }.collectAsLazyPagingItems()
+                val movies = remember { flowOf(PagingData.from(listOf(watched))) }.collectAsLazyPagingItems()
+                val series = remember { flowOf(PagingData.from(emptyList<SeriesRow>())) }.collectAsLazyPagingItems()
+                androidx.compose.runtime.CompositionLocalProvider(LocalWatchedKeys provides setOf(watched.toPoster().itemKey)) {
+                    GlobalSearch(
+                        query = "a",
+                        onQuery = {},
+                        onClose = {},
+                        channels = channels,
+                        movies = movies,
+                        series = series,
+                        content = ShelfContent(HomeSection.TV, emptyList(), HomeRows(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), Discover(), emptySet(), SampleData.NOW),
+                        lastOpened = remember { mutableStateOf(null) },
+                        actions = HomeActions(),
+                    )
+                }
+            }
+        }
+        compose.waitForIdle()
+        compose.onNodeWithText("Déjà vu", useUnmergedTree = true).assertIsDisplayed()
+    }
+
     /** Film ouvert depuis la recherche, puis retour de sa fiche : la sélection revient sur ce film (pas sur « Retour »). */
     @OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
     @Test

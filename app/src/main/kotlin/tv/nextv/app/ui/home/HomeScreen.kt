@@ -283,33 +283,43 @@ fun HomeScreen(
         onPosterFocus = viewModel::onPosterFocused,
     )
 
+    // Films et épisodes déjà vus : badge « Déjà vu » sur leurs affiches.
+    val watchedKeys by viewModel.watchedKeys.collectAsStateWithLifecycle()
+    // Affiches TMDB (celles des fiches) dans les rangées.
+    val posters by viewModel.posters.collectAsStateWithLifecycle()
+    val requestPoster = remember(viewModel) { { item: PosterItem -> viewModel.requestPoster(item) } }
+    val posterArt = remember(posters) { PosterArt(posters.first, posters.second, requestPoster) }
+
     if (searching) {
-        GlobalSearch(
-            query = searchText,
-            onQuery = {
-                searchText = it
-                viewModel.searchEverywhere(it)
-            },
-            onClose = closeSearch,
-            channels = channels,
-            movies = movies,
-            series = series,
-            content = ShelfContent(
-                section = HomeSection.TV,
-                groups = emptyList(),
-                rows = viewModel.rows,
-                favoriteChannels = favoriteChannels,
-                recentChannels = recentChannels,
-                favoriteMovies = favoriteMovies,
-                favoriteSeries = favoriteSeries,
-                continueItems = emptyList(),
-                discover = Discover(),
-                favoriteKeys = favoriteKeys,
-                now = now,
-            ),
-            lastOpened = rememberLastOpened(),
-            actions = actions,
-        )
+        // Recherche de partout : mêmes pastilles « Déjà vu » et affiches que dans les rangées.
+        CompositionLocalProvider(LocalWatchedKeys provides watchedKeys, LocalPosterArt provides posterArt) {
+            GlobalSearch(
+                query = searchText,
+                onQuery = {
+                    searchText = it
+                    viewModel.searchEverywhere(it)
+                },
+                onClose = closeSearch,
+                channels = channels,
+                movies = movies,
+                series = series,
+                content = ShelfContent(
+                    section = HomeSection.TV,
+                    groups = emptyList(),
+                    rows = viewModel.rows,
+                    favoriteChannels = favoriteChannels,
+                    recentChannels = recentChannels,
+                    favoriteMovies = favoriteMovies,
+                    favoriteSeries = favoriteSeries,
+                    continueItems = emptyList(),
+                    discover = Discover(),
+                    favoriteKeys = favoriteKeys,
+                    now = now,
+                ),
+                lastOpened = rememberLastOpened(),
+                actions = actions,
+            )
+        }
         return
     }
 
@@ -362,12 +372,6 @@ fun HomeScreen(
         return
     }
 
-    // Films et épisodes déjà vus : badge « Déjà vu » sur leurs affiches.
-    val watchedKeys by viewModel.watchedKeys.collectAsStateWithLifecycle()
-    // Affiches TMDB (celles des fiches) dans les rangées.
-    val posters by viewModel.posters.collectAsStateWithLifecycle()
-    val requestPoster = remember(viewModel) { { item: PosterItem -> viewModel.requestPoster(item) } }
-    val posterArt = remember(posters) { PosterArt(posters.first, posters.second, requestPoster) }
     CompositionLocalProvider(LocalWatchedKeys provides watchedKeys, LocalPosterArt provides posterArt) {
         HomeContent(
             onMenu = if (layout == HomeLayout.PREMIUM) ({ premiumMenu = true }) else null,
