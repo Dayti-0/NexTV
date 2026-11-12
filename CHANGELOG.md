@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.121
+- King : nouveaux serveurs intégrés ; une playlist King déjà enregistrée les reprend en secours au démarrage
+
 ## 0.2.120
 - Films sans badge de qualité : l’application demande la résolution au serveur (fiche du film) et le badge apparaît sur l’affiche et la fiche
 - Films et épisodes lus : leur vraie résolution donne le badge quand le nom n’en indique pas ; gardé après chaque actualisation de la playlist
