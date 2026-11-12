@@ -15,7 +15,8 @@ object ChannelNames {
      * ignorées (« MATCH 4 (1 AUDIO StadiumFX) » : ni « audio », ni son « 1 »), comme « 24/24 ».
      */
     fun tokens(name: String): List<String> {
-        val withoutDetails = ROUND_THE_CLOCK.replace(BRACKETED.replace(name, " "), " ")
+        // « FHD+ », « HD+ » : mention de qualité, pas le « + » d'un nom (« Canal+ »).
+        val withoutDetails = QUALITY_PLUS.replace(ROUND_THE_CLOCK.replace(BRACKETED.replace(name, " "), " "), "$1")
         val spelled = withoutDetails.lowercase().replace("+", " plus ").replace("&", " et ")
         val folded = MARKS.replace(Normalizer.normalize(spelled, Normalizer.Form.NFD), "")
         return folded.split(NON_ALPHANUMERIC)
@@ -96,6 +97,8 @@ object ChannelNames {
     /** « 24/24 », « 24h/24 » : chaînes à thème unique du guide (« Turbo 24/24 »). */
     private val ROUND_THE_CLOCK = Regex("""\b24\s*[hH]?\s*/\s*24\b""")
 
+    private val QUALITY_PLUS = Regex("""(?i)\b((?:F|U)?HD)\+""")
+
     /** Coupure entre deux mots écrits à la suite (« MotorVision », « BSmartTV », « LaChaineMeteo »). */
     private val CAMEL_CASE = Regex("(?<=[a-z])(?=[A-Z])")
 
@@ -154,6 +157,38 @@ object ChannelNames {
         // Ancienne BFM Paris Île-de-France.
         "Le Figaro IDF" to listOf("Le Figaro TV Ile-de-France", "Le Figaro TV", "BFM Paris Ile-de-France", "BFM Paris"),
         "Le Figaro Ile-de-France" to listOf("Le Figaro TV", "BFM Paris Ile-de-France", "BFM Paris"),
+        // BFM régionales : nom complet de l'antenne dans le guide.
+        "BFM Marseille" to listOf("BFM Marseille Provence"),
+        "BFM Nice" to listOf("BFM Nice Cote d'Azur"),
+        "BFM Toulon" to listOf("BFM Toulon Var"),
+        "BFM Dici Alpes" to listOf("BFM DICI Alpes du Sud"),
+        // Ciné+ sans son « + ».
+        "Cine Family" to listOf("Ciné+ Family"),
+        "Cine Festival" to listOf("Ciné+ Festival"),
+        "Cine Classic" to listOf("Ciné+ Classic"),
+        "Cine Frisson" to listOf("Ciné+ Frisson"),
+        "Cine Emotion" to listOf("Ciné+ Emotion"),
+        "Cine Premier" to listOf("CinePlusPremier", "OCS"),
+        "Cine OCS" to listOf("CinePlusPremier"),
+        "Stangray Classica" to listOf("StingrayClassica"),
+        "National Geo Wild" to listOf("NatGeoWild", "Nat Geo Wild"),
+        "BBC Earth France" to listOf("BBC Earth"),
+        "CGTN France" to listOf("CGTN"),
+        "TVPI Basque" to listOf("TVPI"),
+        "Tele Melody" to listOf("Melody TV"),
+        "Myzen Nature" to listOf("My Zen TV"),
+        "Trace Urban DOM" to listOf("Trace Urban"),
+        "RMC Sport Live 4" to listOf("RMCSport4"),
+        // Outre-mer La 1ère, écrite « Première ».
+        "Guadeloupe Premiere" to listOf("Guadeloupe 1ère"),
+        "Martinique Premiere" to listOf("Martinique 1ère"),
+        "Guyane Premiere" to listOf("Guyane 1ère"),
+        "Reunion Premiere" to listOf("Reunion 1ère"),
+        "Mayotte Premiere" to listOf("Mayotte 1ère"),
+        "Polynesie Premiere" to listOf("Polynesie 1ère"),
+        "Nouvelle Caledonie Premiere" to listOf("Nouvelle Caledonie 1ère"),
+        "Wallis et Futuna Premiere" to listOf("Wallis et Futuna 1ère"),
+        "Saint Pierre et Miquelon Premiere" to listOf("Saint Pierre et Miquelon 1ère"),
         "Le Figaro Paris" to listOf("Le Figaro TV Ile-de-France", "Le Figaro TV", "BFM Paris Ile-de-France", "BFM Paris"),
     ).mapNotNull { (alias, targets) -> key(alias)?.let { it to targets.mapNotNull(::key) } }.toMap()
 }

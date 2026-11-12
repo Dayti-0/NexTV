@@ -72,6 +72,72 @@ class EpgImporterTest {
     }
 
     @Test
+    fun `a channel from another country never takes the French programme of the same name`() {
+        val guide = listOf(
+            XmltvChannel("DAZN.fr", listOf("DAZN 1")),
+            XmltvChannel("beINSPORTS1.fr", listOf("beIN SPORTS 1")),
+            XmltvChannel("ZDF.de", listOf("ZDF")),
+            XmltvChannel("AB3.fr", listOf("AB3")),
+            XmltvChannel("LaUne.be", listOf("La Une")),
+            XmltvChannel("MaChaineSport.fr", listOf("Ma Chaine Sport")),
+        )
+        val channels = listOf(
+            EpgChannelRef(1, tvgId = null, tvgName = null, name = "|DE| DAZN 1 HD"),
+            EpgChannelRef(2, tvgId = "beinsports1.fr", tvgName = null, name = "|AR| BEIN SPORTS 1 HD"),
+            EpgChannelRef(3, tvgId = null, tvgName = null, name = "|DE| ZDF HD"),
+            EpgChannelRef(4, tvgId = null, tvgName = null, name = "|PL| DAZN 1"),
+            // Belgique : ses chaînes et les françaises qu'elle reprend.
+            EpgChannelRef(5, tvgId = null, tvgName = null, name = "|BE| AB3 FHD"),
+            EpgChannelRef(6, tvgId = null, tvgName = null, name = "|BE| LA UNE HD"),
+            EpgChannelRef(7, tvgId = null, tvgName = null, name = "|FR| DAZN 1 HD"),
+            EpgChannelRef(8, tvgId = null, tvgName = null, name = "|INT| DAZN 1"),
+            // « MA » sans séparateur : un mot du nom, pas le Maroc.
+            EpgChannelRef(9, tvgId = null, tvgName = null, name = "MA CHAINE SPORT HD"),
+        )
+
+        val mapping = EpgImporter(parserFactory = { KXmlParser() }).match(channels, guide, emptySet())
+
+        assertEquals(
+            mapOf(3L to "zdf.de", 5L to "ab3.fr", 6L to "laune.be", 7L to "dazn.fr", 8L to "dazn.fr", 9L to "machainesport.fr"),
+            mapping,
+        )
+    }
+
+    @Test
+    fun `other names used by the playlist for guide channels`() {
+        val guide = listOf(
+            XmltvChannel("ProvenceAzur.fr", listOf("BFM MARSEILLE PROVENCE")),
+            XmltvChannel("AzurTV.fr", listOf("BFM NICE COTE D'AZUR")),
+            XmltvChannel("CinePlusFamiz.fr", listOf("Ciné+ Family")),
+            XmltvChannel("CinePlusPremier.fr", listOf("OCS")),
+            XmltvChannel("NatGeoWild.fr", listOf("NatGeoWild")),
+            XmltvChannel("Guyane1.fr", listOf("Guyane 1ère")),
+            XmltvChannel("RMCSport4.fr", listOf("RMCSport4.fr")),
+            XmltvChannel("Melody.fr", listOf("MELODY TV")),
+        )
+        val channels = listOf(
+            EpgChannelRef(1, tvgId = null, tvgName = null, name = "|FR| BFM MARSEILLE HD"),
+            EpgChannelRef(2, tvgId = null, tvgName = null, name = "|FR| BFM NICE FHD"),
+            EpgChannelRef(3, tvgId = null, tvgName = null, name = "|FR| CINE FAMILY FHD+ (Resolution Exclusive)"),
+            EpgChannelRef(4, tvgId = null, tvgName = null, name = "|FR| CINE OCS HD"),
+            EpgChannelRef(5, tvgId = null, tvgName = null, name = "|FR| NATIONAL GEO WILD FHD+"),
+            EpgChannelRef(6, tvgId = null, tvgName = null, name = "|FR| GUYANE PREMIERE HD"),
+            EpgChannelRef(7, tvgId = null, tvgName = null, name = "|FR| RMC SPORT LIVE 4 FHD"),
+            EpgChannelRef(8, tvgId = null, tvgName = null, name = "|FR| TELE MELODY HD"),
+        )
+
+        val mapping = EpgImporter(parserFactory = { KXmlParser() }).match(channels, guide, emptySet())
+
+        assertEquals(
+            mapOf(
+                1L to "provenceazur.fr", 2L to "azurtv.fr", 3L to "cineplusfamiz.fr", 4L to "cinepluspremier.fr",
+                5L to "natgeowild.fr", 6L to "guyane1.fr", 7L to "rmcsport4.fr", 8L to "melody.fr",
+            ),
+            mapping,
+        )
+    }
+
+    @Test
     fun `numbers with leading zeros, extra mentions and word order are tolerated`() {
         val guide = listOf(
             XmltvChannel("Ligue1Plus.fr", listOf("Ligue 1+")),

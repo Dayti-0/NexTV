@@ -214,17 +214,22 @@ class EpgImporter(
             antennas
         }
         for (channel in channels) {
-            val byId = channel.tvgId?.let(::normalizeId)?.takeIf { it in ids }
             val names = listOfNotNull(channel.tvgName, channel.name)
+            // Chaîne d'un autre pays (« |DE| DAZN 1 », « |AR| BEIN SPORTS 1 ») : seulement une chaîne de ce pays dans
+            // le guide, jamais la française du même nom (autre programme). Pays absent du guide : pas de programme.
+            val domains = names.firstNotNullOfOrNull(::countryDomains)
+            if (domains != null && domains.isEmpty()) continue
+            val allowed = { id: String? -> id?.takeIf { domains == null || it.substringAfterLast('.', "") in domains } }
+            val byId = allowed(channel.tvgId?.let(::normalizeId)?.takeIf { it in ids })
             val region = lazy(LazyThreadSafetyMode.NONE) { names.firstNotNullOfOrNull(FranceRegions::regionOf) }
             // Nom exact, puis sans préfixe de langue ni mention de qualité (« FR| LIGUE 1+ 5 FHD » → « Ligue 1+ 5 »).
             val matched = byId
-                ?: names.firstNotNullOfOrNull { byName[normalizeName(it)] }
-                ?: names.firstNotNullOfOrNull { byName[normalizeName(ContentClassifier.cleanTitle(it))] }
-                ?: region.value?.let { regional.value[it.key] }
-                ?: names.firstNotNullOfOrNull { loose.value.find(ContentClassifier.cleanTitle(it)) }
+                ?: names.firstNotNullOfOrNull { allowed(byName[normalizeName(it)]) }
+                ?: names.firstNotNullOfOrNull { allowed(byName[normalizeName(ContentClassifier.cleanTitle(it))]) }
+                ?: region.value?.let { allowed(regional.value[it.key]) }
+                ?: names.firstNotNullOfOrNull { allowed(loose.value.find(ContentClassifier.cleanTitle(it))) }
                 // Édition régionale absente du guide : le programme national de France 3, le même hors décrochages.
-                ?: region.value?.let { byName[FRANCE_3] }
+                ?: region.value?.let { allowed(byName[FRANCE_3]) }
             if (matched != null) result[channel.channelId] = matched
         }
         return result
@@ -236,7 +241,7 @@ class EpgImporter(
          * avec une version antérieure est réimporté dès le lancement suivant, sans attendre sa
          * réimportation quotidienne.
          */
-        const val VERSION = 7
+        const val VERSION = 8
 
         /** Nom du guide de la chaîne nationale France 3 ([normalizeName]). */
         private const val FRANCE_3 = "france3"
@@ -248,6 +253,40 @@ class EpgImporter(
         private val SPORTS_HINTS = listOf("sport", "foot", "ligue1", "bein", "dazn", "canalplus", "rmc", "equipe", "primevideo", "amazon")
 
         fun normalizeId(id: String): String = id.trim().lowercase()
+
+        /** Pays écrit en tête du nom et suivi d'un séparateur (« |DE| », « ES: », « [UK] ») : pas « MA CHAINE ». */
+        private val COUNTRY_PREFIX = Regex("""^[\s|\[(]*([A-Z]{2,3})\s*(?:[|:\])]|-\s)""")
+
+        /**
+         * Suffixes des identifiants du guide permis pour une chaîne marquée d'un pays étranger ; `null` : chaîne
+         * française ou sans pays (aucune limite). Belgique et Suisse gardent aussi les chaînes françaises (AB3,
+         * ABXplore, chaînes reprises telles quelles). Pays inconnu du guide : liste vide.
+         */
+        internal fun countryDomains(name: String): Set<String>? {
+            val code = COUNTRY_PREFIX.find(name)?.groupValues?.get(1) ?: return null
+            return when (code) {
+                "FR", "FRA" -> null
+                "BE", "CH", "LU" -> setOf(code.lowercase(), "fr")
+                "DE", "AT", "GER" -> setOf("de")
+                "UK", "GB", "EN", "ENG" -> setOf("uk")
+                "US", "USA" -> setOf("us")
+                "CA" -> setOf("ca")
+                "ES", "ESP" -> setOf("es")
+                "PT" -> setOf("pt")
+                "BR" -> setOf("br")
+                "AR", "ARA", "DZ", "MA", "TN" -> setOf("ar")
+                "SN" -> setOf("sn")
+                "CI" -> setOf("ci")
+                "CN" -> setOf("cn")
+                "AF" -> setOf("af")
+                "IT", "ITA", "PL", "TR", "TUR", "NL", "RU", "RO", "GR", "SE", "DK", "NO", "FI", "IN", "HR", "BA", "AL", "CZ",
+                "AM", "RS", "HU", "BG", "UA", "IL", "IR", "PK", "JP", "KR", "MX", "LAT", "SW", "SWE", "BH", "ZA", "SI", "MK", "ME", "SK",
+                "LT", "LV", "EE", "IS", "EX", "YU",
+                -> emptySet()
+                // Autres mentions (« |INT| », « VIP »…) : pas un pays connu, aucune limite.
+                else -> null
+            }
+        }
 
         /**
          * Minuscules, sans accents ni ponctuation ; « + » devient « plus » (« Canal+ » = « CanalPlus »,

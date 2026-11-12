@@ -4,6 +4,10 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.115
+- Guide TV : plus de chaînes françaises reliées à leur programme (BFM Marseille, Nice, Toulon et DICI Alpes, Ciné+ Family, Festival, Classic et OCS, National Geo Wild, BBC Earth, CGTN, TVPI, Télé Melody, My Zen, RMC Sport Live 4, Guyane Première, chaînes en « FHD+ »)
+- Guide TV : une chaîne d'un autre pays (|DE|, |ES|, |AR|…) n'affiche plus le programme de la chaîne française du même nom (DAZN, beIN Sports, Eurosport…)
+
 ## 0.2.114
 - Recherche globale : les films déjà vus portent la pastille « Déjà vu », comme dans les rangées
 
