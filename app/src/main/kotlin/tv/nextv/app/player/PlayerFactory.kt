@@ -17,6 +17,12 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.decoder.ffmpeg.FfmpegLibrary
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.LoadControl
+import androidx.media3.exoplayer.analytics.PlayerId
+import androidx.media3.exoplayer.source.TrackGroupArray
+import androidx.media3.exoplayer.trackselection.ExoTrackSelection
+import androidx.media3.exoplayer.upstream.Allocator
+import androidx.media3.common.Timeline
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.exoplayer.audio.AudioCapabilities
 import androidx.media3.exoplayer.audio.DefaultAudioSink
@@ -77,8 +83,9 @@ class PlayerFactory(
      *
      * @param preferredDecoders décodeur choisi par type de flux (réglages), essayé en premier.
      * @param adVolume option « baisser le son des pubs », appliquée au son décodé.
-     * @param preview aperçu de l'accueil : petite mémoire tampon (il cède vite la place au plein écran).
+     * @param preview aperçu de l'accueil : petite mémoire tampon, sans prendre le son au système.
      * @param passthrough son Dolby / DTS envoyé tel quel à l'ampli.
+     * @param liveBuffer mémoire tampon d'un direct qui peut passer de l'aperçu au plein écran (et inversement).
      */
     fun create(
         bandwidthMeter: DefaultBandwidthMeter? = null,
@@ -95,6 +102,7 @@ class PlayerFactory(
         softwareAudio: Boolean = false,
         /** Film ou épisode (et non un direct) : plus d'avance en mémoire, et moins de reprises hachées. */
         film: Boolean = false,
+        liveBuffer: LiveLoadControl? = null,
     ): ExoPlayer {
         // Repli automatique sur un autre décodeur si le premier ne démarre pas (box aux décodeurs capricieux).
         val renderers = object : DefaultRenderersFactory(context) {
@@ -130,10 +138,10 @@ class PlayerFactory(
         val builder = ExoPlayer.Builder(context, renderers)
             // Flux donné sans sa source (setMediaItem) : client « flux » quand même (proxy), sans identifiants.
             .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(context, OkHttpDataSource.Factory(clients.client(RequestPurpose.STREAM)))))
-            .setLoadControl(if (preview) previewLoadControl() else if (film) filmLoadControl() else loadControl())
+            .setLoadControl(liveBuffer ?: if (preview) liveLoadControl(preview = true) else if (film) filmLoadControl() else loadControl())
         if (bandwidthMeter != null) builder.setBandwidthMeter(bandwidthMeter)
         // L'aperçu de l'accueil ne prend pas le son au système.
-        return builder.build().also { if (!preview) takeSound(it) }
+        return builder.build().also { if (preview) releaseSound(it) else takeSound(it) }
     }
 
     /**
@@ -142,12 +150,24 @@ class PlayerFactory(
      * sortie son disparaît (casque débranché). Aussi pour l'aperçu repris par le plein écran.
      */
     fun takeSound(player: ExoPlayer) {
-        player.setAudioAttributes(
-            AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),
-            /* handleAudioFocus = */ true,
-        )
+        player.setAudioAttributes(MOVIE_AUDIO, /* handleAudioFocus = */ true)
         player.setHandleAudioBecomingNoisy(true)
     }
+
+    /**
+     * Aperçu de l'accueil : le son n'est pas demandé au système. Le type de son reste celui du plein écran : changé
+     * au passage de l'un à l'autre, il viderait la sortie son (coupure, image qui marque un temps d'arrêt).
+     */
+    fun releaseSound(player: ExoPlayer) {
+        player.setAudioAttributes(MOVIE_AUDIO, /* handleAudioFocus = */ false)
+        player.setHandleAudioBecomingNoisy(false)
+    }
+
+    /**
+     * Mémoire tampon d'un direct : celle du plein écran, ou en aperçu ([LiveLoadControl.preview]) quelques
+     * secondes d'avance seulement. Elle change sans recréer le lecteur quand le direct passe d'un écran à l'autre.
+     */
+    fun liveLoadControl(preview: Boolean): LiveLoadControl = LiveLoadControl(loadControl(), preview)
 
     /** Formats de son compressés (Dolby, DTS) et leur type, pour savoir si l'appareil les décode. */
     private val encodedAudio = mapOf(
@@ -216,7 +236,10 @@ class PlayerFactory(
         transferListener: TransferListener? = null,
         /** Direct continu : ce qui est reçu y est gardé, pour revenir en arrière. */
         recording: LiveRecording? = null,
-        /** Aperçu de l'accueil : de quoi brancher plus tard la mesure du débit et la mémoire du direct. */
+        /**
+         * Direct qui peut passer de l'aperçu au plein écran (et inversement) : la mesure du débit et la mémoire du
+         * direct s'y branchent (à la place de [transferListener] et [recording]).
+         */
         taps: StreamTaps? = null,
     ): MediaSource {
         val httpFactory = OkHttpDataSource.Factory(httpClient(request))
@@ -229,7 +252,9 @@ class PlayerFactory(
             else -> httpFactory
         }
         val dataSourceFactory = DefaultDataSource.Factory(context, networkFactory)
-        return DefaultMediaSourceFactory(dataSourceFactory).createMediaSource(mediaItem(request.stream, forceHls))
+        return DefaultMediaSourceFactory(dataSourceFactory)
+            .apply { if (taps != null) setLoadErrorHandlingPolicy(taps.retryPolicy) }
+            .createMediaSource(mediaItem(request.stream, forceHls))
     }
 
     /** Requête du direct pour l'enregistrement du différé : mêmes client, en-têtes et identifiants que la lecture. */
@@ -283,12 +308,6 @@ class PlayerFactory(
         .setTargetBufferBytes(filmBufferBytes(context))
         .build()
 
-    /** Aperçu : quelques secondes d'avance seulement. */
-    private fun previewLoadControl(): DefaultLoadControl = DefaultLoadControl.Builder()
-        .setBufferDurationsMs(PREVIEW_MIN_BUFFER_MILLIS, PREVIEW_MAX_BUFFER_MILLIS, START_BUFFER_MILLIS, RESUME_BUFFER_MILLIS)
-        .setTargetBufferBytes(PREVIEW_BUFFER_BYTES)
-        .build()
-
     private fun userAgent(request: PlaybackRequest): String =
         request.stream.headers["User-Agent"]
             ?: request.userAgent?.takeIf { it.isNotBlank() }
@@ -312,6 +331,68 @@ class PlayerFactory(
     }
 }
 
+/** Type de son des lectures (aperçu compris : le même des deux côtés, voir [PlayerFactory.releaseSound]). */
+private val MOVIE_AUDIO: AudioAttributes = AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build()
+
+/**
+ * Mémoire tampon d'un direct, celle du plein écran ([full]) ; en aperçu ([preview]), le flux n'est lu qu'à quelques
+ * secondes d'avance ([PREVIEW_MAX_BUFFER_MILLIS], [PREVIEW_BUFFER_BYTES] au plus).
+ *
+ * En aperçu, la lecture du flux reprend dès qu'il repasse sous cette limite : l'ancienne mémoire de l'aperçu
+ * s'arrêtait de lire à 8 s d'avance et ne reprenait qu'à 4 s. Certains serveurs coupent un client qui ne lit plus
+ * pendant plusieurs secondes ; le flux repartait alors de ses premières secondes, en boucle. Gardée en plein écran
+ * après OK sur l'aperçu, elle faisait aussi croire à une connexion lente (passage à une qualité inférieure).
+ */
+@OptIn(UnstableApi::class)
+class LiveLoadControl internal constructor(private val full: DefaultLoadControl, preview: Boolean) : LoadControl {
+    @Volatile
+    var preview: Boolean = preview
+
+    override fun onPrepared(playerId: PlayerId) = full.onPrepared(playerId)
+
+    override fun onTracksSelected(parameters: LoadControl.Parameters, trackGroups: TrackGroupArray, trackSelections: Array<out ExoTrackSelection?>) =
+        full.onTracksSelected(parameters, trackGroups, trackSelections)
+
+    override fun onStopped(playerId: PlayerId) = full.onStopped(playerId)
+
+    override fun onReleased(playerId: PlayerId) = full.onReleased(playerId)
+
+    override fun getAllocator(): Allocator = full.allocator
+
+    override fun getBackBufferDurationUs(playerId: PlayerId): Long = full.getBackBufferDurationUs(playerId)
+
+    override fun retainBackBufferFromKeyframe(playerId: PlayerId): Boolean = full.retainBackBufferFromKeyframe(playerId)
+
+    override fun shouldContinuePreloading(timeline: Timeline, mediaPeriodId: androidx.media3.exoplayer.source.MediaSource.MediaPeriodId, bufferedDurationUs: Long): Boolean =
+        full.shouldContinuePreloading(timeline, mediaPeriodId, bufferedDurationUs)
+
+    override fun shouldContinueLoading(parameters: LoadControl.Parameters): Boolean {
+        val loading = full.shouldContinueLoading(parameters)
+        if (!preview) return loading
+        return loading && parameters.bufferedDurationUs < PREVIEW_MAX_BUFFER_MILLIS * 1000L && full.allocator.totalBytesAllocated < PREVIEW_BUFFER_BYTES
+    }
+
+    // Aperçu d'un flux très lourd (4K) : sa limite en octets peut tomber avant les secondes demandées pour démarrer.
+    override fun shouldStartPlayback(parameters: LoadControl.Parameters): Boolean =
+        full.shouldStartPlayback(parameters) || (preview && full.allocator.totalBytesAllocated >= PREVIEW_BUFFER_BYTES)
+}
+
+/**
+ * Pistes d'un nouveau flux : choix faits dans le précédent oubliés, son rétabli ; langue audio et sous-titres
+ * choisis en dernier, essayés en premier. Les mêmes pour l'aperçu et le plein écran : différents, le passage de l'un
+ * à l'autre changerait les pistes en cours (le direct rechargé, une coupure).
+ */
+@OptIn(UnstableApi::class)
+fun ExoPlayer.applyTrackPreferences(audioLanguage: String?, subtitleLanguage: String?) {
+    trackSelectionParameters = trackSelectionParameters.buildUpon()
+        .clearOverrides()
+        .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+        .setPreferredAudioLanguage(audioLanguage)
+        .setPreferredTextLanguage(subtitleLanguage)
+        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, subtitleLanguage == null)
+        .build()
+}
+
 /**
  * Mémoire qu'un film peut occuper d'avance : un cinquième de celle que le système accorde à l'application, entre
  * [MAX_BUFFER_BYTES] (petites box) et [FILM_MAX_BUFFER_BYTES]. Au-delà, le système ferme l'application.
@@ -332,6 +413,5 @@ private const val FILM_MAX_BUFFER_MILLIS = 5 * 60_000
 private const val FILM_MAX_BUFFER_BYTES = 96 * 1024 * 1024
 private const val RESUME_BUFFER_MILLIS = 3_000
 private const val MAX_BUFFER_BYTES = 48 * 1024 * 1024
-private const val PREVIEW_MIN_BUFFER_MILLIS = 4_000
 private const val PREVIEW_MAX_BUFFER_MILLIS = 8_000
 private const val PREVIEW_BUFFER_BYTES = 12 * 1024 * 1024

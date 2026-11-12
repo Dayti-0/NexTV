@@ -33,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import tv.nextv.app.player.ContinuingPlayers
 import androidx.media3.common.Player
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.LaunchedEffect
@@ -221,6 +222,8 @@ internal fun PreviewVideo(player: Player, modifier: Modifier = Modifier, zoom: B
                 useController = false
                 resizeMode = if (zoom) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
                 setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
+                // Sous-titres du plein écran (langue choisie) : pas dans le petit cadre de l'aperçu.
+                subtitleView?.visibility = android.view.View.GONE
                 isFocusable = false
                 descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
             }
@@ -229,10 +232,12 @@ internal fun PreviewVideo(player: Player, modifier: Modifier = Modifier, zoom: B
             if (view.player !== player) {
                 // L'aperçu jouait déjà sans image (retour d'un autre menu : le son continuait) : avec ce nouvel
                 // écran, le décodeur attendrait la prochaine image complète du flux, parfois plusieurs secondes.
-                // On repart au direct : l'image revient aussitôt, comme en ouvrant la chaîne.
+                // On repart au direct : l'image revient aussitôt, comme en ouvrant la chaîne. Pas pour le direct
+                // que le plein écran vient de rendre : il a toujours eu une image, et repartir rouvrirait le flux.
                 val running = player.playbackState == Player.STATE_READY && player.playWhenReady
+                val continuing = ContinuingPlayers.consume(player)
                 view.player = player
-                if (running) player.seekToDefaultPosition()
+                if (running && !continuing) player.seekToDefaultPosition()
             }
         },
         onRelease = { view -> view.player = null },

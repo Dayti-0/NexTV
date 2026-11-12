@@ -4,7 +4,6 @@ import android.app.Application
 import androidx.media3.common.C
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
@@ -67,17 +66,65 @@ class ChannelPreviewPlayerTest {
     }
 
     @Test
-    fun onlyTheFullScreenPlayerAsksForTheSound() {
+    fun previewAndFullScreenUseTheSameSoundType() {
         val full = container.playerFactory.create()
         val preview = container.playerFactory.create(preview = true)
         try {
-            // Plein écran : son d'un film, demandé au système. Aperçu : réglage par défaut, sans demande.
+            // Plein écran : son d'un film. Aperçu : le même type de son (sans le demander au système) ; différent, le
+            // passage de l'un à l'autre viderait la sortie son (coupure, image qui marque un temps d'arrêt).
             assertEquals(C.USAGE_MEDIA, full.audioAttributes.usage)
             assertEquals(C.AUDIO_CONTENT_TYPE_MOVIE, full.audioAttributes.contentType)
-            assertNotEquals(C.AUDIO_CONTENT_TYPE_MOVIE, preview.audioAttributes.contentType)
+            assertEquals(full.audioAttributes, preview.audioAttributes)
         } finally {
             full.release()
             preview.release()
         }
+    }
+
+    @Test
+    fun thePreviewUsesTheFullScreenTrackChoices() = runBlocking {
+        container.settings.setAudioLanguage("fr")
+        val previewer = ChannelPreviewPlayer(container.playerFactory, container.sourceRepository, container.settings)
+        previewer.show(channel(1))
+        val player = checkNotNull(previewer.player.value)
+        // Langue du plein écran, sous-titres coupés (aucun choisi) : rien ne change quand il reprend l'aperçu.
+        assertEquals(listOf("fr"), player.trackSelectionParameters.preferredAudioLanguages)
+        assertEquals(true, C.TRACK_TYPE_TEXT in player.trackSelectionParameters.disabledTrackTypes)
+        previewer.release()
+    }
+
+    @Test
+    fun theHomePreviewContinuesOnAStreamHandedBack() = runBlocking {
+        val previewer = ChannelPreviewPlayer(container.playerFactory, container.sourceRepository, container.settings)
+        previewer.volume = 0.3f
+        previewer.show(channel(1))
+        val own = checkNotNull(previewer.player.value)
+        // Direct du plein écran rendu à l'accueil (chaîne 2).
+        val buffer = container.playerFactory.liveLoadControl(preview = false)
+        val full = container.playerFactory.create(liveBuffer = buffer)
+        val taps = StreamTaps()
+        val request = PlaybackRequest(channel(2).toStream(), null, null, null)
+        full.setMediaSource(container.playerFactory.mediaSource(request, taps = taps))
+        full.prepare()
+        previewer.adopt(PreviewHandoff(full, request, taps, buffer, setOf(2L), toPreview = true), 2)
+        // L'aperçu continue sur ce lecteur, au volume de l'aperçu et sa mémoire tampon ; le sien est rendu.
+        assertSame(full, previewer.player.value)
+        assertNotSame(own, previewer.player.value)
+        assertEquals(0.3f, full.volume, 0.001f)
+        assertEquals(true, buffer.preview)
+        assertEquals(true, taps.preview)
+        // Sa vidéo ne le fait pas repartir au direct (ce qui rouvrirait la connexion), une seule fois.
+        assertEquals(true, ContinuingPlayers.consume(full))
+        assertEquals(false, ContinuingPlayers.consume(full))
+        // Déjà la chaîne de l'aperçu : rien n'est rouvert.
+        previewer.show(channel(2).copy())
+        assertSame(full, previewer.player.value)
+        // Puis OK dessus : il repart vers le plein écran.
+        val again = checkNotNull(previewer.handOff(2))
+        assertSame(full, again.player)
+        assertEquals(setOf(2L), again.channelIds)
+        assertEquals(false, again.toPreview)
+        again.player.release()
+        previewer.release()
     }
 }

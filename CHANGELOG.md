@@ -4,6 +4,12 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.128
+- Chaîne ouverte depuis son aperçu (OK) : plus de « Connexion lente » ni de baisse de qualité juste après l’ouverture
+- Passage de l’aperçu à la chaîne en grand sans temps d’arrêt : l’image et le son continuent pendant l’ouverture
+- Retour à l’accueil depuis une chaîne : l’aperçu continue sur le même flux, sans le rouvrir (sauf en pause, en différé, avec « Baisser le son des pubs » ou le son envoyé tel quel à l’ampli)
+- Aperçu des chaînes : le flux est lu sans à-coups et ne tourne plus en boucle sur les mêmes secondes ; un flux qui se coupe sans arrêt laisse la place au logo
+
 ## 0.2.127
 - Chaîne ouverte depuis son aperçu (OK sur la chaîne dont l’aperçu joue) : le plein écran continue sur le flux de l’aperçu au lieu de le rouvrir, la chaîne démarre tout de suite
 - Ne s’applique pas avec « Baisser le son des pubs », le son envoyé tel quel à l’ampli ou un décodeur imposé : la chaîne s’ouvre alors comme avant

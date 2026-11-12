@@ -136,9 +136,18 @@ import androidx.annotation.OptIn as AndroidXOptIn
 
 @AndroidXOptIn(UnstableApi::class)
 @Composable
-fun PlayerScreen(onBack: () -> Unit) {
+fun PlayerScreen(
+    onBack: () -> Unit,
+    /** L'écran d'avant est l'accueil : son aperçu peut continuer sur le direct en cours. */
+    backToHome: () -> Boolean = { false },
+) {
     val context = LocalContext.current.applicationContext
     val viewModel = appViewModel { container, handle -> PlayerViewModel(container, handle, context) }
+    // Retour à l'accueil sur un direct : l'aperçu continue sur ce flux, sans le rouvrir.
+    val leave: () -> Unit = {
+        if (backToHome()) viewModel.keepStreamForHome()
+        onBack()
+    }
     val player by viewModel.player.collectAsStateWithLifecycle()
     val state by viewModel.state.collectAsStateWithLifecycle()
     val menu by viewModel.menu.collectAsStateWithLifecycle()
@@ -149,7 +158,7 @@ fun PlayerScreen(onBack: () -> Unit) {
     val menuProgramme by viewModel.menuProgramme.collectAsStateWithLifecycle()
     val window = rememberWindowInfo()
     // Film (ou dernier épisode) terminé : retour à l'écran d'où il a été lancé.
-    LaunchedEffect(state.finished) { if (state.finished) onBack() }
+    LaunchedEffect(state.finished) { if (state.finished) leave() }
     var bannerTrigger by remember { mutableIntStateOf(0) }
     var bannerVisible by remember { mutableStateOf(true) }
     var infoVisible by rememberSaveable { mutableStateOf(false) }
@@ -482,7 +491,7 @@ fun PlayerScreen(onBack: () -> Unit) {
                 onPlayPause = viewModel::togglePause,
                 onNextEpisode = state.vod?.next?.let { { viewModel.playNextEpisode() } },
                 onOptions = { optionsVisible = true },
-                onBack = onBack,
+                onBack = leave,
             )
         }
 
@@ -493,7 +502,7 @@ fun PlayerScreen(onBack: () -> Unit) {
             visible = (bannerVisible || state.error != null || state.paused || (state.fastSeek != 0 && bannerMode)) &&
                 !menu.open && state.resumePrompt == null && (bannerMode || state.error != null),
             showTouchControls = !window.isTv,
-            onBack = onBack,
+            onBack = leave,
             onZap = viewModel::zap,
             onRetry = viewModel::retry,
             onOpenMenu = viewModel::openMenu,

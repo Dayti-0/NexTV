@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import tv.nextv.app.AppContainer
 import tv.nextv.core.catalog.ContentClassifier
 import tv.nextv.app.ui.detail.recommendedInPlaylist
@@ -355,15 +356,31 @@ class HomeViewModel(
         // Aperçu : la chaîne sélectionnée démarre après un court arrêt dessus, section TV affichée.
         viewModelScope.launch {
             combine(focusedChannel, previewActive, previewEnabled, section) { row, active, enabled, current ->
-                row.takeIf { active && enabled && current == HomeSection.TV }
+                PreviewTarget(row.takeIf { active && enabled && current == HomeSection.TV }, active)
             }
-                .distinctUntilChangedBy { it?.id }
-                .collectLatest { row ->
+                .distinctUntilChanged { old, new -> old.row?.id == new.row?.id && old.active == new.active }
+                .collectLatest { target ->
+                    val row = target.row
                     if (row == null) {
                         previewer.stop()
+                        // Accueil affiché sans aperçu (réglage, autre rubrique) : le direct rendu par le plein écran
+                        // est fermé tout de suite (une seule connexion permise, souvent).
+                        if (target.active) container.previewHandoff.waiting.value?.takeIf { it.toPreview }?.let { container.previewHandoff.discard() }
                         return@collectLatest
                     }
-                    delay(PREVIEW_DELAY_MILLIS)
+                    // Retour du plein écran : il rend son direct (déposé juste avant ou juste après l'affichage de
+                    // l'accueil). Celui de la chaîne sélectionnée continue dans l'aperçu, tout de suite et sans
+                    // nouvelle connexion ; celui d'une autre chaîne est fermé avant d'ouvrir l'aperçu.
+                    val handedBack = withTimeoutOrNull(PREVIEW_DELAY_MILLIS) {
+                        container.previewHandoff.waiting.first { it != null && it.toPreview }
+                    }
+                    if (handedBack != null) {
+                        container.previewHandoff.takeFor(row.id, toPreview = true)?.let {
+                            previewer.adopt(it, row.id)
+                            return@collectLatest
+                        }
+                        container.previewHandoff.discard()
+                    }
                     dao.get(row.id)?.let { previewer.show(it) }
                 }
         }
@@ -726,6 +743,9 @@ class HomeViewModel(
     override fun onCleared() {
         previewer.release()
     }
+
+    /** Chaîne dont l'aperçu doit jouer (`null` : aucun), et accueil affiché ou non. */
+    private data class PreviewTarget(val row: ChannelListRow?, val active: Boolean)
 
     fun selectSection(target: HomeSection) {
         if (section.value != target) spotlightTarget.value = null

@@ -32,7 +32,10 @@ import tv.nextv.app.AppContainer
 import tv.nextv.app.R
 import tv.nextv.app.player.AdVolumeControl
 import tv.nextv.app.player.PlaybackRequest
+import tv.nextv.app.player.LiveLoadControl
 import tv.nextv.app.player.PreviewHandoff
+import tv.nextv.app.player.StreamTaps
+import tv.nextv.app.player.applyTrackPreferences
 import tv.nextv.app.player.ReceivedRate
 import tv.nextv.app.player.LiveRecording
 import tv.nextv.core.model.StreamFormat
@@ -60,6 +63,12 @@ internal class PlayerEngine(
         fun onReady()
         fun onEnded()
         fun onError(error: PlaybackException)
+
+        /**
+         * Direct repris en pleine lecture (aperçu de l'accueil) : la suite n'est pas une coupure de la connexion
+         * tant que la première image n'est pas arrivée sur ce nouvel écran ([onReady] suit alors).
+         */
+        fun onContinued()
     }
 
     /** Le lecteur, gardé d'un flux à l'autre ; réglages avec lesquels il a été créé (son direct, décodeurs). */
@@ -77,6 +86,25 @@ internal class PlayerEngine(
 
     /** Le flux en cours est un film ou un épisode (plus d'avance en mémoire qu'un direct). */
     private var film = false
+
+    // Direct en cours, tel qu'il peut être rendu à l'aperçu de l'accueil (null : flux qui ne peut pas l'être).
+    private var liveTaps: StreamTaps? = null
+    private var liveRequest: PlaybackRequest? = null
+
+    /** Mémoire tampon du lecteur en cours, s'il lit un direct (réglable pour l'aperçu). */
+    private var liveBuffer: LiveLoadControl? = null
+
+    /** Lecteur réglé comme celui de l'aperçu (son décodé, décodeurs par défaut) : il peut lui être rendu. */
+    private var previewCompatible = false
+
+    /** Aperçu de l'accueil montré dès l'ouverture de l'écran, pas encore repris ([play] le reprend ou le libère). */
+    private var pendingHandoff: PreviewHandoff? = null
+
+    /** Direct repris : la première image sur ce nouvel écran termine son démarrage. */
+    private var awaitingFirstFrame = false
+
+    /** Images perdues ignorées jusqu'à cette heure (changement d'écran d'un direct repris). */
+    private var dropsIgnoredUntil = 0L
 
     /** Son décodé par l'appli d'abord (après une erreur de décodage du son sur le flux en cours). */
     private var softwareAudio = false
@@ -154,6 +182,10 @@ internal class PlayerEngine(
         }
 
         override fun onRenderedFirstFrame() {
+            if (awaitingFirstFrame) {
+                awaitingFirstFrame = false
+                if (mutablePlayer.value?.playbackState == Player.STATE_READY) events.onReady()
+            }
             val started = zapStartedAt
             if (started == 0L) return
             zapStartedAt = 0L
@@ -231,8 +263,9 @@ internal class PlayerEngine(
      * @param forceHls traiter le flux comme du HLS (seconde tentative pour une URL sans extension).
      * @param startPositionMs position de départ d'une reprise (0 : un direct démarre au plus près du direct).
      * @param film film ou épisode, et non un direct.
+     * @return vrai si le flux continue sur le lecteur de l'aperçu de l'accueil (déjà en lecture).
      */
-    fun play(request: PlaybackRequest, forceHls: Boolean, startPositionMs: Long, record: Boolean = false, film: Boolean = false) {
+    fun play(request: PlaybackRequest, forceHls: Boolean, startPositionMs: Long, record: Boolean = false, film: Boolean = false): Boolean {
         this.film = film
         // Direct continu (MPEG-TS…) : les dernières secondes sont gardées en mémoire pour revenir en arrière.
         // Le direct précédent cède l'anneau avant que le nouveau n'y écrive.
@@ -240,14 +273,85 @@ internal class PlayerEngine(
         val recording = if (record && !forceHls && request.stream.format in RECORDABLE_FORMATS) LiveRecording(liveTail()) else null
         liveRecording = recording
         // Chaîne ouverte depuis son aperçu : il joue déjà ce flux, la lecture continue dessus.
-        val handoff = container.previewHandoff.take()
+        val handoff = pendingHandoff?.also { pendingHandoff = null } ?: container.previewHandoff.take()
         if (handoff != null) {
             val sameStream = !film && !forceHls && startPositionMs == 0L && handoff.request.stream.url == request.stream.url
-            if (sameStream && adopt(handoff, recording)) return
+            if (sameStream && adopt(handoff, request, recording)) return true
             // Autre flux (autre version de la chaîne, serveur de secours…) : sa connexion est fermée d'abord.
+            if (mutablePlayer.value === handoff.player) mutablePlayer.value = null
             handoff.player.release()
         }
-        open(container.playerFactory.mediaSource(request, forceHls, received, recording), startPositionMs)
+        if (film) {
+            open(container.playerFactory.mediaSource(request, forceHls, received), startPositionMs)
+        } else {
+            // Direct : mesure du débit et mémoire du direct branchées de façon à pouvoir les retirer, si le flux
+            // est rendu à l'aperçu de l'accueil au retour.
+            val taps = StreamTaps().apply {
+                listener = received
+                this.recording = recording
+            }
+            open(container.playerFactory.mediaSource(request, forceHls, taps = taps), startPositionMs)
+            liveTaps = taps
+            liveRequest = request
+        }
+        return false
+    }
+
+    /**
+     * Chaîne [channelId] ouverte depuis son aperçu : le lecteur de l'aperçu est montré tout de suite, au son du
+     * plein écran, sans attendre que la chaîne soit chargée ([play] le reprend alors, ou le libère).
+     */
+    fun showPreviewHandoff(channelId: Long) {
+        val handoff = container.previewHandoff.takeFor(channelId, toPreview = false) ?: return
+        val player = handoff.player
+        if (player.playerError != null) {
+            player.release()
+            return
+        }
+        pendingHandoff = handoff
+        handoff.setPreview(false)
+        container.playerFactory.takeSound(player)
+        player.volume = 1f
+        mutablePlayer.value = player
+    }
+
+    /**
+     * Retour à l'accueil sur une chaîne en direct : le lecteur, en marche, est confié à l'aperçu ([ids] : chaînes
+     * qu'il montre), qui continue sur la même connexion. `null` si ce flux ne peut pas l'être (film, différé, réglages
+     * du son ou des décodeurs que l'aperçu n'a pas) : il est alors fermé comme avant.
+     */
+    fun handBack(ids: Set<Long>): PreviewHandoff? {
+        val player = exoPlayer ?: return null
+        val taps = liveTaps ?: return null
+        val request = liveRequest ?: return null
+        val buffer = liveBuffer ?: return null
+        if (film || !previewCompatible || adVolume.enabled || mutablePlayer.value !== player) return null
+        if (player.playerError != null || !player.playWhenReady) return null
+        if (player.playbackState != Player.STATE_READY && player.playbackState != Player.STATE_BUFFERING) return null
+        player.removeListener(listener)
+        player.removeAnalyticsListener(analytics)
+        // Mesure du débit et mémoire du direct de cet écran : retirées, la connexion continue sans elles.
+        taps.listener = null
+        taps.recording = null
+        liveRecording?.retire()
+        container.playerFactory.releaseSound(player)
+        val info = state.value.info
+        val handoff = PreviewHandoff(player, request, taps, buffer, ids, toPreview = true, info.videoDecoder, info.audioDecoder)
+        handoff.setPreview(true)
+        exoPlayer = null
+        exoPlayerConfig = null
+        forgetLive()
+        mutablePlayer.value = null
+        container.logger.debug(TAG, "retour à l'accueil → direct confié à l'aperçu")
+        return handoff
+    }
+
+    private fun forgetLive() {
+        liveTaps = null
+        liveRequest = null
+        liveBuffer = null
+        previewCompatible = false
+        awaitingFirstFrame = false
     }
 
     /** Direct en cours gardé pour revenir en arrière (`null` : pas un direct continu). */
@@ -277,18 +381,25 @@ internal class PlayerEngine(
     fun playLiveRecording(recording: LiveRecording, position: Long, play: Boolean) {
         val disk = recording.disk ?: return
         open(container.playerFactory.timeshiftSource(disk, (position - recording.diskBase).coerceAtLeast(0)), startPositionMs = 0)
+        liveTaps = null
+        liveRequest = null
         if (!play) exoPlayer?.playWhenReady = false
     }
 
     /** Lit l'enregistrement du différé [buffer]. */
     fun playTimeshift(buffer: TimeshiftBuffer) {
         open(container.playerFactory.timeshiftSource(buffer), startPositionMs = 0)
+        liveTaps = null
+        liveRequest = null
     }
 
     private fun open(source: MediaSource, startPositionMs: Long) {
         // Ancien flux arrêté avant d'ouvrir le nouveau : beaucoup d'abonnements n'acceptent qu'une connexion.
         exoPlayer?.stop()
         val player = reusablePlayer()
+        awaitingFirstFrame = false
+        liveTaps = null
+        liveRequest = null
         // État propre au flux précédent : erreur, infos, son coupé (avance rapide), pistes choisies, vitesse.
         generation++
         adVolume.newStream()
@@ -306,14 +417,20 @@ internal class PlayerEngine(
 
     /**
      * Reprend le lecteur de l'aperçu de l'accueil, qui lit déjà le flux demandé : pas de nouvelle connexion ni
-     * de nouvelle attente d'image. Il sert à ce flux seulement (sa mémoire tampon est celle d'un aperçu) : le
-     * flux suivant aura un lecteur neuf. Faux s'il ne joue plus (le flux est alors ouvert normalement).
+     * de nouvelle attente d'image. Sa mémoire tampon passe à celle du plein écran. Il sert à ce flux seulement (créé
+     * par l'aperçu, sans le traitement du son du plein écran) : le flux suivant aura un lecteur neuf. Faux s'il ne
+     * joue plus (le flux est alors ouvert normalement).
      */
-    private fun adopt(handoff: PreviewHandoff, recording: LiveRecording?): Boolean {
+    private fun adopt(handoff: PreviewHandoff, request: PlaybackRequest, recording: LiveRecording?): Boolean {
         val player = handoff.player
         val playbackState = player.playbackState
         if (player.playerError != null || (playbackState != Player.STATE_READY && playbackState != Player.STATE_BUFFERING)) return false
-        release()
+        // Lecteur précédent de cet écran : rendu. Celui de l'aperçu, peut-être déjà affiché, reste à l'écran.
+        exoPlayer?.takeIf { it !== player }?.let {
+            it.removeListener(listener)
+            it.removeAnalyticsListener(analytics)
+            it.release()
+        }
         generation++
         adVolume.newStream()
         receivedRate.reset()
@@ -322,17 +439,30 @@ internal class PlayerEngine(
         // Mesure du débit et mémoire du direct (retour en arrière) : branchées sur la connexion déjà ouverte.
         handoff.taps.listener = received
         handoff.taps.recording = recording
+        // Mémoire tampon du plein écran (l'aperçu ne lisait que quelques secondes d'avance), reprises normales.
+        handoff.setPreview(false)
+        liveTaps = handoff.taps
+        liveRequest = request
+        liveBuffer = handoff.buffer
+        previewCompatible = true
         player.addListener(listener)
         player.addAnalyticsListener(analytics)
         exoPlayer = player
         exoPlayerConfig = null
-        // Plein écran : le son au niveau normal, demandé au système ; langues préférées.
+        // Plein écran : le son au niveau normal, demandé au système. Les pistes restent celles de l'aperçu, choisies
+        // avec les langues du plein écran : les changer maintenant pourrait recharger le direct (coupure).
         container.playerFactory.takeSound(player)
         player.volume = 1f
         player.setPlaybackSpeed(1f)
-        player.resetTrackSelection()
         player.playWhenReady = true
         mutablePlayer.value = player
+        // Images perdues pendant l'aperçu, et au changement d'écran : pas une raison de baisser la qualité.
+        player.videoDecoderCounters?.let { counters ->
+            counters.ensureUpdated()
+            countedCounters = counters
+            countedDroppedFrames = counters.droppedBufferCount
+        }
+        dropsIgnoredUntil = SystemClock.elapsedRealtime() + SETTLE_MILLIS
         // Ce que le lecteur a déjà annoncé pendant l'aperçu : pistes, formats, décodeurs, état.
         listener.onTracksChanged(player.currentTracks)
         updateInfo { info ->
@@ -350,6 +480,9 @@ internal class PlayerEngine(
             )
         }
         listener.onPlaybackStateChanged(playbackState)
+        // Démarrage sur ce nouvel écran : terminé à sa première image (pas une coupure avant elle).
+        events.onContinued()
+        awaitingFirstFrame = true
         zapStartedAt = 0L
         container.logger.debug(TAG, "zapping → aperçu repris, sans rouvrir le flux")
         return true
@@ -360,28 +493,37 @@ internal class PlayerEngine(
         val config = PlayerConfig(audioPassthrough, preferredDecoders, excludedDecoders, softwareAudio, film)
         exoPlayer?.takeIf { exoPlayerConfig == config }?.let { return it }
         release()
+        // Direct : mémoire tampon réglable, pour le cas où il est rendu à l'aperçu de l'accueil.
+        val buffer = if (film) null else container.playerFactory.liveLoadControl(preview = false)
         return container.playerFactory.create(
             bandwidthMeter, preferredDecoders, adVolume, passthrough = audioPassthrough, excludedDecoders = excludedDecoders, softwareAudio = softwareAudio,
-            film = film,
+            film = film, liveBuffer = buffer,
         ).apply {
             addListener(listener)
             addAnalyticsListener(analytics)
             exoPlayer = this
             exoPlayerConfig = config
+            liveBuffer = buffer
+            previewCompatible = !film && !audioPassthrough && !softwareAudio && preferredDecoders.isEmpty() && excludedDecoders.isEmpty()
         }
     }
 
     /** Arrête la lecture et ferme la connexion ; le lecteur est gardé pour le flux suivant. */
     fun stop() {
+        releasePendingHandoff()
         exoPlayer?.let {
             it.stop()
             it.clearMediaItems()
         }
+        liveTaps = null
+        liveRequest = null
+        awaitingFirstFrame = false
         mutablePlayer.value = null
     }
 
     /** Libère le lecteur (écran du lecteur fermé). */
     fun release() {
+        releasePendingHandoff()
         exoPlayer?.let {
             it.removeListener(listener)
             it.removeAnalyticsListener(analytics)
@@ -389,7 +531,16 @@ internal class PlayerEngine(
         }
         exoPlayer = null
         exoPlayerConfig = null
+        forgetLive()
         mutablePlayer.value = null
+    }
+
+    /** Aperçu montré à l'ouverture mais pas repris (chaîne introuvable, écran quitté avant la lecture) : fermé. */
+    private fun releasePendingHandoff() {
+        val handoff = pendingHandoff ?: return
+        pendingHandoff = null
+        if (mutablePlayer.value === handoff.player) mutablePlayer.value = null
+        handoff.player.release()
     }
 
     /** Chaîne demandée : le délai jusqu'à sa première image sera journalisé. */
@@ -417,6 +568,7 @@ internal class PlayerEngine(
         val delta = total - countedDroppedFrames
         countedDroppedFrames = total
         if (delta > 0) updateInfo { it.copy(droppedFrames = total) }
+        if (SystemClock.elapsedRealtime() < dropsIgnoredUntil) return 0
         return delta.coerceAtLeast(0)
     }
 
@@ -438,15 +590,7 @@ internal class PlayerEngine(
      * Pistes du nouveau flux : choix faits dans le précédent oubliés, son rétabli ; langue audio et
      * sous-titres choisis en dernier, essayés en premier.
      */
-    private fun ExoPlayer.resetTrackSelection() {
-        trackSelectionParameters = trackSelectionParameters.buildUpon()
-            .clearOverrides()
-            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
-            .setPreferredAudioLanguage(audioLanguage)
-            .setPreferredTextLanguage(subtitleLanguage)
-            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, subtitleLanguage == null)
-            .build()
-    }
+    private fun ExoPlayer.resetTrackSelection() = applyTrackPreferences(audioLanguage, subtitleLanguage)
 
     /**
      * Image sans son : aucune piste audio dans le flux, ou aucune que l'appareil sache lire. Les
@@ -597,6 +741,9 @@ internal class PlayerEngine(
 
     private companion object {
         const val TAG = "Player"
+
+        /** Changement d'écran d'un direct repris : images perdues ignorées pendant ce temps. */
+        const val SETTLE_MILLIS = 4_000L
     }
 }
 

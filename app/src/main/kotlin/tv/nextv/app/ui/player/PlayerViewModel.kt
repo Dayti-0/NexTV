@@ -165,6 +165,9 @@ class PlayerViewModel(
             }
             override fun onEnded() = this@PlayerViewModel.onEnded()
             override fun onError(error: PlaybackException) = handleError(error)
+
+            // Aperçu repris : le changement d'écran n'est pas une connexion qui faiblit.
+            override fun onContinued() = quality.onUserRestart()
         },
     )
     val player: StateFlow<ExoPlayer?> = engine.player
@@ -222,6 +225,8 @@ class PlayerViewModel(
         // Attention : rien de ce qui est déclaré plus bas dans la classe n'est encore prêt ici.
         // Lecteur ouvert : les actualisations automatiques de la playlist et du guide attendent sa fermeture.
         container.playerOpened()
+        // Chaîne ouverte depuis son aperçu : son image et son son continuent tout de suite, pendant le chargement.
+        engine.showPreviewHandoff(channelId)
         load(channelId)
         // Ces surveillances s'arrêtent quand l'écran n'est plus affiché (veille, autre application).
         viewModelScope.launch {
@@ -861,6 +866,18 @@ class PlayerViewModel(
         resumeOnStart = player.playWhenReady
         player.pause()
         viewModelScope.launch { resume.save() }
+    }
+
+    /**
+     * Retour à l'accueil depuis une chaîne en direct : l'aperçu de l'accueil continue sur ce flux (même lecteur,
+     * même connexion) au lieu de le fermer puis de le rouvrir. Pas en différé, en pause ni avec le moteur VLC.
+     */
+    fun keepStreamForHome() {
+        if (vlc != null || !watchingLive || delayed.recording || !started.value) return
+        val shown = state.value
+        if (shown.paused || shown.liveDelayMs > 0 || shown.error != null) return
+        val ids = setOfNotNull(channelId, session.listed?.id, session.channel?.id, session.playing?.id)
+        engine.handBack(ids)?.let(container.previewHandoff::offer)
     }
 
     /** Pause / lecture. En direct, la pause crée un différé ; le retard sur le direct est affiché. */

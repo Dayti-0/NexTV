@@ -100,11 +100,16 @@ class PlayerViewModelTest {
             // Une autre chaîne que celle de l'aperçu : rien n'est confié.
             assertNull(previewer.handOff(live + 1000))
             // OK sur la chaîne de l'aperçu : son lecteur est confié au plein écran, l'aperçu ne l'a plus.
-            container.previewHandoff.offer(checkNotNull(previewer.handOff(live)))
+            val handoff = checkNotNull(previewer.handOff(live))
+            assertTrue(handoff.buffer.preview)
+            container.previewHandoff.offer(handoff)
             assertNull(previewer.player.value)
             previewer.release()
 
             val (viewModel, store) = open(live)
+            // Montré dès l'ouverture de l'écran, avant le chargement de la chaîne : pas d'image noire entre les deux.
+            assertSame(shown, viewModel.player.value)
+            assertNull(container.previewHandoff.waiting.value)
             viewModel.onStart()
             idle()
             // Le plein écran continue sur le même lecteur (même connexion), au son normal.
@@ -112,6 +117,9 @@ class PlayerViewModelTest {
             assertEquals(1f, shown.volume, 0.001f)
             assertEquals(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MOVIE, shown.audioAttributes.contentType)
             assertEquals("TF1", viewModel.state.value.channelName)
+            // Mémoire tampon et reprises du plein écran (celles de l'aperçu faisaient croire à une connexion lente).
+            assertTrue(!handoff.buffer.preview)
+            assertTrue(!handoff.taps.preview)
             assertNull(container.previewHandoff.take())
             // Mise en veille puis retour : le flux est rouvert sur un lecteur du plein écran.
             viewModel.onStop()
@@ -129,8 +137,9 @@ class PlayerViewModelTest {
         java.net.ServerSocket(0).use { server ->
             val (live, _) = playlist()
             val other = tv.nextv.app.player.PlaybackRequest(StreamDescriptor("http://127.0.0.1:${server.localPort}/other.ts"), null, null, null)
-            val player = container.playerFactory.create(preview = true)
-            container.previewHandoff.offer(tv.nextv.app.player.PreviewHandoff(player, other, tv.nextv.app.player.StreamTaps(), null, null))
+            val buffer = container.playerFactory.liveLoadControl(preview = true)
+            val player = container.playerFactory.create(preview = true, liveBuffer = buffer)
+            container.previewHandoff.offer(tv.nextv.app.player.PreviewHandoff(player, other, tv.nextv.app.player.StreamTaps(), buffer, setOf(live), toPreview = false))
             val (viewModel, store) = open(live)
             viewModel.onStart()
             idle()
@@ -139,6 +148,49 @@ class PlayerViewModelTest {
             assertNull(container.previewHandoff.take())
             store.clear()
         }
+    }
+
+    @Test
+    fun backToHomeTheChannelStreamGoesToThePreview() {
+        java.net.ServerSocket(0).use { server ->
+            val (live, _) = playlist("http://127.0.0.1:${server.localPort}/live/1.ts")
+            val (viewModel, store) = open(live)
+            viewModel.onStart()
+            idle()
+            val playing = checkNotNull(viewModel.player.value)
+            // Retour à l'accueil : le lecteur en marche est confié à l'aperçu de la chaîne, réglé pour lui.
+            viewModel.keepStreamForHome()
+            val handoff = checkNotNull(container.previewHandoff.waiting.value)
+            assertSame(playing, handoff.player)
+            assertTrue(handoff.toPreview)
+            assertTrue(live in handoff.channelIds)
+            assertTrue(handoff.buffer.preview)
+            assertTrue(handoff.taps.preview)
+            assertNull(handoff.taps.listener)
+            assertNull(handoff.taps.recording)
+            assertNull(viewModel.player.value)
+            // Fermeture de l'écran : ce lecteur n'est pas libéré, l'aperçu le reprend.
+            viewModel.onStop()
+            store.clear()
+            idle()
+            val previewer = ChannelPreviewPlayer(container.playerFactory, container.sourceRepository, container.settings)
+            previewer.adopt(checkNotNull(container.previewHandoff.takeFor(live, toPreview = true)), live)
+            assertSame(playing, previewer.player.value)
+            assertEquals(androidx.media3.common.Player.STATE_BUFFERING, playing.playbackState)
+            previewer.release()
+        }
+    }
+
+    @Test
+    fun aMovieIsNotHandedToThePreview() {
+        val (_, movie) = playlist()
+        val (viewModel, store) = open(movie)
+        viewModel.onStart()
+        idle()
+        // Film : rien n'est confié à l'aperçu (seul un direct peut continuer dans l'accueil).
+        viewModel.keepStreamForHome()
+        assertNull(container.previewHandoff.waiting.value)
+        store.clear()
     }
 
     @Test

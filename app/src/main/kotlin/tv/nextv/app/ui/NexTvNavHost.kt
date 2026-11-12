@@ -222,7 +222,12 @@ private fun AppNavHost(navController: NavHostController) {
             ),
         ) {
             // Interface sur l'image : toujours sombre, même avec une palette claire.
-            VideoTheme { PlayerScreen(onBack = { navController.popBackStack() }) }
+            VideoTheme {
+                PlayerScreen(
+                    onBack = { navController.popBackStack() },
+                    backToHome = { navController.previousBackStackEntry?.destination?.route == Routes.HOME },
+                )
+            }
         }
         composable(Routes.SETTINGS) {
             SettingsScreen(

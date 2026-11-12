@@ -39,7 +39,11 @@ fun ChannelEntity.toStream() = StreamDescriptor(
  * l'accueil n'est plus affiché.
  *
  * Chaîne de l'aperçu ouverte en plein écran : [handOff] confie le lecteur en marche au lecteur plein écran,
- * qui continue sur la même connexion (pas de nouvelle ouverture du flux, l'image ne s'arrête pas).
+ * qui continue sur la même connexion (pas de nouvelle ouverture du flux, l'image ne s'arrête pas). Au retour sur
+ * l'accueil, [adopt] reprend de même le direct du plein écran.
+ *
+ * Le lecteur est réglé comme celui du plein écran (type de son, pistes) : le passage de l'un à l'autre ne change
+ * que la mémoire tampon, le volume et la prise du son.
  */
 @OptIn(UnstableApi::class)
 class ChannelPreviewPlayer(
@@ -61,6 +65,9 @@ class ChannelPreviewPlayer(
     /** Flux de l'aperçu en cours, et de quoi y brancher le lecteur plein écran s'il le reprend. */
     private var request: PlaybackRequest? = null
     private var taps: StreamTaps? = null
+
+    /** Mémoire tampon du lecteur (celle d'un aperçu tant qu'il est ici). */
+    private var buffer: LiveLoadControl? = null
 
     /** Le plein écran peut reprendre ce lecteur (créé comme il l'aurait créé lui-même, au son près). */
     private var transferable = false
@@ -108,16 +115,22 @@ class ChannelPreviewPlayer(
         if (exoPlayer == null) {
             transferable = settings?.let { !it.audioPassthrough.first() && !it.lowerAdVolume.first() && it.preferredDecoders.first().isEmpty() } ?: false
         }
+        // Langues du plein écran (dernières choisies) : les mêmes pistes, rien ne change s'il reprend l'aperçu.
+        val audioLanguage = settings?.audioLanguage?.first()
+        val subtitleLanguage = settings?.subtitleLanguage?.first()
         channelId = channel.id
-        val player = exoPlayer ?: factory.create(preview = true).also {
+        val liveBuffer = buffer ?: factory.liveLoadControl(preview = true).also { buffer = it }
+        val player = exoPlayer ?: factory.create(preview = true, liveBuffer = liveBuffer).also {
             it.addListener(errors)
             it.addAnalyticsListener(decoders)
             exoPlayer = it
         }
-        val streamTaps = StreamTaps()
+        liveBuffer.preview = true
+        val streamTaps = StreamTaps().apply { preview = true }
         this.request = request
         taps = streamTaps
         player.volume = volume
+        player.applyTrackPreferences(audioLanguage, subtitleLanguage)
         player.setMediaSource(factory.mediaSource(request, taps = streamTaps))
         player.playWhenReady = true
         player.prepare()
@@ -132,15 +145,47 @@ class ChannelPreviewPlayer(
         val player = exoPlayer ?: return null
         val playing = request ?: return null
         val streamTaps = taps ?: return null
+        val liveBuffer = buffer ?: return null
         if (!transferable || id != channelId || mutablePlayer.value == null) return null
-        if (player.playbackState != Player.STATE_READY && player.playbackState != Player.STATE_BUFFERING) return null
+        if (player.playerError != null || (player.playbackState != Player.STATE_READY && player.playbackState != Player.STATE_BUFFERING)) return null
         player.removeListener(errors)
         player.removeAnalyticsListener(decoders)
-        val handoff = PreviewHandoff(player, playing, streamTaps, videoDecoder, audioDecoder)
+        val handoff = PreviewHandoff(player, playing, streamTaps, liveBuffer, setOf(id), toPreview = false, videoDecoder, audioDecoder)
         exoPlayer = null
+        buffer = null
         forgetStream()
         mutablePlayer.value = null
         return handoff
+    }
+
+    /**
+     * Retour sur l'accueil : l'aperçu de la chaîne [id] continue sur le direct que jouait le plein écran (même
+     * lecteur, même connexion), au volume de l'aperçu. Son propre lecteur, s'il en avait un, est rendu. Fil principal.
+     */
+    fun adopt(handoff: PreviewHandoff, id: Long) {
+        exoPlayer?.let {
+            it.removeListener(errors)
+            it.removeAnalyticsListener(decoders)
+            it.release()
+        }
+        val player = handoff.player
+        handoff.setPreview(true)
+        factory.releaseSound(player)
+        player.addListener(errors)
+        player.addAnalyticsListener(decoders)
+        exoPlayer = player
+        buffer = handoff.buffer
+        // Le plein écran ne le confie que réglé comme il l'aurait été ici (son, décodeurs, mémoire du direct).
+        transferable = true
+        channelId = id
+        request = handoff.request
+        taps = handoff.taps
+        videoDecoder = handoff.videoDecoder
+        audioDecoder = handoff.audioDecoder
+        player.volume = volume
+        // Sa nouvelle vidéo ne doit pas le faire repartir au direct (nouvelle connexion).
+        ContinuingPlayers.mark(player)
+        mutablePlayer.value = player
     }
 
     private fun forgetStream() {
@@ -171,5 +216,6 @@ class ChannelPreviewPlayer(
             it.release()
         }
         exoPlayer = null
+        buffer = null
     }
 }
