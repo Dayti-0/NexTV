@@ -188,7 +188,7 @@
     <string name="menu_subscription">Abonnement jusqu’au %1$s</string>
     <string name="menu_back">Menu</string>
     <string name="settings_trailer_autoplay">Bande-annonce en fond</string>
-    <string name="settings_trailer_autoplay_help">Interface Streaming : la bande-annonce du film ou de la série choisi démarre dans le bandeau après quelques secondes. Consomme plus de connexion et peut ralentir l’appareil.</string>
+    <string name="settings_trailer_autoplay_help">La bande-annonce du film ou de la série choisi démarre après quelques secondes : dans le bandeau (interface Streaming) et sur sa fiche (toutes les interfaces). Consomme plus de connexion et peut ralentir l’appareil.</string>
     <string name="settings_trailer_sound">Son des bandes-annonces</string>
     <string name="settings_trailer_sound_help">Avec le son dès qu’elles démarrent. Sinon muettes : le bouton « Son » du bandeau le rend.</string>
     <string name="settings_trailer_delay">Délai avant la bande-annonce</string>

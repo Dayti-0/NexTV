@@ -471,6 +471,31 @@ abstract class ScreenshotSuite(private val device: String) {
         )
     }
 
+    /** Bande-annonce en fond (interfaces Classique et Live Center) : une image vive tient lieu de vidéo. */
+    @Test
+    fun movieTrailer() = capture("11e_fiche_film_bande_annonce") {
+        DetailContent(
+            state = SampleData.movieDetail,
+            kind = ContentKind.MOVIE,
+            snackbarHostState = remember { SnackbarHostState() },
+            onPlay = {},
+            onTrailer = {},
+            onToggleFavorite = {},
+            onSelectSeason = {},
+            onBack = {},
+            trailers = tv.nextv.app.ui.home.TrailerSettings(autoplay = true),
+            trailerPreview = {
+                androidx.compose.foundation.layout.Box(
+                    androidx.compose.ui.Modifier.fillMaxSize().background(
+                        androidx.compose.ui.graphics.Brush.linearGradient(
+                            listOf(androidx.compose.ui.graphics.Color(0xFFE8A33D), androidx.compose.ui.graphics.Color(0xFF3D7BE8), androidx.compose.ui.graphics.Color(0xFFF2F2F2)),
+                        ),
+                    ),
+                )
+            },
+        )
+    }
+
     /** Film que la playlist propose en plusieurs versions : bouton « Version », avec la reprise en cours. */
     private val movieVersions = SampleData.movieDetail.copy(
         progress = SampleData.movieProgress,

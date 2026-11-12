@@ -405,21 +405,27 @@ private fun DetailButtons(
         VersionButton(state, onNextVersion)
         trailerKey?.let { PillButton(stringResource(R.string.hero_trailer), onTrailer, icon = NexTvIcons.Movie) }
         FavoriteButton(state.isFavorite, onToggleFavorite)
-        AnimatedVisibility(trailerShown, enter = fadeIn(), exit = fadeOut()) {
-            FocusSurface(
-                onClick = onToggleSound,
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                focusedColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onSurface,
-                focusScale = 1.08f,
-            ) {
-                Icon(
-                    if (muted) NexTvIcons.VolumeOff else NexTvIcons.VolumeUp,
-                    contentDescription = stringResource(if (muted) R.string.hero_sound_on else R.string.hero_sound_off),
-                    modifier = Modifier.padding(10.dp).size(22.dp),
-                )
-            }
+        TrailerSoundButton(trailerShown, muted, onToggleSound)
+    }
+}
+
+/** Son de la bande-annonce du fond (coupé / rendu), visible seulement pendant qu'elle joue. */
+@Composable
+internal fun TrailerSoundButton(visible: Boolean, muted: Boolean, onToggle: () -> Unit) {
+    AnimatedVisibility(visible, enter = fadeIn(), exit = fadeOut()) {
+        FocusSurface(
+            onClick = onToggle,
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            focusedColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            focusScale = 1.08f,
+        ) {
+            Icon(
+                if (muted) NexTvIcons.VolumeOff else NexTvIcons.VolumeUp,
+                contentDescription = stringResource(if (muted) R.string.hero_sound_on else R.string.hero_sound_off),
+                modifier = Modifier.padding(10.dp).size(22.dp),
+            )
         }
     }
 }
