@@ -228,20 +228,26 @@ class HomeFocusTest {
 
     /** Streaming : ☰ dans le contenu ouvre le menu de gauche ; ☰ dans le menu le referme. */
     @Test
-    fun menuKeyOpensTheStreamingMenu() {
-        compose.setContent { Home(HomeLayout.STREAMING, HomeActions(), HomeSection.MOVIES) }
+    fun menuKeyOpensTheStreamingMenu() = assertMenuKey(HomeSection.MOVIES)
+
+    /** Chaînes de Streaming : la liste se servait de ☰ pour son volet, le menu doit quand même s'ouvrir. */
+    @Test
+    fun menuKeyOpensTheStreamingMenuFromChannels() = assertMenuKey(HomeSection.TV)
+
+    private fun assertMenuKey(section: HomeSection) {
+        compose.setContent { Home(HomeLayout.STREAMING, HomeActions(), section) }
         compose.waitForIdle()
         enterStreamingContent()
         repeat(2) { press(Key.DirectionDown) }
         val inContent = compose.onNode(isFocused()).getBoundsInRoot().left
-        assertTrue("Sélection encore dans le menu : $inContent", inContent > 100.dp)
+        assertTrue("Sélection encore dans le menu : $inContent", inContent > STREAMING_NAV_WIDTH)
         press(Key.Menu)
         val inMenu = compose.onNode(isFocused()).getBoundsInRoot().left
         println("☰ : sélection à $inMenu")
-        assertTrue("Menu pas ouvert : $inMenu", inMenu < 100.dp)
+        assertTrue("Menu pas ouvert : $inMenu", inMenu < STREAMING_NAV_WIDTH)
         press(Key.Menu)
         val back = compose.onNode(isFocused()).getBoundsInRoot().left
-        assertTrue("Menu pas refermé : $back", back > 100.dp)
+        assertTrue("Menu pas refermé : $back", back > STREAMING_NAV_WIDTH)
     }
 
     /**

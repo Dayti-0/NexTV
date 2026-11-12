@@ -89,7 +89,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
@@ -632,11 +631,11 @@ fun HomeContent(
                 Modifier
                     .fillMaxSize()
                     .padding(padding)
-                    // Touche ☰ de la télécommande : ouvre le menu de gauche, ou le referme si on y est déjà.
-                    // Après le contenu (onKeyEvent) : une liste qui s'en sert déjà (volet de la chaîne) la garde.
+                    // Touche ☰ de la télécommande : ouvre le menu de gauche, ou le referme si on y est déjà. Avant le
+                    // contenu (onPreviewKeyEvent) : la liste des chaînes s'en servait pour son volet et la gardait.
                     .then(
-                        if (!streamingNav) Modifier else Modifier.onKeyEvent { event ->
-                            if (event.key != Key.Menu) return@onKeyEvent false
+                        if (!streamingNav) Modifier else Modifier.onPreviewKeyEvent { event ->
+                            if (event.key != Key.Menu) return@onPreviewKeyEvent false
                             if (event.type == KeyEventType.KeyDown && event.nativeKeyEvent.repeatCount == 0) {
                                 if (tabsFocused.value) navFocusManager.moveFocus(FocusDirection.Right) else runCatching { navFocus.requestFocus() }
                             }

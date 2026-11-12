@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.119
+- Interface Streaming : la touche ☰ ouvre aussi le menu de gauche depuis la liste des chaînes (elle ne faisait que le fermer)
+
 ## 0.2.118
 - Configuration rapide : OK sur une interface lance une vraie démonstration (chaînes, films et séries de démo, à parcourir à la télécommande), puis « Garder celle-ci » ou « Revenir au choix »
 - Configuration rapide : l’étape « C’est prêt » s’appelle maintenant « Prêt »
