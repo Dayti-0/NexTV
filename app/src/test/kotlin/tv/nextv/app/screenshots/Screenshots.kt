@@ -471,20 +471,19 @@ abstract class ScreenshotSuite(private val device: String) {
         )
     }
 
-    /** Bande-annonce en fond (interfaces Classique et Live Center) : une image vive tient lieu de vidéo. */
+    /** Bande-annonce en bas de la fiche (interfaces Classique et Live Center) : une image vive tient lieu de vidéo. */
     @Test
     fun movieTrailer() = capture("11e_fiche_film_bande_annonce") {
-        DetailContent(
-            state = SampleData.movieDetail,
-            kind = ContentKind.MOVIE,
-            snackbarHostState = remember { SnackbarHostState() },
-            onPlay = {},
-            onTrailer = {},
-            onToggleFavorite = {},
-            onSelectSeason = {},
-            onBack = {},
+        tv.nextv.app.ui.detail.DetailTrailerSection(
+            trailerKey = "abc",
+            language = "fr",
+            imageUrl = null,
             trailers = tv.nextv.app.ui.home.TrailerSettings(autoplay = true),
-            trailerPreview = {
+            active = true,
+            opened = false,
+            onOpen = {},
+            modifier = androidx.compose.ui.Modifier.fillMaxSize().background(androidx.compose.material3.MaterialTheme.colorScheme.background).padding(48.dp),
+            preview = {
                 androidx.compose.foundation.layout.Box(
                     androidx.compose.ui.Modifier.fillMaxSize().background(
                         androidx.compose.ui.graphics.Brush.linearGradient(

@@ -41,14 +41,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import tv.nextv.app.ui.home.TrailerFullScreen
-import tv.nextv.app.ui.home.TrailerBackdrop
 import tv.nextv.app.ui.home.TrailerSettings
-import tv.nextv.app.ui.home.TRAILER_FILL_ZOOM
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.derivedStateOf
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -167,25 +162,19 @@ fun DetailContent(
     onRestart: (Long) -> Unit = onPlay,
     /** Film en plusieurs versions : passe à la suivante. */
     onNextVersion: () -> Unit = {},
-    /** Réglages des bandes-annonces : avec « Bande-annonce en fond », celle du titre joue dans le visuel du fond. */
+    /** Réglages des bandes-annonces : avec « Bande-annonce en fond », celle du titre est lue en bas de la fiche (OK : [onTrailer]). */
     trailers: TrailerSettings = TrailerSettings(),
-    /** Bande-annonce ouverte en plein écran (bouton) : celle du fond s'arrête. */
+    /** Bande-annonce ouverte en plein écran (bouton) : celle du bas de la fiche s'arrête. */
     trailerPaused: Boolean = false,
-    /** Captures d'écran : image posée à la place de la vidéo (la page YouTube ne s'y dessine pas). */
+    /** Captures d'écran : image posée à la place de la vidéo du bas de la fiche. */
     trailerPreview: (@Composable () -> Unit)? = null,
 ) {
     val window = rememberWindowInfo()
     val item = state.item
     val details = (state.metadata as? MetadataState.Available)?.details
-    // Bande-annonce du fond : une seule lecture, muette selon les réglages (bouton du son à côté des autres).
-    var muted by remember(trailers.sound) { mutableStateOf(!trailers.sound) }
-    var trailerShown by remember { mutableStateOf(false) }
-    var trailerDone by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
-    // Descendu dans les épisodes ou la distribution : la vidéo s'efface un peu (lisibilité).
-    val scrolled by remember { derivedStateOf { listState.firstVisibleItemIndex > 1 } }
-    val trailerKey = details?.trailerYoutubeKey?.takeIf { trailers.autoplay && window.isWide && !trailerDone && !trailerPaused }
-    val showing = trailerShown || trailerPreview != null
+    // La bande-annonce du bas ne se lit que quand son cadre est à l'écran (pas pendant qu'il est préparé hors écran).
+    val trailerOnScreen by remember { derivedStateOf { listState.layoutInfo.visibleItemsInfo.any { it.key == TRAILER_ITEM } } }
     val title = details?.title?.takeIf { it.isNotBlank() } ?: item?.title.orEmpty()
     val playFocus = remember { FocusRequester() }
     // Focus sur « Reprendre » s'il existe (la reprise est connue juste après la fiche), sinon sur « Lecture ».
@@ -200,21 +189,7 @@ fun DetailContent(
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background, snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
-            Backdrop(details?.backdropUrl ?: details?.posterUrl ?: item?.logoUrl, trailerShown = showing, dim = scrolled) {
-                when {
-                    trailerPreview != null -> trailerPreview()
-                    trailerKey != null -> TrailerBackdrop(
-                        trailerKey,
-                        details.trailerLanguage,
-                        Modifier.fillMaxSize(),
-                        delayMillis = trailers.delayMillis,
-                        muted = muted,
-                        onShown = { trailerShown = it },
-                        onFinished = { trailerDone = true },
-                        zoom = TRAILER_FILL_ZOOM,
-                    )
-                }
-            }
+            Backdrop(details?.backdropUrl ?: details?.posterUrl ?: item?.logoUrl)
             // Défilement seulement si l'élément choisi sort de l'écran : la télé le place sinon au tiers de l'écran,
             // et passer d'un bouton à l'autre faisait descendre toute la fiche.
             val margin = with(LocalDensity.current) { BRING_INTO_VIEW_MARGIN.toPx() }
@@ -331,7 +306,6 @@ fun DetailContent(
                                         icon = Icons.Filled.Star,
                                     )
                                 }
-                                TrailerSoundButton(showing, muted) { muted = !muted }
                             }
                         }
                     }
@@ -373,6 +347,23 @@ fun DetailContent(
                                 itemsIndexed(state.cast) { _, person -> CastCard(person) }
                             }
                         }
+                    }
+                }
+                // Bande-annonce (réglage « Bande-annonce en fond »), tout en bas.
+                val trailerKey = details?.trailerYoutubeKey
+                if (trailerKey != null && trailers.autoplay && window.isWide) {
+                    item(key = TRAILER_ITEM) {
+                        DetailTrailerSection(
+                            trailerKey = trailerKey,
+                            language = details.trailerLanguage,
+                            imageUrl = details.backdropUrl,
+                            trailers = trailers,
+                            active = trailerOnScreen && !trailerPaused,
+                            opened = trailerPaused,
+                            onOpen = { onTrailer(trailerKey) },
+                            preview = trailerPreview,
+                            modifier = Modifier.padding(start = window.horizontalPadding, end = window.horizontalPadding, top = 20.dp),
+                        )
                     }
                 }
                 item { Spacer(Modifier.height(32.dp)) }
@@ -418,19 +409,14 @@ private class MinimalBringIntoView(private val margin: Float) : BringIntoViewSpe
     }
 }
 
+/** Clé de la bande-annonce dans la liste de la fiche. */
+private const val TRAILER_ITEM = "trailer"
+
 /** Marge gardée autour de l'élément choisi en faisant défiler la fiche. */
 private val BRING_INTO_VIEW_MARGIN = 24.dp
 
-/**
- * Visuel du fond, voilé à gauche (texte) et en bas. [trailer] : la bande-annonce, dans un cadre 16/9 en haut à
- * droite, fondu dans le fond sur ses bords ; pendant qu'elle joue ([trailerShown]), l'image s'efface (pas de
- * cassure sous le cadre) et le voile s'allège pour qu'on la voie. [dim] : fiche descendue, la vidéo s'assombrit.
- */
 @Composable
-private fun Backdrop(imageUrl: String?, trailerShown: Boolean = false, dim: Boolean = false, trailer: @Composable () -> Unit = {}) {
-    val video by animateFloatAsState(if (trailerShown) 1f else 0f, tween(500), label = "detailTrailer")
-    val darken by animateFloatAsState(if (dim) 0.55f else 0f, tween(300), label = "detailDim")
-    val background = NexTvColors.Background
+private fun Backdrop(imageUrl: String?) {
     Box(Modifier.fillMaxSize()) {
         if (imageUrl != null) {
             AsyncImage(
@@ -438,36 +424,25 @@ private fun Backdrop(imageUrl: String?, trailerShown: Boolean = false, dim: Bool
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 alpha = 0.45f,
-                modifier = Modifier.fillMaxSize().graphicsLayer { alpha = 1f - video },
+                modifier = Modifier.fillMaxSize(),
             )
         }
-        Box(Modifier.align(Alignment.TopEnd).fillMaxWidth(TRAILER_FRAME_WIDTH).aspectRatio(16f / 9f)) {
-            trailer()
-            // Bords du cadre fondus dans le fond (gauche et bas) : la vidéo n'a pas de bord visible.
-            Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to background, 0.3f to Color.Transparent)))
-            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.6f to Color.Transparent, 1f to background)))
-            Box(Modifier.fillMaxSize().background(background.copy(alpha = darken)))
-        }
-        // Voile sous le texte : plus léger à droite pendant la vidéo.
         Box(
             Modifier
                 .fillMaxSize()
                 .background(
                     Brush.horizontalGradient(
-                        listOf(background, background.copy(alpha = 0.85f - 0.1f * video), background.copy(alpha = 0.35f - 0.2f * video)),
+                        listOf(NexTvColors.Background, NexTvColors.Background.copy(alpha = 0.85f), NexTvColors.Background.copy(alpha = 0.35f)),
                     ),
                 ),
         )
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Brush.verticalGradient(listOf(Color.Transparent, background), startY = 400f)),
+                .background(Brush.verticalGradient(listOf(Color.Transparent, NexTvColors.Background), startY = 400f)),
         )
     }
 }
-
-/** Largeur du cadre de la bande-annonce du fond (part de l'écran), en haut à droite. */
-private const val TRAILER_FRAME_WIDTH = 0.72f
 
 @Composable
 private fun MetaLine(details: MediaDetails?, item: PlaylistItem?, kind: ContentKind, playlistSeasons: Int) {

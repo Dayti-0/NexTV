@@ -1,11 +1,8 @@
 package tv.nextv.app.ui.detail
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.relocation.bringIntoViewRequester
@@ -88,8 +85,6 @@ import tv.nextv.app.ui.home.PosterImage
 import tv.nextv.app.ui.home.QualityBadge
 import tv.nextv.app.ui.home.PosterItem
 import tv.nextv.app.ui.home.StreamingPoster
-import tv.nextv.app.ui.home.TRAILER_FILL_ZOOM
-import tv.nextv.app.ui.home.TrailerBackdrop
 import tv.nextv.app.ui.home.TrailerFullScreen
 import tv.nextv.app.ui.home.TrailerSettings
 import tv.nextv.app.ui.home.WatchedBadge
@@ -155,11 +150,10 @@ internal fun StreamingDetailContent(
         }
         focusDone = true
     }
-    // Bande-annonce : une seule lecture, muette selon les réglages ; plein écran avec « Bande-annonce ».
-    var muted by remember(trailers.sound) { mutableStateOf(!trailers.sound) }
-    var trailerShown by remember { mutableStateOf(false) }
-    var trailerDone by remember { mutableStateOf(false) }
+    // Bande-annonce : en bas de la fiche (une lecture, muette selon les réglages) ; plein écran avec OK ou « Bande-annonce ».
     var fullTrailer by remember { mutableStateOf(false) }
+    // Lue seulement quand son cadre est à l'écran (pas pendant qu'il est préparé hors écran).
+    val trailerOnScreen by remember { derivedStateOf { listState.layoutInfo.visibleItemsInfo.any { it.key == "trailer" } } }
     // Descendu dans les épisodes ou les titres similaires : le visuel s'efface un peu (lisibilité).
     val scrolled by remember { derivedStateOf { listState.firstVisibleItemIndex > 0 } }
     val dim by animateFloatAsState(if (scrolled) 0.55f else 0f, tween(300), label = "dim")
@@ -170,19 +164,6 @@ internal fun StreamingDetailContent(
             val image = details?.backdropUrl ?: details?.posterUrl ?: item?.logoUrl
             Crossfade(image, animationSpec = tween(600), label = "detailImage", modifier = Modifier.fillMaxSize()) { url ->
                 if (url != null) AsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Crop, alignment = Alignment.TopCenter, modifier = Modifier.fillMaxSize())
-            }
-            val key = details?.trailerYoutubeKey
-            if (trailers.autoplay && key != null && !trailerDone && !fullTrailer) {
-                TrailerBackdrop(
-                    key,
-                    details.trailerLanguage,
-                    Modifier.fillMaxSize(),
-                    delayMillis = trailers.delayMillis,
-                    muted = muted,
-                    onShown = { trailerShown = it },
-                    onFinished = { trailerDone = true },
-                    zoom = TRAILER_FILL_ZOOM,
-                )
             }
             Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to background, 0.35f to background.copy(alpha = 0.55f), 0.7f to Color.Transparent)))
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to background.copy(alpha = 0.3f), 0.2f to Color.Transparent, 0.65f to Color.Transparent, 1f to background)))
@@ -233,14 +214,11 @@ internal fun StreamingDetailContent(
                         DetailButtons(
                             state, kind, playFocus,
                             trailerKey = state.trailer?.first,
-                            trailerShown = trailerShown,
-                            muted = muted,
                             onPlay = onPlay,
                             onResume = onResume,
                             onRestart = onRestart,
                             onToggleFavorite = onToggleFavorite,
                             onTrailer = { fullTrailer = true },
-                            onToggleSound = { muted = !muted },
                             onNextVersion = onNextVersion,
                         )
                     }
@@ -319,6 +297,22 @@ internal fun StreamingDetailContent(
                     }
                 }
             }
+            // Bande-annonce (réglage « Bande-annonce en fond »), tout en bas : y arriver la met en plein écran.
+            val trailerKey = details?.trailerYoutubeKey
+            if (trailerKey != null && trailers.autoplay) {
+                item(key = "trailer") {
+                    DetailTrailerSection(
+                        trailerKey = trailerKey,
+                        language = details.trailerLanguage,
+                        imageUrl = details.backdropUrl,
+                        trailers = trailers,
+                        active = trailerOnScreen && !fullTrailer,
+                        opened = fullTrailer,
+                        onOpen = { fullTrailer = true },
+                        modifier = Modifier.padding(start = padding, end = padding, top = 20.dp),
+                    )
+                }
+            }
         }
         }
     }
@@ -356,14 +350,11 @@ private fun DetailButtons(
     kind: ContentKind,
     playFocus: FocusRequester,
     trailerKey: String?,
-    trailerShown: Boolean,
-    muted: Boolean,
     onPlay: (Long) -> Unit,
     onResume: (Long) -> Unit,
     onRestart: (Long) -> Unit,
     onToggleFavorite: () -> Unit,
     onTrailer: () -> Unit,
-    onToggleSound: () -> Unit,
     onNextVersion: () -> Unit,
 ) {
     val progress = state.progress
@@ -405,28 +396,6 @@ private fun DetailButtons(
         VersionButton(state, onNextVersion)
         trailerKey?.let { PillButton(stringResource(R.string.hero_trailer), onTrailer, icon = NexTvIcons.Movie) }
         FavoriteButton(state.isFavorite, onToggleFavorite)
-        TrailerSoundButton(trailerShown, muted, onToggleSound)
-    }
-}
-
-/** Son de la bande-annonce du fond (coupé / rendu), visible seulement pendant qu'elle joue. */
-@Composable
-internal fun TrailerSoundButton(visible: Boolean, muted: Boolean, onToggle: () -> Unit) {
-    AnimatedVisibility(visible, enter = fadeIn(), exit = fadeOut()) {
-        FocusSurface(
-            onClick = onToggle,
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            focusedColor = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-            focusScale = 1.08f,
-        ) {
-            Icon(
-                if (muted) NexTvIcons.VolumeOff else NexTvIcons.VolumeUp,
-                contentDescription = stringResource(if (muted) R.string.hero_sound_on else R.string.hero_sound_off),
-                modifier = Modifier.padding(10.dp).size(22.dp),
-            )
-        }
     }
 }
 

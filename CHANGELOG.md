@@ -4,6 +4,10 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.124
+- Fiche d’un film ou d’une série (toutes les interfaces, réglage « Bande-annonce en fond ») : la bande-annonce est maintenant en bas de la fiche ; elle s’y lit en petit, et passe en plein écran avec le son quand on descend jusqu’à elle (« Retour » ramène sur la fiche)
+- Interface Streaming : la bande-annonce ne joue plus dans le visuel en haut de la fiche (elle est en bas)
+
 ## 0.2.123
 - Interfaces Classique et Live Center : la bande-annonce démarre aussi dans le fond de la fiche d’un film ou d’une série (réglage « Bande-annonce en fond »), avec le bouton du son
 
