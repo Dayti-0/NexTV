@@ -7,7 +7,9 @@ import androidx.lifecycle.ViewModelStore
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -16,6 +18,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import tv.nextv.app.AppContainer
+import tv.nextv.app.player.ChannelPreviewPlayer
 import tv.nextv.app.ui.home.Category
 import tv.nextv.core.model.Channel
 import tv.nextv.core.model.ContentKind
@@ -43,12 +46,12 @@ class PlayerViewModelTest {
     }
 
     /** Playlist d'une chaîne et d'un film ; rend leurs identifiants (chaîne, film). */
-    private fun playlist(): Pair<Long, Long> = runBlocking {
+    private fun playlist(liveUrl: String = "http://127.0.0.1:9/live/1.ts"): Pair<Long, Long> = runBlocking {
         val sourceId = container.sourceRepository.add(SourceInput(name = "Test", location = SourceLocation.Remote("http://127.0.0.1:9/list.m3u")))
         container.playlistStore.replaceChannels(
             sourceId,
             listOf(
-                Channel(position = 0, name = "TF1", stream = StreamDescriptor("http://127.0.0.1:9/live/1.ts"), kind = ContentKind.LIVE, title = "TF1"),
+                Channel(position = 0, name = "TF1", stream = StreamDescriptor(liveUrl), kind = ContentKind.LIVE, title = "TF1"),
                 Channel(position = 1, name = "Le Film (2020)", stream = StreamDescriptor("http://127.0.0.1:9/movie/2.mkv"), kind = ContentKind.MOVIE, title = "Le Film", year = 2020),
             ),
         )
@@ -83,6 +86,59 @@ class PlayerViewModelTest {
         store.clear()
         idle()
         assertTrue(!container.playbackOpen.value)
+    }
+
+    @Test
+    fun aChannelOpenedFromItsPreviewKeepsThePreviewStream() {
+        // Serveur qui accepte la connexion sans répondre : le flux reste « en chargement », sans erreur.
+        java.net.ServerSocket(0).use { server ->
+            val (live, _) = playlist("http://127.0.0.1:${server.localPort}/live/1.ts")
+            val previewer = ChannelPreviewPlayer(container.playerFactory, container.sourceRepository, container.settings)
+            previewer.volume = 0.2f
+            runBlocking { previewer.show(checkNotNull(container.channelDao.get(live))) }
+            val shown = checkNotNull(previewer.player.value)
+            // Une autre chaîne que celle de l'aperçu : rien n'est confié.
+            assertNull(previewer.handOff(live + 1000))
+            // OK sur la chaîne de l'aperçu : son lecteur est confié au plein écran, l'aperçu ne l'a plus.
+            container.previewHandoff.offer(checkNotNull(previewer.handOff(live)))
+            assertNull(previewer.player.value)
+            previewer.release()
+
+            val (viewModel, store) = open(live)
+            viewModel.onStart()
+            idle()
+            // Le plein écran continue sur le même lecteur (même connexion), au son normal.
+            assertSame(shown, viewModel.player.value)
+            assertEquals(1f, shown.volume, 0.001f)
+            assertEquals(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MOVIE, shown.audioAttributes.contentType)
+            assertEquals("TF1", viewModel.state.value.channelName)
+            assertNull(container.previewHandoff.take())
+            // Mise en veille puis retour : le flux est rouvert sur un lecteur du plein écran.
+            viewModel.onStop()
+            idle()
+            viewModel.onStart()
+            idle()
+            assertNotNull(viewModel.player.value)
+            assertNotSame(shown, viewModel.player.value)
+            store.clear()
+        }
+    }
+
+    @Test
+    fun aPreviewOfAnotherStreamIsClosedBeforePlaying() {
+        java.net.ServerSocket(0).use { server ->
+            val (live, _) = playlist()
+            val other = tv.nextv.app.player.PlaybackRequest(StreamDescriptor("http://127.0.0.1:${server.localPort}/other.ts"), null, null, null)
+            val player = container.playerFactory.create(preview = true)
+            container.previewHandoff.offer(tv.nextv.app.player.PreviewHandoff(player, other, tv.nextv.app.player.StreamTaps(), null, null))
+            val (viewModel, store) = open(live)
+            viewModel.onStart()
+            idle()
+            assertNotNull(viewModel.player.value)
+            assertNotSame(player, viewModel.player.value)
+            assertNull(container.previewHandoff.take())
+            store.clear()
+        }
     }
 
     @Test

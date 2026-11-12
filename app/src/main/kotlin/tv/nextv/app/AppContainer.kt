@@ -49,6 +49,7 @@ import tv.nextv.app.data.security.KeystoreSecretCipher
 import tv.nextv.app.data.settings.SettingsRepository
 import tv.nextv.app.data.update.AppUpdater
 import tv.nextv.app.player.PlayerFactory
+import tv.nextv.app.player.PreviewHandoffSlot
 import tv.nextv.app.player.TIMESHIFT_FILE
 import tv.nextv.core.epg.EpgImporter
 import tv.nextv.core.epg.EpgLoader
@@ -169,6 +170,9 @@ class AppContainer(context: Context) {
     val refreshController = RefreshController(applicationScope, sourceRepository, BackgroundWork(playbackOpen))
 
     val playerFactory = PlayerFactory(appContext, httpClients)
+
+    /** Aperçu de l'accueil confié au lecteur plein écran, quand on ouvre la chaîne de l'aperçu. */
+    val previewHandoff = PreviewHandoffSlot(applicationScope)
 
     /** Clé TMDB : celle saisie dans les réglages, sinon celle fournie à la compilation (secret CI). */
     private val tmdbKey: StateFlow<String?> = settings.tmdbApiKey

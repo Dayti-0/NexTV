@@ -132,17 +132,21 @@ class PlayerFactory(
             .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(context, OkHttpDataSource.Factory(clients.client(RequestPurpose.STREAM)))))
             .setLoadControl(if (preview) previewLoadControl() else if (film) filmLoadControl() else loadControl())
         if (bandwidthMeter != null) builder.setBandwidthMeter(bandwidthMeter)
-        if (!preview) {
-            // Lecture en plein écran : le son est demandé au système (une autre application qui joue se tait,
-            // et la lecture s'interrompt le temps d'une annonce vocale ou d'un appel), et elle se met en pause
-            // quand la sortie son disparaît (casque débranché). L'aperçu de l'accueil, lui, ne prend pas le son.
-            builder.setAudioAttributes(
-                AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),
-                /* handleAudioFocus = */ true,
-            )
-            builder.setHandleAudioBecomingNoisy(true)
-        }
-        return builder.build()
+        // L'aperçu de l'accueil ne prend pas le son au système.
+        return builder.build().also { if (!preview) takeSound(it) }
+    }
+
+    /**
+     * Lecture en plein écran : le son est demandé au système (une autre application qui joue se tait, et la
+     * lecture s'interrompt le temps d'une annonce vocale ou d'un appel), et elle se met en pause quand la
+     * sortie son disparaît (casque débranché). Aussi pour l'aperçu repris par le plein écran.
+     */
+    fun takeSound(player: ExoPlayer) {
+        player.setAudioAttributes(
+            AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),
+            /* handleAudioFocus = */ true,
+        )
+        player.setHandleAudioBecomingNoisy(true)
     }
 
     /** Formats de son compressés (Dolby, DTS) et leur type, pour savoir si l'appareil les décode. */
@@ -212,15 +216,17 @@ class PlayerFactory(
         transferListener: TransferListener? = null,
         /** Direct continu : ce qui est reçu y est gardé, pour revenir en arrière. */
         recording: LiveRecording? = null,
+        /** Aperçu de l'accueil : de quoi brancher plus tard la mesure du débit et la mémoire du direct. */
+        taps: StreamTaps? = null,
     ): MediaSource {
         val httpFactory = OkHttpDataSource.Factory(httpClient(request))
             .setUserAgent(userAgent(request))
             .setDefaultRequestProperties(request.stream.headers - "User-Agent")
-            .setTransferListener(transferListener)
-        val networkFactory: DataSource.Factory = if (recording != null) {
-            DataSource.Factory { LiveRecordingDataSource(httpFactory.createDataSource(), recording) }
-        } else {
-            httpFactory
+            .setTransferListener(taps ?: transferListener)
+        val networkFactory: DataSource.Factory = when {
+            taps != null -> DataSource.Factory { LiveRecordingDataSource(httpFactory.createDataSource()) { taps.recording } }
+            recording != null -> DataSource.Factory { LiveRecordingDataSource(httpFactory.createDataSource()) { recording } }
+            else -> httpFactory
         }
         val dataSourceFactory = DefaultDataSource.Factory(context, networkFactory)
         return DefaultMediaSourceFactory(dataSourceFactory).createMediaSource(mediaItem(request.stream, forceHls))

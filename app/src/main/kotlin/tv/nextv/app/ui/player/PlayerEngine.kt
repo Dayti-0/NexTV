@@ -32,6 +32,7 @@ import tv.nextv.app.AppContainer
 import tv.nextv.app.R
 import tv.nextv.app.player.AdVolumeControl
 import tv.nextv.app.player.PlaybackRequest
+import tv.nextv.app.player.PreviewHandoff
 import tv.nextv.app.player.ReceivedRate
 import tv.nextv.app.player.LiveRecording
 import tv.nextv.core.model.StreamFormat
@@ -238,6 +239,14 @@ internal class PlayerEngine(
         liveRecording?.retire()
         val recording = if (record && !forceHls && request.stream.format in RECORDABLE_FORMATS) LiveRecording(liveTail()) else null
         liveRecording = recording
+        // Chaîne ouverte depuis son aperçu : il joue déjà ce flux, la lecture continue dessus.
+        val handoff = container.previewHandoff.take()
+        if (handoff != null) {
+            val sameStream = !film && !forceHls && startPositionMs == 0L && handoff.request.stream.url == request.stream.url
+            if (sameStream && adopt(handoff, recording)) return
+            // Autre flux (autre version de la chaîne, serveur de secours…) : sa connexion est fermée d'abord.
+            handoff.player.release()
+        }
         open(container.playerFactory.mediaSource(request, forceHls, received, recording), startPositionMs)
     }
 
@@ -293,6 +302,57 @@ internal class PlayerEngine(
         player.playWhenReady = true
         player.prepare()
         mutablePlayer.value = player
+    }
+
+    /**
+     * Reprend le lecteur de l'aperçu de l'accueil, qui lit déjà le flux demandé : pas de nouvelle connexion ni
+     * de nouvelle attente d'image. Il sert à ce flux seulement (sa mémoire tampon est celle d'un aperçu) : le
+     * flux suivant aura un lecteur neuf. Faux s'il ne joue plus (le flux est alors ouvert normalement).
+     */
+    private fun adopt(handoff: PreviewHandoff, recording: LiveRecording?): Boolean {
+        val player = handoff.player
+        val playbackState = player.playbackState
+        if (player.playerError != null || (playbackState != Player.STATE_READY && playbackState != Player.STATE_BUFFERING)) return false
+        release()
+        generation++
+        adVolume.newStream()
+        receivedRate.reset()
+        state.update { it.copy(error = null, info = PlaybackInfo(), audioProblem = null, unsupportedAudio = null, receivedMbps = null) }
+        audioGivenUp = false
+        // Mesure du débit et mémoire du direct (retour en arrière) : branchées sur la connexion déjà ouverte.
+        handoff.taps.listener = received
+        handoff.taps.recording = recording
+        player.addListener(listener)
+        player.addAnalyticsListener(analytics)
+        exoPlayer = player
+        exoPlayerConfig = null
+        // Plein écran : le son au niveau normal, demandé au système ; langues préférées.
+        container.playerFactory.takeSound(player)
+        player.volume = 1f
+        player.setPlaybackSpeed(1f)
+        player.resetTrackSelection()
+        player.playWhenReady = true
+        mutablePlayer.value = player
+        // Ce que le lecteur a déjà annoncé pendant l'aperçu : pistes, formats, décodeurs, état.
+        listener.onTracksChanged(player.currentTracks)
+        updateInfo { info ->
+            val video = player.videoFormat
+            val audio = player.audioFormat
+            info.copy(
+                videoMimeType = video?.sampleMimeType,
+                width = video?.width?.takeIf { it > 0 },
+                height = video?.height?.takeIf { it > 0 },
+                frameRate = video?.frameRate?.takeIf { it > 0f },
+                videoDecoder = handoff.videoDecoder,
+                audioMimeType = audio?.sampleMimeType,
+                audioChannels = audio?.channelCount?.takeIf { it > 0 },
+                audioDecoder = handoff.audioDecoder,
+            )
+        }
+        listener.onPlaybackStateChanged(playbackState)
+        zapStartedAt = 0L
+        container.logger.debug(TAG, "zapping → aperçu repris, sans rouvrir le flux")
+        return true
     }
 
     /** Le lecteur actuel, ou un nouveau si le réglage du son direct ou du décodeur préféré a changé. */

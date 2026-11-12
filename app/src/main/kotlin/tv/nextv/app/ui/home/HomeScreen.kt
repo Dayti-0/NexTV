@@ -254,13 +254,13 @@ fun HomeScreen(
         onStopOrDispose { viewModel.setPreviewActive(false) }
     }
 
-    // Connexion de l'aperçu libérée avant la lecture en plein écran.
+    // Chaîne de l'aperçu : le plein écran reprend son flux. Sinon, sa connexion est libérée avant la lecture.
     val playChannel: (Long) -> Unit = {
-        viewModel.setPreviewActive(false)
+        viewModel.openFromPreview(it)
         onPlay(it)
     }
     val playFavorite: (Long) -> Unit = {
-        viewModel.setPreviewActive(false)
+        viewModel.openFromPreview(it)
         onPlayFavorite(it)
     }
 

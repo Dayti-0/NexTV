@@ -678,8 +678,9 @@ class PlayerViewModel(
         // Position de départ seulement pour une reprise : un direct démarre au plus près du direct.
         // Direct : les dernières secondes sont gardées pour revenir en arrière (←).
         val live = state.value.isLive && delayed.replay == null && !delayed.restarting
-        engine.play(playbackRequest, forceHls, session.startPositionMs, record = live, film = !state.value.isLive)
+        // Avant l'ouverture : un aperçu repris joue déjà, il annonce aussitôt que le chargement est fini.
         mutableState.update { it.copy(buffering = true) }
+        engine.play(playbackRequest, forceHls, session.startPositionMs, record = live, film = !state.value.isLive)
     }
 
     private fun handleError(error: PlaybackException) {

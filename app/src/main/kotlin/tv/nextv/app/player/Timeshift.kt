@@ -416,26 +416,31 @@ class LiveRecording(private val ring: ByteArray) {
     }
 }
 
-/** Source réseau du direct qui garde aussi ce qu'elle reçoit dans [recording] (retour en arrière). */
+/**
+ * Source réseau du direct qui garde aussi ce qu'elle reçoit dans l'enregistrement donné par [recordingOf]
+ * (retour en arrière). `null` : rien n'est gardé pour l'instant (aperçu de l'accueil) ; il peut arriver en
+ * cours de flux (aperçu repris par le plein écran), ce qui est reçu ensuite y est gardé.
+ */
 @OptIn(UnstableApi::class)
 class LiveRecordingDataSource(
     private val upstream: androidx.media3.datasource.DataSource,
-    private val recording: LiveRecording,
+    private val recordingOf: () -> LiveRecording?,
 ) : androidx.media3.datasource.DataSource by upstream {
     private var opened = false
 
     override fun open(dataSpec: DataSpec): Long = upstream.open(dataSpec).also { opened = true }
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
-        if (recording.handingOver) return C.RESULT_END_OF_INPUT
+        val recording = recordingOf()
+        if (recording?.handingOver == true) return C.RESULT_END_OF_INPUT
         val n = upstream.read(buffer, offset, length)
-        if (n > 0) recording.append(buffer, offset, n)
+        if (n > 0) recording?.append(buffer, offset, n)
         return n
     }
 
     override fun close() {
         // Retour en arrière, pause : la connexion n'est pas fermée, elle continue d'enregistrer la suite.
-        if (opened && recording.takeOver(upstream)) {
+        if (opened && recordingOf()?.takeOver(upstream) == true) {
             opened = false
             return
         }

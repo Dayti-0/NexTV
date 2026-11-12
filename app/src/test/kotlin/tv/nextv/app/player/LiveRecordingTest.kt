@@ -125,10 +125,30 @@ class LiveRecordingTest {
     }
 
     @Test
+    fun aRecordingPluggedOnAnOpenStreamKeepsWhatComesNext() {
+        // Aperçu de l'accueil : rien n'est gardé ; repris par le plein écran, la suite du flux l'est.
+        var recording: LiveRecording? = null
+        val upstream = FakeLive()
+        val source = LiveRecordingDataSource(upstream) { recording }
+        source.open(DataSpec(Uri.parse("http://direct.example/1.ts")))
+        val buffer = ByteArray(100)
+        upstream.feed(bytes(0, 40))
+        assertEquals(40, source.read(buffer, 0, 100))
+        val plugged = LiveRecording(tailBytes = 1_000)
+        recording = plugged
+        upstream.feed(bytes(40, 30))
+        assertEquals(30, source.read(buffer, 0, 100))
+        assertEquals(30, plugged.total)
+        plugged.stop()
+        source.close()
+        assertTrue(upstream.closed)
+    }
+
+    @Test
     fun connectionContinuesAfterThePlayerLetsGo() {
         val recording = LiveRecording(tailBytes = 1_000)
         val upstream = FakeLive()
-        val source = LiveRecordingDataSource(upstream, recording)
+        val source = LiveRecordingDataSource(upstream) { recording }
         source.open(DataSpec(Uri.parse("http://direct.example/1.ts")))
         upstream.feed(bytes(0, 40))
         val buffer = ByteArray(100)

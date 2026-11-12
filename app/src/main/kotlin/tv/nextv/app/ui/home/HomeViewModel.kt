@@ -325,7 +325,7 @@ class HomeViewModel(
     val previewEnabled: StateFlow<Boolean> = container.settings.channelPreview
         .stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
-    private val previewer = ChannelPreviewPlayer(container.playerFactory, container.sourceRepository)
+    private val previewer = ChannelPreviewPlayer(container.playerFactory, container.sourceRepository, container.settings)
 
     /** Lecteur de l'aperçu (sans le son), `null` sans aperçu. */
     val previewPlayer = previewer.player
@@ -712,6 +712,15 @@ class HomeViewModel(
         previewActive.value = active
         // Le lecteur de l'aperçu (et ses décodeurs) est rendu : le plein écran en a besoin.
         if (!active) previewer.release()
+    }
+
+    /**
+     * Chaîne [channelId] ouverte en plein écran : si l'aperçu la joue déjà, son lecteur est confié au plein
+     * écran (même connexion, pas de nouvelle ouverture du flux) ; sinon l'aperçu est simplement arrêté.
+     */
+    fun openFromPreview(channelId: Long) {
+        previewer.handOff(channelId)?.let(container.previewHandoff::offer)
+        setPreviewActive(false)
     }
 
     override fun onCleared() {
