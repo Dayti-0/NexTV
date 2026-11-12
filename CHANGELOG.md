@@ -4,6 +4,10 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.117
+- Chaînes 4K masquées : le lecteur, les favoris et les chaînes récentes montrent le logo et le nom de la version regardée (M6 et non M6 4K)
+- Interface Streaming : la touche ☰ de la télécommande ouvre le menu de gauche (et le referme)
+
 ## 0.2.116
 - Nouvel onglet « King » pour ajouter une playlist : seulement l'identifiant et le mot de passe, les serveurs (principal et secours) sont déjà dans l'application
 - Configuration depuis le téléphone : onglet « King » proposé d'office, la télé s'ouvre sur le compte King prérempli

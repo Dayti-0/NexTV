@@ -226,6 +226,24 @@ class HomeFocusTest {
         assertTrue("Sélection hors du menu : $focusedLeft", focusedLeft < 100.dp)
     }
 
+    /** Streaming : ☰ dans le contenu ouvre le menu de gauche ; ☰ dans le menu le referme. */
+    @Test
+    fun menuKeyOpensTheStreamingMenu() {
+        compose.setContent { Home(HomeLayout.STREAMING, HomeActions(), HomeSection.MOVIES) }
+        compose.waitForIdle()
+        enterStreamingContent()
+        repeat(2) { press(Key.DirectionDown) }
+        val inContent = compose.onNode(isFocused()).getBoundsInRoot().left
+        assertTrue("Sélection encore dans le menu : $inContent", inContent > 100.dp)
+        press(Key.Menu)
+        val inMenu = compose.onNode(isFocused()).getBoundsInRoot().left
+        println("☰ : sélection à $inMenu")
+        assertTrue("Menu pas ouvert : $inMenu", inMenu < 100.dp)
+        press(Key.Menu)
+        val back = compose.onNode(isFocused()).getBoundsInRoot().left
+        assertTrue("Menu pas refermé : $back", back > 100.dp)
+    }
+
     /**
      * Chaînes en Streaming : une catégorie, puis « Toutes les chaînes » : la liste revient bien à toutes
      * (liste paginée qui suit la catégorie, comme dans l'application).

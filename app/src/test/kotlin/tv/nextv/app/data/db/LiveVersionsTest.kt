@@ -99,4 +99,36 @@ class LiveVersionsTest {
         assertEquals(listOf("FR| TF1 FHD", "FR| FRANCE 3 PARIS ILE DE FRANCE FHD", "FR| LE FIGARO IDF FHD", "FR| BFM TV FHD"), listed(id))
         assertEquals(listOf("alsace", "paris ile de france", "poitou charentes"), container.channelFilters.france3Regions(id).map { it.key })
     }
+
+    /** 4K masquée : le lecteur, les favoris et les chaînes récentes montrent la version FHD et son logo, pas « M6 4K ». */
+    @Test
+    fun hiddenUhdVersionLendsNeitherNameNorLogo() = runBlocking {
+        val id = container.sourceRepository.add(SourceInput("P", SourceLocation.Remote("http://example.com/p.m3u")))
+        val channels = LiveVariants.unify(
+            listOf(
+                live("FR| M6 4K").copy(logoUrl = "http://example.com/m6-4k.png"),
+                live("FR| M6 FHD").copy(logoUrl = "http://example.com/m6.png"),
+                live("FR| ARTE 4K").copy(logoUrl = "http://example.com/arte-4k.png"),
+            ),
+        )
+        container.playlistStore.replaceChannels(id, channels) {}
+        val m6 = dao.pageChannels(id, 0, "", "", 0).all().first { it.name == "FR| M6 4K" }
+        val variantKey = dao.get(m6.id)!!.variantKey
+        container.favorites.toggle(id, ContentKind.LIVE, m6.itemKey, "FR| M6", null)
+        container.favorites.toggle(id, ContentKind.LIVE, "live:fr arte", "FR| ARTE", null)
+        container.settings.addRecentChannel(id, m6.itemKey)
+
+        // 4K visible : la meilleure version, la 4K.
+        assertEquals("http://example.com/m6-4k.png", dao.primaryOf(id, variantKey)?.logoUrl)
+
+        container.channelFilters.apply(id, hideUhd = true, france3Region = null)
+        assertEquals("FR| M6 FHD", dao.primaryOf(id, variantKey)?.name)
+        assertEquals("http://example.com/m6.png", dao.primaryOf(id, variantKey)?.logoUrl)
+        // Une chaîne qui n'existe qu'en 4K reste dans les favoris.
+        assertEquals(
+            listOf("FR| M6 FHD" to "http://example.com/m6.png", "FR| ARTE 4K" to "http://example.com/arte-4k.png"),
+            dao.observeFavoriteChannels(id, 0).first().map { it.name to it.logoUrl },
+        )
+        assertEquals(listOf("FR| M6 FHD"), dao.observeChannelsByKey(id, listOf(m6.itemKey), 0).first().map { it.name })
+    }
 }

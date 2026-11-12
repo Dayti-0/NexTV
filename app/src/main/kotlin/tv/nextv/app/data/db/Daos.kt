@@ -40,6 +40,15 @@ private const val NOT_HIDDEN =
     "IFNULL(c.groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'LIVE') " +
         "AND $VISIBLE_VERSION"
 
+/**
+ * `c` : version affichée de la chaîne (favoris, chaînes récentes, guide des favoris) : la meilleure version
+ * (`isPrimary`), sauf si c'est une 4K masquée dans les réglages : alors la meilleure des autres, avec son logo.
+ * Une chaîne qui n'existe qu'en 4K garde sa version 4K.
+ */
+private const val SHOWN_VERSION =
+    "c.id = (SELECT v.id FROM channels v WHERE v.sourceId = c.sourceId AND v.kind = 'LIVE' AND v.itemKey = c.itemKey " +
+        "ORDER BY (v.qualityRank = 5 AND $UHD_HIDDEN), v.isPrimary DESC, v.qualityRank DESC, v.position LIMIT 1)"
+
 /** `b` : autre version visible de la même chaîne, mieux classée que `c` (qualité, puis ordre de la playlist). */
 private const val BETTER_VERSION =
     "b.sourceId = c.sourceId AND b.kind = 'LIVE' AND b.variantKey = c.variantKey AND b.variantKey != '' " +
@@ -529,7 +538,7 @@ interface ChannelDao {
             c.quality, c.variantCount, c.itemKey,
             p.title AS nowTitle, p.startMillis AS nowStart, p.stopMillis AS nowStop
         FROM favorites f
-        CROSS JOIN channels c ON c.sourceId = f.sourceId AND c.itemKey = f.itemKey AND c.kind = 'LIVE' AND c.isPrimary = 1
+        CROSS JOIN channels c ON c.sourceId = f.sourceId AND c.itemKey = f.itemKey AND c.kind = 'LIVE' AND $SHOWN_VERSION
         $NOW_PROGRAMME
         WHERE f.sourceId = :sourceId AND f.kind = 'LIVE'
         ORDER BY f.position
@@ -545,7 +554,7 @@ interface ChannelDao {
             p.title AS nowTitle, p.startMillis AS nowStart, p.stopMillis AS nowStop
         FROM channels c
         $NOW_PROGRAMME
-        WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.isPrimary = 1 AND c.itemKey IN (:itemKeys)
+        WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.itemKey IN (:itemKeys) AND $SHOWN_VERSION
         """,
     )
     fun observeChannelsByKey(sourceId: Long, itemKeys: List<String>, now: Long): Flow<List<ChannelListRow>>
@@ -758,11 +767,15 @@ interface ChannelDao {
     )
     suspend fun recordedVersion(sourceId: Long, variantKey: String): ChannelEntity?
 
-    /** Meilleure version de la chaîne (pour l'affichage et le zapping). */
+    /**
+     * Meilleure version de la chaîne (pour l'affichage et le zapping) ; 4K masquée dans les réglages : la meilleure
+     * des autres, pour ne pas afficher le logo « 4K » sur une image FHD.
+     */
     @Query(
         """
         SELECT * FROM channels
-        WHERE sourceId = :sourceId AND kind = 'LIVE' AND variantKey = :variantKey AND isPrimary = 1 LIMIT 1
+        WHERE sourceId = :sourceId AND kind = 'LIVE' AND variantKey = :variantKey
+        ORDER BY (qualityRank = 5 AND $UHD_HIDDEN), isPrimary DESC, qualityRank DESC, position LIMIT 1
         """,
     )
     suspend fun primaryOf(sourceId: Long, variantKey: String): ChannelEntity?
@@ -848,7 +861,7 @@ interface ChannelDao {
         """
         SELECT c.id, c.name, c.title, c.logoUrl, c.channelNumber, c.epgChannelId, c.itemKey, $CATCHUP_DAYS
         FROM favorites f
-        CROSS JOIN channels c ON c.sourceId = f.sourceId AND c.itemKey = f.itemKey AND c.kind = 'LIVE' AND c.isPrimary = 1
+        CROSS JOIN channels c ON c.sourceId = f.sourceId AND c.itemKey = f.itemKey AND c.kind = 'LIVE' AND $SHOWN_VERSION
         WHERE f.sourceId = :sourceId AND f.kind = 'LIVE' AND c.epgChannelId IS NOT NULL
         ORDER BY f.position
         """,
