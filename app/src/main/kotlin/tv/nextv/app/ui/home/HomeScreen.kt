@@ -607,8 +607,19 @@ fun HomeContent(
             // Streaming et Classique sur grand écran : les chaînes en liste avec l'aperçu (comme Live Center),
             // pas en rangées : « Toutes les chaînes » en tête des catégories, ↑ ↓ pour changer de chaîne.
             val liveList = section == HomeSection.TV && window.isWide && layout != HomeLayout.LIVE_CENTER
+            // Classique : la touche ☰ de la télécommande ouvre le volet des catégories, ou le referme. Avant le
+            // contenu (onPreviewKeyEvent), d'où que soit la sélection (onglets, rangées, volet).
+            val classicMenu = if (catalog && layout == HomeLayout.PREMIUM && !liveList) {
+                Modifier.onPreviewKeyEvent { event ->
+                    if (event.key != Key.Menu) return@onPreviewKeyEvent false
+                    if (event.type == KeyEventType.KeyDown && event.nativeKeyEvent.repeatCount == 0) drawerOpen.value = !drawerOpen.value
+                    true
+                }
+            } else {
+                Modifier
+            }
             if (catalog && layout == HomeLayout.PREMIUM && category == Category.All && !liveList) {
-                CategoryDrawer(drawerRail, Modifier.padding(padding), drawerOpen) {
+                CategoryDrawer(drawerRail, Modifier.padding(padding).then(classicMenu), drawerOpen) {
                 PremiumHome(
                     content = shelfContent,
                     window = window,
@@ -632,6 +643,7 @@ fun HomeContent(
                 Modifier
                     .fillMaxSize()
                     .padding(padding)
+                    .then(classicMenu)
                     // Touche ☰ de la télécommande : ouvre le menu de gauche, ou le referme si on y est déjà. Avant le
                     // contenu (onPreviewKeyEvent) : la liste des chaînes s'en servait pour son volet et la gardait.
                     .then(

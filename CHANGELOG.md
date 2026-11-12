@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.125
+- Interface Classique : la touche ☰ de la télécommande ouvre le menu des catégories (films, séries), et le referme
+
 ## 0.2.124
 - Fiche d’un film ou d’une série (toutes les interfaces, réglage « Bande-annonce en fond ») : la bande-annonce est maintenant en bas de la fiche ; elle s’y lit en petit, et passe en plein écran avec le son quand on descend jusqu’à elle (« Retour » ramène sur la fiche)
 - Interface Streaming : la bande-annonce ne joue plus dans le visuel en haut de la fiche (elle est en bas)

@@ -141,6 +141,30 @@ class HomeFocusTest {
         compose.onNodeWithText("Groupe 4").assertExists()
     }
 
+    /** Classique : ☰ ouvre le volet des catégories (sélection dedans) ; ☰ le referme, la sélection revient aux rangées. */
+    @Test
+    fun menuKeyOpensTheClassicCategories() {
+        val focused = mutableListOf<String>()
+        compose.setContent { Home(HomeLayout.PREMIUM, HomeActions(onPosterFocus = { focused += it.title }), HomeSection.MOVIES) }
+        compose.waitForIdle()
+        repeat(3) { press(Key.DirectionDown) }
+        val before = focused.lastOrNull()
+        assertTrue(compose.onAllNodesWithTag(CATEGORY_DRAWER_TAG).fetchSemanticsNodes().isEmpty())
+        press(Key.Menu)
+        compose.mainClock.advanceTimeBy(500)
+        compose.waitForIdle()
+        compose.onNodeWithTag(CATEGORY_DRAWER_TAG).assertExists()
+        val inDrawer = compose.onNode(isFocused()).getBoundsInRoot().left
+        println("Classique, ☰ : sélection à $inDrawer (${focusedText()})")
+        assertTrue("Sélection hors du volet : $inDrawer", inDrawer < 320.dp)
+        press(Key.Menu)
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
+        assertTrue("Volet encore ouvert", compose.onAllNodesWithTag(CATEGORY_DRAWER_TAG).fetchSemanticsNodes().isEmpty())
+        println("Classique, ☰ de nouveau : ${focused.lastOrNull()} (avant : $before)")
+        assertTrue("Sélection perdue : ${focusedText()}", compose.onAllNodes(isFocused()).fetchSemanticsNodes().isNotEmpty())
+    }
+
     /** Volet ouvert : ↑ tout en haut ne fait pas sortir le focus vers les affiches derrière. */
     @Test
     fun streamingDrawerKeepsTheFocus() = assertDrawerKeepsFocus(HomeLayout.STREAMING)
