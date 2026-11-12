@@ -220,6 +220,8 @@ class PlayerViewModel(
 
     init {
         // Attention : rien de ce qui est déclaré plus bas dans la classe n'est encore prêt ici.
+        // Lecteur ouvert : les actualisations automatiques de la playlist et du guide attendent sa fermeture.
+        container.playerOpened()
         load(channelId)
         // Ces surveillances s'arrêtent quand l'écran n'est plus affiché (veille, autre application).
         viewModelScope.launch {
@@ -327,7 +329,7 @@ class PlayerViewModel(
         mutableState.update {
             it.copy(engineVlc = true, audioProblem = null, unsupportedAudio = null, error = null, buffering = true, paused = false, tracks = PlayerTracks(emptyList(), emptyList()))
         }
-        playback.play(urlWithCredentials(request), request.userAgent, position)
+        playback.play(urlWithCredentials(request), request.userAgent, position, film = !state.value.isLive)
         return true
     }
 
@@ -664,7 +666,7 @@ class PlayerViewModel(
         // Position de départ seulement pour une reprise : un direct démarre au plus près du direct.
         // Direct : les dernières secondes sont gardées pour revenir en arrière (←).
         val live = state.value.isLive && delayed.replay == null && !delayed.restarting
-        engine.play(playbackRequest, forceHls, session.startPositionMs, record = live)
+        engine.play(playbackRequest, forceHls, session.startPositionMs, record = live, film = !state.value.isLive)
         mutableState.update { it.copy(buffering = true) }
     }
 
@@ -999,6 +1001,7 @@ class PlayerViewModel(
     }
 
     override fun onCleared() {
+        container.playerClosed()
         resume.saveBeforeClose()
         releaseVlc()
         delayed.stopTimeshift()

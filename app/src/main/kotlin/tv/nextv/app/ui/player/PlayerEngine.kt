@@ -71,7 +71,11 @@ internal class PlayerEngine(
         val preferredDecoders: Map<String, String>,
         val excludedDecoders: Set<String>,
         val softwareAudio: Boolean,
+        val film: Boolean,
     )
+
+    /** Le flux en cours est un film ou un épisode (plus d'avance en mémoire qu'un direct). */
+    private var film = false
 
     /** Son décodé par l'appli d'abord (après une erreur de décodage du son sur le flux en cours). */
     private var softwareAudio = false
@@ -225,8 +229,10 @@ internal class PlayerEngine(
      *
      * @param forceHls traiter le flux comme du HLS (seconde tentative pour une URL sans extension).
      * @param startPositionMs position de départ d'une reprise (0 : un direct démarre au plus près du direct).
+     * @param film film ou épisode, et non un direct.
      */
-    fun play(request: PlaybackRequest, forceHls: Boolean, startPositionMs: Long, record: Boolean = false) {
+    fun play(request: PlaybackRequest, forceHls: Boolean, startPositionMs: Long, record: Boolean = false, film: Boolean = false) {
+        this.film = film
         // Direct continu (MPEG-TS…) : les dernières secondes sont gardées en mémoire pour revenir en arrière.
         // Le direct précédent cède l'anneau avant que le nouveau n'y écrive.
         liveRecording?.retire()
@@ -291,11 +297,12 @@ internal class PlayerEngine(
 
     /** Le lecteur actuel, ou un nouveau si le réglage du son direct ou du décodeur préféré a changé. */
     private fun reusablePlayer(): ExoPlayer {
-        val config = PlayerConfig(audioPassthrough, preferredDecoders, excludedDecoders, softwareAudio)
+        val config = PlayerConfig(audioPassthrough, preferredDecoders, excludedDecoders, softwareAudio, film)
         exoPlayer?.takeIf { exoPlayerConfig == config }?.let { return it }
         release()
         return container.playerFactory.create(
             bandwidthMeter, preferredDecoders, adVolume, passthrough = audioPassthrough, excludedDecoders = excludedDecoders, softwareAudio = softwareAudio,
+            film = film,
         ).apply {
             addListener(listener)
             addAnalyticsListener(analytics)

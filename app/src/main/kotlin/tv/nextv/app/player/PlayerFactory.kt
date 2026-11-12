@@ -93,6 +93,8 @@ class PlayerFactory(
          * une erreur de décodage du son sur le flux en cours.
          */
         softwareAudio: Boolean = false,
+        /** Film ou épisode (et non un direct) : plus d'avance en mémoire, et moins de reprises hachées. */
+        film: Boolean = false,
     ): ExoPlayer {
         // Repli automatique sur un autre décodeur si le premier ne démarre pas (box aux décodeurs capricieux).
         val renderers = object : DefaultRenderersFactory(context) {
@@ -128,7 +130,7 @@ class PlayerFactory(
         val builder = ExoPlayer.Builder(context, renderers)
             // Flux donné sans sa source (setMediaItem) : client « flux » quand même (proxy), sans identifiants.
             .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(context, OkHttpDataSource.Factory(clients.client(RequestPurpose.STREAM)))))
-            .setLoadControl(if (preview) previewLoadControl() else loadControl())
+            .setLoadControl(if (preview) previewLoadControl() else if (film) filmLoadControl() else loadControl())
         if (bandwidthMeter != null) builder.setBandwidthMeter(bandwidthMeter)
         if (!preview) {
             // Lecture en plein écran : le son est demandé au système (une autre application qui joue se tait,
@@ -264,6 +266,17 @@ class PlayerFactory(
         .setTargetBufferBytes(MAX_BUFFER_BYTES)
         .build()
 
+    /**
+     * Film ou épisode : il se charge d'avance tant que la mémoire le permet (jusqu'à [FILM_MAX_BUFFER_MILLIS]), pour
+     * passer les ralentissements du serveur sans s'arrêter. Après une coupure, il attend [FILM_RESUME_BUFFER_MILLIS]
+     * d'avance avant de reprendre : sur une connexion trop lente, quelques pauses franches plutôt qu'une image qui
+     * s'arrête et reprend toutes les cinq secondes. Le démarrage et les déplacements restent aussi rapides.
+     */
+    private fun filmLoadControl(): DefaultLoadControl = DefaultLoadControl.Builder()
+        .setBufferDurationsMs(DefaultLoadControl.DEFAULT_MIN_BUFFER_MS, FILM_MAX_BUFFER_MILLIS, START_BUFFER_MILLIS, FILM_RESUME_BUFFER_MILLIS)
+        .setTargetBufferBytes(filmBufferBytes(context))
+        .build()
+
     /** Aperçu : quelques secondes d'avance seulement. */
     private fun previewLoadControl(): DefaultLoadControl = DefaultLoadControl.Builder()
         .setBufferDurationsMs(PREVIEW_MIN_BUFFER_MILLIS, PREVIEW_MAX_BUFFER_MILLIS, START_BUFFER_MILLIS, RESUME_BUFFER_MILLIS)
@@ -293,7 +306,24 @@ class PlayerFactory(
     }
 }
 
+/**
+ * Mémoire qu'un film peut occuper d'avance : un cinquième de celle que le système accorde à l'application, entre
+ * [MAX_BUFFER_BYTES] (petites box) et [FILM_MAX_BUFFER_BYTES]. Au-delà, le système ferme l'application.
+ */
+internal fun filmBufferBytes(context: Context): Int {
+    val manager = context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+    if (manager == null || manager.isLowRamDevice) return MAX_BUFFER_BYTES
+    return filmBufferBytes(manager.largeMemoryClass)
+}
+
+/** @param largeMemoryClass mémoire accordée à l'application, en Mo. */
+internal fun filmBufferBytes(largeMemoryClass: Int): Int =
+    (largeMemoryClass.toLong() * 1024 * 1024 / 5).coerceIn(MAX_BUFFER_BYTES.toLong(), FILM_MAX_BUFFER_BYTES.toLong()).toInt()
+
 private const val START_BUFFER_MILLIS = 1_500
+private const val FILM_RESUME_BUFFER_MILLIS = 10_000
+private const val FILM_MAX_BUFFER_MILLIS = 5 * 60_000
+private const val FILM_MAX_BUFFER_BYTES = 96 * 1024 * 1024
 private const val RESUME_BUFFER_MILLIS = 3_000
 private const val MAX_BUFFER_BYTES = 48 * 1024 * 1024
 private const val PREVIEW_MIN_BUFFER_MILLIS = 4_000

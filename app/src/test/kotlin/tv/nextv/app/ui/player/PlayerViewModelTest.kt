@@ -67,17 +67,22 @@ class PlayerViewModelTest {
     @Test
     fun opensAMovieAndClosesIt() {
         val (_, movie) = playlist()
+        assertTrue(!container.playbackOpen.value)
         val (viewModel, store) = open(movie)
         viewModel.onStart()
         idle()
         assertEquals("Le Film", viewModel.state.value.channelName)
         assertTrue(!viewModel.state.value.isLive)
+        // Lecteur ouvert : les actualisations automatiques de la playlist et du guide attendent sa fermeture.
+        assertTrue(container.playbackOpen.value)
         // Mise en veille puis retour : un film est mis en pause et reprend.
         viewModel.onStop()
         idle()
         viewModel.onStart()
         idle()
         store.clear()
+        idle()
+        assertTrue(!container.playbackOpen.value)
     }
 
     @Test

@@ -46,6 +46,18 @@ class PlayerFactoryTest {
     }
 
     @Test
+    fun aFilmGetsMoreReadAheadWithinTheMemoryOfTheDevice() {
+        val megabyte = 1024 * 1024
+        // Un cinquième de la mémoire accordée à l'application, jamais moins que pour un direct, jamais plus de 96 Mo.
+        assertEquals(48 * megabyte, filmBufferBytes(largeMemoryClass = 128))
+        assertEquals(51 * megabyte + megabyte / 5, filmBufferBytes(largeMemoryClass = 256))
+        assertEquals(96 * megabyte, filmBufferBytes(largeMemoryClass = 512))
+        assertEquals(96 * megabyte, filmBufferBytes(largeMemoryClass = 1024))
+        // Le lecteur d'un film se crée comme celui d'un direct.
+        factory.create(film = true).release()
+    }
+
+    @Test
     fun eachStreamUsesItsOwnNetworkSource() {
         // Premier flux : User-Agent et en-tête de sa playlist, identifiants présentés au défi du serveur.
         server.enqueue(MockResponse.Builder().code(401).addHeader("WWW-Authenticate", "Basic realm=\"iptv\"").build())

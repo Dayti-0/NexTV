@@ -114,10 +114,12 @@ class StartupViewModel(
         }
         if (hasData && !forceRefresh) {
             // Données déjà enregistrées : accueil immédiat, actualisation (playlist ou guide) en arrière-plan.
+            // Jamais pendant une lecture : lancée avant la fin de l'actualisation, celle-ci reprend après (un film
+            // regardé en même temps s'arrêtait et reprenait toutes les quelques secondes).
             if (stale) {
-                container.refreshController.refresh(source.id) { recordVersions(it, true) }
+                container.refreshController.refresh(source.id, background = true) { recordVersions(it, true) }
             } else {
-                container.refreshController.refreshEpg(source.id, force = reimportGuide) { recordVersions(it, false) }
+                container.refreshController.refreshEpg(source.id, force = reimportGuide, background = true) { recordVersions(it, false) }
             }
             finish(source.id)
             return

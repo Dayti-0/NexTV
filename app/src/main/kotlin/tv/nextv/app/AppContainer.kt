@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
@@ -151,7 +152,17 @@ class AppContainer(context: Context) {
         catchupDays = xtreamApi::archiveDays,
     )
 
-    val refreshController = RefreshController(applicationScope, sourceRepository)
+    /** Lecteurs plein écran ouverts (un seul en pratique ; deux le temps de passer d'un titre à l'autre). */
+    private val openPlayers = MutableStateFlow(0)
+
+    /** Vrai tant qu'un film ou une chaîne se lit en plein écran : les actualisations automatiques attendent. */
+    val playbackOpen: StateFlow<Boolean> = openPlayers.map { it > 0 }.stateIn(applicationScope, SharingStarted.Eagerly, false)
+
+    fun playerOpened() = openPlayers.update { it + 1 }
+
+    fun playerClosed() = openPlayers.update { (it - 1).coerceAtLeast(0) }
+
+    val refreshController = RefreshController(applicationScope, sourceRepository, BackgroundWork(playbackOpen))
 
     val playerFactory = PlayerFactory(appContext, httpClients)
 
@@ -329,10 +340,10 @@ class AppContainer(context: Context) {
                     val lastSuccess = sourceRepository.getSource(active)?.status?.lastSuccessAtMillis
                     if (settings.playlistRefresh.first().dueWhileRunning(lastSuccess, System.currentTimeMillis())) {
                         // Playlist puis guide.
-                        refreshController.refresh(active)
+                        refreshController.refresh(active, background = true)
                     } else {
                         // Ne retélécharge le guide que s'il a vieilli.
-                        refreshController.refreshEpg(active)
+                        refreshController.refreshEpg(active, background = true)
                     }
                 }
             }
@@ -363,24 +374,30 @@ class AppContainer(context: Context) {
 class RefreshController(
     private val scope: CoroutineScope,
     private val repository: SourceRepository,
+    /** Actualisations automatiques : jamais pendant une lecture ([BackgroundWork]). */
+    private val background: BackgroundWork? = null,
 ) {
     data class Event(val sourceId: Long, val result: RefreshResult, val epgOnly: Boolean = false)
 
     private val mutableEvents = MutableSharedFlow<Event>(extraBufferCapacity = 16)
     val events: SharedFlow<Event> = mutableEvents.asSharedFlow()
 
-    /** @param onResult appelé avec le résultat, avant qu'il ne soit diffusé (suites à donner à une réussite). */
-    fun refresh(sourceId: Long, onResult: suspend (RefreshResult) -> Unit = {}) {
+    /**
+     * @param background actualisation automatique (au lancement, périodique) et non demandée à l'instant : elle
+     *   attend la fin d'une lecture en cours.
+     * @param onResult appelé avec le résultat, avant qu'il ne soit diffusé (suites à donner à une réussite).
+     */
+    fun refresh(sourceId: Long, background: Boolean = false, onResult: suspend (RefreshResult) -> Unit = {}) {
         scope.launch {
-            val result = repository.refresh(sourceId)
+            val result = quietly(background) { repository.refresh(sourceId) }
             onResult(result)
             mutableEvents.emit(Event(sourceId, result))
         }
     }
 
-    fun refreshEpg(sourceId: Long, force: Boolean = false, onResult: suspend (RefreshResult) -> Unit = {}) {
+    fun refreshEpg(sourceId: Long, force: Boolean = false, background: Boolean = false, onResult: suspend (RefreshResult) -> Unit = {}) {
         scope.launch {
-            val result = repository.refreshEpg(sourceId, force)
+            val result = quietly(background) { repository.refreshEpg(sourceId, force) }
             onResult(result)
             mutableEvents.emit(Event(sourceId, result, epgOnly = true))
         }
@@ -391,4 +408,7 @@ class RefreshController(
             repository.refreshAll().forEach { (id, result) -> mutableEvents.emit(Event(id, result)) }
         }
     }
+
+    private suspend fun quietly(wait: Boolean, block: suspend () -> RefreshResult): RefreshResult =
+        if (wait && background != null) background.run(block) else block()
 }

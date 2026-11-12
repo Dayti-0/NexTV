@@ -81,10 +81,15 @@ class VlcPlayback(context: Context, private val listener: Listener) {
         }
     }
 
-    /** Lit [url] (identifiants compris s'il en faut) à partir de [startMs], avec le User-Agent de la playlist. */
-    fun play(url: String, userAgent: String?, startMs: Long) {
+    /**
+     * Lit [url] (identifiants compris s'il en faut) à partir de [startMs], avec le User-Agent de la playlist.
+     *
+     * @param film film ou épisode : plus d'avance en mémoire qu'un direct, pour passer les ralentissements du serveur.
+     */
+    fun play(url: String, userAgent: String?, startMs: Long, film: Boolean = false) {
         val media = Media(libVlc, Uri.parse(url)).apply {
             setHWDecoderEnabled(true, false)
+            if (film) addOption(":network-caching=$FILM_CACHING_MILLIS")
             userAgent?.takeIf { it.isNotBlank() }?.let { addOption(":http-user-agent=$it") }
             if (startMs > 0) addOption(":start-time=${startMs / 1000.0}")
         }
@@ -157,6 +162,9 @@ class VlcPlayback(context: Context, private val listener: Listener) {
     }
 
     private companion object {
+        /** Avance gardée par VLC pour un film (2 s pour un direct, voir [OPTIONS]). */
+        const val FILM_CACHING_MILLIS = 6_000
+
         val OPTIONS = arrayListOf(
             "--http-reconnect",
             "--network-caching=2000",

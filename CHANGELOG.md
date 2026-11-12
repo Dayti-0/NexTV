@@ -4,6 +4,12 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.110
+- Film qui s'arrête et reprend toutes les quelques secondes : la playlist et le guide ne sont plus relus en arrière-plan pendant qu'un film ou une chaîne se lit (ils lui prenaient du débit et de la puissance, surtout juste après une mise à jour). La relecture attend la fermeture du lecteur ; lancée avant, elle s'interrompt et reprend après
+- Films et épisodes : davantage de film chargé d'avance (jusqu'à deux fois plus, selon la mémoire de l'appareil), pour passer les ralentissements du serveur sans s'arrêter
+- Après une coupure, le film attend une dizaine de secondes d'avance avant de reprendre : sur une connexion trop lente, quelques pauses franches au lieu d'une image qui s'arrête toutes les cinq secondes. Le démarrage et les déplacements restent aussi rapides
+- Lecteur VLC : même chose pour les films (6 secondes d'avance au lieu de 2)
+
 ## 0.2.109
 - France 3 régionales : davantage d'éditions reçoivent leur programme. Les écritures abrégées ou fautives de la playlist sont reconnues : « BNORMANDIE », « NORD PDC », « CHAMP ARDENNE », « POITOUCHAR », « POTOU-CHARENTES », « PROV ALPES », « LANGUE-DOC », « RHONES-ALPES »…
 - Une édition régionale absente du guide affiche le programme national de France 3 (le même en dehors des journaux régionaux), au lieu de « Pas d'information »
