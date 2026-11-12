@@ -4,6 +4,11 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.112
+- Serveurs de secours (modification de la playlist) : un champ par serveur, avec « Ajouter un serveur » et « Retirer ». Ajouter un serveur ne fait plus retaper les autres (le clavier de la Fire TV effaçait tout le champ)
+- « Masquer les chaînes 4K » activé : la fiche d'un film propose d'abord sa version HD ou Full HD (« Regarder » la lit), la 4K reste au choix avec « Version »
+- Titres coupés sous les affiches (rangées, recherche) : le titre de l'affiche choisie défile en entier
+
 ## 0.2.111
 - « Chargement impossible — connexion coupée » : quand le serveur coupe le téléchargement de la playlist en route, l'application réessaie toute seule deux fois (2 puis 5 secondes plus tard) avant d'afficher l'erreur
 

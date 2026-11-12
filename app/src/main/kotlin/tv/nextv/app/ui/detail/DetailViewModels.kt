@@ -2,6 +2,7 @@ package tv.nextv.app.ui.detail
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import tv.nextv.app.ui.home.toPoster
@@ -20,6 +21,7 @@ import tv.nextv.app.data.progress.ProgressEntity
 import tv.nextv.app.data.db.EpisodeRow
 import tv.nextv.app.data.db.MovieVersionRow
 import tv.nextv.app.ui.home.qualityLabel
+import tv.nextv.core.model.StreamQuality
 import tv.nextv.core.catalog.ContentClassifier
 import tv.nextv.core.meta.CastMember
 import tv.nextv.core.meta.MediaType
@@ -53,9 +55,12 @@ data class MovieVersion(val id: Long, val label: String, val quality: String?)
 /**
  * Versions d'un film à partir de ses copies ([rows], dans l'ordre de la playlist) : celle qui est ouverte
  * ([openedId]) en premier, une seule par flux (la même copie rangée dans deux catégories ne compte qu'une fois).
+ * Avec [avoidUhd] (réglage « Masquer les chaînes 4K »), les versions 4K passent après les autres : la fiche
+ * propose d'abord une version HD ou Full HD, la 4K reste au choix.
  */
-internal fun movieVersions(rows: List<MovieVersionRow>, openedId: Long): List<MovieVersion> {
-    val copies = rows.sortedByDescending { it.id == openedId }.distinctBy { it.streamUrl }
+internal fun movieVersions(rows: List<MovieVersionRow>, openedId: Long, avoidUhd: Boolean = false): List<MovieVersion> {
+    val opened = rows.sortedByDescending { it.id == openedId }.distinctBy { it.streamUrl }
+    val copies = if (avoidUhd) opened.sortedBy { it.quality == StreamQuality.UHD.name } else opened
     val base = copies.map { row ->
         listOfNotNull(ContentClassifier.versionOf(row.name).tag, qualityLabel(row.quality)).joinToString(" · ")
     }
@@ -136,8 +141,10 @@ class DetailViewModel(
         }
 
         if (kind == ContentKind.MOVIE) {
-            val versions = movieVersions(container.channelDao.movieVersions(entity.sourceId, entity.itemKey, entity.id), entity.id)
-            if (versions.size > 1) mutableState.update { it.copy(versions = versions) }
+            val avoidUhd = container.settings.hideUhd.first()
+            val versions = movieVersions(container.channelDao.movieVersions(entity.sourceId, entity.itemKey, entity.id), entity.id, avoidUhd)
+            // La première version (hors 4K si elle est masquée) est celle que « Regarder » lit.
+            if (versions.size > 1) mutableState.update { it.copy(versions = versions).withVersion(0) }
         }
 
         viewModelScope.launch {

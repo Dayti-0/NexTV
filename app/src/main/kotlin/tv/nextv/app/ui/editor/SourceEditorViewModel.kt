@@ -49,8 +49,11 @@ data class EditorState(
     val server: String = "",
     val xtreamUsername: String = "",
     val xtreamPassword: String = "",
-    /** Serveurs de secours, séparés par des virgules. */
-    val mirrors: String = "",
+    /**
+     * Serveurs de secours, un par champ : en ajouter un ne touche pas aux autres (le clavier de la Fire TV
+     * sélectionne tout le texte d'un champ à son ouverture, et la première lettre tapée l'effaçait).
+     */
+    val mirrors: List<String> = emptyList(),
     val documentPersisted: Boolean = true,
     val username: String = "",
     val password: String = "",
@@ -136,7 +139,7 @@ class SourceEditorViewModel(
                     server = account?.server.orEmpty(),
                     xtreamUsername = account?.username.orEmpty(),
                     xtreamPassword = account?.password.orEmpty(),
-                    mirrors = source.mirrors.joinToString(", "),
+                    mirrors = source.mirrors,
                     document = source.location as? SourceLocation.LocalDocument,
                     hasStoredCredentials = source.hasCredentials,
                     userAgent = source.userAgent.orEmpty(),
@@ -199,7 +202,7 @@ class SourceEditorViewModel(
             epg = EpgSettings(location = null, useHeaderUrls = false),
             userAgent = current.userAgent,
             credentials = credentials,
-            mirrors = if (current.mode == LocationMode.FILE) emptyList() else current.mirrors.split(',', ';', ' ', '\n').filter { it.isNotBlank() },
+            mirrors = if (current.mode == LocationMode.FILE) emptyList() else current.mirrors.flatMap { it.split(',', ';', ' ', '\n') }.filter { it.isNotBlank() },
         )
 
         mutableState.update { it.copy(saving = true, errors = emptyMap()) }

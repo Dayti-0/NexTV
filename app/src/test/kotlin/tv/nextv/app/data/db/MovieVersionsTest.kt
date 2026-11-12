@@ -121,6 +121,18 @@ class MovieVersionsTest {
     }
 
     @Test
+    fun withUhdHiddenTheSheetOffersTheOtherVersionFirst() = runBlocking {
+        val id = playlist(movie("Hunger Games (2012) 4K"), movie("Hunger Games (2012) FHD"))
+
+        // Affiche : la 4K (meilleure qualité). Fiche avec « Masquer les chaînes 4K » : la FHD d'abord, la 4K ensuite.
+        val shown = dao.pageMovies(id, 0, "", "").all().single()
+        assertEquals("Hunger Games (2012) 4K", nameOf(shown.id))
+        val rows = dao.movieVersions(id, shown.itemKey, shown.id)
+        assertEquals(listOf("4K", "FHD"), movieVersions(rows, shown.id).map { it.label })
+        assertEquals(listOf("FHD", "4K"), movieVersions(rows, shown.id, avoidUhd = true).map { it.label })
+    }
+
+    @Test
     fun aFilmWithoutYearJoinsItsDatedCopy() = runBlocking {
         val id = playlist(
             movie("Dune (2021)"), movie("Dune (FR)"),
@@ -219,5 +231,11 @@ class MovieVersionsTest {
         idle { reopened.state.value.progress != null && reopened.state.value.versions.isNotEmpty() }
         assertEquals(vostfr, reopened.state.value.item?.firstId)
         assertTrue(reopened.state.value.selectedVersion > 0)
+
+        // « Masquer les chaînes 4K » : la 4K passe en dernier.
+        runBlocking { container.settings.setHideUhd(true) }
+        val noUhd = DetailViewModel(container, first, ContentKind.MOVIE)
+        idle { noUhd.state.value.versions.isNotEmpty() }
+        assertEquals("UHD", noUhd.state.value.versions.last().quality)
     }
 }

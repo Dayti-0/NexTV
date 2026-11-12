@@ -67,8 +67,10 @@
     <string name="editor_xtream_username_missing">Indiquez l’identifiant.</string>
     <string name="editor_section_connection">Connexion</string>
     <string name="editor_section_mirrors">Serveurs de secours (facultatif)</string>
-    <string name="editor_mirrors_help">Autres adresses du même fournisseur, séparées par des virgules. Si le serveur principal ne répond pas, la playlist et les chaînes passent par elles avec les mêmes identifiants.</string>
-    <string name="editor_mirrors">Adresses des serveurs de secours</string>
+    <string name="editor_mirrors_help">Autres adresses du même fournisseur, une par champ. Si le serveur principal ne répond pas, la playlist et les chaînes passent par elles avec les mêmes identifiants.</string>
+    <string name="editor_mirror_n">Serveur de secours %1$d</string>
+    <string name="editor_mirror_add">Ajouter un serveur</string>
+    <string name="editor_mirror_remove">Retirer</string>
     <string name="editor_mode_file_short">Fichier</string>
     <string name="editor_mode_file_hint">Fichier .m3u de l’appareil</string>
     <string name="editor_url">URL de la playlist M3U/M3U8</string>

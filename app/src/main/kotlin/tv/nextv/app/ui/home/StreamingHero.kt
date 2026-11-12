@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -202,6 +203,7 @@ internal fun StreamingPoster(
     watched: Boolean = false,
     quality: String? = null,
 ) {
+    var focused by remember { mutableStateOf(false) }
     Column(Modifier.width(width), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         FocusSurface(
             onClick = onClick,
@@ -210,6 +212,7 @@ internal fun StreamingPoster(
             shape = STREAMING_POSTER_SHAPE,
             color = MaterialTheme.colorScheme.surfaceContainer,
             focusScale = 1.08f,
+            onFocusChange = { focused = it },
         ) {
             Box(Modifier.fillMaxSize()) {
                 PosterImage(title, imageUrl, Modifier.fillMaxSize(), compact = width < COMPACT_POSTER_WIDTH)
@@ -238,8 +241,16 @@ internal fun StreamingPoster(
             }
         }
         // Titre sous l'affiche (sinon il faut deviner le film d'après l'image), sur une ligne : la rangée garde
-        // sa hauteur, le titre de la rangée suivante reste visible dessous.
-        Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        // sa hauteur, le titre de la rangée suivante reste visible dessous. Affiche choisie : le titre trop long
+        // défile, pour distinguer « Hunger Games : L'Embrasement » de « Hunger Games : La Révolte ».
+        Text(
+            title,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = if (focused) TextOverflow.Clip else TextOverflow.Ellipsis,
+            modifier = if (focused) Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 800) else Modifier,
+        )
     }
 }
 

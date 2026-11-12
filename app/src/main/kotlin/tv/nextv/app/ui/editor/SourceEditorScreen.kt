@@ -22,7 +22,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Checkbox
@@ -42,6 +44,7 @@ import androidx.compose.material3.TextFieldColors
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -251,14 +254,7 @@ fun SourceEditorContent(
                                 subtitle = stringResource(R.string.editor_mirrors_help),
                                 icon = NexTvIcons.Cloud,
                             ) {
-                                NexTvTextField(
-                                    value = state.mirrors,
-                                    onValueChange = { value -> onEdit { it.copy(mirrors = value) } },
-                                    label = stringResource(R.string.editor_mirrors),
-                                    placeholder = "http://serveur2.com:8080, http://serveur3.net",
-                                    error = errorText(SourceInputField.MIRRORS),
-                                    keyboardType = KeyboardType.Uri,
-                                )
+                                MirrorFields(state, onEdit, errorText(SourceInputField.MIRRORS))
                             }
                         }
 
@@ -274,6 +270,46 @@ fun SourceEditorContent(
                 }
             }
         }
+    }
+}
+
+/**
+ * Serveurs de secours : un champ par serveur, avec « Retirer », et « Ajouter un serveur » qui ouvre un champ
+ * vide. Ajouter un serveur ne fait jamais retaper les autres.
+ */
+@Composable
+private fun MirrorFields(state: EditorState, onEdit: ((EditorState) -> EditorState) -> Unit, error: String?) {
+    // Sans serveur enregistré, un champ vide est proposé d'office.
+    val entries = state.mirrors.ifEmpty { listOf("") }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        entries.forEachIndexed { index, value ->
+            key(index) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    NexTvTextField(
+                        value = value,
+                        onValueChange = { text -> onEdit { it.copy(mirrors = it.mirrors.ifEmpty { listOf("") }.withIndex().map { (i, old) -> if (i == index) text else old }) } },
+                        label = stringResource(R.string.editor_mirror_n, index + 1),
+                        placeholder = "http://serveur2.com:8080",
+                        error = error.takeIf { index == entries.lastIndex },
+                        keyboardType = KeyboardType.Uri,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (state.mirrors.isNotEmpty()) {
+                        PillButton(
+                            stringResource(R.string.editor_mirror_remove),
+                            { onEdit { it.copy(mirrors = it.mirrors.filterIndexed { i, _ -> i != index }) } },
+                            icon = Icons.Filled.Close,
+                            style = PillStyle.Ghost,
+                        )
+                    }
+                }
+            }
+        }
+        PillButton(
+            stringResource(R.string.editor_mirror_add),
+            { onEdit { it.copy(mirrors = it.mirrors.ifEmpty { listOf("") } + "") } },
+            icon = Icons.Filled.Add,
+        )
     }
 }
 
