@@ -4,6 +4,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,6 +32,7 @@ import tv.nextv.core.model.SourceWarning
 import tv.nextv.core.net.RemoteUrlValidator
 import tv.nextv.core.net.RequestPurpose
 import tv.nextv.core.source.Catchup
+import tv.nextv.core.source.LoadedPlaylist
 import tv.nextv.core.source.PlaylistLoaderRegistry
 import java.util.concurrent.ConcurrentHashMap
 
@@ -64,6 +66,11 @@ class SourceRepository(
     private val epgFeed: EpgFeedProvider? = null,
     /** Jours de replay des chaînes, par identifiant de flux (comptes Xtream) ; `null` : inconnus. */
     private val catchupDays: suspend (PlaylistSource) -> Map<String, Int>? = { null },
+    /**
+     * Attentes avant chaque nouvel essai d'un téléchargement coupé en route (connexion fermée par le serveur
+     * ou le réseau, délai dépassé) : une coupure passagère ne doit pas arrêter le chargement.
+     */
+    private val retryDelaysMillis: List<Long> = RETRY_DELAYS_MILLIS,
 ) {
 
     val sources: Flow<List<PlaylistSource>> = store.observeSources()
@@ -232,7 +239,7 @@ class SourceRepository(
             coroutineScope {
                 // Chaînes avec replay : demandées au serveur pendant le téléchargement de la playlist.
                 val archive = async { archiveDays(source) }
-                val playlist = loaders.get(source.type).load(source, credentials, progress)
+                val playlist = loadWithRetries(source, credentials, progress)
                 archive.await()?.let { days -> playlist.copy(channels = Catchup.annotate(playlist.channels, days)) } ?: playlist
             }
         } catch (e: CancellationException) {
@@ -293,6 +300,27 @@ class SourceRepository(
         }
         return RefreshResult.Success(loaded.channels.size, loaded.warnings, status.epg)
     }
+
+    /**
+     * Télécharge la playlist ; une coupure passagère (connexion fermée en route, délai dépassé) est retentée
+     * après une courte attente, au lieu d'afficher « Chargement impossible » au premier incident.
+     */
+    private suspend fun loadWithRetries(source: PlaylistSource, credentials: Credentials?, progress: ProgressListener?): LoadedPlaylist {
+        var attempt = 0
+        while (true) {
+            try {
+                return loaders.get(source.type).load(source, credentials, progress)
+            } catch (e: SourceException) {
+                if (attempt >= retryDelaysMillis.size || !isTransient(e.error)) throw e
+                logger.info(TAG, "Téléchargement de la source ${source.id} coupé (${e.error.code} ${e.error.detail.orEmpty()}) : nouvel essai ${attempt + 1}")
+                delay(retryDelaysMillis[attempt])
+                attempt++
+            }
+        }
+    }
+
+    /** Coupure qui peut ne pas se reproduire : connexion fermée ou réinitialisée, délai dépassé. */
+    private fun isTransient(error: SourceError): Boolean = error is SourceError.Network || error == SourceError.Timeout
 
     private suspend fun archiveDays(source: PlaylistSource): Map<String, Int>? = try {
         catchupDays(source)
@@ -540,6 +568,9 @@ class SourceRepository(
 
     private companion object {
         const val TAG = "SourceRepository"
+
+        /** Deux nouveaux essais après une coupure : 2 s puis 5 s plus tard. */
+        val RETRY_DELAYS_MILLIS = listOf(2_000L, 5_000L)
 
         /** Contrôle des playlists reçues incomplètes : à partir de ce nombre d'entrées, et en dessous de cette part. */
         const val DROP_CHECK_MIN_ENTRIES = 200

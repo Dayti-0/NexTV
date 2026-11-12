@@ -5,6 +5,7 @@ import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import mockwebserver3.RecordedRequest
+import mockwebserver3.SocketEffect
 import okio.Buffer
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -33,12 +34,17 @@ import tv.nextv.core.source.M3uPlaylistLoader
 import tv.nextv.core.source.PlaylistLoaderRegistry
 import tv.nextv.core.source.gzip
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 
 class SourceRepositoryTest {
 
     private val now = 1_704_110_400_000L // 2024-01-01T12:00:00Z
     private val server = MockWebServer()
     private val routes = ConcurrentHashMap<String, MockResponse>()
+
+    /** Nombre de réponses encore coupées en route, par chemin. */
+    private val cuts = ConcurrentHashMap<String, AtomicInteger>()
+    private val requests = ConcurrentHashMap<String, AtomicInteger>()
     private val captured = CapturingLogger()
     private val redactor = Redactor()
     private val store = InMemoryPlaylistStore()
@@ -67,8 +73,15 @@ class SourceRepositoryTest {
     @Before
     fun setUp() {
         server.dispatcher = object : Dispatcher() {
-            override fun dispatch(request: RecordedRequest): MockResponse =
-                routes[request.url.encodedPath] ?: MockResponse.Builder().code(404).build()
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                val path = request.url.encodedPath
+                requests.getOrPut(path) { AtomicInteger() }.incrementAndGet()
+                if ((cuts[path]?.getAndDecrement() ?: 0) > 0) {
+                    return MockResponse.Builder().code(200).addHeader("Content-Type", "audio/x-mpegurl")
+                        .body(playlist + "\n".repeat(20_000)).onResponseBody(SocketEffect.CloseSocket()).build()
+                }
+                return routes[path] ?: MockResponse.Builder().code(404).build()
+            }
         }
         server.start()
         val logger = RedactingLogger(captured, redactor)
@@ -83,6 +96,7 @@ class SourceRepositoryTest {
             logger = logger,
             documentAccess = { released += it.uri },
             clock = { now },
+            retryDelaysMillis = listOf(1L, 1L),
         )
     }
 
@@ -167,6 +181,30 @@ class SourceRepositoryTest {
         assertEquals(SourceError.HttpStatus(500), status.error)
         assertEquals(2, status.channelCount)
         assertEquals(now, status.lastSuccessAtMillis)
+    }
+
+    @Test
+    fun `a download cut on the way is tried again`() = runBlocking {
+        route("/list.m3u", playlistWithEpg("/none.xml"))
+        cuts["/list.m3u"] = AtomicInteger(2)
+        val id = repository.add(SourceInput(name = "IPTV", location = SourceLocation.Remote(server.url("/list.m3u").toString())))
+
+        val result = repository.refresh(id, includeEpg = false)
+
+        assertTrue(result.toString(), result is RefreshResult.Success)
+        assertEquals(3, requests.getValue("/list.m3u").get())
+        assertEquals(2, store.channels.getValue(id).size)
+    }
+
+    @Test
+    fun `a download cut every time fails after the retries`() = runBlocking {
+        cuts["/list.m3u"] = AtomicInteger(10)
+        val id = repository.add(SourceInput(name = "IPTV", location = SourceLocation.Remote(server.url("/list.m3u").toString())))
+
+        val result = repository.refresh(id, includeEpg = false)
+
+        assertTrue(result.toString(), (result as RefreshResult.Failure).error is SourceError.Network)
+        assertEquals(3, requests.getValue("/list.m3u").get())
     }
 
     /** Exception du même nom que celle d'Android quand le stockage est plein. */

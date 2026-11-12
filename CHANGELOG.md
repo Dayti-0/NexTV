@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.111
+- « Chargement impossible — connexion coupée » : quand le serveur coupe le téléchargement de la playlist en route, l'application réessaie toute seule deux fois (2 puis 5 secondes plus tard) avant d'afficher l'erreur
+
 ## 0.2.110
 - Film qui s'arrête et reprend toutes les quelques secondes : la playlist et le guide ne sont plus relus en arrière-plan pendant qu'un film ou une chaîne se lit (ils lui prenaient du débit et de la puissance, surtout juste après une mise à jour). La relecture attend la fermeture du lecteur ; lancée avant, elle s'interrompt et reprend après
 - Films et épisodes : davantage de film chargé d'avance (jusqu'à deux fois plus, selon la mémoire de l'appareil), pour passer les ralentissements du serveur sans s'arrêter
