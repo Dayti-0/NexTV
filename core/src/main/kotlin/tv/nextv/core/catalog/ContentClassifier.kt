@@ -98,10 +98,15 @@ object ContentClassifier {
             val (title, year) = extractYear(cleaned)
             return Result(ContentKind.SERIES, title, year, EpisodeInfo(title, null, null))
         }
-        // Film : « (FR) » désigne la version française, pas le titre.
-        val (title, year) = extractYear(MOVIE_COUNTRY.replace(cleaned, "").ifBlank { cleaned })
+        val (title, year) = movieTitleAndYear(cleaned)
         return Result(ContentKind.MOVIE, title, year, null)
     }
+
+    /** Titre d'un film d'après son nom dans la playlist (« FR: The Virtuoso (2021) FHD » → « The Virtuoso »). */
+    fun movieTitle(name: String): String = movieTitleAndYear(cleanTitle(name)).first
+
+    /** Film : « (FR) » désigne la version française, pas le titre. */
+    private fun movieTitleAndYear(cleaned: String): Pair<String, Int?> = extractYear(MOVIE_COUNTRY.replace(cleaned, "").ifBlank { cleaned })
 
     private fun detectKind(url: String, groupTitle: String?, attributes: Map<String, String>, cleaned: Lazy<String>): ContentKind {
         when (attributes["tvg-type"]?.lowercase() ?: attributes["type"]?.lowercase()) {

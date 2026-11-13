@@ -573,7 +573,9 @@ interface ChannelDao {
         SELECT $MOVIE_COLUMNS FROM channels c
         WHERE c.sourceId = :sourceId AND c.kind = 'MOVIE' AND $MOVIE_GROUP_VISIBLE
           AND (:query = '' OR c.title LIKE '%' || :query || '%' ESCAPE '\'
-            OR (:key != '' AND c.itemKey LIKE 'movie:%' || :key || '%'))
+            OR (:key != '' AND c.itemKey LIKE 'movie:%' || :key || '%')
+            OR EXISTS (SELECT 1 FROM channels o WHERE o.sourceId = c.sourceId AND o.kind = 'MOVIE' AND o.itemKey = c.itemKey
+              AND o.name LIKE '%' || :query || '%' ESCAPE '\'))
           AND CASE WHEN :filterGroup = 1 THEN IFNULL(c.groupTitle, '') = :group AND $MOVIE_IN_GROUP ELSE $MOVIE_VISIBLE END
         ORDER BY c.position
         """,
@@ -581,8 +583,8 @@ interface ChannelDao {
     fun pageMovies(sourceId: Long, filterGroup: Int, group: String, query: String, key: String): PagingSource<Int, MovieRow>
 
     /**
-     * Films de la catégorie, une ligne par film : [query] cherché dans le titre, et sans accents dans la clé du
-     * film (« a la derive » trouve « À la dérive »).
+     * Films de la catégorie, une ligne par film : [query] cherché dans le titre, sans accents dans la clé du film
+     * (« a la derive » trouve « À la dérive »), et dans le nom de ses copies (« The Virtuoso », rangé sous « Le Virtuose »).
      */
     fun pageMovies(sourceId: Long, filterGroup: Int, group: String, query: String): PagingSource<Int, MovieRow> =
         pageMovies(sourceId, filterGroup, group, query, searchKey(query))
@@ -980,14 +982,47 @@ interface GuideOnlyChannelDao {
 /** Affiche TMDB en cache d'un titre (`null` : TMDB ne le connaît pas, ou sans affiche). */
 data class CachedPoster(val cacheKey: String, val posterUrl: String?)
 
+/**
+ * Fiche TMDB trouvée pour un film de la playlist : le film désigné ([tmdbId]) et ses titres, français ([title]) et
+ * original, pour reconnaître deux titres du même film (« Le Virtuose » et « The Virtuoso », voir MovieCopies).
+ */
+data class CachedMovieTitle(val cacheKey: String, val tmdbId: Long, val title: String, val originalTitle: String?, val year: Int?)
+
+/**
+ * Début des clés du cache TMDB des fiches des films et des séries (« v3|movie:titre:année »). Version de la recherche :
+ * les « introuvables » enregistrés avant son amélioration sont ignorés.
+ */
+internal const val METADATA_CACHE_PREFIX = "v3|"
+
+/** Fiches en cache des films : clés de « v3|movie: » (incluse) à « v3|movie; » (exclue). */
+private const val MOVIE_CACHE_KEYS = "cacheKey >= '${METADATA_CACHE_PREFIX}movie:' AND cacheKey < '${METADATA_CACHE_PREFIX}movie;'"
+
 @Dao
 interface TmdbDao {
     @Query("SELECT * FROM tmdb_cache WHERE cacheKey = :cacheKey")
     suspend fun get(cacheKey: String): TmdbCacheEntity?
 
-    /** Retire les fiches lues avant [before] (titres qui ne sont plus consultés) ; rend leur nombre. */
-    @Query("DELETE FROM tmdb_cache WHERE fetchedAt < :before")
+    /**
+     * Retire les fiches lues avant [before] (titres qui ne sont plus consultés) ; rend leur nombre. Les fiches d'un film
+     * trouvé sous plusieurs titres restent : la copie rangée sous l'autre titre ne s'affiche plus, sa fiche n'est donc
+     * jamais relue, et sans elle le film réapparaîtrait en double.
+     */
+    @Query(
+        """
+        DELETE FROM tmdb_cache WHERE fetchedAt < :before
+          AND NOT (found = 1 AND $MOVIE_CACHE_KEYS AND tmdbId IN (
+            SELECT tmdbId FROM tmdb_cache WHERE found = 1 AND $MOVIE_CACHE_KEYS GROUP BY tmdbId HAVING COUNT(*) > 1))
+        """,
+    )
     suspend fun deleteOlderThan(before: Long): Int
+
+    /** Fiches trouvées des films. */
+    @Query("SELECT cacheKey, tmdbId, title, originalTitle, year FROM tmdb_cache WHERE found = 1 AND tmdbId > 0 AND $MOVIE_CACHE_KEYS")
+    suspend fun movieTitles(): List<CachedMovieTitle>
+
+    /** Fiches des titres sous lesquels le film [tmdbId] a été trouvé. */
+    @Query("SELECT cacheKey, tmdbId, title, originalTitle, year FROM tmdb_cache WHERE found = 1 AND tmdbId = :tmdbId AND $MOVIE_CACHE_KEYS")
+    suspend fun movieTitlesOf(tmdbId: Long): List<CachedMovieTitle>
 
     /** Affiches des fiches en cache (et titres que TMDB ne connaît pas : [CachedPoster.posterUrl] vide). */
     @Query("SELECT cacheKey, CASE WHEN found = 1 THEN posterUrl ELSE NULL END AS posterUrl FROM tmdb_cache")

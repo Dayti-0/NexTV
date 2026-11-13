@@ -24,6 +24,7 @@ import tv.nextv.core.catalog.ContentClassifier
 import tv.nextv.core.meta.CastMember
 import tv.nextv.core.meta.MediaType
 import tv.nextv.app.data.db.ItemKeys
+import tv.nextv.app.data.db.METADATA_CACHE_PREFIX
 import tv.nextv.core.meta.MediaDetails
 import tv.nextv.core.meta.TmdbError
 import tv.nextv.core.model.ContentKind
@@ -45,8 +46,8 @@ data class Season(val number: Int?, val episodes: List<EpisodeRow>)
 /**
  * Version d'un film : une de ses copies dans la playlist (« Truefrench », « FR », « VOSTFR », 4K…).
  *
- * @property label ce qui la distingue des autres (« TRUEFRENCH », « VOSTFR · 4K », sinon sa catégorie) ; vide
- *   si rien ne la distingue (la fiche affiche alors son rang, « Version 2/3 »).
+ * @property label ce qui la distingue des autres (« TRUEFRENCH », « VOSTFR · 4K », sinon son titre quand le film est
+ *   sous deux titres, sinon sa catégorie) ; vide si rien ne la distingue (la fiche affiche alors son rang, « Version 2/3 »).
  */
 data class MovieVersion(val id: Long, val label: String, val quality: String?)
 
@@ -62,10 +63,21 @@ internal fun movieVersions(rows: List<MovieVersionRow>, openedId: Long, avoidUhd
     val base = copies.map { row ->
         listOfNotNull(ContentClassifier.versionOf(row.name).tag, qualityLabel(row.quality)).joinToString(" · ")
     }
+    // Film sous deux titres (« Le Virtuose » et « The Virtuoso ») : le titre de chaque copie la distingue aussi.
+    val titles = copies.map { ContentClassifier.movieTitle(it.name) }
+    val named = if (titles.map(ItemKeys::normalize).distinct().size > 1) {
+        base.mapIndexed { index, label -> listOf(label, titles[index]).filter { it.isNotEmpty() }.joinToString(" · ") }
+    } else {
+        base
+    }
+    fun unique(labels: List<String>, index: Int) = labels[index].isNotEmpty() && labels.count { it == labels[index] } == 1
     return copies.mapIndexed { index, row ->
-        val unique = base[index].isNotEmpty() && base.count { it == base[index] } == 1
-        // Même langue et même qualité (ou rien d'écrit) : la catégorie les distingue.
-        val label = if (unique) base[index] else listOfNotNull(base[index].ifEmpty { null }, row.groupTitle?.trim()?.ifEmpty { null }).joinToString(" · ")
+        val label = when {
+            unique(base, index) -> base[index]
+            unique(named, index) -> named[index]
+            // Même langue, même qualité et même titre (ou rien d'écrit) : la catégorie les distingue.
+            else -> listOfNotNull(named[index].ifEmpty { null }, row.groupTitle?.trim()?.ifEmpty { null }).joinToString(" · ")
+        }
         MovieVersion(row.id, label, row.quality)
     }
 }
@@ -284,16 +296,11 @@ internal suspend fun recommendedInPlaylist(
         .map { item -> poster(item.itemKey)?.let { item.copy(imageUrl = it) } ?: item }
 }
 
-/**
- * Clé de la fiche TMDB d'un film ou d'une série, partagée par la fiche et l'accueil. Version de la
- * recherche : les « introuvables » enregistrés avant son amélioration sont ignorés.
- */
+/** Clé de la fiche TMDB d'un film ou d'une série, partagée par la fiche, l'accueil et l'import ([METADATA_CACHE_PREFIX]). */
 internal fun metadataCacheKey(itemKey: String): String = METADATA_CACHE_PREFIX + itemKey
 
 /** Clé du titre d'une fiche en cache ([metadataCacheKey] inverse) ; `null` pour une fiche d'une ancienne version. */
 internal fun itemKeyOfCache(cacheKey: String): String? = cacheKey.takeIf { it.startsWith(METADATA_CACHE_PREFIX) }?.removePrefix(METADATA_CACHE_PREFIX)
-
-private const val METADATA_CACHE_PREFIX = "v3|"
 
 /** Titres similaires affichés sur la fiche Streaming. */
 private const val SIMILAR_COUNT = 20

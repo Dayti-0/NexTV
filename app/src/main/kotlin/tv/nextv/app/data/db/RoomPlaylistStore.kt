@@ -87,7 +87,8 @@ class RoomPlaylistStore(private val database: NexTvDatabase) : PlaylistStore {
                 if (channel.quality != null || channel.kind == ContentKind.LIVE) channel
                 else measured[channel.stream.url]?.let { channel.copy(quality = it) } ?: channel
             }
-            val aligned = MovieCopies.alignYears(known)
+            // Même film sous son titre français et son titre original (« Le Virtuose », « The Virtuoso ») : une affiche.
+            val aligned = MovieCopies.mergeTitles(MovieCopies.alignYears(known), movieTitles())
             val variants = VariantInfo.compute(aligned)
             var saved = 0
             aligned.chunked(BATCH_SIZE).forEach { batch ->
@@ -102,6 +103,11 @@ class RoomPlaylistStore(private val database: NexTvDatabase) : PlaylistStore {
             }
         }
     }
+
+    /** Fiches TMDB des films déjà trouvées, par clé de titre (vide si le cache est illisible : rien n'est regroupé). */
+    private suspend fun movieTitles(): Map<String, CachedMovieTitle> =
+        runCatching { database.tmdbDao().movieTitles() }.getOrDefault(emptyList())
+            .associateBy { it.cacheKey.removePrefix(METADATA_CACHE_PREFIX) }
 
     /** Identifiants actuels par URL de flux (empreinte 64 bits : pas de copie des URL en mémoire). */
     private suspend fun existingIds(sourceId: Long): HashMap<Long, ArrayDeque<Long>> {
@@ -372,10 +378,74 @@ internal object MovieCopies {
     }
 
     /** Préférence d'une copie, calculée une fois par copie (des milliers de films en ont plusieurs). */
-    private fun score(copy: Channel): Int =
-        (if (copy.stream.support != StreamSupport.UNSUPPORTED) 1_000 else 0) +
-            ContentClassifier.versionOf(copy.name, copy.title).rank * 10 +
+    private fun score(copy: Channel): Int {
+        // Copie rangée sous le titre d'une autre ([mergeTitles]) : sa mention de version se lit dans son propre nom.
+        val own = ItemKeys.normalize(copy.name).contains(ItemKeys.normalize(copy.title))
+        val version = if (own) ContentClassifier.versionOf(copy.name, copy.title) else ContentClassifier.versionOf(copy.name)
+        return (if (copy.stream.support != StreamSupport.UNSUPPORTED) 1_000 else 0) +
+            version.rank * 10 +
             StreamQuality.rankOf(copy.quality)
+    }
+
+    /**
+     * Même film sous deux titres, français et original (« Le Virtuose » et « The Virtuoso », « Star Trek : Sans limites »
+     * et « Star Trek Beyond ») : rien dans les noms ne les relie, mais la recherche TMDB de chacun a trouvé la même fiche.
+     * Ses copies prennent alors le titre français (et l'année) : elles ont la même clé, une seule affiche s'affiche, les
+     * autres se choisissent sur la fiche (bouton « Version »).
+     *
+     * Seule une fiche déjà trouvée compte ([found], par clé de titre : celles des affiches et des fiches affichées), et
+     * seulement si chaque titre est l'un des siens et l'année la sienne ([sameFilm]) : TMDB rend son premier résultat
+     * quand aucun ne porte le titre cherché, deux films différents peuvent ainsi avoir la même fiche.
+     */
+    fun mergeTitles(channels: List<Channel>, found: Map<String, CachedMovieTitle>): List<Channel> {
+        if (found.isEmpty()) return channels
+        // Titres reconnus de chaque film TMDB : clé → première copie de ce titre.
+        val keys = arrayOfNulls<String>(channels.size)
+        val films = HashMap<Long, LinkedHashMap<String, Channel>>()
+        channels.forEachIndexed { index, channel ->
+            if (channel.kind != ContentKind.MOVIE) return@forEachIndexed
+            val key = ItemKeys.of(channel)
+            keys[index] = key
+            val film = found[key] ?: return@forEachIndexed
+            if (!sameFilm(ItemKeys.normalize(channel.title), channel.year, film)) return@forEachIndexed
+            films.getOrPut(film.tmdbId) { LinkedHashMap(2) }.putIfAbsent(key, channel)
+        }
+        // Clé → titre et année du film (ceux du titre français, sinon du premier titre de la playlist).
+        val renamed = HashMap<String, Pair<String, Int?>>()
+        for (titles in films.values) {
+            if (titles.size < 2) continue
+            val target = titles.entries.maxWith(
+                compareBy<Map.Entry<String, Channel>> { (key, _) -> isLocalTitle(key, found.getValue(key)) }
+                    .thenBy { it.value.year != null }
+                    .thenByDescending { it.value.position },
+            ).value
+            val year = target.year ?: titles.values.firstNotNullOfOrNull { it.year }
+            for (key in titles.keys) renamed[key] = target.title to year
+        }
+        if (renamed.isEmpty()) return channels
+        return channels.mapIndexed { index, channel ->
+            val (title, year) = keys[index]?.let(renamed::get) ?: return@mapIndexed channel
+            // Copies déjà sous ce titre : inchangées (même clé, seule l'écriture pourrait différer).
+            if (channel.year == year && ItemKeys.normalize(channel.title) == ItemKeys.normalize(title)) channel
+            else channel.copy(title = title, year = year)
+        }
+    }
+
+    /**
+     * [title] (mots en minuscules, voir [ItemKeys.normalize]) et [year] désignent le film de la fiche [film] : son titre
+     * français ou original, à un an près (sortie en fin d'année, date d'une autre copie). Sans année, le titre suffit.
+     */
+    fun sameFilm(title: String, year: Int?, film: CachedMovieTitle): Boolean {
+        if (title.isEmpty()) return false
+        val named = title == ItemKeys.normalize(film.title) || film.originalTitle?.let { title == ItemKeys.normalize(it) } == true
+        return named && (year == null || film.year == null || kotlin.math.abs(year - film.year) <= 1)
+    }
+
+    /** Clé d'un titre qui est le titre de la fiche (en français : la langue des fiches). */
+    private fun isLocalTitle(key: String, film: CachedMovieTitle): Boolean =
+        key.removePrefix(MOVIE_KEY_PREFIX).substringBeforeLast(':') == ItemKeys.normalize(film.title)
+
+    private const val MOVIE_KEY_PREFIX = "movie:"
 
     /**
      * Film écrit sans année alors qu'une autre copie la donne (« À la dérive (FR) » et « À la dérive (2018) ») :

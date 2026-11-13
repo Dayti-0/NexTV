@@ -201,6 +201,101 @@ class MovieVersionsTest {
         assertEquals(3, favorites().size)
     }
 
+    /** Fiche TMDB trouvée pour le titre de clé [itemKey] (comme après l'affichage de son affiche). */
+    private suspend fun found(itemKey: String, tmdbId: Long, title: String, originalTitle: String, year: Int) =
+        container.tmdbDao.put(
+            TmdbCacheEntity(
+                cacheKey = METADATA_CACHE_PREFIX + itemKey, found = true, fetchedAt = System.currentTimeMillis(),
+                tmdbId = tmdbId, title = title, originalTitle = originalTitle, year = year,
+            ),
+        )
+
+    /** Les deux photos : le même film sous son titre français et son titre original, deux affiches identiques. */
+    private suspend fun frenchAndOriginalTitles(): Long {
+        found("movie:le virtuose:2021", 808023, "Le Virtuose", "The Virtuoso", 2021)
+        found("movie:the virtuoso:2021", 808023, "Le Virtuose", "The Virtuoso", 2021)
+        found("movie:star trek sans limites:2016", 188927, "Star Trek : Sans limites", "Star Trek Beyond", 2016)
+        found("movie:star trek beyond:2016", 188927, "Star Trek : Sans limites", "Star Trek Beyond", 2016)
+        // Titre que TMDB ne connaît pas : la recherche a rendu son premier résultat, un autre film.
+        found("movie:virtuose:2021", 808023, "Le Virtuose", "The Virtuoso", 2021)
+        // Même fiche, mais pas la même année : un autre film du même nom.
+        found("movie:the virtuoso:1998", 808023, "Le Virtuose", "The Virtuoso", 2021)
+        return playlist(
+            movie("The Virtuoso (2021)", "Films EN"),
+            movie("Le Virtuose (2021)", "Films FR"),
+            movie("Star Trek Beyond (2016) 4K", "Films EN"),
+            movie("Star Trek : Sans limites (2016)", "Films FR"),
+            movie("Virtuose (2021)", "Films FR"),
+            movie("The Virtuoso (1998)", "Films EN"),
+            // Sans fiche en cache (affiche jamais affichée) : rien n'est supposé.
+            movie("Arrival (2016)", "Films EN"),
+            movie("Premier Contact (2016)", "Films FR"),
+        )
+    }
+
+    @Test
+    fun aFilmUnderItsFrenchAndOriginalTitlesIsOneFilm() = runBlocking {
+        val id = frenchAndOriginalTitles()
+
+        // Une affiche par film, sous son titre français ; les autres titres restent des films à part.
+        assertEquals(
+            listOf("Arrival", "Le Virtuose", "Premier Contact", "Star Trek : Sans limites", "The Virtuoso", "Virtuose"),
+            listed(id).sorted(),
+        )
+        // Le titre original trouve toujours le film.
+        assertEquals(listOf("Le Virtuose", "The Virtuoso"), listed(id, "virtuoso").sorted())
+        assertEquals(listOf("Star Trek : Sans limites"), listed(id, "beyond"))
+        assertEquals(mapOf("Films EN" to 4, "Films FR" to 4), groups(id))
+
+        // L'affiche montre la meilleure copie (la 4K du titre original), sous le titre français.
+        val star = dao.pageMovies(id, 0, "", "").all().single { it.title == "Star Trek : Sans limites" }
+        assertEquals("Star Trek Beyond (2016) 4K", nameOf(star.id))
+        assertEquals("movie:star trek sans limites:2016", star.itemKey)
+        assertEquals("UHD", star.quality)
+
+        // Sur la fiche, le titre de chaque copie la distingue quand rien d'autre ne le fait.
+        val virtuose = dao.pageMovies(id, 0, "", "").all().single { it.title == "Le Virtuose" }
+        assertEquals(listOf("The Virtuoso", "Le Virtuose"), movieVersions(dao.movieVersions(id, virtuose.itemKey, virtuose.id), virtuose.id).map { it.label })
+        assertEquals(listOf("4K", "Star Trek : Sans limites"), movieVersions(dao.movieVersions(id, star.itemKey, star.id), star.id).map { it.label })
+    }
+
+    @Test
+    fun savedItemsFollowTheFilmToItsFrenchTitle() = runBlocking {
+        val id = frenchAndOriginalTitles()
+        suspend fun favorites() = container.favorites.observeKeys(id).first().toSet()
+        // Enregistrés quand les deux titres étaient deux films.
+        container.favorites.toggle(id, ContentKind.MOVIE, "movie:the virtuoso:2021", "The Virtuoso", null)
+        container.favorites.toggle(id, ContentKind.MOVIE, "movie:le virtuose:2021", "Le Virtuose", null)
+        container.favorites.toggle(id, ContentKind.MOVIE, "movie:virtuose:2021", "Virtuose", null)
+        container.progress.save(ProgressEntity(id, "movie:star trek beyond:2016", "MOVIE", 999, "Star Trek Beyond", null, null, 600_000, 7_200_000, 1_000))
+        container.watched.mark(id, "movie:the virtuoso:2021")
+        // Film retiré de la playlist, dont la recherche TMDB a rendu un autre film : il garde sa clé.
+        found("movie:parti:2021", 808023, "Le Virtuose", "The Virtuoso", 2021)
+        container.favorites.toggle(id, ContentKind.MOVIE, "movie:parti:2021", "Parti", null)
+
+        container.itemKeyRelinker.relink(id)
+
+        assertEquals(setOf("movie:le virtuose:2021", "movie:virtuose:2021", "movie:parti:2021"), favorites())
+        assertNull(container.progress.get(id, "movie:star trek beyond:2016"))
+        assertEquals(600_000L, container.progress.get(id, "movie:star trek sans limites:2016")?.positionMs)
+        assertEquals(setOf("movie:le virtuose:2021"), container.watched.observeKeys(id).first())
+    }
+
+    @Test
+    fun theSheetOfAFilmUnderTwoTitlesOffersBoth() {
+        val first = runBlocking { frenchAndOriginalTitles().let { id -> dao.pageMovies(id, 0, "", "").all().single { it.title == "Le Virtuose" }.id } }
+        val viewModel = DetailViewModel(container, first, ContentKind.MOVIE)
+        repeat(300) {
+            shadowOf(Looper.getMainLooper()).idle()
+            if (viewModel.state.value.versions.isNotEmpty()) return@repeat
+            Thread.sleep(10)
+        }
+        assertEquals("Le Virtuose", viewModel.state.value.item?.title)
+        assertEquals(listOf("The Virtuoso", "Le Virtuose"), viewModel.state.value.versions.map { it.label })
+        viewModel.nextVersion()
+        assertEquals("Le Virtuose (2021)", runBlocking { nameOf(checkNotNull(viewModel.state.value.item).firstId) })
+    }
+
     @Test
     fun theSheetOffersTheVersionsAndPlaysTheChosenOne() {
         val (id, first) = runBlocking {

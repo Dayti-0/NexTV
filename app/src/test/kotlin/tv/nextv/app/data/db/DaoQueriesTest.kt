@@ -385,6 +385,23 @@ class DaoQueriesTest {
         assertEquals("Récent", dao.get("movie:recent")?.title)
     }
 
+    @Test
+    fun sheetsOfAFilmFoundUnderTwoTitlesAreKept() = runBlocking {
+        val day = 24 * 60 * 60_000L
+        val now = 1_800_000_000_000L
+        val dao = db.tmdbDao()
+        val old = now - 120 * day
+        // « The Virtuoso » est rangé sous « Le Virtuose » : sa fiche n'est plus relue, mais elle relie les deux titres.
+        dao.put(TmdbCacheEntity(cacheKey = "v3|movie:le virtuose:2021", found = true, fetchedAt = old, tmdbId = 808023, title = "Le Virtuose"))
+        dao.put(TmdbCacheEntity(cacheKey = "v3|movie:the virtuoso:2021", found = true, fetchedAt = old, tmdbId = 808023, title = "Le Virtuose"))
+        dao.put(TmdbCacheEntity(cacheKey = "v3|movie:ancien:2001", found = true, fetchedAt = old, tmdbId = 42, title = "Ancien"))
+        // Une série de même numéro TMDB n'est pas le même titre.
+        dao.put(TmdbCacheEntity(cacheKey = "v3|series:ancienne", found = true, fetchedAt = old, tmdbId = 42, title = "Ancienne"))
+        assertEquals(2, dao.deleteOlderThan(now - 90 * day))
+        assertEquals(setOf("v3|movie:le virtuose:2021", "v3|movie:the virtuoso:2021"), dao.movieTitles().map { it.cacheKey }.toSet())
+        assertEquals(2, dao.movieTitlesOf(808023).size)
+    }
+
     private suspend fun ChannelDao.observeAllGroupsOnce(): Map<String?, Int> =
         observeAllGroups(sourceId, "SERIES").first().associate { it.title to it.count }
 }

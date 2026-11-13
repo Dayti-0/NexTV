@@ -110,6 +110,7 @@ class AppContainer(context: Context) {
     val programmeDao = database.programmeDao()
     val hiddenGroupDao = database.hiddenGroupDao()
     val guideOnlyChannelDao = database.guideOnlyChannelDao()
+    val tmdbDao = database.tmdbDao()
 
     private val cipher = KeystoreSecretCipher()
     val settings = SettingsRepository(appContext, cipher)
