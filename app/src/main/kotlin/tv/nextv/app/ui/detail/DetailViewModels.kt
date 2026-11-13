@@ -147,6 +147,7 @@ class DetailViewModel(
 
         if (kind == ContentKind.MOVIE) {
             val avoidUhd = container.settings.hideUhd.first()
+            // 4K masquée dans les réglages : ses copies restent proposées, mais en dernier.
             val versions = movieVersions(container.channelDao.movieVersions(entity.sourceId, entity.itemKey, entity.id), entity.id, avoidUhd)
             // La première version (hors 4K si elle est masquée) est celle que « Regarder » lit.
             if (versions.size > 1) mutableState.update { it.copy(versions = versions).withVersion(0) }

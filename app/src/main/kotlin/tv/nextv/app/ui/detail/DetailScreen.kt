@@ -64,6 +64,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import tv.nextv.app.R
+import tv.nextv.app.ui.home.openTrailerWithoutAds
+import tv.nextv.app.ui.theme.NexTvIcons
 import tv.nextv.app.data.catalog.MetadataState
 import tv.nextv.app.data.db.EpisodeRow
 import tv.nextv.app.ui.common.appViewModel
@@ -162,11 +164,14 @@ fun DetailContent(
     trailerPreview: (@Composable () -> Unit)? = null,
 ) {
     val window = rememberWindowInfo()
+    val context = LocalContext.current
     val item = state.item
     val details = (state.metadata as? MetadataState.Available)?.details
     val listState = rememberLazyListState()
     val title = details?.title?.takeIf { it.isNotBlank() } ?: item?.title.orEmpty()
     val playFocus = remember { FocusRequester() }
+    // Bande-annonce refermée (« Retour ») : la fiche revient en haut, sur « Lecture » (pas sur la grande image du bas).
+    BackToSheetTop(trailerPaused, listState, playFocus = { playFocus })
     // Focus sur « Reprendre » s'il existe (la reprise est connue juste après la fiche), sinon sur « Lecture ».
     // Quelques essais : le bouton n'accepte la sélection qu'une fois la fiche à l'écran.
     LaunchedEffect(item != null, state.progress != null) {
@@ -282,6 +287,10 @@ fun DetailContent(
                                     modifier = if (progress == null) Modifier.focusRequester(playFocus) else Modifier,
                                 )
                                 VersionButton(state, onNextVersion)
+                                // Bande-annonce : dans SmartTube (sans publicité) s'il est installé, sinon dans l'appli.
+                                details?.trailerYoutubeKey?.let { key ->
+                                    PillButton(stringResource(R.string.detail_trailer), { if (!openTrailerWithoutAds(context, key)) onTrailer(key) }, icon = NexTvIcons.Movie)
+                                }
                                 // Grand écran : une étoile ronde (comme la fiche Streaming), pour que les boutons
                                 // tiennent sur une ligne ; « Ajouter aux favoris » écrit en entier ailleurs.
                                 if (window.isWide) {

@@ -64,6 +64,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -73,6 +75,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import tv.nextv.app.R
+import tv.nextv.app.ui.home.openTrailerWithoutAds
 import tv.nextv.app.data.catalog.MetadataState
 import tv.nextv.app.data.db.EpisodeRow
 import tv.nextv.app.data.progress.WatchedRepository
@@ -148,8 +151,11 @@ internal fun StreamingDetailContent(
         }
         focusDone = true
     }
-    // Bande-annonce : en bas de la fiche, ouverte en plein écran en y descendant.
+    // Bande-annonce : en bas de la fiche, ouverte en plein écran en y descendant (ou avec le bouton, sans SmartTube).
     var fullTrailer by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    // Refermée (« Retour ») : la fiche revient en haut, sur « Regarder » (pas sur la grande image du bas).
+    BackToSheetTop(fullTrailer, listState, playFocus = { playFocus })
     // Descendu dans les épisodes ou les titres similaires : le visuel s'efface un peu (lisibilité).
     val scrolled by remember { derivedStateOf { listState.firstVisibleItemIndex > 0 } }
     val dim by animateFloatAsState(if (scrolled) 0.55f else 0f, tween(300), label = "dim")
@@ -161,7 +167,9 @@ internal fun StreamingDetailContent(
             Crossfade(image, animationSpec = tween(600), label = "detailImage", modifier = Modifier.fillMaxSize()) { url ->
                 if (url != null) AsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Crop, alignment = Alignment.TopCenter, modifier = Modifier.fillMaxSize())
             }
-            Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to background, 0.35f to background.copy(alpha = 0.55f), 0.7f to Color.Transparent)))
+            // Texte de la fiche lisible sur toutes les images : le visuel reste sombre derrière lui, et ne s'éclaire
+            // qu'à droite (le résumé passait sur les parties claires de l'image).
+            Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to background, 0.4f to background.copy(alpha = 0.82f), 0.62f to background.copy(alpha = 0.45f), 0.88f to Color.Transparent)))
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to background.copy(alpha = 0.3f), 0.2f to Color.Transparent, 0.65f to Color.Transparent, 1f to background)))
             Box(Modifier.fillMaxSize().background(background.copy(alpha = dim)))
         }
@@ -188,7 +196,7 @@ internal fun StreamingDetailContent(
                     )
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (kind == ContentKind.MOVIE && item != null && item.itemKey in state.watched) WatchedBadge()
-                        Text(title, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = TEXT_MAX_WIDTH))
+                        Text(title, style = MaterialTheme.typography.displaySmall.copy(shadow = TEXT_SHADOW), fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = TEXT_MAX_WIDTH))
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             details?.rating?.takeIf { details.voteCount > 0 }?.let { rating ->
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -200,19 +208,22 @@ internal fun StreamingDetailContent(
                             DetailMeta(state, kind)
                         }
                         details?.tagline?.let {
-                            Text(it, style = MaterialTheme.typography.titleSmall, fontStyle = FontStyle.Italic, color = colors.onSurface.copy(alpha = 0.85f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(it, style = MaterialTheme.typography.titleSmall.copy(shadow = TEXT_SHADOW), fontStyle = FontStyle.Italic, color = colors.onSurface.copy(alpha = 0.85f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                         (details?.overview)?.let {
-                            Text(it, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant, maxLines = 5, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = TEXT_MAX_WIDTH))
+                            Text(it, style = MaterialTheme.typography.bodyMedium.copy(shadow = TEXT_SHADOW), color = colors.onSurface.copy(alpha = 0.92f), maxLines = 5, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = TEXT_MAX_WIDTH))
                         }
                         // Les têtes d'affiche, sous le résumé (la distribution complète est plus bas).
                         CastLine(state.cast)
                         DetailButtons(
                             state, kind, playFocus,
+                            trailerKey = state.trailer?.first,
                             onPlay = onPlay,
                             onResume = onResume,
                             onRestart = onRestart,
                             onToggleFavorite = onToggleFavorite,
+                            // Dans SmartTube (sans publicité) s'il est installé, sinon dans l'appli.
+                            onTrailer = { key -> if (!openTrailerWithoutAds(context, key)) fullTrailer = true },
                             onNextVersion = onNextVersion,
                         )
                     }
@@ -340,7 +351,7 @@ private fun DetailMeta(state: DetailUiState, kind: ContentKind) {
         }
     }
     if (parts.isNotEmpty()) {
-        Text(parts.joinToString("  ·  "), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(parts.joinToString("  ·  "), style = MaterialTheme.typography.titleSmall.copy(shadow = TEXT_SHADOW), color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f), maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -350,10 +361,12 @@ private fun DetailButtons(
     state: DetailUiState,
     kind: ContentKind,
     playFocus: FocusRequester,
+    trailerKey: String?,
     onPlay: (Long) -> Unit,
     onResume: (Long) -> Unit,
     onRestart: (Long) -> Unit,
     onToggleFavorite: () -> Unit,
+    onTrailer: (String) -> Unit,
     onNextVersion: () -> Unit,
 ) {
     val progress = state.progress
@@ -393,6 +406,7 @@ private fun DetailButtons(
             modifier = if (progress == null) Modifier.focusRequester(playFocus) else Modifier,
         )
         VersionButton(state, onNextVersion)
+        trailerKey?.let { key -> PillButton(stringResource(R.string.detail_trailer), { onTrailer(key) }, icon = NexTvIcons.Movie) }
         FavoriteButton(state.isFavorite, onToggleFavorite)
     }
 }
@@ -511,7 +525,7 @@ internal fun CastLine(cast: List<CastMember>, modifier: Modifier = Modifier) {
     if (cast.isEmpty()) return
     Text(
         stringResource(R.string.detail_starring, cast.take(STARRING_COUNT).joinToString(", ") { it.name }),
-        style = MaterialTheme.typography.bodyMedium,
+        style = MaterialTheme.typography.bodyMedium.copy(shadow = TEXT_SHADOW),
         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
@@ -566,4 +580,7 @@ private const val STARRING_COUNT = 3
 private val EPISODE_WIDTH = 240.dp
 
 /** Largeur du titre et du résumé : lisibles, sans passer sous le visuel. */
-private val TEXT_MAX_WIDTH = 620.dp
+private val TEXT_MAX_WIDTH = 560.dp
+
+/** Ombre douce sous le texte posé sur le visuel du titre : lisible même sur une image claire. */
+private val TEXT_SHADOW = Shadow(color = Color.Black.copy(alpha = 0.85f), offset = Offset(0f, 2f), blurRadius = 8f)

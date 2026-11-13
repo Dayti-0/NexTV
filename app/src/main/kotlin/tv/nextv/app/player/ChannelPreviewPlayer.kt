@@ -60,7 +60,9 @@ class ChannelPreviewPlayer(
     /** Le lecteur, gardé entre deux aperçus. */
     private var exoPlayer: ExoPlayer? = null
 
+    /** Ligne de l'accueil dont l'aperçu joue, et version de la chaîne lue (celle que le plein écran ouvrira). */
     private var channelId: Long? = null
+    private var shownId: Long? = null
 
     /** Flux de l'aperçu en cours, et de quoi y brancher le lecteur plein écran s'il le reprend. */
     private var request: PlaybackRequest? = null
@@ -69,8 +71,15 @@ class ChannelPreviewPlayer(
     /** Mémoire tampon du lecteur (celle d'un aperçu tant qu'il est ici). */
     private var buffer: LiveLoadControl? = null
 
-    /** Le plein écran peut reprendre ce lecteur (créé comme il l'aurait créé lui-même, au son près). */
+    /** « Baisser le son des pubs » du lecteur : coupé ici, le plein écran le règle s'il reprend le lecteur. */
+    private var adVolume: AdVolumeControl? = null
+
+    /** Le plein écran peut reprendre ce lecteur (créé comme il l'aurait créé lui-même). */
     private var transferable = false
+
+    /** Pourquoi le dernier [handOff] n'a rien confié (infos du lecteur plein écran). */
+    var lastMiss: HandoffMiss? = null
+        private set
 
     // Décodeurs en service, pour les infos du lecteur plein écran s'il reprend l'aperçu.
     private var videoDecoder: String? = null
@@ -97,9 +106,12 @@ class ChannelPreviewPlayer(
             exoPlayer?.volume = value
         }
 
-    /** Montre [channel] (sans effet si c'est déjà la chaîne de l'aperçu). Fil principal. */
-    suspend fun show(channel: ChannelEntity) {
-        if (channel.id == channelId && mutablePlayer.value != null) return
+    /**
+     * Montre [channel], la version de la chaîne [rowId] (ligne choisie dans l'accueil) que le plein écran ouvrirait :
+     * il pourra reprendre ce flux. Sans effet si c'est déjà la chaîne de l'aperçu. Fil principal.
+     */
+    suspend fun show(channel: ChannelEntity, rowId: Long = channel.id) {
+        if (rowId == channelId && channel.id == shownId && mutablePlayer.value != null) return
         stop()
         val stream = channel.toStream()
         if (stream.support == StreamSupport.UNSUPPORTED || stream.format == StreamFormat.UDP) return
@@ -110,21 +122,32 @@ class ChannelPreviewPlayer(
             credentials = sources.credentialsFor(channel.sourceId),
             credentialsOrigin = (source?.location as? SourceLocation.Remote)?.url,
         )
-        // Son envoyé tel quel à l'ampli, décodeur imposé, « baisser le son des pubs » : le plein écran crée son
-        // lecteur autrement, il rouvrira le flux.
+        // Son envoyé tel quel à l'ampli : le volume de l'aperçu ne s'y applique pas, le plein écran crée son lecteur
+        // autrement et rouvrira le flux. Décodeurs choisis et « baisser le son des pubs » : l'aperçu les a aussi.
         if (exoPlayer == null) {
-            transferable = settings?.let { !it.audioPassthrough.first() && !it.lowerAdVolume.first() && it.preferredDecoders.first().isEmpty() } ?: false
+            transferable = settings?.let { !it.audioPassthrough.first() } ?: false
         }
         // Langues du plein écran (dernières choisies) : les mêmes pistes, rien ne change s'il reprend l'aperçu.
         val audioLanguage = settings?.audioLanguage?.first()
         val subtitleLanguage = settings?.subtitleLanguage?.first()
-        channelId = channel.id
+        channelId = rowId
+        shownId = channel.id
         val liveBuffer = buffer ?: factory.liveLoadControl(preview = true).also { buffer = it }
-        val player = exoPlayer ?: factory.create(preview = true, liveBuffer = liveBuffer).also {
-            it.addListener(errors)
-            it.addAnalyticsListener(decoders)
-            exoPlayer = it
+        val player = exoPlayer ?: run {
+            val control = AdVolumeControl()
+            adVolume = control
+            factory.create(
+                preferredDecoders = settings?.preferredDecoders?.first().orEmpty(),
+                adVolume = control,
+                preview = true,
+                liveBuffer = liveBuffer,
+            ).also {
+                it.addListener(errors)
+                it.addAnalyticsListener(decoders)
+                exoPlayer = it
+            }
         }
+        adVolume?.enabled = false
         liveBuffer.preview = true
         val streamTaps = StreamTaps().apply { preview = true }
         this.request = request
@@ -142,17 +165,27 @@ class ChannelPreviewPlayer(
      * quel (il n'appartient plus à l'aperçu) ; sinon `null`. Fil principal.
      */
     fun handOff(id: Long): PreviewHandoff? {
-        val player = exoPlayer ?: return null
-        val playing = request ?: return null
-        val streamTaps = taps ?: return null
-        val liveBuffer = buffer ?: return null
-        if (!transferable || id != channelId || mutablePlayer.value == null) return null
-        if (player.playerError != null || (player.playbackState != Player.STATE_READY && player.playbackState != Player.STATE_BUFFERING)) return null
+        val player = exoPlayer
+        val playing = request
+        val streamTaps = taps
+        val liveBuffer = buffer
+        val control = adVolume
+        if (player == null || playing == null || streamTaps == null || liveBuffer == null || control == null || mutablePlayer.value == null) {
+            return missed(HandoffMiss.NOT_SHOWN)
+        }
+        if (id != channelId) return missed(HandoffMiss.OTHER_CHANNEL)
+        if (!transferable) return missed(HandoffMiss.PASSTHROUGH)
+        if (player.playerError != null || (player.playbackState != Player.STATE_READY && player.playbackState != Player.STATE_BUFFERING)) {
+            return missed(HandoffMiss.NOT_PLAYING)
+        }
+        lastMiss = null
         player.removeListener(errors)
         player.removeAnalyticsListener(decoders)
-        val handoff = PreviewHandoff(player, playing, streamTaps, liveBuffer, setOf(id), toPreview = false, videoDecoder, audioDecoder)
+        val ids = setOfNotNull(id, shownId)
+        val handoff = PreviewHandoff(player, playing, streamTaps, liveBuffer, control, ids, toPreview = false, shownId, videoDecoder, audioDecoder)
         exoPlayer = null
         buffer = null
+        adVolume = null
         forgetStream()
         mutablePlayer.value = null
         return handoff
@@ -175,9 +208,11 @@ class ChannelPreviewPlayer(
         player.addAnalyticsListener(decoders)
         exoPlayer = player
         buffer = handoff.buffer
+        adVolume = handoff.adVolume.also { it.enabled = false }
         // Le plein écran ne le confie que réglé comme il l'aurait été ici (son, décodeurs, mémoire du direct).
         transferable = true
         channelId = id
+        shownId = handoff.playingId ?: id
         request = handoff.request
         taps = handoff.taps
         videoDecoder = handoff.videoDecoder
@@ -188,8 +223,14 @@ class ChannelPreviewPlayer(
         mutablePlayer.value = player
     }
 
+    private fun missed(reason: HandoffMiss): PreviewHandoff? {
+        lastMiss = reason
+        return null
+    }
+
     private fun forgetStream() {
         channelId = null
+        shownId = null
         request = null
         taps = null
         videoDecoder = null
@@ -217,5 +258,21 @@ class ChannelPreviewPlayer(
         }
         exoPlayer = null
         buffer = null
+        adVolume = null
     }
+}
+
+/** Pourquoi l'aperçu n'a pas confié son lecteur au plein écran (il rouvre alors le flux). */
+enum class HandoffMiss {
+    /** Pas d'aperçu en cours (pas encore lancé, arrêté, réglage). */
+    NOT_SHOWN,
+
+    /** L'aperçu montrait une autre chaîne. */
+    OTHER_CHANNEL,
+
+    /** Son envoyé tel quel à l'ampli. */
+    PASSTHROUGH,
+
+    /** Flux de l'aperçu en erreur ou arrêté. */
+    NOT_PLAYING,
 }

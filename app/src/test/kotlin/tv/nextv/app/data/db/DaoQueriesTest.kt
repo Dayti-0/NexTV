@@ -177,6 +177,40 @@ class DaoQueriesTest {
         assertEquals("HD", dao.seriesRow(other, "Séries", 10).single().quality)
     }
 
+    /** « Masquer les chaînes 4K » : un film qui existe aussi hors 4K n'affiche plus le badge 4K sur son affiche. */
+    @Test
+    fun `with 4K hidden, a film also offered in FHD shows the FHD badge`() = runBlocking {
+        fun copy(name: String, quality: StreamQuality, n: Int) = Channel(
+            position = 300 + n, name = name, stream = StreamDescriptor("http://example.com/movie/hg$n.mkv"),
+            groupTitle = "Sagas", kind = ContentKind.MOVIE, title = "Hunger Games", year = 2015, quality = quality,
+        )
+        fun only4k(n: Int) = Channel(
+            position = 310 + n, name = "Seul en 4K", stream = StreamDescriptor("http://example.com/movie/u$n.mkv"),
+            groupTitle = "Sagas", kind = ContentKind.MOVIE, title = "Seul en 4K", year = 2020, quality = StreamQuality.UHD,
+        )
+        val other = db.sourceDao().insert(
+            SourceEntity(
+                name = "U", type = "m3u", locationKind = "remote", location = "http://example.com/u.m3u", locationName = null,
+                epgLocationKind = null, epgLocation = null, epgLocationName = null, epgUseHeaderUrls = false,
+                userAgent = null, hasCredentials = false, createdAt = 0, updatedAt = 0, epgGeneration = 1,
+            ),
+        )
+        RoomPlaylistStore(db).replaceChannels(
+            other,
+            listOf(copy("Hunger Games (4K)", StreamQuality.UHD, 0), copy("Hunger Games (MULTI)", StreamQuality.FHD, 1), only4k(0)),
+        ) {}
+        val dao = db.channelDao()
+        fun badges() = runBlocking { dao.movieRow(other, "Sagas", 10).associate { it.title to it.quality } }
+        val shown = badges()
+        // 4K masquée : l'affiche du film porte la qualité de sa meilleure copie hors 4K ; un film seulement en 4K garde la sienne.
+        db.hiddenGroupDao().replace(other, HIDDEN_UHD, setOf(""))
+        val hidden = badges()
+        assertEquals("FHD", hidden["Hunger Games"])
+        assertEquals("UHD", hidden["Seul en 4K"])
+        assertEquals(shown.keys, hidden.keys)
+        assertEquals(hidden["Hunger Games"], dao.pageMovies(other, 0, "", "").all().first { it.title == "Hunger Games" }.quality)
+    }
+
     private fun episodeOf(series: String) = Channel(
         position = 200, name = "$series S01E01", stream = StreamDescriptor("http://example.com/series/t.mkv"),
         groupTitle = "Séries", kind = ContentKind.SERIES, title = series, episode = EpisodeInfo(series, 1, 1),

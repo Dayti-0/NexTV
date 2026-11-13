@@ -106,7 +106,10 @@ class ChannelPreviewPlayerTest {
         val request = PlaybackRequest(channel(2).toStream(), null, null, null)
         full.setMediaSource(container.playerFactory.mediaSource(request, taps = taps))
         full.prepare()
-        previewer.adopt(PreviewHandoff(full, request, taps, buffer, setOf(2L), toPreview = true), 2)
+        val control = AdVolumeControl().apply { enabled = true }
+        previewer.adopt(PreviewHandoff(full, request, taps, buffer, control, setOf(2L), toPreview = true, playingId = 2L), 2)
+        // « Baisser le son des pubs » coupé dans l'aperçu.
+        assertEquals(false, control.enabled)
         // L'aperçu continue sur ce lecteur, au volume de l'aperçu et sa mémoire tampon ; le sien est rendu.
         assertSame(full, previewer.player.value)
         assertNotSame(own, previewer.player.value)

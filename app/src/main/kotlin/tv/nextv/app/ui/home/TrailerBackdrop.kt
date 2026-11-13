@@ -172,6 +172,26 @@ internal fun openTrailerExternally(context: android.content.Context, key: String
     return opened
 }
 
+/**
+ * Ouvre la bande-annonce [key] dans SmartTube (YouTube sans publicité) s'il est installé sur l'appareil.
+ * @return faux s'il ne l'est pas (la bande-annonce s'ouvre alors dans le lecteur de l'appli).
+ */
+internal fun openTrailerWithoutAds(context: android.content.Context, key: String): Boolean {
+    val link = android.net.Uri.parse("https://www.youtube.com/watch?v=$key")
+    return SMARTTUBE_APPS.any { app ->
+        runCatching {
+            context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, link).setPackage(app).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+        }.isSuccess
+    }
+}
+
+/** SmartTube (stable, bêta, ancien nom) : YouTube pour la télé, sans publicité. */
+private val SMARTTUBE_APPS = listOf(
+    "com.teamsmart.videomanager.tv",
+    "com.liskovsoft.smarttubetv.beta",
+    "com.liskovsoft.smarttubetv",
+)
+
 /** Applications YouTube des TV et des téléphones, par ordre de préférence. */
 private val YOUTUBE_APPS = listOf(
     "com.amazon.firetv.youtube",

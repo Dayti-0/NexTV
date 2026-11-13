@@ -4,6 +4,18 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.130
+- Aperçu → chaîne en grand (OK) : le flux de l’aperçu est vraiment repris, aussi avec « Baisser le son des pubs », un décodeur choisi, et pour les chaînes en plusieurs versions (l’aperçu joue la version que la chaîne ouvrira)
+- Chaîne refusée un instant par l’abonnement juste après la fermeture de l’aperçu : nouvel essai dans la même qualité, au lieu de « Connexion lente » et d’une qualité plus basse
+- Retour à l’accueil depuis une chaîne : l’aperçu continue sur le même flux, aussi avec « Baisser le son des pubs » ou un décodeur choisi
+- Infos de lecture : nouvelle ligne « Aperçu » qui dit si le flux de l’aperçu a été repris, ou pourquoi il a été rouvert
+- Fiche d’un film ou d’une série : le bouton « Bande-annonce » revient à côté de « Regarder » ; il ouvre SmartTube (YouTube sans pub) s’il est installé, sinon le lecteur de l’appli
+- Bande-annonce en plein écran : « Retour » ramène en haut de la fiche, sur « Regarder »
+- Fiche Streaming : le résumé reste lisible sur les images claires
+- « Masquer les chaînes 4K » : un film qui existe aussi hors 4K n’affiche plus le badge 4K dans les listes (la 4K reste proposée en dernière version sur sa fiche)
+- Accueil : « Retour » n’ouvre plus de fenêtre « Quitter » ; « Appuyer à nouveau pour quitter » s’affiche 3 secondes, un second appui ferme l’application
+- Menu de gauche (Streaming) : le flou couvre tout le menu, jusqu’à son bord droit
+
 ## 0.2.129
 - Fiche d’un film ou d’une série : la bande-annonce est une grande image sur toute la largeur, tout en bas ; descendre jusqu’à elle l’ouvre en plein écran (le bouton « Bande-annonce » du haut disparaît)
 - Bandes-annonces : une version française passe avant une version anglaise, même si ce n’est qu’un teaser ; pour un film récent, l’appli revérifie chaque jour si une VF est arrivée

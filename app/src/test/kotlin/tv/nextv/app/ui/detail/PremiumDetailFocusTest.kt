@@ -100,12 +100,12 @@ class PremiumDetailFocusTest {
             .fetchSemanticsNodes().minOf { it.boundsInRoot.center.y }
         val play = compose.onAllNodes(hasText("Lire le premier", substring = true), useUnmergedTree = true).fetchSemanticsNodes().minOf { it.boundsInRoot.center.y }
         val favorite = center("Ajouter aux favoris")
-        println("Boutons : lecture $play, favoris $favorite ; sélection ${focusedText()}")
+        val trailer = compose.onAllNodes(hasText("Bande-annonce") and androidx.compose.ui.test.hasClickAction()).fetchSemanticsNodes().single().boundsInRoot.center.y
+        println("Boutons : lecture $play, bande-annonce $trailer, favoris $favorite ; sélection ${focusedText()}")
         assertEquals("Boutons sur deux lignes", play, favorite, 4f)
-        // Plus de bouton « Bande-annonce » en haut : elle est tout en bas de la fiche, sur toute la largeur.
-        assertTrue(compose.onAllNodes(hasText("Bande-annonce") and androidx.compose.ui.test.hasClickAction(), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
+        assertEquals("Boutons sur deux lignes", play, trailer, 4f)
         val start = top(title)
-        repeat(1) {
+        repeat(2) {
             press(Key.DirectionRight)
             println("→ ${focusedText()} : titre à ${top(title)} (départ $start)")
             assertEquals("→ ${focusedText()}", start, top(title), 1f)

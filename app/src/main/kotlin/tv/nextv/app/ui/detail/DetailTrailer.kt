@@ -184,6 +184,29 @@ internal fun Modifier.revealBelow(listState: LazyListState, itemKey: Any, enable
     }
 }
 
+/**
+ * Bande-annonce en plein écran refermée ([opened] repasse à faux) : la fiche remonte tout en haut et la sélection va sur
+ * le bouton de lecture ([playFocus]). Sinon elle restait sur la grande image du bas, qui remplit l'écran.
+ */
+@Composable
+internal fun BackToSheetTop(opened: Boolean, listState: LazyListState, playFocus: () -> androidx.compose.ui.focus.FocusRequester) {
+    var wasOpened by remember { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(opened) {
+        if (opened) {
+            wasOpened = true
+            return@LaunchedEffect
+        }
+        if (!wasOpened) return@LaunchedEffect
+        wasOpened = false
+        listState.scrollToItem(0)
+        // Le bouton n'accepte la sélection qu'une fois la fenêtre de la bande-annonce fermée et le haut affiché.
+        for (attempt in 1..20) {
+            androidx.compose.runtime.withFrameNanos { }
+            if (runCatching { playFocus().requestFocus() }.getOrDefault(false)) break
+        }
+    }
+}
+
 /** Haut de la bande-annonce montré sous la rangée du dessus. */
 private val TRAILER_PEEK = 150.dp
 private const val REVEAL_AFTER_MILLIS = 120L

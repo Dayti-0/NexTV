@@ -133,8 +133,15 @@ internal class PlayerEngine(
     /** Chaîne demandée ([startZapTimer]) : heure, pour journaliser le délai jusqu'à la première image. */
     private var zapStartedAt = 0L
 
-    /** Option « baisser le son des pubs », lue par le traitement du son de chaque lecteur. */
-    val adVolume = AdVolumeControl()
+    /**
+     * Option « baisser le son des pubs », lue par le traitement du son du lecteur. Celle du lecteur de l'aperçu quand
+     * le plein écran le reprend (le traitement est déjà branché sur ce lecteur).
+     */
+    var adVolume = AdVolumeControl()
+        private set
+
+    /** Réglage « baisser le son des pubs ». */
+    private var adVolumeEnabled = false
 
     private val bandwidthMeter: DefaultBandwidthMeter = container.playerFactory.newBandwidthMeter()
     private var preferredDecoders: Map<String, String> = emptyMap()
@@ -157,6 +164,7 @@ internal class PlayerEngine(
         scope.launch { container.settings.subtitleLanguage.collect { subtitleLanguage = it } }
         scope.launch {
             container.settings.lowerAdVolume.collect {
+                adVolumeEnabled = it
                 adVolume.enabled = it
                 state.update { s -> s.copy(lowerAdVolume = it) }
             }
@@ -263,9 +271,10 @@ internal class PlayerEngine(
      * @param forceHls traiter le flux comme du HLS (seconde tentative pour une URL sans extension).
      * @param startPositionMs position de départ d'une reprise (0 : un direct démarre au plus près du direct).
      * @param film film ou épisode, et non un direct.
-     * @return vrai si le flux continue sur le lecteur de l'aperçu de l'accueil (déjà en lecture).
+     * @return [PreviewStart.TAKEN] si le flux continue sur le lecteur de l'aperçu de l'accueil (déjà en lecture), une
+     * autre valeur s'il y avait un aperçu à reprendre mais qu'il a fallu rouvrir le flux, `null` sans aperçu à reprendre.
      */
-    fun play(request: PlaybackRequest, forceHls: Boolean, startPositionMs: Long, record: Boolean = false, film: Boolean = false): Boolean {
+    fun play(request: PlaybackRequest, forceHls: Boolean, startPositionMs: Long, record: Boolean = false, film: Boolean = false): PreviewStart? {
         this.film = film
         // Direct continu (MPEG-TS…) : les dernières secondes sont gardées en mémoire pour revenir en arrière.
         // Le direct précédent cède l'anneau avant que le nouveau n'y écrive.
@@ -274,9 +283,12 @@ internal class PlayerEngine(
         liveRecording = recording
         // Chaîne ouverte depuis son aperçu : il joue déjà ce flux, la lecture continue dessus.
         val handoff = pendingHandoff?.also { pendingHandoff = null } ?: container.previewHandoff.take()
+        var previewStart: PreviewStart? = null
         if (handoff != null) {
             val sameStream = !film && !forceHls && startPositionMs == 0L && handoff.request.stream.url == request.stream.url
-            if (sameStream && adopt(handoff, request, recording)) return true
+            if (sameStream && adopt(handoff, request, recording)) return PreviewStart.TAKEN
+            container.logger.info(TAG, if (sameStream) "Aperçu en erreur : flux rouvert" else "Aperçu d'une autre version : flux rouvert")
+            previewStart = if (sameStream) PreviewStart.NOT_PLAYING else PreviewStart.OTHER_VERSION
             // Autre flux (autre version de la chaîne, serveur de secours…) : sa connexion est fermée d'abord.
             if (mutablePlayer.value === handoff.player) mutablePlayer.value = null
             handoff.player.release()
@@ -294,7 +306,12 @@ internal class PlayerEngine(
             liveTaps = taps
             liveRequest = request
         }
-        return false
+        return previewStart
+    }
+
+    /** Chaîne ouverte depuis l'aperçu de l'accueil : ce qu'il est advenu de son flux (infos de lecture). */
+    fun notePreviewStart(start: PreviewStart) {
+        updateInfo { it.copy(previewStart = start) }
     }
 
     /**
@@ -320,12 +337,12 @@ internal class PlayerEngine(
      * qu'il montre), qui continue sur la même connexion. `null` si ce flux ne peut pas l'être (film, différé, réglages
      * du son ou des décodeurs que l'aperçu n'a pas) : il est alors fermé comme avant.
      */
-    fun handBack(ids: Set<Long>): PreviewHandoff? {
+    fun handBack(ids: Set<Long>, playingId: Long?): PreviewHandoff? {
         val player = exoPlayer ?: return null
         val taps = liveTaps ?: return null
         val request = liveRequest ?: return null
         val buffer = liveBuffer ?: return null
-        if (film || !previewCompatible || adVolume.enabled || mutablePlayer.value !== player) return null
+        if (film || !previewCompatible || mutablePlayer.value !== player) return null
         if (player.playerError != null || !player.playWhenReady) return null
         if (player.playbackState != Player.STATE_READY && player.playbackState != Player.STATE_BUFFERING) return null
         player.removeListener(listener)
@@ -336,7 +353,11 @@ internal class PlayerEngine(
         liveRecording?.retire()
         container.playerFactory.releaseSound(player)
         val info = state.value.info
-        val handoff = PreviewHandoff(player, request, taps, buffer, ids, toPreview = true, info.videoDecoder, info.audioDecoder)
+        // Le traitement « baisser le son des pubs » reste branché sur ce lecteur : coupé dans l'aperçu ; cet écran en
+        // prend un nouveau pour un éventuel lecteur suivant.
+        val control = adVolume.also { it.enabled = false }
+        adVolume = AdVolumeControl().also { it.enabled = adVolumeEnabled }
+        val handoff = PreviewHandoff(player, request, taps, buffer, control, ids, toPreview = true, playingId, info.videoDecoder, info.audioDecoder)
         handoff.setPreview(true)
         exoPlayer = null
         exoPlayerConfig = null
@@ -432,6 +453,8 @@ internal class PlayerEngine(
             it.release()
         }
         generation++
+        // « Baisser le son des pubs » : le traitement du son de ce lecteur, réglé comme en plein écran.
+        adVolume = handoff.adVolume.also { it.enabled = adVolumeEnabled }
         adVolume.newStream()
         receivedRate.reset()
         state.update { it.copy(error = null, info = PlaybackInfo(), audioProblem = null, unsupportedAudio = null, receivedMbps = null) }
@@ -477,6 +500,7 @@ internal class PlayerEngine(
                 audioMimeType = audio?.sampleMimeType,
                 audioChannels = audio?.channelCount?.takeIf { it > 0 },
                 audioDecoder = handoff.audioDecoder,
+                previewStart = PreviewStart.TAKEN,
             )
         }
         listener.onPlaybackStateChanged(playbackState)
@@ -504,7 +528,7 @@ internal class PlayerEngine(
             exoPlayer = this
             exoPlayerConfig = config
             liveBuffer = buffer
-            previewCompatible = !film && !audioPassthrough && !softwareAudio && preferredDecoders.isEmpty() && excludedDecoders.isEmpty()
+            previewCompatible = !film && !audioPassthrough && !softwareAudio && excludedDecoders.isEmpty()
         }
     }
 

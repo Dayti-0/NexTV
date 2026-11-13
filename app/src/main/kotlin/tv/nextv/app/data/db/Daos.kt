@@ -101,8 +101,17 @@ private const val MOVIE_VISIBLE =
     "(c.isPrimary = 1 OR (EXISTS $HIDDEN_MOVIE_GROUPS AND NOT EXISTS (SELECT 1 FROM channels b WHERE $PREFERRED_COPY " +
         "AND IFNULL(b.groupTitle, '') NOT IN $HIDDEN_MOVIE_GROUPS)))"
 
+/**
+ * Qualité affichée sur l'affiche du film `c` : la sienne ; copie 4K avec la 4K masquée dans les réglages, celle de sa
+ * meilleure autre copie (la fiche lit alors celle-là). Un film qui n'existe qu'en 4K garde son badge.
+ */
+private const val MOVIE_QUALITY =
+    "CASE WHEN c.qualityRank = 5 AND $UHD_HIDDEN THEN IFNULL((SELECT b.quality FROM channels b WHERE b.sourceId = c.sourceId " +
+        "AND b.kind = 'MOVIE' AND b.itemKey = c.itemKey AND b.qualityRank < 5 ORDER BY b.qualityRank DESC, b.position LIMIT 1), c.quality) " +
+        "ELSE c.quality END AS quality"
+
 /** Colonnes d'un film dans les listes ([MovieRow]). */
-private const val MOVIE_COLUMNS = "c.id, c.title, c.year, c.logoUrl, c.groupTitle, c.itemKey, c.streamSupport, c.quality"
+private const val MOVIE_COLUMNS = "c.id, c.title, c.year, c.logoUrl, c.groupTitle, c.itemKey, c.streamSupport, $MOVIE_QUALITY"
 
 /*
  * Favoris : `favorites f CROSS JOIN channels c` fait lire les quelques favoris d'abord, puis leur

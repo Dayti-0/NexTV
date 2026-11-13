@@ -1445,6 +1445,20 @@ fun PlaybackInfoPanel(state: PlayerUiState, visible: Boolean, modifier: Modifier
                 state.bandwidthMbps?.let { InfoLine(stringResource(R.string.player_info_bitrate), stringResource(R.string.player_speed, formatDecimal(it))) }
                 InfoLine(stringResource(R.string.player_info_dropped), info.droppedFrames.toString(), warning = info.droppedFrames > 0)
                 InfoLine(stringResource(R.string.player_info_version), state.quality ?: unknown)
+                // Chaîne ouverte depuis l'aperçu : son flux repris, ou rouvert (et pourquoi).
+                info.previewStart?.let { start ->
+                    val text = stringResource(
+                        when (start) {
+                            PreviewStart.TAKEN -> R.string.player_info_preview_taken
+                            PreviewStart.OTHER_VERSION -> R.string.player_info_preview_other_version
+                            PreviewStart.NOT_SHOWN -> R.string.player_info_preview_not_shown
+                            PreviewStart.OTHER_CHANNEL -> R.string.player_info_preview_other_channel
+                            PreviewStart.PASSTHROUGH -> R.string.player_info_preview_passthrough
+                            PreviewStart.NOT_PLAYING -> R.string.player_info_preview_not_playing
+                        },
+                    )
+                    InfoLine(stringResource(R.string.player_info_preview), text, warning = start != PreviewStart.TAKEN)
+                }
             }
         }
     }

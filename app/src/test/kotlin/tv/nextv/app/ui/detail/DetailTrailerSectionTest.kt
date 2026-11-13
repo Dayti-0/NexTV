@@ -39,7 +39,8 @@ import tv.nextv.core.model.ContentKind
 /**
  * Bande-annonce en bas de la fiche, dans toutes les interfaces : une grande image sur toute la largeur de l'écran, qui
  * dépasse en bas de la fiche (bouton de lecture dans sa partie visible). Rien ne se lit à cet endroit ; à la
- * télécommande, ↓ jusqu'à elle l'ouvre en plein écran. Plus de bouton « Bande-annonce » en haut de la fiche.
+ * télécommande, ↓ jusqu'à elle l'ouvre en plein écran, et « Retour » ramène en haut de la fiche, sur « Lecture ».
+ * Le bouton « Bande-annonce » est à côté de « Lecture » (SmartTube s'il est installé).
  */
 @OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -126,8 +127,8 @@ class DetailTrailerSectionTest {
         }
         compose.mainClock.advanceTimeBy(4_000)
         compose.waitForIdle()
-        // Plus de bouton « Bande-annonce » en haut : la bande-annonce est en bas de la fiche.
-        assertTrue(compose.onAllNodes(hasText("Bande-annonce") and hasClickAction(), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
+        // Bouton « Bande-annonce » à côté de « Lecture ».
+        assertEquals(1, compose.onAllNodes(hasText("Bande-annonce") and hasClickAction()).fetchSemanticsNodes().size)
         repeat(5) {
             if (opened.isEmpty()) {
                 press(Key.DirectionDown)
@@ -136,21 +137,20 @@ class DetailTrailerSectionTest {
             }
         }
         assertEquals(listOf("trailer"), opened)
-        // Rien n'est lu en bas de la fiche : seulement le plein écran.
+        // Rien n'est lu en bas de la fiche : seulement le plein écran. L'image prend toute la largeur de l'écran.
         assertNull("vidéo lue dans la fiche", webView())
-        // « Retour » : la fiche revient, sans rouvrir le plein écran.
+        val screen = compose.onRoot().fetchSemanticsNode().boundsInRoot
+        val image = checkNotNull(trailerImage()).boundsInRoot
+        assertEquals(screen.width, image.width, 1f)
+        // « Retour » : la fiche revient en haut, la sélection sur « Lecture » (pas sur la grande image).
         compose.runOnUiThread { open.value = false }
         compose.mainClock.advanceTimeBy(3_000)
         compose.waitForIdle()
         assertEquals(1, opened.size)
         assertNull("vidéo lue dans la fiche", webView())
-        // L'image prend toute la largeur de l'écran.
-        val screen = compose.onRoot().fetchSemanticsNode().boundsInRoot
-        val image = checkNotNull(trailerImage()).boundsInRoot
-        assertEquals(screen.width, image.width, 1f)
-        // ↑ puis ↓ : de nouveau en plein écran.
-        press(Key.DirectionUp)
-        press(Key.DirectionDown)
+        assertTrue("sélection : ${focusedText()}", focusedText().orEmpty().contains("Lecture"))
+        // En redescendant : de nouveau en plein écran.
+        repeat(6) { if (opened.size < 2) press(Key.DirectionDown) }
         assertEquals(2, opened.size)
     }
 
@@ -176,7 +176,6 @@ class DetailTrailerSectionTest {
         compose.mainClock.advanceTimeBy(2_000)
         compose.waitForIdle()
         assertTrue(compose.onAllNodes(androidx.compose.ui.test.isDialog()).fetchSemanticsNodes().isEmpty())
-        assertTrue(compose.onAllNodes(hasText("Bande-annonce") and hasClickAction(), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
         repeat(6) {
             if (compose.onAllNodes(androidx.compose.ui.test.isDialog()).fetchSemanticsNodes().isEmpty()) {
                 press(Key.DirectionDown)

@@ -42,12 +42,14 @@ import tv.nextv.app.ui.detail.recommendedInPlaylist
 import tv.nextv.app.data.progress.ProgressEntity
 import tv.nextv.app.data.settings.GridColumns
 import tv.nextv.app.R
+import tv.nextv.app.data.db.ChannelEntity
 import tv.nextv.app.data.db.ChannelListRow
 import tv.nextv.app.data.db.GroupRow
 import tv.nextv.app.data.db.HiddenGroupEntity
 import tv.nextv.app.data.db.MovieRow
 import tv.nextv.app.data.db.SeriesRow
 import tv.nextv.app.player.ChannelPreviewPlayer
+import tv.nextv.app.ui.player.channelStart
 import tv.nextv.app.ui.guide.GuideProgramme
 import tv.nextv.core.model.ContentKind
 import tv.nextv.app.data.catalog.MetadataState
@@ -381,7 +383,7 @@ class HomeViewModel(
                         }
                         container.previewHandoff.discard()
                     }
-                    dao.get(row.id)?.let { previewer.show(it) }
+                    previewVersion(row.id)?.let { previewer.show(it, rowId = row.id) }
                 }
         }
     }
@@ -736,7 +738,13 @@ class HomeViewModel(
      * écran (même connexion, pas de nouvelle ouverture du flux) ; sinon l'aperçu est simplement arrêté.
      */
     fun openFromPreview(channelId: Long) {
-        previewer.handOff(channelId)?.let(container.previewHandoff::offer)
+        val handoff = previewer.handOff(channelId)
+        if (handoff != null) {
+            container.previewHandoff.offer(handoff)
+        } else {
+            // Pourquoi le plein écran devra rouvrir le flux (affiché dans ses infos de lecture).
+            previewer.lastMiss?.let { container.previewHandoff.missed(channelId, it) }
+        }
         setPreviewActive(false)
     }
 
@@ -746,6 +754,18 @@ class HomeViewModel(
 
     /** Chaîne dont l'aperçu doit jouer (`null` : aucun), et accueil affiché ou non. */
     private data class PreviewTarget(val row: ChannelListRow?, val active: Boolean)
+
+    /**
+     * Version de la chaîne [rowId] que le plein écran ouvrira (qualité visée, dernière qualité qui a fonctionné, 4K
+     * selon l'écran) : l'aperçu joue celle-là, le plein écran peut alors reprendre son flux au lieu de le rouvrir.
+     */
+    private suspend fun previewVersion(rowId: Long): ChannelEntity? {
+        val listed = dao.get(rowId) ?: return null
+        val isLive = listed.kind == ContentKind.LIVE.name
+        val primary = if (isLive && listed.variantKey.isNotEmpty()) dao.primaryOf(listed.sourceId, listed.variantKey) ?: listed else listed
+        val startId = channelStart(container, listed, primary, isLive).startId
+        return if (startId == listed.id) listed else dao.get(startId) ?: listed
+    }
 
     fun selectSection(target: HomeSection) {
         if (section.value != target) spotlightTarget.value = null

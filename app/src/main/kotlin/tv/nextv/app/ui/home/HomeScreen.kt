@@ -12,6 +12,7 @@ import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -216,10 +217,10 @@ fun HomeScreen(
             channels.refresh()
         }
     }
-    // « Retour » depuis l'accueil : l'application ne se ferme qu'après confirmation (pas de sortie par
-    // maladresse). Déclaré en premier : les autres usages de « Retour » à l'accueil passent avant.
-    var confirmExit by remember { mutableStateOf(false) }
-    BackHandler { confirmExit = true }
+    // « Retour » depuis l'accueil : « Appuyer à nouveau pour quitter », l'application ne se ferme qu'au second appui.
+    // Déclaré en premier : les autres usages de « Retour » à l'accueil passent avant.
+    val activity = LocalActivity.current
+    BackTwiceToExit(onExit = { activity?.finish() })
     // Classique : menu d'accueil (grandes tuiles) au lieu des onglets ; « Retour » depuis une section y ramène.
     var premiumMenu by rememberSaveable { mutableStateOf(true) }
     val showMenu = layout == HomeLayout.PREMIUM && premiumMenu
@@ -418,25 +419,6 @@ fun HomeScreen(
         )
     }
 
-    if (confirmExit) {
-        val activity = LocalActivity.current
-        val stay = remember { FocusRequester() }
-        // « Non » sélectionné d'office : un appui de trop sur OK ne ferme pas l'application.
-        LaunchedEffect(Unit) { runCatching { stay.requestFocus() } }
-        AlertDialog(
-            onDismissRequest = { confirmExit = false },
-            title = { Text(stringResource(R.string.exit_title)) },
-            text = { Text(stringResource(R.string.exit_message)) },
-            confirmButton = {
-                TextButton(onClick = { activity?.finish() }) { Text(stringResource(R.string.exit_yes)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmExit = false }, modifier = Modifier.focusRequester(stay)) { Text(stringResource(R.string.exit_no)) }
-            },
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            modifier = Modifier.ignoreHeldOk(),
-        )
-    }
 
     pendingHide?.let { title ->
         val name = title.ifEmpty { stringResource(R.string.channels_no_group) }
@@ -1919,3 +1901,44 @@ internal fun gridSpacing(columns: Int): Dp = when {
 }
 internal const val NO_GROUP_KEY = "\u0000"
 private const val CHANNELS_REFRESH_MILLIS = 5 * 60_000L
+
+/**
+ * « Retour » sur l'accueil : un premier appui affiche « Appuyer à nouveau pour quitter » pendant [EXIT_CONFIRM_MILLIS] ;
+ * l'application ne se ferme ([onExit]) qu'avec un second appui pendant ce temps (pas de sortie par maladresse, et pas
+ * de fenêtre à fermer). Passé ce délai, le message disparaît et le prochain appui le réaffiche.
+ */
+@Composable
+internal fun BackTwiceToExit(onExit: () -> Unit) {
+    var armed by remember { mutableStateOf(false) }
+    BackHandler { if (armed) onExit() else armed = true }
+    LaunchedEffect(armed) {
+        if (!armed) return@LaunchedEffect
+        delay(EXIT_CONFIRM_MILLIS)
+        armed = false
+    }
+    ExitHint(visible = armed)
+}
+
+/**
+ * « Appuyer à nouveau pour quitter », en bas de l'écran, après un premier « Retour » sur l'accueil : par-dessus tout,
+ * sans prendre la sélection de la télécommande.
+ */
+@Composable
+private fun ExitHint(visible: Boolean) {
+    if (!visible) return
+    androidx.compose.ui.window.Popup(alignment = Alignment.BottomCenter) {
+        Text(
+            stringResource(R.string.exit_press_again),
+            style = MaterialTheme.typography.titleMedium,
+            color = Color.White,
+            modifier = Modifier
+                .padding(bottom = 48.dp)
+                .clip(RoundedCornerShape(50))
+                .background(Color.Black.copy(alpha = 0.78f))
+                .padding(horizontal = 24.dp, vertical = 12.dp),
+        )
+    }
+}
+
+/** Temps laissé pour le second « Retour » qui ferme l'application. */
+private const val EXIT_CONFIRM_MILLIS = 3_000L

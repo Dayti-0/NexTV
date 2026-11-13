@@ -342,6 +342,13 @@
     <string name="player_info_audio_decoder">Décodeur audio</string>
     <string name="player_info_bitrate">Vitesse réseau</string>
     <string name="player_info_received">Débit reçu</string>
+    <string name="player_info_preview">Aperçu</string>
+    <string name="player_info_preview_taken">flux repris, sans le rouvrir</string>
+    <string name="player_info_preview_other_version">rouvert : autre version de la chaîne</string>
+    <string name="player_info_preview_not_shown">rouvert : aperçu pas encore lancé</string>
+    <string name="player_info_preview_other_channel">rouvert : l’aperçu montrait une autre chaîne</string>
+    <string name="player_info_preview_passthrough">rouvert : son envoyé tel quel à l’ampli</string>
+    <string name="player_info_preview_not_playing">rouvert : aperçu en erreur</string>
     <string name="player_info_dropped">Images perdues</string>
     <string name="player_info_version">Version</string>
     <string name="player_info_unknown">—</string>
@@ -491,10 +498,7 @@
     <string name="settings_channel_preview_help">À l’accueil, la chaîne sélectionnée démarre en petit, sans le son, au bout d’une seconde. À désactiver si l’abonnement n’autorise qu’une connexion à la fois ou si l’appareil est lent.</string>
     <string name="settings_channel_groups">Catégories de chaînes</string>
     <string name="settings_movie_groups">Catégories de films</string>
-    <string name="exit_title">Quitter NixTV ?</string>
-    <string name="exit_message">Vous êtes sûr de vouloir quitter l’application ?</string>
-    <string name="exit_yes">Oui, quitter</string>
-    <string name="exit_no">Non</string>
+    <string name="exit_press_again">Appuyer à nouveau pour quitter</string>
     <string name="settings_home_layout">Interface de l’accueil</string>
     <string name="home_layout_live">Live Center</string>
     <string name="home_layout_streaming">Streaming</string>

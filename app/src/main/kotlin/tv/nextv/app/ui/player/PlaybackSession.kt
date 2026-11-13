@@ -37,6 +37,13 @@ internal class PlaybackSession {
 
     /** Position de départ d'une reprise de film ou d'épisode ; 0 : début (ou direct). */
     var startPositionMs = 0L
+
+    /**
+     * Flux rouvert juste après la fermeture de l'aperçu de l'accueil : beaucoup d'abonnements refusent encore la
+     * nouvelle connexion un instant. Une erreur avant la première image est alors réessayée une fois, sur la même
+     * version, avant de passer à une qualité inférieure.
+     */
+    var retryAfterPreview = false
 }
 
 /** Serveur principal de la playlist puis ses serveurs de secours ; vide sans serveur de secours. */

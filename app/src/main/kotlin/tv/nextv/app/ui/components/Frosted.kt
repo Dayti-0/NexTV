@@ -33,8 +33,9 @@ import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 /**
- * Contenu légèrement flouté sous un menu ou un volet ouvert ([active]) : seulement la bande de gauche de
- * largeur [width], celle que le menu recouvre ; le reste de l'écran reste net. Le flou de Compose
+ * Contenu légèrement flouté sous un menu ou un volet ouvert ([active]) : seulement la bande de gauche que le menu
+ * recouvre (largeur [width], floutée en entier), puis un court fondu au-delà de son bord ; le reste de l'écran reste
+ * net. Le flou de Compose
  * (`Modifier.blur`) n'existe qu'à partir d'Android 12, que la Fire TV n'a pas : à l'ouverture, l'image de
  * cette bande est prise une fois, réduite, floutée, puis posée par-dessus en fondu.
  */
@@ -42,7 +43,8 @@ import kotlin.math.roundToInt
 fun Frosted(active: Boolean, width: Dp, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     val layer = rememberGraphicsLayer()
     val background = MaterialTheme.colorScheme.background.toArgb()
-    val stripPx = with(LocalDensity.current) { width.roundToPx() }
+    // Le fondu vers le net commence au bord du menu, pas avant : son bord droit, translucide, laissait voir le net.
+    val stripPx = with(LocalDensity.current) { (width.toPx() / (1f - FROST_FADE)).roundToInt() }
     var frosted by remember { mutableStateOf<ImageBitmap?>(null) }
     LaunchedEffect(active) {
         if (!active) return@LaunchedEffect
@@ -74,7 +76,7 @@ fun Frosted(active: Boolean, width: Dp, modifier: Modifier = Modifier, content: 
 private const val FROST_SCALE = 4
 private const val FROST_RADIUS = 2
 
-/** Part de la bande, à droite, où le flou s'efface : pas de ligne nette au bord du menu. */
+/** Part de la bande, à droite (au-delà du menu), où le flou s'efface : pas de ligne nette au bord du menu. */
 private const val FROST_FADE = 0.25f
 
 private fun blurred(source: Bitmap, stripPx: Int, background: Int): ImageBitmap {

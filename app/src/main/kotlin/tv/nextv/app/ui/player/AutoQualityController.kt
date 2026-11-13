@@ -37,10 +37,6 @@ internal class AutoQualityController(
     }
 
     private var switcher: QualitySwitcher? = null
-    private var autoQuality = true
-
-    /** Versions 4K écartées (réglage « Masquer la 4K »). */
-    private var hideUhd = false
 
     /** Qualité que l'appareil n'a pas su décoder (images perdues), retenue d'une chaîne à l'autre. */
     private var decoderCeilingRank: Int? = null
@@ -53,11 +49,6 @@ internal class AutoQualityController(
     /** Prochaine ouverture sans la qualité retenue : la qualité visée vient d'être changée. */
     private var skipRemembered = false
 
-    init {
-        scope.launch { container.settings.autoQuality.collect { autoQuality = it } }
-        scope.launch { container.settings.hideUhd.collect { hideUhd = it } }
-    }
-
     /** Version de départ choisie pour la chaîne en cours (`null` : une seule version). */
     val currentChannelId: Long? get() = switcher?.current?.channelId
 
@@ -68,38 +59,19 @@ internal class AutoQualityController(
      * @return version par laquelle commencer.
      */
     suspend fun prepare(requested: ChannelEntity, primary: ChannelEntity, isLive: Boolean): Long {
-        val dao = container.channelDao
-        val variants = if (isLive && primary.variantKey.isNotEmpty()) dao.variants(primary.sourceId, primary.variantKey) else emptyList()
-        // 4K écartée quand l'écran ou le décodeur ne la suivent pas (image saccadée), ou masquée dans les réglages.
-        val uhdAllowed = !hideUhd && container.playerFactory.supportsUhd
-        val options = variants.filter { it.streamSupport != StreamSupport.UNSUPPORTED.name }
-            .map { QualityOption(it.id, StreamQuality.entries.firstOrNull { q -> q.name == it.quality }) }
-            .let { all -> if (uhdAllowed) all else all.filter { it.quality != StreamQuality.UHD }.ifEmpty { all } }
-        // Chaîne ouverte sur sa meilleure version : départ par la qualité qui a fonctionné la dernière fois.
-        val remembered = if (autoQuality && requested.isPrimary && options.size > 1 && !skipRemembered) {
-            container.settings.workingQuality(primary.sourceId, primary.variantKey)?.let { name -> StreamQuality.entries.firstOrNull { it.name == name } }
-        } else {
-            null
-        }
-        val rememberedStart = remembered?.let { quality ->
-            val rank = StreamQuality.rankOf(quality)
-            options.sortedByDescending { StreamQuality.rankOf(it.quality) }.firstOrNull { StreamQuality.rankOf(it.quality) <= rank }?.channelId
-        }
-        val preferredId = rememberedStart
-            ?: if (options.any { it.channelId == requested.id }) requested.id else options.firstOrNull()?.channelId ?: requested.id
-        // Qualité visée (réglages) : au plus HD, ou SD pour économiser la connexion.
+        val start = channelStart(container, requested, primary, isLive, useRemembered = !skipRemembered)
+        val options = start.options
         skipRemembered = false
         this.options = if (options.size > 1) options else emptyList()
-        val qualityTarget = container.settings.qualityTarget.first()
-        val startId = if (options.size > 1) qualityTarget.start(options, preferredId) else preferredId
+        val startId = start.startId
         switcher = if (options.size > 1) {
             QualitySwitcher(
                 options,
                 startId,
-                enabled = autoQuality,
+                enabled = start.autoQuality,
                 clock = System::currentTimeMillis,
                 decoderCeilingRank = decoderCeilingRank,
-                maxRank = qualityTarget.maxRank(options),
+                maxRank = start.qualityTarget.maxRank(options),
             )
         } else {
             null
@@ -199,4 +171,51 @@ internal class AutoQualityController(
         const val TAG = "Player"
         const val WORKING_QUALITY_MILLIS = 60_000L
     }
+}
+
+/** Versions d'une chaîne (vide : une seule) et celle par laquelle l'ouvrir, avec les réglages qui l'ont choisie. */
+internal class ChannelStart(
+    val options: List<QualityOption>,
+    val startId: Long,
+    val autoQuality: Boolean,
+    val qualityTarget: QualityTarget,
+)
+
+/**
+ * Version par laquelle ouvrir la chaîne [requested] (sa meilleure version : [primary]) : la dernière qualité qui a
+ * fonctionné ([useRemembered]), dans la limite de la qualité visée, sans la 4K si l'écran ou le décodeur ne la suivent
+ * pas. La même pour l'aperçu de l'accueil et le plein écran : sinon le plein écran ne peut pas reprendre le flux de
+ * l'aperçu (autre adresse), il le rouvre.
+ */
+internal suspend fun channelStart(
+    container: AppContainer,
+    requested: ChannelEntity,
+    primary: ChannelEntity,
+    isLive: Boolean,
+    useRemembered: Boolean = true,
+): ChannelStart {
+    val settings = container.settings
+    val autoQuality = settings.autoQuality.first()
+    val variants = if (isLive && primary.variantKey.isNotEmpty()) container.channelDao.variants(primary.sourceId, primary.variantKey) else emptyList()
+    // 4K écartée quand l'écran ou le décodeur ne la suivent pas (image saccadée), ou masquée dans les réglages.
+    val uhdAllowed = !settings.hideUhd.first() && container.playerFactory.supportsUhd
+    val options = variants.filter { it.streamSupport != StreamSupport.UNSUPPORTED.name }
+        .map { QualityOption(it.id, StreamQuality.entries.firstOrNull { q -> q.name == it.quality }) }
+        .let { all -> if (uhdAllowed) all else all.filter { it.quality != StreamQuality.UHD }.ifEmpty { all } }
+    // Chaîne ouverte sur sa meilleure version : départ par la qualité qui a fonctionné la dernière fois.
+    val remembered = if (autoQuality && requested.isPrimary && options.size > 1 && useRemembered) {
+        settings.workingQuality(primary.sourceId, primary.variantKey)?.let { name -> StreamQuality.entries.firstOrNull { it.name == name } }
+    } else {
+        null
+    }
+    val rememberedStart = remembered?.let { quality ->
+        val rank = StreamQuality.rankOf(quality)
+        options.sortedByDescending { StreamQuality.rankOf(it.quality) }.firstOrNull { StreamQuality.rankOf(it.quality) <= rank }?.channelId
+    }
+    val preferredId = rememberedStart
+        ?: if (options.any { it.channelId == requested.id }) requested.id else options.firstOrNull()?.channelId ?: requested.id
+    // Qualité visée (réglages) : au plus HD, ou SD pour économiser la connexion.
+    val qualityTarget = settings.qualityTarget.first()
+    val startId = if (options.size > 1) qualityTarget.start(options, preferredId) else preferredId
+    return ChannelStart(options, startId, autoQuality, qualityTarget)
 }

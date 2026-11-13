@@ -151,7 +151,30 @@ data class PlaybackInfo(
     val audioDecoder: String? = null,
     /** Images perdues depuis le début de la lecture de cette version. */
     val droppedFrames: Int = 0,
+    /** Chaîne ouverte depuis l'aperçu de l'accueil : son flux repris, ou rouvert (et pourquoi). `null` : autre ouverture. */
+    val previewStart: PreviewStart? = null,
 )
+
+/** Ouverture d'une chaîne depuis l'aperçu de l'accueil (panneau « Infos de lecture »). */
+enum class PreviewStart {
+    /** Le plein écran continue sur le flux de l'aperçu. */
+    TAKEN,
+
+    /** Rouvert : le plein écran lit une autre version (qualité visée, serveur de secours…). */
+    OTHER_VERSION,
+
+    /** Rouvert : pas d'aperçu en cours (pas encore lancé, arrêté). */
+    NOT_SHOWN,
+
+    /** Rouvert : l'aperçu montrait une autre chaîne. */
+    OTHER_CHANNEL,
+
+    /** Rouvert : son envoyé tel quel à l'ampli. */
+    PASSTHROUGH,
+
+    /** Rouvert : le flux de l'aperçu était en erreur ou arrêté. */
+    NOT_PLAYING,
+}
 
 /** Chaîne du menu, avec la catégorie dont elle provient : la liste affichée correspond-elle au choix ? */
 data class MenuChannel(val category: Category, val row: ChannelListRow)

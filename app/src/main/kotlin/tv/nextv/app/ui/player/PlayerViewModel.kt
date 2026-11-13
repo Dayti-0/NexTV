@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import tv.nextv.app.player.CodecFailure
+import tv.nextv.app.player.HandoffMiss
 import tv.nextv.app.player.VlcPlayback
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import tv.nextv.app.player.describeCodecFailure
@@ -159,6 +160,7 @@ class PlayerViewModel(
                 quality.onBufferingStarted()
             }
             override fun onReady() {
+                session.retryAfterPreview = false
                 quality.onReady()
                 rememberServer()
                 liveIsPlaying()
@@ -685,7 +687,21 @@ class PlayerViewModel(
         val live = state.value.isLive && delayed.replay == null && !delayed.restarting
         // Avant l'ouverture : un aperçu repris joue déjà, il annonce aussitôt que le chargement est fini.
         mutableState.update { it.copy(buffering = true) }
-        engine.play(playbackRequest, forceHls, session.startPositionMs, record = live, film = !state.value.isLive)
+        val fromPreview = engine.play(playbackRequest, forceHls, session.startPositionMs, record = live, film = !state.value.isLive)
+        // Chaîne ouverte depuis l'aperçu : flux repris, ou rouvert (et pourquoi), affiché dans les infos de lecture.
+        val previewStart = fromPreview ?: container.previewHandoff.takeMiss(channelId)?.let { miss ->
+            when (miss) {
+                HandoffMiss.NOT_SHOWN -> PreviewStart.NOT_SHOWN
+                HandoffMiss.OTHER_CHANNEL -> PreviewStart.OTHER_CHANNEL
+                HandoffMiss.PASSTHROUGH -> PreviewStart.PASSTHROUGH
+                HandoffMiss.NOT_PLAYING -> PreviewStart.NOT_PLAYING
+            }
+        }
+        if (previewStart != null) {
+            container.logger.info(TAG, "Ouverture depuis l'aperçu : $previewStart")
+            engine.notePreviewStart(previewStart)
+            session.retryAfterPreview = previewStart != PreviewStart.TAKEN && previewStart != PreviewStart.NOT_SHOWN
+        }
     }
 
     private fun handleError(error: PlaybackException) {
@@ -713,6 +729,19 @@ class PlayerViewModel(
         container.logger.warn(TAG, "Lecture impossible (${error.errorCodeName}) : ${playbackRequest.stream.url}", error)
         // Décodage impossible : autre piste son, sans sous-titres, autre décodeur ou autre copie du titre.
         val failure = CodecFailure.of(error)
+        // Rouvert juste après la fermeture de l'aperçu : la connexion est souvent refusée un instant (une seule permise
+        // par abonnement). Même version, une fois, avant de baisser la qualité (« Connexion lente »).
+        if (failure == null && session.retryAfterPreview && error.errorCode in RETRIABLE_LIVE_ERRORS) {
+            session.retryAfterPreview = false
+            container.logger.info(TAG, "Ouverture refusée juste après l'aperçu (${error.errorCodeName}) : nouvel essai")
+            mutableState.update { it.copy(buffering = true, error = null) }
+            liveRetryJob?.cancel()
+            liveRetryJob = viewModelScope.launch {
+                delay(PREVIEW_RETRY_MILLIS)
+                start(forceHls = session.playingAsHls)
+            }
+            return
+        }
         if (failure != null && recoverFromCodecFailure(failure, player)) return
         // Autre version de la même chaîne, de qualité inférieure, si elle existe.
         if (quality.onError()) return
@@ -877,7 +906,7 @@ class PlayerViewModel(
         val shown = state.value
         if (shown.paused || shown.liveDelayMs > 0 || shown.error != null) return
         val ids = setOfNotNull(channelId, session.listed?.id, session.channel?.id, session.playing?.id)
-        engine.handBack(ids)?.let(container.previewHandoff::offer)
+        engine.handBack(ids, session.playing?.id)?.let(container.previewHandoff::offer)
     }
 
     /** Pause / lecture. En direct, la pause crée un différé ; le retard sur le direct est affiché. */
@@ -1060,6 +1089,9 @@ class PlayerViewModel(
         const val RESUME_NO = "no"
 
         private const val PROGRESS_SAVE_MILLIS = 10_000L
+
+        /** Attente avant de rouvrir un flux refusé juste après la fermeture de l'aperçu. */
+        private const val PREVIEW_RETRY_MILLIS = 1_500L
         private const val TAG = "Player"
         private const val PROGRAMME_REFRESH_MILLIS = 30_000L
         private const val MATCH_REFRESH_MILLIS = 15_000L

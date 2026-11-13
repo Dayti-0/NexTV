@@ -139,7 +139,9 @@ class PlayerViewModelTest {
             val other = tv.nextv.app.player.PlaybackRequest(StreamDescriptor("http://127.0.0.1:${server.localPort}/other.ts"), null, null, null)
             val buffer = container.playerFactory.liveLoadControl(preview = true)
             val player = container.playerFactory.create(preview = true, liveBuffer = buffer)
-            container.previewHandoff.offer(tv.nextv.app.player.PreviewHandoff(player, other, tv.nextv.app.player.StreamTaps(), buffer, setOf(live), toPreview = false))
+            container.previewHandoff.offer(
+                tv.nextv.app.player.PreviewHandoff(player, other, tv.nextv.app.player.StreamTaps(), buffer, tv.nextv.app.player.AdVolumeControl(), setOf(live), toPreview = false),
+            )
             val (viewModel, store) = open(live)
             viewModel.onStart()
             idle()
@@ -148,6 +150,60 @@ class PlayerViewModelTest {
             assertNull(container.previewHandoff.take())
             store.clear()
         }
+    }
+
+    /**
+     * Chaîne en plusieurs versions, qualité visée HD, « Baisser le son des pubs » activé : l'aperçu joue la version
+     * que le plein écran ouvrira (HD), et lui confie son lecteur. Avant, il jouait la meilleure version (FHD) et
+     * n'avait rien à confier avec ce réglage : le plein écran rouvrait le flux (« Connexion lente »).
+     */
+    @Test
+    fun aChannelInSeveralVersionsIsPreviewedInTheVersionTheFullScreenOpens() {
+        java.net.ServerSocket(0).use { server ->
+            runBlocking {
+                container.settings.setQualityTarget(tv.nextv.core.stream.QualityTarget.HD)
+                container.settings.setLowerAdVolume(true)
+            }
+            val sourceId = runBlocking { container.sourceRepository.add(SourceInput(name = "Test", location = SourceLocation.Remote("http://127.0.0.1:9/list.m3u"))) }
+            fun live(name: String, n: Int): Channel {
+                val parsed = tv.nextv.core.catalog.QualityParser.parse(name)
+                return Channel(
+                    position = n, name = name, stream = StreamDescriptor("http://127.0.0.1:${server.localPort}/live/$n.ts"), kind = ContentKind.LIVE,
+                    title = parsed.baseName, variantKey = tv.nextv.core.catalog.LiveVariants.key(parsed.variantKey), quality = parsed.quality,
+                )
+            }
+            runBlocking { container.playlistStore.replaceChannels(sourceId, tv.nextv.core.catalog.LiveVariants.unify(listOf(live("FR| TF1 FHD", 0), live("FR| TF1 HD", 1)))) }
+            val key = tv.nextv.core.catalog.LiveVariants.key(tv.nextv.core.catalog.QualityParser.parse("FR| TF1 FHD").variantKey)
+            val versions = runBlocking { container.channelDao.variants(sourceId, key) }
+            val fhd = checkNotNull(runBlocking { container.channelDao.get(versions.first { it.quality == "FHD" }.id) })
+            val hd = checkNotNull(runBlocking { container.channelDao.get(versions.first { it.quality == "HD" }.id) })
+            // Qualité visée HD : le plein écran ouvrira la version HD de la chaîne choisie (la FHD dans l'accueil).
+            assertEquals(hd.id, runBlocking { channelStart(container, fhd, fhd, isLive = true) }.startId)
+            val previewer = ChannelPreviewPlayer(container.playerFactory, container.sourceRepository, container.settings)
+            runBlocking { previewer.show(hd, rowId = fhd.id) }
+            val shown = checkNotNull(previewer.player.value)
+            container.previewHandoff.offer(checkNotNull(previewer.handOff(fhd.id)))
+            previewer.release()
+
+            val (viewModel, store) = open(fhd.id)
+            viewModel.onStart()
+            idle()
+            assertSame(shown, viewModel.player.value)
+            assertEquals(PreviewStart.TAKEN, viewModel.state.value.info.previewStart)
+            store.clear()
+        }
+    }
+
+    /** Aperçu qui n'a rien pu confier : le plein écran le dit dans ses infos de lecture (rouvert, et pourquoi). */
+    @Test
+    fun theInfoPanelTellsWhyThePreviewStreamWasReopened() {
+        val (live, _) = playlist()
+        container.previewHandoff.missed(live, tv.nextv.app.player.HandoffMiss.OTHER_CHANNEL)
+        val (viewModel, store) = open(live)
+        viewModel.onStart()
+        idle()
+        assertEquals(PreviewStart.OTHER_CHANNEL, viewModel.state.value.info.previewStart)
+        store.clear()
     }
 
     @Test

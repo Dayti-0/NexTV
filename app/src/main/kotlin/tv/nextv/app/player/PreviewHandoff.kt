@@ -95,9 +95,13 @@ class PreviewHandoff(
     val taps: StreamTaps,
     /** Mémoire tampon du lecteur, réglée pour l'écran qui le reprend. */
     val buffer: LiveLoadControl,
+    /** « Baisser le son des pubs » de ce lecteur : coupé dans l'aperçu, selon les réglages en plein écran. */
+    val adVolume: AdVolumeControl,
     /** Chaînes que ce direct montre (version ouverte, meilleure version, version qui joue). */
     val channelIds: Set<Long>,
     val toPreview: Boolean,
+    /** Version de la chaîne dont le flux est dans le lecteur. */
+    val playingId: Long? = null,
     /** Décodeurs en service, pour les infos du lecteur. */
     val videoDecoder: String? = null,
     val audioDecoder: String? = null,
@@ -149,6 +153,16 @@ class PreviewHandoffSlot(private val scope: CoroutineScope) {
     fun discard() {
         take()?.player?.release()
     }
+
+    /** Chaîne ouverte depuis l'aperçu sans que son lecteur ait pu être confié, et pourquoi (infos du lecteur). */
+    private var miss: Pair<Long, HandoffMiss>? = null
+
+    fun missed(channelId: Long, reason: HandoffMiss) {
+        miss = channelId to reason
+    }
+
+    /** Raison notée pour la chaîne [channelId] (une seule fois) ; `null` si elle n'a pas été ouverte depuis l'aperçu. */
+    fun takeMiss(channelId: Long): HandoffMiss? = miss?.takeIf { it.first == channelId }?.second.also { miss = null }
 
     private companion object {
         const val HANDOFF_MILLIS = 4_000L
