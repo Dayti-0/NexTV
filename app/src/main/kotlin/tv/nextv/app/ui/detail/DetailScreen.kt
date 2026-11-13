@@ -321,6 +321,7 @@ fun DetailContent(
                     items(episodes.size, key = { episodes[it].id }) { index ->
                         EpisodeItem(
                             episode = episodes[index],
+                            minutes = state.episodeMinutes(episodes[index]),
                             modifier = Modifier.padding(horizontal = window.horizontalPadding, vertical = 3.dp),
                             onClick = { onPlay(episodes[index].id) },
                         )
@@ -517,7 +518,7 @@ private fun SeasonChip(season: Season, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun EpisodeItem(episode: EpisodeRow, modifier: Modifier, onClick: () -> Unit) {
+private fun EpisodeItem(episode: EpisodeRow, minutes: Int?, modifier: Modifier, onClick: () -> Unit) {
     FocusSurface(onClick = onClick, modifier = modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium, focusScale = 1.01f) {
         Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Box(
@@ -532,6 +533,10 @@ private fun EpisodeItem(episode: EpisodeRow, modifier: Modifier, onClick: () -> 
                     style = MaterialTheme.typography.titleSmall,
                 )
                 Text(episode.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            // Durée de l'épisode, à droite.
+            if (minutes != null) {
+                Text(formatDuration(minutes * 60_000L), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
             }
         }
     }

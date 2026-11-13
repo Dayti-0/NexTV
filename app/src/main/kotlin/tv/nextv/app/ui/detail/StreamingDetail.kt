@@ -258,6 +258,7 @@ internal fun StreamingDetailContent(
                                 fallbackImage = details?.backdropUrl,
                                 watched = WatchedRepository.episodeKey(seriesKey, episode.season, episode.episode, episode.name) in state.watched,
                                 progress = state.progress?.takeIf { current && it.durationMs > 0 }?.let { it.positionMs.toFloat() / it.durationMs },
+                                minutes = state.episodeMinutes(episode),
                                 current = current,
                                 onClick = { if (current) onResume(episode.id) else onPlay(episode.id) },
                             )
@@ -473,13 +474,17 @@ private fun SeasonTab(season: Season, selected: Boolean, modifier: Modifier, onC
     }
 }
 
-/** Vignette d'un épisode : image (ou visuel de la série), numéro et titre, déjà vu, progression s'il est en cours. */
+/**
+ * Vignette d'un épisode : image (ou visuel de la série), numéro et titre, déjà vu, durée ([minutes]) en bas à droite,
+ * progression s'il est en cours.
+ */
 @Composable
 private fun EpisodeCard(
     episode: EpisodeRow,
     fallbackImage: String?,
     watched: Boolean,
     progress: Float?,
+    minutes: Int?,
     current: Boolean,
     onClick: () -> Unit,
 ) {
@@ -500,6 +505,9 @@ private fun EpisodeCard(
                 Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.5f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.6f))))
                 Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.align(Alignment.Center).size(34.dp))
                 if (watched) WatchedBadge(Modifier.align(Alignment.TopStart).padding(6.dp))
+                if (minutes != null) {
+                    EpisodeDuration(minutes, Modifier.align(Alignment.BottomEnd).padding(end = 6.dp, bottom = if (progress != null) 10.dp else 6.dp))
+                }
                 if (progress != null) {
                     Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp).background(Color.Black.copy(alpha = 0.45f))) {
                         Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).fillMaxHeight().background(colors.primary))
@@ -517,6 +525,22 @@ private fun EpisodeCard(
         Text(episode.name, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.height(2.dp))
     }
+}
+
+/** Durée d'un épisode sur sa vignette (« 24 min », « 1 h 05 »), lisible sur toutes les images. */
+@Composable
+internal fun EpisodeDuration(minutes: Int, modifier: Modifier = Modifier) {
+    Text(
+        formatDuration(minutes * 60_000L),
+        modifier = modifier
+            .clip(RoundedCornerShape(5.dp))
+            .background(Color.Black.copy(alpha = 0.72f))
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.SemiBold,
+        color = Color.White,
+        maxLines = 1,
+    )
 }
 
 /** « Avec Sam Worthington, Zoe Saldana, Sigourney Weaver ». */

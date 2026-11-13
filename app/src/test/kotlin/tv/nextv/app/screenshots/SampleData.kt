@@ -278,6 +278,8 @@ object SampleData {
             )
         },
         selectedSeason = 1,
+        // Durées lues sur TMDB pour la saison affichée (la dernière n'y figure pas : vignette sans durée).
+        seasonRuntimes = mapOf(2 to mapOf(1 to 52, 2 to 47, 3 to 49, 4 to 61, 5 to 45)),
     )
 
     val startup = StartupUiState(

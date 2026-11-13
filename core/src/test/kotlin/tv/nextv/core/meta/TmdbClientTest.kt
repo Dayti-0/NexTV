@@ -77,6 +77,10 @@ class TmdbClientTest {
                         """{"results":[{"site":"YouTube","type":"Teaser","key":"s4-teaser","iso_639_1":"en"},
                         {"site":"YouTube","type":"Trailer","key":"s4-trailer","iso_639_1":"fr","name":"Saison 4 (VF)"}]}""",
                     )
+                    path.endsWith("/tv/42/season/4") -> json(
+                        """{"season_number":4,"episodes":[{"episode_number":1,"runtime":52},{"episode_number":2,"runtime":47},
+                        {"episode_number":3,"runtime":null},{"episode_number":4}]}""",
+                    )
                     path.endsWith("/tv/42/aggregate_credits") -> json(
                         """{"cast":[{"name":"Pedro Pascal","order":0,"roles":[{"character":"Joel","episode_count":9},{"character":"Invité","episode_count":1}]}]}""",
                     )
@@ -142,6 +146,15 @@ class TmdbClientTest {
         assertEquals("s4-trailer" to "fr", client.seasonTrailer(42, 4))
         // Saison inconnue de TMDB : pas de bande-annonce (celle de la série reste).
         assertNull(client.seasonTrailer(42, 9))
+    }
+
+    @Test
+    fun `reads the runtime of each episode of a season`() = runBlocking {
+        // Épisodes sans durée sur TMDB : absents (la vignette s'affiche sans).
+        assertEquals(mapOf(1 to 52, 2 to 47), client.seasonRuntimes(42, 4))
+        assertEquals("fr-FR", requests.last().url.queryParameter("language"))
+        // Saison inconnue de TMDB : aucune durée.
+        assertEquals(emptyMap<Int, Int>(), client.seasonRuntimes(42, 9))
     }
 
     @Test

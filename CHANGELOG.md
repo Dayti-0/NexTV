@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.134
+- Fiche d’une série : la durée de chaque épisode s’affiche sur sa vignette (en bas à droite), et à droite de chaque épisode dans la liste de l’interface classique ; elle vient de TMDB (pour l’épisode en cours, la durée réelle du fichier)
+
 ## 0.2.133
 - Retour à l’accueil après avoir changé de chaîne en plein écran : la sélection (et l’aperçu) est sur la chaîne regardée en dernier, et non plus sur celle ouverte au départ (si elle est dans la liste affichée)
 

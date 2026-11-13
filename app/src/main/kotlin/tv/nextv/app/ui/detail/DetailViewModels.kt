@@ -99,10 +99,25 @@ data class DetailUiState(
     val cast: List<CastMember> = emptyList(),
     /** Bandes-annonces des saisons lues sur TMDB (numéro de saison → identifiant YouTube, langue ; `null` : aucune). */
     val seasonTrailers: Map<Int, Pair<String, String>?> = emptyMap(),
+    /** Durées des épisodes des saisons lues sur TMDB (numéro de saison → numéro d'épisode → minutes ; vide : aucune). */
+    val seasonRuntimes: Map<Int, Map<Int, Int>> = emptyMap(),
     /** Versions du film quand la playlist en a plusieurs (vide sinon) ; [PlaylistItem.firstId] est celle choisie. */
     val versions: List<MovieVersion> = emptyList(),
     val selectedVersion: Int = 0,
 ) {
+    /**
+     * Durée d'un épisode, en minutes : celle mesurée pendant sa lecture, sinon celle que TMDB donne pour lui, sinon la
+     * durée habituelle des épisodes de la série (numérotation de la playlist différente de celle de TMDB, épisode sans
+     * saison). `null` tant que sa saison n'est pas lue, ou si rien ne la donne.
+     */
+    fun episodeMinutes(episode: EpisodeRow): Int? {
+        progress?.takeIf { it.channelId == episode.id && it.durationMs >= 60_000 }?.let { return ((it.durationMs + 30_000) / 60_000).toInt() }
+        val average = (metadata as? MetadataState.Available)?.details?.runtimeMinutes
+        val season = episode.season ?: return average
+        val runtimes = seasonRuntimes[season] ?: return null
+        return episode.episode?.let { runtimes[it] } ?: average
+    }
+
     /** Bande-annonce du bouton : celle de la saison choisie si TMDB en a une, sinon celle du film ou de la série. */
     val trailer: Pair<String, String?>?
         get() {
@@ -210,11 +225,17 @@ class DetailViewModel(
         }
     }
 
-    /** Série : bande-annonce de la saison [index] (une fois par saison). */
+    /** Série : bande-annonce et durées des épisodes de la saison [index] (une fois par saison). */
     private fun loadSeasonTrailer(index: Int) {
         if (kind != ContentKind.SERIES) return
         val details = (state.value.metadata as? MetadataState.Available)?.details ?: return
         val number = state.value.seasons.getOrNull(index)?.number ?: return
+        if (number !in state.value.seasonRuntimes) {
+            viewModelScope.launch {
+                val runtimes = runCatching { container.metadata.seasonRuntimes(details, number) }.getOrDefault(emptyMap())
+                mutableState.update { it.copy(seasonRuntimes = it.seasonRuntimes + (number to runtimes)) }
+            }
+        }
         if (number in state.value.seasonTrailers) return
         viewModelScope.launch {
             val trailer = runCatching { container.metadata.seasonTrailer(details, number) }.getOrNull()

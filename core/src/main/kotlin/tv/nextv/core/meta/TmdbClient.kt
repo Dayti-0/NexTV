@@ -164,6 +164,29 @@ class TmdbClient(
     }
 
     /**
+     * Durée de chaque épisode d'une saison de série, en minutes, par numéro d'épisode : vide sans clé, pour une saison
+     * inconnue de TMDB ou en cas d'échec (les vignettes s'affichent alors sans durée).
+     */
+    suspend fun seasonRuntimes(tmdbId: Long, season: Int): Map<Int, Int> {
+        val key = apiKey()?.trim()?.takeIf { it.isNotEmpty() } ?: fallbackApiKey()?.trim()?.takeIf { it.isNotEmpty() } ?: return emptyMap()
+        val url = baseUrl.newBuilder().addPathSegments("tv/$tmdbId/season/$season").addQueryParameter("language", language).build()
+        val json = try {
+            get(key, url)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            return emptyMap()
+        }
+        return json.optJSONArray("episodes").objects()
+            .mapNotNull { episode ->
+                val number = episode.optInt("episode_number")
+                val minutes = episode.optInt("runtime")
+                if (number > 0 && minutes > 0) number to minutes else null
+            }
+            .toMap()
+    }
+
+    /**
      * Bandes-annonces et teasers YouTube d'un film ou d'une série, la meilleure d'abord (même ordre que
      * [MediaDetails.trailerYoutubeKey]) : identifiant et langue. Pour en essayer une autre quand la première ne se lit
      * pas (vidéo retirée, réservée à un pays ou aux adultes, lecture intégrée refusée). Liste vide sans clé ou en cas d'échec.

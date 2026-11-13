@@ -37,6 +37,20 @@ class MetadataRepository(
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<CastMember>>?) = size > CAST_CACHE_SIZE
     }
 
+    /** Durées des épisodes déjà lues pendant cette session (série et saison). */
+    private val runtimeCache = object : LinkedHashMap<String, Map<Int, Int>>(RUNTIME_CACHE_SIZE, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Map<Int, Int>>?) = size > RUNTIME_CACHE_SIZE
+    }
+
+    /** Durée de chaque épisode de la saison [season] d'une série trouvée, en minutes (vide si TMDB ne les donne pas). */
+    suspend fun seasonRuntimes(details: MediaDetails, season: Int): Map<Int, Int> {
+        val key = "${details.tmdbId}:$season"
+        synchronized(runtimeCache) { runtimeCache[key] }?.let { return it }
+        val runtimes = client.seasonRuntimes(details.tmdbId, season)
+        if (runtimes.isNotEmpty()) synchronized(runtimeCache) { runtimeCache[key] = runtimes }
+        return runtimes
+    }
+
     /** Titres recommandés par TMDB pour une fiche trouvée (vide en cas d'échec). */
     suspend fun recommendations(details: MediaDetails): List<TrendingTitle> = client.recommendations(details.type, details.tmdbId)
 
@@ -173,6 +187,9 @@ class MetadataRepository(
 
         /** Distributions gardées en mémoire (fiches ouvertes pendant la session). */
         const val CAST_CACHE_SIZE = 40
+
+        /** Saisons dont les durées d'épisodes sont gardées en mémoire. */
+        const val RUNTIME_CACHE_SIZE = 40
     }
 }
 
