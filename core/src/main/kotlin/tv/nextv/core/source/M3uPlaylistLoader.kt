@@ -151,7 +151,8 @@ class M3uPlaylistLoader(
             if (unsupported) add(SourceWarning.UNSUPPORTED_STREAMS)
         }
         // Versions d'une chaîne écrites différemment d'une qualité à l'autre (« … TV IDF » et « … IDF ») : regroupées.
-        return LoadedPlaylist(LiveVariants.unify(channels), playlist.epgUrls, warnings)
+        // Versions « Double audio » ou « Dolby Digital » d'une chaîne : ouvertes avant la version au son ordinaire.
+        return LoadedPlaylist(LiveVariants.preferBetterAudio(LiveVariants.unify(channels)), playlist.epgUrls, warnings)
     }
 
     /** @param strings textes déjà rencontrés (groupes…) : une seule copie en mémoire pour des milliers d'entrées. */

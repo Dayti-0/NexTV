@@ -100,6 +100,50 @@ class QualityParserTest {
     }
 
     @Test
+    fun `double audio and dolby versions are grouped with the channel`() {
+        val plain = QualityParser.parse("FR| CANAL+ CINEMA(S) FHD")
+        val double = QualityParser.parse("FR| CANAL+ CINEMA.(S) (DOUBLE AUDIO) FHD")
+        val dolby = QualityParser.parse("FR| CANAL+ CINEMA.(S) DOLBY DIGITAL FHD")
+        assertEquals(plain.variantKey, double.variantKey)
+        assertEquals(plain.variantKey, dolby.variantKey)
+        assertEquals("FR| CANAL+ CINEMA.(S)", double.baseName)
+        assertEquals("FR| CANAL+ CINEMA.(S)", dolby.baseName)
+        assertEquals(StreamQuality.FHD, double.quality)
+        assertEquals(QualityParser.AUDIO_MULTI, double.audioRank)
+        assertEquals(QualityParser.AUDIO_DOLBY, dolby.audioRank)
+        assertEquals(0, plain.audioRank)
+        assertEquals(QualityParser.parse("FR| CINE FESTIVAL").variantKey, QualityParser.parse("FR| CINE FESTIVAL (DOUBLE AUDIO)").variantKey)
+        assertEquals(QualityParser.parse("FR| CINE FESTIVAL").variantKey, QualityParser.parse("FR| CINE FESTIVAL DOLBY DIGITAL").variantKey)
+        assertEquals("FR| CINE FESTIVAL", QualityParser.parse("FR| CINE FESTIVAL DOLBY DIGITAL").baseName)
+    }
+
+    @Test
+    fun `the version with the better sound takes the place of the first one`() {
+        var position = 0
+        fun live(name: String, group: String = "FR| CINEMA") = QualityParser.parse(name).let { parsed ->
+            tv.nextv.core.model.Channel(
+                position = position++, name = name, stream = tv.nextv.core.model.StreamDescriptor("http://example.com/live/$position.ts"),
+                groupTitle = group, kind = ContentKind.LIVE, title = parsed.baseName, variantKey = parsed.variantKey, quality = parsed.quality,
+            )
+        }
+        val channels = LiveVariants.preferBetterAudio(
+            listOf(
+                live("FR| CANAL+ CINEMA(S) FHD"), live("FR| CANAL+ CINEMA(S) HD"), live("FR| TF1 FHD"),
+                live("FR| CANAL+ CINEMA.(S) DOLBY DIGITAL FHD"), live("FR| CANAL+ CINEMA.(S) (DOUBLE AUDIO) FHD"),
+                live("FR| M6 FHD"), live("FR| M6 HD"),
+            ),
+        )
+        assertEquals(
+            listOf(
+                "FR| CANAL+ CINEMA.(S) (DOUBLE AUDIO) FHD", "FR| CANAL+ CINEMA(S) HD", "FR| TF1 FHD",
+                "FR| CANAL+ CINEMA.(S) DOLBY DIGITAL FHD", "FR| CANAL+ CINEMA(S) FHD", "FR| M6 FHD", "FR| M6 HD",
+            ),
+            channels.map { it.name },
+        )
+        assertEquals((0 until 7).toList(), channels.map { it.position })
+    }
+
+    @Test
     fun `channels whose names differ only by tv are one channel`() {
         var position = 0
         fun live(name: String) = QualityParser.parse(name).let { parsed ->

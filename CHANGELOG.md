@@ -4,6 +4,10 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.139
+- Chaînes en plusieurs versions de son (« CANAL+ CINEMA(S) », « … (DOUBLE AUDIO) », « … DOLBY DIGITAL », pareil pour Ciné+ Festival…) : une seule chaîne dans la liste, qui s’ouvre d’office sur la version double audio (VF et VO au choix), sinon Dolby Digital ; la playlist est relue au lancement qui suit la mise à jour
+- Favoris et chaînes récentes enregistrés sous une version « Double audio » ou « Dolby » suivent la chaîne regroupée
+
 ## 0.2.138
 - Fiche d’une série : la durée des épisodes vient d’abord de ton serveur (durée exacte de chaque fichier), même pour une série que TMDB ne connaît pas encore ; TMDB reste utilisé sinon
 - Interface Classique : le bouton de retour au menu devient un rond discret avec une flèche ; sélectionné, il s’éclaire et affiche « Menu »

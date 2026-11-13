@@ -54,4 +54,30 @@ object LiveVariants {
             if (key != null && channel.kind == ContentKind.LIVE) channel.copy(variantKey = key) else channel
         }
     }
+
+    /**
+     * Versions de même qualité d'une chaîne dans la même catégorie, dont l'une annonce un meilleur son
+     * (« CANAL+ CINEMA(S) (DOUBLE AUDIO) », « … DOLBY DIGITAL », « … ») : la version au meilleur son prend la place
+     * de la première dans la playlist, pour être celle affichée et ouverte (double audio, puis Dolby, puis les autres).
+     * Les places des autres chaînes ne changent pas.
+     */
+    fun preferBetterAudio(channels: List<Channel>): List<Channel> {
+        val groups = HashMap<Triple<String, Any?, String?>, MutableList<Channel>>()
+        for (channel in channels) {
+            if (channel.kind != ContentKind.LIVE || channel.variantKey.isEmpty()) continue
+            groups.getOrPut(Triple(channel.variantKey, channel.quality, channel.groupTitle)) { ArrayList(2) } += channel
+        }
+        val moved = HashMap<Int, Int>()
+        for (group in groups.values) {
+            if (group.size < 2) continue
+            val ranks = group.associate { it.position to QualityParser.parse(it.name).audioRank }
+            if (ranks.values.all { it == 0 }) continue
+            val places = group.map { it.position }.sorted()
+            val ordered = group.sortedWith(compareByDescending<Channel> { ranks.getValue(it.position) }.thenBy { it.position })
+            ordered.forEachIndexed { index, channel -> if (channel.position != places[index]) moved[channel.position] = places[index] }
+        }
+        if (moved.isEmpty()) return channels
+        return channels.map { channel -> moved[channel.position]?.let { channel.copy(position = it) } ?: channel }
+            .sortedBy { it.position }
+    }
 }

@@ -19,9 +19,10 @@ object QualityParser {
      * 5 : versions d'un même film (« Truefrench », « FR », 4K, HD…) regroupées sous une seule affiche ;
      * 6 : éditions régionales de France 3 regroupées sous le nom de leur antenne, « Haute » gardé dans les noms,
      * chaînes dont les noms ne diffèrent que par « TV » regroupées ; 7 : « (True FR) » reconnu comme Truefrench ;
-     * 8 : un film sous son titre français et son titre original regroupé, d'après sa fiche TMDB).
+     * 8 : un film sous son titre français et son titre original regroupé, d'après sa fiche TMDB ;
+     * 9 : versions « Double audio » et « Dolby Digital » d'une chaîne regroupées avec elle).
      */
-    const val VERSION = 8
+    const val VERSION = 9
 
     data class Result(
         /** Nom sans les mentions de qualité ni de codec. */
@@ -29,7 +30,24 @@ object QualityParser {
         val quality: StreamQuality?,
         /** Clé normalisée commune aux versions d'une même chaîne. */
         val variantKey: String,
+        /** Son annoncé par le nom : [AUDIO_MULTI] (« Double audio »), [AUDIO_DOLBY] (« Dolby Digital »), sinon 0. */
+        val audioRank: Int = 0,
     )
+
+    /** Version en Dolby Digital (« DOLBY DIGITAL », « AC3 », « DD+ ») : son multicanal. */
+    const val AUDIO_DOLBY = 1
+
+    /** Version en double audio (« DOUBLE AUDIO », « MULTI AUDIO ») : VF et VO au choix, préférée aux autres. */
+    const val AUDIO_MULTI = 2
+
+    /** Premier mot de « Double audio », « Dual audio », « Multi audio ». */
+    private val MULTI_AUDIO_PREFIXES = setOf("DOUBLE", "DUAL", "MULTI")
+
+    /** Mention Dolby en un mot. */
+    private val DOLBY_TOKENS = setOf("DOLBY", "AC3", "EAC3", "DD+")
+
+    /** Mots qui suivent « Dolby » (« Dolby Digital Plus », « Dolby Atmos »). */
+    private val DOLBY_SUFFIXES = setOf("DIGITAL", "PLUS", "ATMOS", "AUDIO")
 
     private val QUALITY_TOKENS: Map<String, StreamQuality> = buildMap {
         // HDR : diffusé en 4K par les chaînes françaises (« TF1 HDR », logo « TF1 4K »).
@@ -96,6 +114,7 @@ object QualityParser {
         var descriptive = 0
         var nouns = 0
         var backup = false
+        var audio = 0
         val tokens = TOKEN.findAll(normalized).map { it.value }.toList()
         var i = 0
         while (i < tokens.size) {
@@ -105,6 +124,24 @@ object QualityParser {
             if (upper == "FULL" && i + 1 < tokens.size && tokens[i + 1].uppercase() == "HD") {
                 best = maxQuality(best, StreamQuality.FHD)
                 i += 2
+                continue
+            }
+            // « Double audio », « Multi audio » : même chaîne, VF et VO au choix.
+            if (upper in MULTI_AUDIO_PREFIXES && i + 1 < tokens.size && tokens[i + 1].uppercase() == "AUDIO") {
+                audio = maxOf(audio, AUDIO_MULTI)
+                i += 2
+                continue
+            }
+            if (upper == "MULTIAUDIO") {
+                audio = maxOf(audio, AUDIO_MULTI)
+                i++
+                continue
+            }
+            // « Dolby Digital », « AC3 » : même chaîne, son multicanal.
+            if (upper in DOLBY_TOKENS) {
+                audio = maxOf(audio, AUDIO_DOLBY)
+                i++
+                while (upper == "DOLBY" && i < tokens.size && tokens[i].uppercase() in DOLBY_SUFFIXES) i++
                 continue
             }
             // « FHD++ » : la qualité suivie de « + » en plus.
@@ -130,11 +167,11 @@ object QualityParser {
             kept.removeAll { word -> foldAccents(word.uppercase()).let { it in DESCRIPTIVE_TOKENS || (dropQualifiers && it in QUALIFIER_TOKENS) } }
         }
         // Sans mention de qualité ni de codec (cas le plus fréquent des films), la recherche des mentions est sautée.
-        val baseName = stripTokens(normalized, hasTokens = kept.size != tokens.size, dropDescriptive, dropQualifiers, backup).ifBlank { name.trim() }
+        val baseName = stripTokens(normalized, hasTokens = kept.size != tokens.size, dropDescriptive, dropQualifiers, backup, audio != 0).ifBlank { name.trim() }
         val words = kept.map { foldAccents(it.lowercase()) }
         val shared = words.joinToString(" ")
         val key = if (best != null && words.any { it in SEPARATE_FEEDS }) "$shared ${best.label.lowercase()}" else shared
-        return Result(baseName = baseName, quality = best, variantKey = key)
+        return Result(baseName = baseName, quality = best, variantKey = key, audioRank = audio)
     }
 
     private fun maxQuality(a: StreamQuality?, b: StreamQuality): StreamQuality =
@@ -145,6 +182,10 @@ object QualityParser {
         "(?i)(?<![\\p{L}\\p{Nd}])(?:full\\s*hd|" +
             (QUALITY_TOKENS.keys + CODEC_TOKENS).sortedByDescending { it.length }.joinToString("|") { Regex.escape(it) } +
             ")\\+*(?![\\p{L}\\p{Nd}])",
+    )
+    /** Mentions de son ([AUDIO_MULTI], [AUDIO_DOLBY]). */
+    private val AUDIO = Regex(
+        "(?i)(?<![\\p{L}\\p{Nd}])(?:(?:double|dual|multi)[\\s_-]*audio|dolby(?:\\s+(?:digital|plus|atmos|audio))*|e?ac3|dd\\+)(?![\\p{L}\\p{Nd}+])",
     )
     private val BACKUP = Regex("(?i)(?<![\\p{L}\\p{Nd}])(?:bkp|backup)\\d*(?![\\p{L}\\p{Nd}])")
 
@@ -162,9 +203,17 @@ object QualityParser {
     private val MARKS = Regex("\\p{Mn}+")
 
     /** Retire les mentions de qualité et de codec du nom, en conservant le reste tel quel. */
-    private fun stripTokens(name: String, hasTokens: Boolean, dropDescriptive: Boolean, dropQualifiers: Boolean, backup: Boolean): String {
+    private fun stripTokens(
+        name: String,
+        hasTokens: Boolean,
+        dropDescriptive: Boolean,
+        dropQualifiers: Boolean,
+        backup: Boolean,
+        audio: Boolean,
+    ): String {
         val withoutQuality = if (hasTokens) name.replace(STRIP, " ") else name
-        val stripped = if (backup) withoutQuality.replace(BACKUP, " ") else withoutQuality
+        val withoutAudio = if (audio) withoutQuality.replace(AUDIO, " ") else withoutQuality
+        val stripped = if (backup) withoutAudio.replace(BACKUP, " ") else withoutAudio
         val described = if (dropDescriptive) stripped.replace(DESCRIPTIVE, " ") else stripped
         return (if (dropQualifiers) described.replace(QUALIFIERS, " ") else described)
             .replace(EMPTY_BRACKETS, " ")
