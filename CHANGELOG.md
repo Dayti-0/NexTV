@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.137
+- Retour à l’accueil après un changement de chaîne en plein écran : la sélection va enfin sur la dernière chaîne regardée (la liste la redonnait aussitôt à la chaîne ouverte au départ)
+
 ## 0.2.136
 - Direct mis en pause une deuxième fois (ou après un retour en arrière) : la lecture reprend normalement ; l’image restait figée jusqu’au changement de chaîne, même en remettant pause puis lecture
 

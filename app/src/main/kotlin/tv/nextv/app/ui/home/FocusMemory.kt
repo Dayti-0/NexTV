@@ -8,11 +8,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import kotlinx.coroutines.delay
 
 /**
@@ -88,21 +90,30 @@ internal fun Modifier.restoreFocus(key: String, lastOpened: MutableState<OpenedI
     if (key != opened.key && key != watched) return this
     val deferred = watched != null && key == opened.key
     val requester = remember { FocusRequester() }
+    val focus = remember { HeldFocus() }
     LaunchedEffect(Unit) {
         // Dernière chaîne regardée, présente dans la liste : c'est elle à sélectionner, plus celle ouverte au départ.
         if (key != opened.key) lastOpened.value = opened.copy(key = key)
         if (deferred) delay(WATCHED_FIRST_MILLIS)
         repeat(FOCUS_ATTEMPTS) {
-            // Demande refusée (rendue `false`) : pas encore sélectionnable, nouvel essai.
-            if (runCatching { requester.requestFocus() }.getOrDefault(false)) {
+            // Demande refusée (rendue `false`) : pas encore sélectionnable. Acceptée mais détournée : la liste, qui
+            // n'avait pas encore le focus, l'a donné à l'élément qu'elle avait retenu en partant (focusRestorer).
+            // Dans les deux cas, nouvel essai ; la liste ayant alors le focus, la demande aboutit.
+            val accepted = runCatching { requester.requestFocus() }.getOrDefault(false)
+            if (accepted && focus.held) {
                 lastOpened.value = null
                 return@LaunchedEffect
             }
-            delay(FOCUS_RETRY_MILLIS)
+            if (!accepted) delay(FOCUS_RETRY_MILLIS) else withFrameNanos { }
         }
         lastOpened.value = null
     }
-    return focusRequester(requester)
+    return focusRequester(requester).onFocusChanged { focus.held = it.hasFocus }
+}
+
+/** L'élément a le focus (suivi sans recomposer). */
+private class HeldFocus {
+    var held = false
 }
 
 /**
