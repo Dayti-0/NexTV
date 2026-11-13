@@ -398,6 +398,8 @@ class PlayerViewModelTest {
         viewModel.onStart()
         idle()
         assertEquals("TF1", viewModel.state.value.channelName)
+        // Ouverte depuis l'accueil : aucune catégorie du menu à suivre au retour.
+        assertEquals(null, container.lastLiveCategory.value)
         // Bas depuis TF1 (dernière favorite) : retour à Arte, pas France 2.
         viewModel.zap(1)
         idle()
@@ -414,6 +416,9 @@ class PlayerViewModelTest {
         viewModel.playFromMenu(runBlocking { checkNotNull(container.channelDao.primaryIdByKey(sourceId, "live:france 2")) })
         idle()
         assertEquals("France 2", viewModel.state.value.channelName)
+        // Au retour, l'accueil passera à cette catégorie, sur la chaîne regardée.
+        assertEquals(Category.Group("TNT"), container.lastLiveCategory.value)
+        assertEquals("live:france 2", container.lastLiveChannel.value)
         viewModel.zap(1)
         idle()
         assertEquals("M6", viewModel.state.value.channelName)

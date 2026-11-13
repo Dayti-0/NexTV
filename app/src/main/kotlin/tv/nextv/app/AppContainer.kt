@@ -51,6 +51,7 @@ import tv.nextv.app.data.update.AppUpdater
 import tv.nextv.app.player.PlayerFactory
 import tv.nextv.app.player.PreviewHandoffSlot
 import tv.nextv.app.player.TIMESHIFT_FILE
+import tv.nextv.app.ui.home.Category
 import tv.nextv.core.epg.EpgImporter
 import tv.nextv.core.epg.EpgLoader
 import tv.nextv.core.epg.HttpEpgFeedProvider
@@ -189,6 +190,12 @@ class AppContainer(context: Context) {
      * l'accueil se place sur elle plutôt que sur celle ouverte au départ.
      */
     val lastLiveChannel = MutableStateFlow<String?>(null)
+
+    /**
+     * Catégorie du menu des chaînes du lecteur où la chaîne regardée a été choisie (`null` : aucune, ouverte depuis
+     * l'accueil ou atteinte en zappant) : l'accueil y passe pour que le retour tombe sur elle.
+     */
+    val lastLiveCategory = MutableStateFlow<Category?>(null)
 
     /** Clé TMDB : celle saisie dans les réglages, sinon celle fournie à la compilation (secret CI). */
     private val tmdbKey: StateFlow<String?> = settings.tmdbApiKey

@@ -89,7 +89,8 @@ class LiveVersionsTest {
             dao.observeFavoriteChannels(id, 0).first().map { it.name },
         )
         assertEquals(listOf("live:fr france 3 poitou charentes"), container.favorites.observeGuideSelection(id).first())
-        assertEquals(listOf("live:fr le figaro idf", "live:fr tf1"), container.settings.recentChannels(id).first())
+        // Réglages communs aux tests : d'autres chaînes récentes peuvent suivre les deux ajoutées ici.
+        assertEquals(listOf("live:fr le figaro idf", "live:fr tf1"), container.settings.recentChannels(id).first().take(2))
 
         // Région choisie quand elle s'écrivait « paris idf » : les autres éditions restent masquées, pas elle.
         container.settings.setFrance3Region("paris idf")

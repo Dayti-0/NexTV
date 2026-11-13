@@ -134,7 +134,10 @@ class MergeChannelsTest {
             listOf("FR| CANAL+ CINEMA.(S)", "FR| BEIN SPORTS 1"),
             dao.observeFavoriteChannels(id, 0).first().map { it.title },
         )
-        assertEquals(listOf("live:fr chasse peche"), container.settings.recentChannels(id).first())
+        // Réglages communs aux tests : d'autres chaînes récentes peuvent suivre.
+        val recent = container.settings.recentChannels(id).first()
+        assertEquals("live:fr chasse peche", recent.first())
+        assertTrue("live:fr chasse et peche" !in recent)
     }
 
     @Test

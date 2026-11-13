@@ -4,6 +4,10 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.141
+- Live TV : chaîne choisie dans une autre catégorie du menu des chaînes (pendant la lecture) : au retour à l’accueil, la liste est sur cette catégorie et la sélection sur la chaîne regardée (elle revenait sur la chaîne ouverte au départ, ou se perdait)
+- Même chose après avoir zappé hors de la catégorie ouverte : l’accueil passe sur « Toutes les chaînes », sélection sur la chaîne regardée
+
 ## 0.2.140
 - Nouveau réglage « Rassembler les chaînes » (Réglages › Lecture › Chaînes, activé d’office) : une seule ligne par chaîne, même quand la playlist la propose en plusieurs versions de son (double audio, Dolby Digital) ou l’écrit de plusieurs façons (« CHASSE & PÊCHE » et « CHASSE ET PECHE », « TELETOON +1 » et « TELETOON+ 1 »…), dans « Toutes les chaînes » comme dans chaque catégorie
 - « Toutes les chaînes » rangée comme sur une télé : la TNT dans l’ordre des numéros (TF1, France 2, France 3, France 4…), puis Canal+, le cinéma, les séries, le sport, la découverte, la jeunesse, la musique, l’info, les chaînes régionales et d’outre-mer, les chaînes « événement » (matchs en direct seulement), et enfin les autres ; les catégories, le zapping et le guide suivent le même ordre

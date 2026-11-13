@@ -228,6 +228,8 @@ class PlayerViewModel(
         // Attention : rien de ce qui est déclaré plus bas dans la classe n'est encore prêt ici.
         // Lecteur ouvert : les actualisations automatiques de la playlist et du guide attendent sa fermeture.
         container.playerOpened()
+        // Chaîne ouverte depuis l'accueil : aucune catégorie choisie dans le menu des chaînes pour l'instant.
+        container.lastLiveCategory.value = null
         // Chaîne ouverte depuis son aperçu : son image et son son continuent tout de suite, pendant le chargement.
         engine.showPreviewHandoff(channelId)
         load(channelId)
@@ -475,6 +477,8 @@ class PlayerViewModel(
     fun playFromMenu(id: Long) {
         // Chaîne choisie dans la catégorie « Favoris » du menu : on y reste ; ailleurs, la playlist entière.
         val favorites = channelMenu.menu.value.category == Category.Favorites
+        // Au retour, l'accueil montre la catégorie où elle a été choisie (et la sélection se pose sur elle).
+        container.lastLiveCategory.value = channelMenu.menu.value.category
         fromFavorites = favorites
         handle[ARG_FAVORITES] = favorites
         closeMenu()

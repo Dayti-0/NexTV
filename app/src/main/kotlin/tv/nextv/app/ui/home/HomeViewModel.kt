@@ -336,6 +336,38 @@ class HomeViewModel(
     /** Dernière chaîne lue en plein écran (clé) : au retour, la sélection se pose sur elle. */
     val lastLiveChannel: StateFlow<String?> = container.lastLiveChannel
 
+    init {
+        // Chaîne choisie dans une autre catégorie du menu des chaînes du lecteur, ou atteinte en zappant : la liste
+        // des chaînes passe, pendant la lecture, à une catégorie qui la contient. Au retour, la sélection se pose sur
+        // elle ; elle revenait sinon sur la chaîne ouverte au départ, dans l'ancienne catégorie.
+        viewModelScope.launch {
+            combine(container.lastLiveChannel, container.lastLiveCategory, ::Pair).collectLatest { (watched, picked) ->
+                if (watched != null) followWatchedChannel(watched, picked)
+            }
+        }
+    }
+
+    /**
+     * Catégorie des chaînes à afficher pour que la chaîne regardée [watched] y soit : celle où elle a été choisie dans le
+     * lecteur ([picked]), sinon celle affichée si elle y est, sinon « Toutes les chaînes ».
+     */
+    private suspend fun followWatchedChannel(watched: String, picked: Category?) {
+        if (section.value != HomeSection.TV || queries.value[HomeSection.TV].orEmpty().isNotEmpty()) return
+        val id = sourceId.value ?: return
+        val current = categories.value[HomeSection.TV] ?: Category.All
+        val target = listOfNotNull(picked, current, Category.All).distinct().firstOrNull { shows(id, it, watched) } ?: return
+        if (target != current) categories.update { it + (HomeSection.TV to target) }
+    }
+
+    /** La liste des chaînes de [category] montre la chaîne [itemKey]. */
+    private suspend fun shows(sourceId: Long, category: Category, itemKey: String): Boolean = when (category) {
+        Category.All -> dao.isListed(sourceId, 0, "", itemKey)
+        is Category.Group -> dao.isListed(sourceId, 1, category.title, itemKey)
+        Category.Favorites -> dao.observeFavoriteChannels(sourceId, System.currentTimeMillis()).first().any { it.itemKey == itemKey }
+        Category.Recent -> itemKey in container.settings.recentChannels(sourceId).first()
+        Category.ContinueWatching -> false
+    }
+
     /** Dernière chaîne sélectionnée dans la grille des chaînes. */
     private val focusedChannel = MutableStateFlow<ChannelListRow?>(null)
 

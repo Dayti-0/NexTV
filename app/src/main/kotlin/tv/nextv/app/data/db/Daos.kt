@@ -732,6 +732,10 @@ interface ChannelDao {
     )
     suspend fun listedOrder(sourceId: Long, variantKey: String): Int?
 
+    /** La chaîne [itemKey] est dans la liste de la catégorie [group] ([filterGroup] 1), ou dans « Toutes » (0). */
+    @Query("SELECT EXISTS (SELECT 1 FROM channels c WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.itemKey = :itemKey AND $LISTED)")
+    suspend fun isListed(sourceId: Long, filterGroup: Int, group: String, itemKey: String): Boolean
+
     /** Place d'une chaîne dans sa liste, d'après son rang [order] (pour placer le focus du menu des chaînes). */
     @Query(
         """
