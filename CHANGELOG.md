@@ -4,6 +4,10 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.143
+- Interface Streaming : choisir une catégorie dans le volet des chaînes, même celle déjà affichée, referme le volet et met la sélection sur les chaînes (sur la première chaîne d’une nouvelle catégorie) ; elle partait au menu de gauche, qui s’ouvrait
+- Chaîne descendue toute seule en qualité inférieure (versions FHD ou HD en panne) : elle ne repart de cette qualité que pendant une heure, ensuite de la meilleure ; elle repartait de SD des heures plus tard, puis remontait peu à peu
+
 ## 0.2.142
 - Chaînes rassemblées : les catégories du fournisseur (« FR TV FHD », « FR TV HD »…) laissent la place à des catégories par thème, dans l’ordre d’une télé : TNT, Canal+, Cinéma, Séries et divertissement, Sport, Découverte, Jeunesse, Musique, Info, Régions, Outre-mer, Matchs en direct, Autres chaînes ; Pluto TV, Rakuten TV et les chaînes étrangères gardent leur catégorie. Le menu des chaînes du lecteur et le guide suivent les mêmes catégories
 - Chaînes rassemblées : chaque chaîne porte son vrai nom, sans « FR| » : « Ciné+ Frisson », « Canal+ Cinéma(s) », « France 3 Alpes », « BFMTV », « L’Équipe »…

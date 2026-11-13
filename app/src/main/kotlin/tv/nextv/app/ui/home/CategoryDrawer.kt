@@ -75,8 +75,8 @@ internal fun CategoryDrawer(
      */
     leftOpensDrawer: Boolean = false,
     /**
-     * Catégorie choisie dans le volet (sa liste remplace l'ancienne) : rend `true` une fois, et le volet ne pose
-     * pas la sélection sur le contenu à la fermeture (la nouvelle liste la prend elle-même une fois affichée).
+     * Catégorie choisie dans le volet (sa liste remplace l'ancienne) : rend `true` tant que la nouvelle liste doit
+     * prendre la sélection elle-même ; le volet ne la pose alors sur le contenu que si elle n'y est pas arrivée.
      */
     consumePick: () -> Boolean = { false },
     content: @Composable () -> Unit,
@@ -102,11 +102,14 @@ internal fun CategoryDrawer(
             }
             // Le focus n'a pas pu y entrer : on ne laisse pas un volet ouvert sans focus.
             if (!railFocused) open = false
-        } else if (railFocused && !consumePick()) {
+        } else if (railFocused) {
             // Fermeture (→, Retour, catégorie choisie) : le focus retourne sur le contenu. Saut à une rangée en
             // cours : c'est lui qui pose la sélection. Nouvelle catégorie : sa liste peut arriver quelques images
             // plus tard (sinon la sélection se perdait, puis réapparaissait dans le menu).
             // La liste de la catégorie choisie peut remplacer l'ancienne juste après : on surveille quelques images.
+            // Liste qui prend elle-même la sélection (chaînes de Streaming) : on lui laisse quelques images, mais
+            // jamais au point que le volet disparaisse avec la sélection (Android la donnait alors au menu de gauche).
+            val picked = consumePick()
             var settled = 0
             for (attempt in 1..90) {
                 if (rowJump?.target != null || open) break
@@ -114,7 +117,7 @@ internal fun CategoryDrawer(
                     if (++settled >= 15) break
                 } else {
                     settled = 0
-                    runCatching { contentFocus.requestFocus() }
+                    if (!picked || attempt > PICK_GRACE_FRAMES) runCatching { contentFocus.requestFocus() }
                 }
                 withFrameNanos { }
             }
@@ -220,3 +223,6 @@ internal fun CategoryDrawer(
 
 /** Repère du volet ouvert (tests). */
 internal const val CATEGORY_DRAWER_TAG = "category-drawer"
+
+/** Images laissées à la liste choisie pour prendre la sélection, bien avant la fin de la fermeture du volet (180 ms). */
+private const val PICK_GRACE_FRAMES = 4

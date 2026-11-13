@@ -431,20 +431,26 @@ class SettingsRepository(
 
     /**
      * Qualité qui a joué sans problème pour chaque chaîne d'une playlist (clé de version → nom de
-     * [tv.nextv.core.model.StreamQuality]) : la lecture suivante commence directement par elle.
+     * [tv.nextv.core.model.StreamQuality]) : la lecture suivante commence directement par elle, pendant
+     * [WORKING_QUALITY_MILLIS] seulement. Une version meilleure en panne un après-midi (chaîne descendue en SD) ne
+     * l'est souvent plus quelques heures après : la chaîne repart alors de la meilleure, dans la limite de la qualité
+     * visée (elle repartait de SD, puis remontait peu à peu).
      */
-    suspend fun workingQuality(sourceId: Long, variantKey: String): String? =
-        preferences.first()[qualityKey(sourceId)]?.lineSequence()
-            ?.firstOrNull { it.substringBefore('\t') == variantKey }
-            ?.substringAfter('\t', "")
-            ?.takeIf { it.isNotEmpty() }
+    suspend fun workingQuality(sourceId: Long, variantKey: String, now: Long = System.currentTimeMillis()): String? {
+        val line = preferences.first()[qualityKey(sourceId)]?.lineSequence()?.firstOrNull { it.substringBefore('\t') == variantKey } ?: return null
+        val parts = line.split('\t')
+        val quality = parts.getOrNull(1)?.takeIf { it.isNotEmpty() } ?: return null
+        // Retenue avant la 0.2.143 (sans heure) : trop ancienne pour servir.
+        val savedAt = parts.getOrNull(2)?.toLongOrNull() ?: return null
+        return quality.takeIf { now - savedAt in 0 until WORKING_QUALITY_MILLIS }
+    }
 
-    suspend fun rememberWorkingQuality(sourceId: Long, variantKey: String, quality: String) {
+    suspend fun rememberWorkingQuality(sourceId: Long, variantKey: String, quality: String, now: Long = System.currentTimeMillis()) {
         if (variantKey.isEmpty() || '\t' in variantKey || '\n' in variantKey) return
         val key = qualityKey(sourceId)
         edit { prefs ->
             val others = prefs[key]?.lineSequence()?.filter { it.isNotEmpty() && it.substringBefore('\t') != variantKey }?.toList().orEmpty()
-            prefs[key] = (listOf("$variantKey\t$quality") + others).take(MAX_REMEMBERED_QUALITIES).joinToString("\n")
+            prefs[key] = (listOf("$variantKey\t$quality\t$now") + others).take(MAX_REMEMBERED_QUALITIES).joinToString("\n")
         }
     }
 
@@ -595,6 +601,9 @@ class SettingsRepository(
         const val MAX_RECENT_CHANNELS = 30
         const val QUALITY_PREFIX = "working_quality_"
         const val MAX_REMEMBERED_QUALITIES = 300
+
+        /** Durée pendant laquelle une chaîne repart de la dernière qualité qui a fonctionné (une heure). */
+        const val WORKING_QUALITY_MILLIS = 60 * 60_000L
         const val SOUND_PREFIX = "channel_sound_"
         const val MAX_REMEMBERED_SOUNDS = 300
     }

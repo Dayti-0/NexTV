@@ -524,8 +524,8 @@ fun HomeContent(
     // (Streaming : bouton « Catégories » du menu de gauche).
     val drawerOpen = rememberSaveable(section) { mutableStateOf(false) }
     val rowJump = remember(section) { RowJump() }
-    // Catégorie choisie dans le volet des chaînes de Streaming : la nouvelle liste prend la sélection elle-même.
-    val categoryPicked = remember { mutableStateOf(false) }
+    // Catégorie choisie dans le volet des chaînes de Streaming : la nouvelle liste referme le volet et prend la sélection.
+    val categoryPicked = remember { ListFocusHandoff { drawerOpen.value = false } }
     // Section affichée dans le menu de gauche de Streaming (← depuis le volet des catégories).
     val navFocus = remember { FocusRequester() }
     // Section choisie dans le menu de gauche : la sélection quitte le menu (→) dès que le contenu est là.
@@ -565,12 +565,18 @@ fun HomeContent(
             // Accueil à rangées (Streaming, Classique) : saut à la rangée de la catégorie, toutes les
             // autres restent ; ailleurs, la catégorie s'ouvre.
             onCategory = { chosen ->
-                drawerOpen.value = false
                 if (rowsHome && category == Category.All) {
+                    drawerOpen.value = false
                     rowJump.target = chosen
+                } else if (chosen != category && section == HomeSection.TV && window.isWide && layout == HomeLayout.STREAMING) {
+                    // Chaînes de Streaming (liste avec volet) : le volet reste ouvert, la sélection dessus, le temps
+                    // que la nouvelle liste arrive ; elle le referme alors et prend la sélection (TakeFocusOnNewList).
+                    // Refermé avant, la sélection n'avait plus où aller : Android la donnait au menu de gauche.
+                    categoryPicked.start(channels.itemSnapshotList.items)
+                    actions.onCategory(chosen)
                 } else {
-                    // Chaînes de Streaming (liste avec volet) : la nouvelle liste prendra la sélection.
-                    categoryPicked.value = section == HomeSection.TV && window.isWide && layout == HomeLayout.STREAMING
+                    // Même catégorie choisie de nouveau : la sélection revient dans la liste, là où elle était.
+                    drawerOpen.value = false
                     actions.onCategory(chosen)
                 }
             },
@@ -779,7 +785,7 @@ private fun CatalogBody(
     /** ← dans le volet des catégories : le menu de gauche (Streaming). */
     onDrawerExitLeft: (() -> Unit)? = null,
     /** Catégorie choisie dans le volet (la nouvelle liste prend la sélection, pas le volet). */
-    categoryPicked: MutableState<Boolean>? = null,
+    categoryPicked: ListFocusHandoff? = null,
     /** Chaînes de Streaming / Classique : catégories, liste et aperçu, en panneaux translucides. */
     liveList: Boolean = false,
     /** Focus de départ sur la liste (Streaming sur la télé : pas d'onglets pour le prendre). */
@@ -870,7 +876,7 @@ private fun CatalogBody(
                 drawerOpen!!,
                 onExitLeft = onDrawerExitLeft,
                 leftOpensDrawer = onDrawerExitLeft != null,
-                consumePick = { categoryPicked?.value == true },
+                consumePick = { categoryPicked?.pending == true },
             ) { live(Modifier) }
         } else {
             live(modifier)
@@ -1447,32 +1453,60 @@ private fun Modifier.reorderKeys(active: Boolean, columns: Int, onMove: (Int) ->
 
 /**
  * Catégorie choisie dans le volet ([LocalTakeListFocus]) : une fois sa liste réellement affichée (et non plus
- * l'ancienne, encore là un instant), la sélection va sur son premier élément ([first]). Posée plus tôt, elle
- * était sur une chaîne de l'ancienne liste et disparaissait avec elle. [items] : la liste paginée (`null` :
- * liste déjà prête, favoris ou récentes).
+ * l'ancienne, encore là un instant), le volet se referme et la sélection va sur son premier élément ([first]). Posée
+ * plus tôt, elle était sur une chaîne de l'ancienne liste et disparaissait avec elle ; et volet refermé avant, elle
+ * n'avait plus où aller (Android la donnait au menu de gauche). [items] : la liste paginée (`null` : liste déjà
+ * prête, favoris ou récentes).
  */
 @Composable
 private fun TakeFocusOnNewList(state: LazyGridState, category: Category, first: FocusRequester, items: () -> List<Any>?) {
-    val take = LocalTakeListFocus.current ?: return
+    val handoff = LocalTakeListFocus.current ?: return
     LaunchedEffect(category) {
-        if (!take.value) return@LaunchedEffect
-        val before = items()
-        if (before != null) {
+        if (!handoff.pending) return@LaunchedEffect
+        if (items() != null) {
+            val before = handoff.previous
             withTimeoutOrNull(NEW_LIST_WAIT_MILLIS) { snapshotFlow { items() }.first { it !== before && !it.isNullOrEmpty() } }
         }
         runCatching { state.scrollToItem(0) }
+        // Le volet se referme (la sélection ne peut pas en sortir tant qu'il est ouvert) ; elle passe à la première
+        // chaîne pendant qu'il disparaît.
+        handoff.closeDrawer()
         for (attempt in 1..30) {
             withFrameNanos { }
             if (runCatching { first.requestFocus() }.getOrDefault(false)) break
         }
-        take.value = false
+        handoff.finish()
+    }
+}
+
+/**
+ * Catégorie choisie dans le volet des chaînes de Streaming : le volet reste ouvert, la sélection dessus, jusqu'à ce
+ * que la nouvelle liste soit affichée ; elle le referme alors ([closeDrawer]) et prend la sélection
+ * ([TakeFocusOnNewList]). [previous] : la liste affichée au moment du choix (la nouvelle est celle qui la remplace).
+ */
+internal class ListFocusHandoff(val closeDrawer: () -> Unit) {
+    /** Une liste doit prendre la sélection. */
+    var pending = false
+        private set
+    var previous: List<Any>? = null
+        private set
+
+    fun start(previous: List<Any>?) {
+        this.previous = previous
+        pending = true
+    }
+
+    fun finish() {
+        pending = false
+        previous = null
     }
 }
 
 /** Catégorie choisie : la sélection est à poser sur sa nouvelle liste (voir [TakeFocusOnNewList]). */
-internal val LocalTakeListFocus = staticCompositionLocalOf<MutableState<Boolean>?> { null }
+internal val LocalTakeListFocus = staticCompositionLocalOf<ListFocusHandoff?> { null }
 
-private const val NEW_LIST_WAIT_MILLIS = 2_000L
+/** Attente de la nouvelle liste, volet ouvert (box lentes : la requête peut prendre plus d'une seconde). */
+private const val NEW_LIST_WAIT_MILLIS = 5_000L
 
 /**
  * Nouvelle catégorie : la grille repart du haut quand sa liste arrive. Pendant la lecture, l'ancienne liste reste
@@ -1507,15 +1541,22 @@ internal fun TvBody(
     val firstFocus = remember { FocusRequester() }
     val favoritesMode = category == Category.Favorites
     val recentMode = category == Category.Recent
+    // Catégorie choisie vide : aucune chaîne pour prendre la sélection, elle reste dans le volet (ouvert), d'où l'on
+    // peut en choisir une autre.
+    val handoff = LocalTakeListFocus.current
+    val noChannelToSelect: @Composable () -> Unit = { if (handoff != null) LaunchedEffect(category) { handoff.finish() } }
     if (favoritesMode && favorites.isEmpty()) {
+        noChannelToSelect()
         EmptyState(Icons.Filled.Star, stringResource(R.string.favorites_empty_title), stringResource(R.string.favorites_empty_channels))
         return
     }
     if (recentMode && recent.isEmpty()) {
+        noChannelToSelect()
         EmptyState(NexTvIcons.Tv, stringResource(R.string.recent_empty_title), stringResource(R.string.recent_empty_message))
         return
     }
     if (!favoritesMode && !recentMode && channels.itemCount == 0 && channels.loadState.refresh !is LoadState.Loading) {
+        noChannelToSelect()
         EmptyState(NexTvIcons.Tv, stringResource(R.string.channels_empty), stringResource(R.string.home_empty_hint))
         return
     }

@@ -341,9 +341,106 @@ class HomeFocusTest {
         assertTrue("Info 24 pas affichée en haut de « Toutes »", compose.onAllNodesWithText("Info 24", substring = true).fetchSemanticsNodes().isNotEmpty())
     }
 
-    private class ListSource(private val rows: List<ChannelListRow>) : androidx.paging.PagingSource<Int, ChannelListRow>() {
+    /**
+     * Chaînes en Streaming : choisir une catégorie dans le volet, y compris celle déjà affichée (il s'ouvre sur elle),
+     * le referme et la sélection va dans la liste, sans jamais se perdre en route. Sur la télé, une sélection perdue
+     * (volet disparu avant qu'un élément de la liste la prenne) est donnée par Android au premier élément en haut à
+     * gauche : le menu de gauche, qui s'ouvrait. Ici, la sélection est donc suivie image par image.
+     */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Test
+    fun streamingCategoryPickKeepsTheFocusInTheList() {
+        val chosen = mutableListOf<Category>()
+        val categoryFlow = kotlinx.coroutines.flow.MutableStateFlow<Category>(Category.All)
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main)
+        val paged = categoryFlow.flatMapLatest { c ->
+            val list = SampleData.channels.filter { c !is Category.Group || it.groupTitle.orEmpty() == c.title }
+            // Une catégorie est lue avec le délai d'une base de données.
+            val delayMillis = if (c is Category.Group) 150L else 0L
+            androidx.paging.Pager(androidx.paging.PagingConfig(pageSize = 60, enablePlaceholders = false)) { ListSource(list, delayMillis) }.flow
+        }.cachedIn(scope)
+        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().setInTouchMode(false)
+        compose.setContent {
+            val category by categoryFlow.collectAsState()
+            NexTvTheme(ThemeStyle.NIGHT) {
+                HomeContent(
+                    section = HomeSection.TV,
+                    groups = SampleData.groups,
+                    category = category,
+                    query = "",
+                    channels = paged.collectAsLazyPagingItems(),
+                    favoriteChannels = emptyList(),
+                    movies = remember { flowOf(PagingData.from(SampleData.movies)) }.collectAsLazyPagingItems(),
+                    favoriteMovies = emptyList(),
+                    series = remember { flowOf(PagingData.from(SampleData.series)) }.collectAsLazyPagingItems(),
+                    favoriteSeries = emptyList(),
+                    favoriteKeys = emptySet(),
+                    reorder = ReorderState(),
+                    now = SampleData.NOW,
+                    snackbarHostState = remember { SnackbarHostState() },
+                    actions = HomeActions(onCategory = { chosen += it; categoryFlow.value = it }),
+                    guide = {},
+                    football = {},
+                    layout = HomeLayout.STREAMING,
+                )
+            }
+        }
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
+        val menuEdge = with(compose.density) { STREAMING_NAV_WIDTH.toPx() }
+        /** OK, puis la sélection image par image (2 s) : jamais perdue ni dans le menu ; à la fin, dans la liste. */
+        fun pickAndWatch(step: String) {
+            compose.mainClock.autoAdvance = false
+            compose.onRoot().performKeyInput { pressKey(Key.DirectionCenter) }
+            val seen = mutableListOf<String>()
+            repeat(120) {
+                compose.mainClock.advanceTimeByFrame()
+                val nodes = compose.onAllNodes(isFocused()).fetchSemanticsNodes()
+                seen += when {
+                    nodes.isEmpty() -> "aucune"
+                    compose.onAllNodesWithTag(CATEGORY_DRAWER_TAG).fetchSemanticsNodes().isNotEmpty() &&
+                        nodes.first().boundsInRoot.left >= menuEdge && nodes.first().boundsInRoot.left < menuEdge + 400 * compose.density.density -> "volet"
+                    nodes.first().boundsInRoot.left < menuEdge -> "menu"
+                    else -> "liste"
+                }
+            }
+            compose.mainClock.autoAdvance = true
+            compose.waitForIdle()
+            val steps = seen.fold(mutableListOf<String>()) { acc, it -> if (acc.lastOrNull() != it) acc += it; acc }
+            println("$step : $steps, ${focusedText()}")
+            assertTrue("$step : sélection perdue ou au menu en route ($steps)", "aucune" !in seen && "menu" !in seen)
+            assertEquals("$step : $steps", "liste", seen.last())
+            assertTrue("$step : volet encore ouvert", compose.onAllNodesWithTag(CATEGORY_DRAWER_TAG).fetchSemanticsNodes().isEmpty())
+        }
+        repeat(2) { press(Key.DirectionDown) }
+        // ← : le volet s'ouvre sur « Toutes les chaînes », la catégorie affichée ; OK la choisit de nouveau.
+        press(Key.DirectionLeft)
+        assertTrue("Volet : ${focusedText()}", focusedText()?.contains("Toutes les chaînes") == true)
+        pickAndWatch("Même catégorie")
+        assertEquals(listOf<Category>(Category.All), chosen)
+        // Volet ouvert depuis le menu (☰, « Catégories ») : même chose.
+        press(Key.Menu)
+        repeat(10) { if (focusedText()?.contains("Catégories") != true) press(Key.DirectionDown) }
+        assertTrue("Menu : ${focusedText()}", focusedText()?.contains("Catégories") == true)
+        press(Key.DirectionCenter)
+        assertTrue("Volet depuis le menu : ${focusedText()}", focusedText()?.contains("Toutes les chaînes") == true)
+        pickAndWatch("Même catégorie, volet ouvert depuis le menu")
+        // Une autre catégorie : la sélection va sur sa première chaîne.
+        press(Key.DirectionLeft)
+        repeat(2) { press(Key.DirectionDown) }
+        pickAndWatch("Autre catégorie")
+        val picked = (chosen.last() as Category.Group).title
+        val first = SampleData.channels.first { it.groupTitle == picked }.title
+        assertTrue("Première chaîne de $picked : ${focusedText()}", focusedText()?.contains(first) == true)
+    }
+
+    private class ListSource(private val rows: List<ChannelListRow>, private val delayMillis: Long = 0) : androidx.paging.PagingSource<Int, ChannelListRow>() {
         override fun getRefreshKey(state: androidx.paging.PagingState<Int, ChannelListRow>): Int? = null
-        override suspend fun load(params: LoadParams<Int>): LoadResult<Int, ChannelListRow> = LoadResult.Page(rows, null, null)
+        override suspend fun load(params: LoadParams<Int>): LoadResult<Int, ChannelListRow> {
+            if (delayMillis > 0) delay(delayMillis)
+            return LoadResult.Page(rows, null, null)
+        }
     }
 
     private fun focusedText() = runCatching { compose.onNode(isFocused()).fetchSemanticsNode().config.toString().let { Regex("Text : \\[[^]]*]").find(it)?.value } }.getOrNull()

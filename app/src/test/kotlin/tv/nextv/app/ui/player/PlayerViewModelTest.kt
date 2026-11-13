@@ -238,6 +238,39 @@ class PlayerViewModelTest {
         }
     }
 
+    /**
+     * Dernière qualité qui a fonctionné (ici SD, les versions FHD et HD en panne) : la chaîne repart d'elle juste après,
+     * mais plus quelques heures plus tard : de la meilleure version. Elle repartait de SD, puis remontait peu à peu.
+     */
+    @Test
+    fun theRememberedQualityIsUsedForAnHourOnly() {
+        val sourceId = runBlocking { container.sourceRepository.add(SourceInput(name = "Test", location = SourceLocation.Remote("http://127.0.0.1:9/list.m3u"))) }
+        fun live(name: String, n: Int): Channel {
+            val parsed = tv.nextv.core.catalog.QualityParser.parse(name)
+            return Channel(
+                position = n, name = name, stream = StreamDescriptor("http://127.0.0.1:9/live/$n.ts"), kind = ContentKind.LIVE,
+                title = parsed.baseName, variantKey = tv.nextv.core.catalog.LiveVariants.key(parsed.variantKey), quality = parsed.quality,
+            )
+        }
+        val names = listOf("FR| RMC SPORT 1 FHD", "FR| RMC SPORT 1 HD", "FR| RMC SPORT 1 SD")
+        runBlocking {
+            container.settings.setAutoQuality(true)
+            container.settings.setQualityTarget(tv.nextv.core.stream.QualityTarget.BEST)
+            container.playlistStore.replaceChannels(sourceId, tv.nextv.core.catalog.LiveVariants.unify(names.mapIndexed { n, name -> live(name, n) }))
+        }
+        val key = tv.nextv.core.catalog.LiveVariants.key(tv.nextv.core.catalog.QualityParser.parse(names.first()).variantKey)
+        val versions = runBlocking { container.channelDao.variants(sourceId, key) }
+        val fhd = checkNotNull(runBlocking { container.channelDao.get(versions.first { it.quality == "FHD" }.id) })
+        val sd = versions.first { it.quality == "SD" }.id
+        fun start() = runBlocking { channelStart(container, fhd, fhd, isLive = true) }.startId
+        // SD a joué une minute sans problème cet après-midi : juste après, la chaîne repart de SD.
+        runBlocking { container.settings.rememberWorkingQuality(sourceId, key, "SD") }
+        assertEquals(sd, start())
+        // Trois heures plus tard : de la meilleure version.
+        runBlocking { container.settings.rememberWorkingQuality(sourceId, key, "SD", now = System.currentTimeMillis() - 3 * 60 * 60_000L) }
+        assertEquals(fhd.id, start())
+    }
+
     /** Aperçu qui n'a rien pu confier : le plein écran le dit dans ses infos de lecture (rouvert, et pourquoi). */
     @Test
     fun theInfoPanelTellsWhyThePreviewStreamWasReopened() {
