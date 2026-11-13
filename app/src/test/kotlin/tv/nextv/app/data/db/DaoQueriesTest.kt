@@ -264,13 +264,17 @@ class DaoQueriesTest {
             execSQL("ALTER TABLE `channels` DROP COLUMN `audio`")
             execSQL("ALTER TABLE `channels` DROP COLUMN `lineup`")
             execSQL("ALTER TABLE `channels` DROP COLUMN `listOrder`")
+            execSQL("ALTER TABLE `channels` DROP COLUMN `theme`")
+            execSQL("ALTER TABLE `channels` DROP COLUMN `listGroup`")
+            execSQL("ALTER TABLE `channels` DROP COLUMN `niceTitle`")
+            execSQL("ALTER TABLE `channels` DROP COLUMN `baseTitle`")
             version = 6
         }
         old.close()
         val migrated = Room.databaseBuilder(context, NexTvDatabase::class.java, name)
             .addMigrations(
                 NexTvDatabase.MIGRATION_6_7, NexTvDatabase.MIGRATION_7_8, NexTvDatabase.MIGRATION_8_9, NexTvDatabase.MIGRATION_9_10,
-                NexTvDatabase.MIGRATION_10_11, NexTvDatabase.MIGRATION_11_12,
+                NexTvDatabase.MIGRATION_10_11, NexTvDatabase.MIGRATION_11_12, NexTvDatabase.MIGRATION_12_13,
             )
             .allowMainThreadQueries()
             .build()
@@ -278,6 +282,15 @@ class DaoQueriesTest {
             val series = migrated.channelDao().pageSeries(id, 0, "", "").all()
             assertEquals(listOf("Lupin" to 3, "Dark" to 2), series.map { it.title to it.episodeCount })
             assertEquals(3, migrated.channelDao().pageChannels(id, 0, "", "", 1_500).all().size)
+            // Catégories et noms des chaînes : ceux de la playlist, jusqu'à sa prochaine lecture.
+            assertEquals(
+                db.channelDao().observeGroups(sourceId, "LIVE").first(),
+                migrated.channelDao().observeGroups(id, "LIVE").first(),
+            )
+            assertEquals(
+                db.channelDao().pageChannels(sourceId, 0, "", "", 1_500).all().map { it.title },
+                migrated.channelDao().pageChannels(id, 0, "", "", 1_500).all().map { it.title },
+            )
         } finally {
             migrated.close()
             context.deleteDatabase(name)

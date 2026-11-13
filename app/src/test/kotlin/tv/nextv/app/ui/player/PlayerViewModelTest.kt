@@ -194,6 +194,50 @@ class PlayerViewModelTest {
         }
     }
 
+    /**
+     * Chaîne rassemblée en double audio et en son normal : les options du lecteur proposent les deux versions du son.
+     * Le son normal choisi, la chaîne repart tout de suite sur sa version, et s'ouvre ensuite directement sur elle.
+     */
+    @Test
+    fun theSoundVersionChosenInTheOptionsIsPlayedAndRemembered() {
+        java.net.ServerSocket(0).use { server ->
+            val sourceId = runBlocking { container.sourceRepository.add(SourceInput(name = "Test", location = SourceLocation.Remote("http://127.0.0.1:9/list.m3u"))) }
+            fun live(name: String, n: Int): Channel {
+                val parsed = tv.nextv.core.catalog.QualityParser.parse(name)
+                return Channel(
+                    position = n, name = name, stream = StreamDescriptor("http://127.0.0.1:${server.localPort}/live/$n.ts"), kind = ContentKind.LIVE,
+                    title = parsed.baseName, variantKey = tv.nextv.core.catalog.LiveVariants.key(parsed.variantKey), quality = parsed.quality,
+                    audio = parsed.audioRank,
+                )
+            }
+            runBlocking {
+                container.settings.setMergeChannels(true)
+                container.playlistStore.replaceChannels(
+                    sourceId,
+                    tv.nextv.core.catalog.LiveVariants.unify(listOf(live("FR| CANAL+ FHD (DOUBLE AUDIO)", 0), live("FR| CANAL+ FHD", 1))),
+                )
+            }
+            val listed = checkNotNull(runBlocking { container.channelDao.primaryIdByKey(sourceId, "live:fr canal+") })
+            val (viewModel, store) = open(listed)
+            viewModel.onStart()
+            idle()
+            // Sans choix : la version double audio (ouverte avant le son normal).
+            assertEquals(listOf(0, tv.nextv.core.catalog.QualityParser.AUDIO_MULTI), viewModel.state.value.soundVersions)
+            assertEquals(tv.nextv.core.catalog.QualityParser.AUDIO_MULTI, viewModel.state.value.soundVersion)
+
+            viewModel.setSoundVersion(0)
+            idle()
+            assertEquals(0, viewModel.state.value.soundVersion)
+            assertEquals(listOf(0, tv.nextv.core.catalog.QualityParser.AUDIO_MULTI), viewModel.state.value.soundVersions)
+            assertEquals(0, runBlocking { container.settings.channelSound(sourceId, "live:fr canal+") })
+            // Prochaine ouverture (plein écran ou aperçu de l'accueil) : directement la version au son normal.
+            val primary = checkNotNull(runBlocking { container.channelDao.get(listed) })
+            val start = runBlocking { channelStart(container, primary, primary, isLive = true) }
+            assertEquals("FR| CANAL+ FHD", runBlocking { container.channelDao.get(start.startId) }?.name)
+            store.clear()
+        }
+    }
+
     /** Aperçu qui n'a rien pu confier : le plein écran le dit dans ses infos de lecture (rouvert, et pourquoi). */
     @Test
     fun theInfoPanelTellsWhyThePreviewStreamWasReopened() {

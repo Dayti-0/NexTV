@@ -308,7 +308,8 @@ class RoomPlaylistStore(
                 streamIssues = channel.stream.issues.joinToString(",") { it.name },
                 epgChannelId = epgChannelId,
                 kind = channel.kind.name,
-                title = channel.title,
+                // Chaînes rassemblées : nom propre ; sinon celui de la playlist (même calcul que ChannelDao.applyGrouping).
+                title = if (live && merge) channel.niceTitle ?: channel.title else channel.title,
                 variantKey = groupedKey(channel, merge),
                 quality = channel.quality?.name,
                 year = channel.year,
@@ -323,6 +324,10 @@ class RoomPlaylistStore(
                 audio = channel.audio,
                 lineup = lineup,
                 listOrder = if (live && merge) lineup else channel.position,
+                theme = if (live) channel.theme else null,
+                listGroup = if (live && merge) channel.theme ?: channel.groupTitle else channel.groupTitle,
+                niceTitle = if (live) channel.niceTitle else null,
+                baseTitle = channel.title,
             )
         }
 

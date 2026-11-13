@@ -108,6 +108,17 @@ data class ChannelEntity(
      * playlist). Les films et les épisodes gardent leur [position].
      */
     val listOrder: Int = 0,
+    /** Catégorie par thème de la chaîne quand les chaînes sont rassemblées (« Cinéma »), `null` : [groupTitle] (schéma 13). */
+    val theme: String? = null,
+    /**
+     * Catégorie où la chaîne est rangée dans les listes : [theme] (ou à défaut [groupTitle]) quand les chaînes sont
+     * rassemblées, sinon [groupTitle]. Les films et les épisodes gardent leur [groupTitle].
+     */
+    val listGroup: String? = groupTitle,
+    /** Nom propre de la chaîne quand les chaînes sont rassemblées (« Ciné+ Frisson »), `null` : [baseTitle]. */
+    val niceTitle: String? = null,
+    /** Nom de la chaîne tel que la playlist l'écrit, sans mention de qualité ([title] quand elles ne sont pas rassemblées). */
+    val baseTitle: String? = title,
 )
 
 /**

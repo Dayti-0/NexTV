@@ -154,9 +154,16 @@ class M3uPlaylistLoader(
         // Versions d'une chaîne écrites différemment d'une qualité à l'autre (« … TV IDF » et « … IDF ») : regroupées.
         // Versions « Double audio » ou « Dolby Digital » d'une chaîne : ouvertes avant la version au son ordinaire.
         val grouped = LiveVariants.preferBetterAudio(LiveVariants.unify(channels))
-        // Ordre rangé des chaînes (TNT, Canal+, cinéma…), utilisé quand les chaînes sont rassemblées (réglages).
-        val lineup = ChannelLineup.compute(grouped)
-        val arranged = if (lineup.isEmpty()) grouped else grouped.map { channel -> lineup[channel.position]?.let { channel.copy(lineup = it) } ?: channel }
+        // Ordre rangé (TNT, Canal+, cinéma…), catégorie par thème et nom propre de chaque chaîne, utilisés quand les
+        // chaînes sont rassemblées (réglages).
+        val arrangements = ChannelLineup.arrange(grouped)
+        val arranged = if (arrangements.isEmpty()) {
+            grouped
+        } else {
+            grouped.map { channel ->
+                arrangements[channel.position]?.let { channel.copy(lineup = it.lineup, theme = it.theme, niceTitle = it.name) } ?: channel
+            }
+        }
         return LoadedPlaylist(arranged, playlist.epgUrls, warnings)
     }
 

@@ -28,6 +28,7 @@ import org.robolectric.annotation.Config
 import tv.nextv.app.data.settings.AspectMode
 import tv.nextv.app.ui.theme.NexTvTheme
 import tv.nextv.app.ui.theme.ThemeStyle
+import tv.nextv.core.catalog.QualityParser
 import tv.nextv.core.stream.QualityTarget
 
 /** Options du lecteur (touche Menu) : la qualité visée se change à la télécommande, comme dans les réglages. */
@@ -89,5 +90,69 @@ class PlayerOptionsTest {
         assertEquals("HD maximum", focusedText())
         press(Key.DirectionCenter)
         assertEquals(QualityTarget.HD, target)
+    }
+
+    /** Chaîne rassemblée : ses versions du son se choisissent dans les options, la première prend le focus. */
+    @Test
+    fun `sound version is chosen from the options`() {
+        var chosen: Int? = null
+        compose.setContent {
+            NexTvTheme(ThemeStyle.NIGHT) {
+                PlayerOptionsPanel(
+                    visible = true,
+                    tracks = PlayerTracks(),
+                    aspect = AspectMode.FIT,
+                    isLive = true,
+                    infoVisible = false,
+                    onAudio = {},
+                    onSubtitles = {},
+                    onAspect = {},
+                    onPreviousChannel = {},
+                    onToggleInfo = {},
+                    onDismiss = {},
+                    soundVersions = listOf(0, QualityParser.AUDIO_DOLBY, QualityParser.AUDIO_MULTI),
+                    soundVersion = QualityParser.AUDIO_MULTI,
+                    onSoundVersion = { chosen = it },
+                )
+            }
+        }
+        compose.mainClock.advanceTimeBy(500)
+        compose.waitForIdle()
+        compose.onNodeWithText("Version du son").assertExists()
+        assertEquals("Son normal", focusedText())
+        press(Key.DirectionDown)
+        assertEquals("Dolby Digital", focusedText())
+        press(Key.DirectionCenter)
+        assertEquals(QualityParser.AUDIO_DOLBY, chosen)
+        compose.onNodeWithText("Double audio").assertExists()
+    }
+
+    /** Une seule version du son (chaînes non rassemblées) : pas de choix proposé. */
+    @Test
+    fun `no sound version choice for a single version`() {
+        compose.setContent {
+            NexTvTheme(ThemeStyle.NIGHT) {
+                PlayerOptionsPanel(
+                    visible = true,
+                    tracks = PlayerTracks(),
+                    aspect = AspectMode.FIT,
+                    isLive = true,
+                    infoVisible = false,
+                    onAudio = {},
+                    onSubtitles = {},
+                    onAspect = {},
+                    onPreviousChannel = {},
+                    onToggleInfo = {},
+                    onDismiss = {},
+                    soundVersions = emptyList(),
+                    onSoundVersion = {},
+                )
+            }
+        }
+        compose.mainClock.advanceTimeBy(500)
+        compose.waitForIdle()
+        compose.onNodeWithText("Version du son").assertDoesNotExist()
+        // Le focus va toujours au format de l'image.
+        assertEquals("Adapté à l’écran", focusedText())
     }
 }

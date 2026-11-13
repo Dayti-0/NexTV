@@ -13,6 +13,7 @@ import androidx.sqlite.db.SupportSQLiteQuery
 import kotlinx.coroutines.flow.Flow
 import tv.nextv.core.catalog.LiveVariants
 import tv.nextv.core.catalog.QualityParser
+import tv.nextv.core.model.ContentKind
 
 /*
  * Une chaîne peut exister en plusieurs versions (FHD, HD, SD…), souvent rangées dans des catégories
@@ -37,10 +38,18 @@ private const val VISIBLE_VERSION =
     "c.itemKey NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = '$HIDDEN_ITEM') " +
         "AND NOT (c.qualityRank = 5 AND $UHD_HIDDEN)"
 
+/** Catégories de chaînes masquées (sous-requête). */
+private const val HIDDEN_LIVE_GROUPS = "(SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'LIVE')"
+
+/**
+ * Catégorie de `c` non masquée : ni celle de la playlist (masquée avant que les chaînes soient rassemblées, elle le
+ * reste), ni celle où elle est rangée (catégorie par thème, voir ChannelEntity.listGroup).
+ */
+private const val GROUP_SHOWN =
+    "IFNULL(c.groupTitle, '') NOT IN $HIDDEN_LIVE_GROUPS AND IFNULL(c.listGroup, '') NOT IN $HIDDEN_LIVE_GROUPS"
+
 /** Groupe de `c` non masqué, et `c` ni masquée ni 4K masquée. */
-private const val NOT_HIDDEN =
-    "IFNULL(c.groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'LIVE') " +
-        "AND $VISIBLE_VERSION"
+private const val NOT_HIDDEN = "$GROUP_SHOWN AND $VISIBLE_VERSION"
 
 /**
  * `c` : version affichée de la chaîne (favoris, chaînes récentes, guide des favoris) : la meilleure version
@@ -57,14 +66,18 @@ private const val BETTER_VERSION =
         "AND (b.qualityRank > c.qualityRank OR (b.qualityRank = c.qualityRank AND b.position < c.position)) " +
         "AND NOT (b.qualityRank = 5 AND $UHD_HIDDEN)"
 
-/** `c` : meilleure version de la chaîne dans sa catégorie. */
+/**
+ * `c` : meilleure version de la chaîne dans sa catégorie (celle où elle est rangée). Chaînes rassemblées : ses versions
+ * viennent de plusieurs catégories de la playlist, celles des catégories masquées ne comptent pas.
+ */
 private const val BEST_IN_GROUP =
-    "NOT EXISTS (SELECT 1 FROM channels b WHERE $BETTER_VERSION AND IFNULL(b.groupTitle, '') = IFNULL(c.groupTitle, ''))"
+    "NOT EXISTS (SELECT 1 FROM channels b WHERE $BETTER_VERSION AND IFNULL(b.listGroup, '') = IFNULL(c.listGroup, '') " +
+        "AND IFNULL(b.groupTitle, '') NOT IN $HIDDEN_LIVE_GROUPS)"
 
 /** `c` : meilleure version de la chaîne hors catégories masquées. */
 private const val BEST_VISIBLE =
     "NOT EXISTS (SELECT 1 FROM channels b WHERE $BETTER_VERSION " +
-        "AND IFNULL(b.groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'LIVE'))"
+        "AND IFNULL(b.groupTitle, '') NOT IN $HIDDEN_LIVE_GROUPS AND IFNULL(b.listGroup, '') NOT IN $HIDDEN_LIVE_GROUPS)"
 
 /*
  * « Rassembler les chaînes » (réglages) : activé, une chaîne n'a qu'une clé de version, celle de sa clé stable
@@ -81,6 +94,12 @@ private const val GROUPED_KEY =
 
 /** Rang dans les listes de `channels` selon `:merge`. */
 private const val GROUPED_ORDER = "CASE WHEN :merge = 1 THEN lineup ELSE position END"
+
+/** Catégorie de `channels` dans les listes selon `:merge` : par thème, ou celle de la playlist. */
+private const val GROUPED_LIST_GROUP = "CASE WHEN :merge = 1 THEN IFNULL(theme, groupTitle) ELSE groupTitle END"
+
+/** Nom affiché de `channels` selon `:merge` : son nom propre, ou celui de la playlist. */
+private const val GROUPED_TITLE = "CASE WHEN :merge = 1 THEN IFNULL(niceTitle, baseTitle) ELSE baseTitle END"
 
 /** Fin du nom affiché d'une version double audio, quand les chaînes ne sont pas rassemblées. */
 internal const val MULTI_AUDIO_LABEL = " (Double audio)"
@@ -159,7 +178,7 @@ private const val MOVIE_COLUMNS = "c.id, c.title, c.year, c.logoUrl, c.groupTitl
 
 /** `c` affichée dans la liste : catégorie `:group` si `:filterGroup` vaut 1, sinon toutes. */
 private const val LISTED =
-    "$NOT_HIDDEN AND CASE WHEN :filterGroup = 1 THEN IFNULL(c.groupTitle, '') = :group AND $BEST_IN_GROUP ELSE $BEST_VISIBLE END"
+    "$NOT_HIDDEN AND CASE WHEN :filterGroup = 1 THEN IFNULL(c.listGroup, '') = :group AND $BEST_IN_GROUP ELSE $BEST_VISIBLE END"
 
 /**
  * Programme en cours (`p`) de la chaîne `c` à l'heure `:now`, dans le guide en vigueur de sa playlist ; absent
@@ -186,7 +205,7 @@ internal val PAGE_CHANNELS: String = numberParameters(
     FROM channels c
     $NOW_PROGRAMME
     WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND $LISTED
-      AND (:query = '' OR c.name LIKE '%' || :query || '%' ESCAPE '\'
+      AND (:query = '' OR c.name LIKE '%' || :query || '%' ESCAPE '\' OR c.title LIKE '%' || :query || '%' ESCAPE '\'
         OR (:key != '' AND c.itemKey LIKE 'live:%' || :key || '%'))
     ORDER BY c.listOrder
     """.trimIndent(),
@@ -384,7 +403,8 @@ data class EventChannelRow(
 )
 
 /** Version (qualité) d'une chaîne. */
-data class VariantRow(val id: Long, val quality: String?, val position: Int, val streamSupport: String)
+/** Version d'une chaîne : qualité, et son annoncé par le nom ([audio] : 2 double audio, 1 Dolby Digital, 0 sinon). */
+data class VariantRow(val id: Long, val quality: String?, val position: Int, val streamSupport: String, val audio: Int = 0)
 
 /** Version d'une chaîne associée au guide (« L'essentiel », « Ce soir » : une ligne par chaîne du guide). */
 data class GuideVersionRow(
@@ -466,19 +486,73 @@ interface ChannelDao {
      * Groupes visibles d'un type de contenu (chaînes : une ligne par chaîne de la catégorie ; films : une par
      * film de la catégorie ; séries : une par série). Les groupes masqués n'apparaissent pas.
      */
+    fun observeGroups(sourceId: Long, kind: String): Flow<List<GroupRow>> =
+        if (kind == ContentKind.LIVE.name) observeLiveGroups(sourceId) else observeContentGroups(sourceId, kind)
+
+    /**
+     * Catégories de chaînes : celles où les chaînes sont rangées (chaînes rassemblées : par thème), dans l'ordre des
+     * listes, hors catégories masquées (celles de la playlist masquées avant le restent).
+     */
+    @Query(
+        """
+        SELECT c.listGroup AS title, COUNT(*) AS count
+        FROM channels c
+        WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND $BEST_IN_GROUP AND $VISIBLE_VERSION AND $GROUP_SHOWN
+        GROUP BY c.listGroup ORDER BY MIN(c.listOrder)
+        """,
+    )
+    fun observeLiveGroups(sourceId: Long): Flow<List<GroupRow>>
+
+    /** Catégories de films ou de séries ([kind]), dans l'ordre de la playlist. */
     @Query(
         """
         SELECT c.groupTitle AS title, COUNT(*) AS count
         FROM channels c
         WHERE c.sourceId = :sourceId AND c.kind = :kind
-          AND CASE :kind WHEN 'LIVE' THEN $BEST_IN_GROUP AND $VISIBLE_VERSION WHEN 'MOVIE' THEN $MOVIE_IN_GROUP ELSE c.isPrimary = 1 END
+          AND CASE :kind WHEN 'MOVIE' THEN $MOVIE_IN_GROUP ELSE c.isPrimary = 1 END
           AND IFNULL(c.groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = :kind)
         GROUP BY c.groupTitle ORDER BY MIN(c.position)
         """,
     )
-    fun observeGroups(sourceId: Long, kind: String): Flow<List<GroupRow>>
+    fun observeContentGroups(sourceId: Long, kind: String): Flow<List<GroupRow>>
 
     /** Tous les groupes d'un type de contenu, avec leur visibilité (réglages). */
+    fun observeAllGroups(sourceId: Long, kind: String): Flow<List<GroupVisibilityRow>> =
+        if (kind == ContentKind.LIVE.name) observeAllLiveGroups(sourceId) else observeAllContentGroups(sourceId, kind)
+
+    /**
+     * Toutes les catégories de chaînes, avec leur visibilité : celles où les chaînes sont rangées (chaînes rassemblées :
+     * par thème), puis les catégories de la playlist masquées avant qu'elles soient rangées autrement, pour pouvoir les
+     * remontrer.
+     */
+    @Query(
+        """
+        SELECT title, count, hidden FROM (
+            SELECT c.listGroup AS title, COUNT(*) AS count,
+                EXISTS (
+                    SELECT 1 FROM hidden_groups h
+                    WHERE h.sourceId = :sourceId AND h.kind = 'LIVE' AND h.title = IFNULL(c.listGroup, '')
+                ) AS hidden,
+                MIN(c.listOrder) AS groupOrder
+            FROM channels c
+            WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND $BEST_IN_GROUP
+            GROUP BY c.listGroup
+            UNION ALL
+            SELECT h.title AS title,
+                (SELECT COUNT(DISTINCT c.itemKey) FROM channels c
+                    WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND IFNULL(c.groupTitle, '') = h.title) AS count,
+                1 AS hidden, 2147483647 AS groupOrder
+            FROM hidden_groups h
+            WHERE h.sourceId = :sourceId AND h.kind = 'LIVE'
+              AND EXISTS (SELECT 1 FROM channels c WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND IFNULL(c.groupTitle, '') = h.title)
+              AND NOT EXISTS (SELECT 1 FROM channels c WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND IFNULL(c.listGroup, '') = h.title)
+        )
+        ORDER BY groupOrder
+        """,
+    )
+    fun observeAllLiveGroups(sourceId: Long): Flow<List<GroupVisibilityRow>>
+
+    /** Tous les groupes de films ou de séries ([kind]), avec leur visibilité (réglages). */
     @Query(
         """
         SELECT c.groupTitle AS title, COUNT(*) AS count,
@@ -488,11 +562,11 @@ interface ChannelDao {
             ) AS hidden
         FROM channels c
         WHERE c.sourceId = :sourceId AND c.kind = :kind
-          AND CASE :kind WHEN 'LIVE' THEN $BEST_IN_GROUP WHEN 'MOVIE' THEN $MOVIE_IN_GROUP ELSE c.isPrimary = 1 END
+          AND CASE :kind WHEN 'MOVIE' THEN $MOVIE_IN_GROUP ELSE c.isPrimary = 1 END
         GROUP BY c.groupTitle ORDER BY MIN(c.position)
         """,
     )
-    fun observeAllGroups(sourceId: Long, kind: String): Flow<List<GroupVisibilityRow>>
+    fun observeAllContentGroups(sourceId: Long, kind: String): Flow<List<GroupVisibilityRow>>
 
     /**
      * Chaînes en direct, hors catégories masquées : toutes les chaînes de la catégorie [group], ou
@@ -503,7 +577,8 @@ interface ChannelDao {
      * chaînes et la playlist (tables observées).
      * @param filterGroup 1 pour ne garder que [group] (`''` = sans groupe), 0 pour tout afficher.
      * @param query texte recherché, déjà échappé pour LIKE (caractère d'échappement `\`). Cherché tel
-     *   quel dans le nom, et sans accents ni ponctuation dans la clé de la chaîne ([searchKey]).
+     *   quel dans le nom de la playlist et dans le nom affiché (« Ciné+ Frisson »), et sans accents ni ponctuation
+     *   dans la clé de la chaîne ([searchKey]).
      */
     fun pageChannels(sourceId: Long, filterGroup: Int, group: String, query: String, now: Long): PagingSource<Int, ChannelListRow> =
         pageChannels(SimpleSQLiteQuery(PAGE_CHANNELS, arrayOf(sourceId, filterGroup, group, query, now, searchKey(query))))
@@ -688,10 +763,10 @@ interface ChannelDao {
     )
     suspend fun episodes(sourceId: Long, itemKey: String): List<EpisodeRow>
 
-    /** Versions (qualités) d'une chaîne, toutes lignes confondues. */
+    /** Versions (qualités, et versions du son des chaînes rassemblées) d'une chaîne, toutes lignes confondues. */
     @Query(
         """
-        SELECT id, quality, position, streamSupport FROM channels
+        SELECT id, quality, position, streamSupport, audio FROM channels
         WHERE sourceId = :sourceId AND kind = 'LIVE' AND variantKey = :variantKey AND variantKey != ''
         ORDER BY qualityRank DESC, position
         """,
@@ -773,11 +848,12 @@ interface ChannelDao {
         refreshLiveVariants(sourceId)
     }
 
-    /** Une chaîne n'a pas la clé ou le rang que demande [merge] (1 : rassemblées). */
+    /** Une chaîne n'a pas la clé, le rang, la catégorie ou le nom que demande [merge] (1 : rassemblées). */
     @Query(
         """
         SELECT EXISTS (SELECT 1 FROM channels WHERE sourceId = :sourceId AND kind = 'LIVE'
-          AND (listOrder != $GROUPED_ORDER OR (variantKey != '' AND itemKey LIKE 'live:%' AND variantKey != $GROUPED_KEY)))
+          AND (listOrder != $GROUPED_ORDER OR (variantKey != '' AND itemKey LIKE 'live:%' AND variantKey != $GROUPED_KEY)
+            OR listGroup IS NOT $GROUPED_LIST_GROUP OR (baseTitle IS NOT NULL AND title IS NOT $GROUPED_TITLE)))
         """,
     )
     suspend fun groupingOutdated(sourceId: Long, merge: Int): Boolean
@@ -785,7 +861,14 @@ interface ChannelDao {
     @Query("UPDATE channels SET variantKey = $GROUPED_KEY WHERE sourceId = :sourceId AND kind = 'LIVE' AND variantKey != '' AND itemKey LIKE 'live:%'")
     suspend fun setGroupedKeys(sourceId: Long, merge: Int)
 
-    @Query("UPDATE channels SET listOrder = $GROUPED_ORDER WHERE sourceId = :sourceId AND kind = 'LIVE'")
+    /** Rang, catégorie et nom de chaque chaîne dans les listes. */
+    @Query(
+        """
+        UPDATE channels SET listOrder = $GROUPED_ORDER, listGroup = $GROUPED_LIST_GROUP,
+            title = CASE WHEN baseTitle IS NULL THEN title ELSE $GROUPED_TITLE END
+        WHERE sourceId = :sourceId AND kind = 'LIVE'
+        """,
+    )
     suspend fun setListOrder(sourceId: Long, merge: Int)
 
     /** Meilleure version (qualité, puis ordre de la playlist) et nombre de versions de chaque chaîne, d'après sa clé. */
@@ -1052,12 +1135,13 @@ interface HiddenGroupDao {
     @Query("SELECT title FROM hidden_groups WHERE sourceId = :sourceId AND kind = :kind")
     fun observeTitles(sourceId: Long, kind: String): Flow<List<String>>
 
-    /** Catégories masquées encore présentes dans la playlist. */
+    /** Catégories masquées encore présentes dans la playlist (ou parmi les catégories par thème des chaînes rassemblées). */
     @Query(
         """
         SELECT COUNT(*) FROM hidden_groups h
         WHERE h.sourceId = :sourceId AND h.kind = :kind AND EXISTS (
-            SELECT 1 FROM channels c WHERE c.sourceId = h.sourceId AND c.kind = h.kind AND IFNULL(c.groupTitle, '') = h.title
+            SELECT 1 FROM channels c WHERE c.sourceId = h.sourceId AND c.kind = h.kind
+              AND (IFNULL(c.groupTitle, '') = h.title OR IFNULL(c.listGroup, '') = h.title)
         )
         """,
     )

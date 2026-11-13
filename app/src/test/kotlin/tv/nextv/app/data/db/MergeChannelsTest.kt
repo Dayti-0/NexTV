@@ -87,36 +87,76 @@ class MergeChannelsTest {
         container.playlistStore.replaceChannels(id, load()) {}
         container.channelFilters.apply(id, ChannelFilters.Settings(hideUhd = false, france3Region = null, mergeChannels = true))
 
-        // La TNT dans l'ordre des numéros, puis Canal+, le cinéma… ; ni séparateurs, ni éditions régionales de France 3.
+        // La TNT dans l'ordre des numéros, puis Canal+, le cinéma… ; ni séparateurs, ni éditions régionales de France 3 ;
+        // le nom propre de chaque chaîne, sans « FR| ».
         assertEquals(
             listOf(
-                "FR| TF1", "FR| FRANCE 2", "FR| FRANCE 3", "FR| FRANCE 4", "FR| M6", "FR| ARTE", "FR| LCP", "FR| GULLI", "FR| BFM TV",
-                "FR| T18", "FR| RMC LIFE",
-                "FR| CANAL+", "FR| CANAL+ CINEMA.(S)",
-                "FR| CINE FRISSON",
-                "FR| STAR ACADEMY",
-                "FR| BEIN SPORTS 1",
-                "FR| CHASSE ET PECHE",
-                "FR| BFM MARSEILLE",
-                "FR| MARTINIQUE 1ERE",
-                "FR| CANAL+ LIVE 1",
+                "TF1", "France 2", "France 3", "France 4", "M6", "Arte", "LCP", "Gulli", "BFMTV", "T18", "RMC Life",
+                "Canal+", "Canal+ Cinéma(s)",
+                "Ciné+ Frisson",
+                "Star Academy",
+                "beIN Sports 1",
+                "Chasse & Pêche",
+                "BFM Marseille Provence",
+                "MARTINIQUE 1ERE",
+                "CANAL+ LIVE 1",
             ),
             all(id),
         )
-        // Dans une catégorie : Canal+ Cinéma(s) une seule fois (double audio, FHD+ réunis), qui s'ouvre en double audio.
-        val fhd = dao.pageChannels(id, 1, "FR TV FHD", "", 0).all()
-        assertEquals(1, fhd.count { it.title == "FR| CANAL+ CINEMA.(S)" })
-        assertEquals("|FR| CANAL+ CINEMA.(S) FHD (DOUBLE AUDIO)", fhd.first { it.title == "FR| CANAL+ CINEMA.(S)" }.name)
-        assertTrue(group(id, "FR TV HD").none { "REGIONALES" in it || "FRANCE 3 " in it })
+        // Des catégories par thème, dans le même ordre, au lieu de celles du fournisseur (« FR TV FHD »…).
+        assertEquals(
+            listOf("TNT", "Canal+", "Cinéma", "Séries et divertissement", "Sport", "Découverte", "Régions", "Outre-mer", "Matchs en direct"),
+            dao.observeGroups(id, "LIVE").first().map { it.title },
+        )
+        assertEquals(emptyList<String>(), group(id, "FR TV FHD"))
+        // La recherche trouve une chaîne par le nom affiché (« BFM MARSEILLE » dans la playlist).
+        assertEquals(listOf("BFM Marseille Provence"), dao.pageChannels(id, 0, "", "Provence", 0).all().map { it.title })
+        // Canal+ Cinéma(s) une seule fois (double audio, Dolby Digital, FHD+ réunis), qui s'ouvre en double audio.
+        val canal = dao.pageChannels(id, 1, "Canal+", "", 0).all()
+        assertEquals(listOf("Canal+", "Canal+ Cinéma(s)"), canal.map { it.title })
+        assertEquals("|FR| CANAL+ CINEMA.(S) FHD (DOUBLE AUDIO)", canal.last().name)
+        val tnt = dao.pageChannels(id, 1, "TNT", "", 0).all()
+        assertEquals(all(id).take(11), tnt.map { it.title })
 
         // Zapping dans le même ordre : après RMC Life (25), Canal+.
-        val rmcLife = dao.get(fhd.first { it.title == "FR| RMC LIFE" }.id)!!
+        val rmcLife = dao.get(tnt.first { it.title == "RMC Life" }.id)!!
         val next = dao.nextChannelId(id, dao.listedOrder(id, rmcLife.variantKey)!!)
         assertEquals("|FR| CANAL+ 4K HDR UHD (Résolution Exclusive)", next?.let { dao.get(it) }?.name)
 
-        // Région choisie : son édition juste après France 3.
+        // Région choisie : son édition juste après France 3, dans la TNT.
         container.channelFilters.apply(id, ChannelFilters.Settings(hideUhd = false, france3Region = "alpes", mergeChannels = true))
-        assertEquals(listOf("FR| TF1", "FR| FRANCE 2", "FR| FRANCE 3", "FR| FRANCE 3 ALPES", "FR| FRANCE 4"), all(id).take(5))
+        assertEquals(listOf("TF1", "France 2", "France 3", "France 3 Alpes", "France 4"), all(id).take(5))
+        assertEquals(listOf("TF1", "France 2", "France 3", "France 3 Alpes", "France 4"), group(id, "TNT").take(5))
+    }
+
+    /**
+     * Catégories masquées : une catégorie du fournisseur masquée le reste (et reste dans les réglages pour la remontrer) ;
+     * ses chaînes restent dans leur catégorie par thème par leurs versions des autres catégories.
+     */
+    @Test
+    fun hiddenCategoriesStayHiddenWhenChannelsAreMerged() = runBlocking {
+        val id = container.sourceRepository.add(SourceInput("P", SourceLocation.Remote("http://example.com/p.m3u")))
+        container.playlistStore.replaceChannels(id, load()) {}
+        container.channelFilters.apply(id, ChannelFilters.Settings(hideUhd = false, france3Region = null, mergeChannels = true))
+        container.hiddenGroupDao.hide(HiddenGroupEntity(id, "LIVE", "FR TV FHD"))
+
+        // TF1 par sa version HD, France 2 par sa version SD ; France 4 et M6 n'existent qu'en FHD.
+        val tnt = dao.pageChannels(id, 1, "TNT", "", 0).all()
+        assertEquals(listOf("TF1", "France 2", "France 3"), tnt.map { it.title })
+        assertEquals("|FR| TF1 HD", tnt.first().name)
+        assertEquals(listOf("TF1", "France 2", "France 3"), all(id).take(3))
+        // Réglages des catégories : les catégories par thème, puis celle du fournisseur masquée, pour la remontrer.
+        val settings = dao.observeAllGroups(id, "LIVE").first()
+        assertEquals("TNT", settings.first().title)
+        assertEquals(listOf("FR TV FHD"), settings.filter { it.hidden }.map { it.title })
+        assertEquals(1, container.hiddenGroupDao.observeCount(id, "LIVE").first())
+
+        // Une catégorie par thème masquée : ni dans les catégories, ni dans « Toutes les chaînes ».
+        container.hiddenGroupDao.show(id, "LIVE", "FR TV FHD")
+        container.hiddenGroupDao.hide(HiddenGroupEntity(id, "LIVE", "Canal+"))
+        assertTrue("Canal+" !in dao.observeGroups(id, "LIVE").first().map { it.title })
+        assertTrue(all(id).none { it.startsWith("Canal+") })
+        assertEquals(listOf("Canal+"), dao.observeAllGroups(id, "LIVE").first().filter { it.hidden }.map { it.title })
     }
 
     /** Favoris et chaînes récentes enregistrés sous l'ancienne écriture (« (S) », pluriel, « & ») : ils suivent la chaîne. */
@@ -131,7 +171,7 @@ class MergeChannelsTest {
         container.itemKeyRelinker.relink(id)
 
         assertEquals(
-            listOf("FR| CANAL+ CINEMA.(S)", "FR| BEIN SPORTS 1"),
+            listOf("Canal+ Cinéma(s)", "beIN Sports 1"),
             dao.observeFavoriteChannels(id, 0).first().map { it.title },
         )
         // Réglages communs aux tests : d'autres chaînes récentes peuvent suivre.
@@ -161,6 +201,12 @@ class MergeChannelsTest {
         )
         // Le séparateur « CANAL+ » n'est jamais une version de Canal+.
         assertEquals(1, dao.variants(id, "fr canal+").size)
+        // Les catégories du fournisseur, dans l'ordre de la playlist.
+        assertEquals(
+            listOf("FR TV SD", "FR TV HD", "FR TV FHD", "FR TV CINEMA FHD ( DOLBY DIGITAL)", "FR SPORTS"),
+            dao.observeGroups(id, "LIVE").first().map { it.title },
+        )
+        assertEquals(emptyList<String>(), group(id, "TNT"))
 
         // Et de nouveau rassemblées : comme avant.
         container.channelFilters.apply(id, ChannelFilters.Settings(hideUhd = false, france3Region = null, mergeChannels = true))

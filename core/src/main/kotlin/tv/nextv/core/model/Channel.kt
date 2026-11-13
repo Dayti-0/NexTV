@@ -63,6 +63,9 @@ data class EpisodeInfo(
  * @property audio son annoncé par le nom d'une chaîne (double audio, Dolby : voir QualityParser.AUDIO_MULTI), 0 sinon.
  * @property lineup rang de la chaîne dans l'ordre « rangé » (TNT, Canal+, cinéma… voir ChannelLineup) ; `null` :
  *   celui de la playlist.
+ * @property theme catégorie par thème de la chaîne quand les chaînes sont rassemblées (« Cinéma »), `null` : celle de
+ *   la playlist.
+ * @property niceTitle nom propre de la chaîne quand les chaînes sont rassemblées (« Ciné+ Frisson »), `null` : [title].
  */
 data class Channel(
     val position: Int,
@@ -82,6 +85,8 @@ data class Channel(
     val catchupDays: Int = 0,
     val audio: Int = 0,
     val lineup: Int? = null,
+    val theme: String? = null,
+    val niceTitle: String? = null,
 )
 
 /** Programme d'un guide EPG, horaires en millisecondes epoch UTC. */

@@ -22,9 +22,10 @@ object QualityParser {
      * 8 : un film sous son titre français et son titre original regroupé, d'après sa fiche TMDB ;
      * 9 : versions « Double audio » et « Dolby Digital » d'une chaîne regroupées avec elle ;
      * 10 : écritures d'un même nom regroupées (« + », « & », pluriels), séparateurs de la playlist à part, ordre rangé
-     * des chaînes et versions de son gardées pour le réglage « Rassembler les chaînes »).
+     * des chaînes et versions de son gardées pour le réglage « Rassembler les chaînes » ; 11 : catégories par thème et
+     * noms propres des chaînes rassemblées).
      */
-    const val VERSION = 10
+    const val VERSION = 11
 
     data class Result(
         /** Nom sans les mentions de qualité ni de codec. */

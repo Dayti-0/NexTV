@@ -450,6 +450,27 @@ class SettingsRepository(
 
     private fun qualityKey(sourceId: Long) = stringPreferencesKey(QUALITY_PREFIX + sourceId)
 
+    /**
+     * Version du son choisie pour chaque chaîne rassemblée d'une playlist (clé de la chaîne → son : 0 normal,
+     * 1 Dolby Digital, 2 double audio, voir QualityParser) : la chaîne s'ouvre ensuite sur une version de ce son.
+     */
+    suspend fun channelSound(sourceId: Long, itemKey: String): Int? =
+        preferences.first()[soundKey(sourceId)]?.lineSequence()
+            ?.firstOrNull { it.substringBefore('\t') == itemKey }
+            ?.substringAfter('\t', "")
+            ?.toIntOrNull()
+
+    suspend fun rememberChannelSound(sourceId: Long, itemKey: String, audio: Int) {
+        if (itemKey.isEmpty() || '\t' in itemKey || '\n' in itemKey) return
+        val key = soundKey(sourceId)
+        edit { prefs ->
+            val others = prefs[key]?.lineSequence()?.filter { it.isNotEmpty() && it.substringBefore('\t') != itemKey }?.toList().orEmpty()
+            prefs[key] = (listOf("$itemKey\t$audio") + others).take(MAX_REMEMBERED_SOUNDS).joinToString("\n")
+        }
+    }
+
+    private fun soundKey(sourceId: Long) = stringPreferencesKey(SOUND_PREFIX + sourceId)
+
     /** Résolution des noms (DNS du système ou résolveur public en DNS sur HTTPS). */
     val dnsProvider: Flow<DnsProvider> = preferences
         .map { prefs -> prefs[DNS_PROVIDER]?.let { name -> DnsProvider.entries.firstOrNull { it.name == name } } ?: DnsProvider.SYSTEM }
@@ -568,12 +589,14 @@ class SettingsRepository(
 
         /** Secrets chiffrés pour cet appareil, playlist active (numéro local), réglages retirés. */
         val NOT_PORTABLE = setOf(PROXY_CREDENTIALS, TMDB_KEY, FOOTBALL_KEY, ACTIVE_PLAYLIST, EPG_IMPORT_VERSION, CATALOG_IMPORT_VERSION).map { it.name }.toSet() + OBSOLETE
-        val NOT_PORTABLE_PREFIXES = listOf(DECODER_PREFIX, RECENT_PREFIX, QUALITY_PREFIX)
+        val NOT_PORTABLE_PREFIXES = listOf(DECODER_PREFIX, RECENT_PREFIX, QUALITY_PREFIX, SOUND_PREFIX)
         const val DECODER_PREFIX = "decoder_"
         const val RECENT_PREFIX = "recent_channels_"
         const val MAX_RECENT_CHANNELS = 30
         const val QUALITY_PREFIX = "working_quality_"
         const val MAX_REMEMBERED_QUALITIES = 300
+        const val SOUND_PREFIX = "channel_sound_"
+        const val MAX_REMEMBERED_SOUNDS = 300
     }
 }
 

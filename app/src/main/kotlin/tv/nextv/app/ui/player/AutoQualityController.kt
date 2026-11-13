@@ -49,6 +49,10 @@ internal class AutoQualityController(
     /** Prochaine ouverture sans la qualité retenue : la qualité visée vient d'être changée. */
     private var skipRemembered = false
 
+    /** Versions du son de la chaîne en cours (chaînes rassemblées : normal, Dolby Digital, double audio), vide : une seule. */
+    var soundVersions: List<Int> = emptyList()
+        private set
+
     /** Version de départ choisie pour la chaîne en cours (`null` : une seule version). */
     val currentChannelId: Long? get() = switcher?.current?.channelId
 
@@ -62,6 +66,7 @@ internal class AutoQualityController(
         val start = channelStart(container, requested, primary, isLive, useRemembered = !skipRemembered)
         val options = start.options
         skipRemembered = false
+        soundVersions = start.sounds
         this.options = if (options.size > 1) options else emptyList()
         val startId = start.startId
         switcher = if (options.size > 1) {
@@ -83,6 +88,7 @@ internal class AutoQualityController(
     fun reset() {
         switcher = null
         options = emptyList()
+        soundVersions = emptyList()
     }
 
     /**
@@ -173,19 +179,24 @@ internal class AutoQualityController(
     }
 }
 
-/** Versions d'une chaîne (vide : une seule) et celle par laquelle l'ouvrir, avec les réglages qui l'ont choisie. */
+/**
+ * Versions d'une chaîne (vide : une seule) et celle par laquelle l'ouvrir, avec les réglages qui l'ont choisie.
+ * [sounds] : versions du son proposées (son des versions, voir QualityParser), vide quand il n'y en a qu'une.
+ */
 internal class ChannelStart(
     val options: List<QualityOption>,
     val startId: Long,
     val autoQuality: Boolean,
     val qualityTarget: QualityTarget,
+    val sounds: List<Int> = emptyList(),
 )
 
 /**
  * Version par laquelle ouvrir la chaîne [requested] (sa meilleure version : [primary]) : la dernière qualité qui a
  * fonctionné ([useRemembered]), dans la limite de la qualité visée, sans la 4K si l'écran ou le décodeur ne la suivent
- * pas. La même pour l'aperçu de l'accueil et le plein écran : sinon le plein écran ne peut pas reprendre le flux de
- * l'aperçu (autre adresse), il le rouvre.
+ * pas, et parmi les versions du son choisi pour la chaîne (chaînes rassemblées, options du lecteur). La même pour
+ * l'aperçu de l'accueil et le plein écran : sinon le plein écran ne peut pas reprendre le flux de l'aperçu (autre
+ * adresse), il le rouvre.
  */
 internal suspend fun channelStart(
     container: AppContainer,
@@ -199,9 +210,14 @@ internal suspend fun channelStart(
     val variants = if (isLive && primary.variantKey.isNotEmpty()) container.channelDao.variants(primary.sourceId, primary.variantKey) else emptyList()
     // 4K écartée quand l'écran ou le décodeur ne la suivent pas (image saccadée), ou masquée dans les réglages.
     val uhdAllowed = !settings.hideUhd.first() && container.playerFactory.supportsUhd
-    val options = variants.filter { it.streamSupport != StreamSupport.UNSUPPORTED.name }
+    val usable = variants.filter { it.streamSupport != StreamSupport.UNSUPPORTED.name }
+        .let { all -> if (uhdAllowed) all else all.filter { it.quality != StreamQuality.UHD.name }.ifEmpty { all } }
+    // Chaînes rassemblées : versions du son normal, Dolby Digital ou double audio. Une fois l'une choisie pour la
+    // chaîne, seules ses versions sont lues (la qualité automatique ne passe pas à un autre son).
+    val sounds = usable.map { it.audio }.distinct().sorted().takeIf { it.size > 1 }.orEmpty()
+    val chosenSound = if (sounds.isEmpty()) null else settings.channelSound(primary.sourceId, primary.itemKey)?.takeIf { it in sounds }
+    val options = usable.filter { chosenSound == null || it.audio == chosenSound }
         .map { QualityOption(it.id, StreamQuality.entries.firstOrNull { q -> q.name == it.quality }) }
-        .let { all -> if (uhdAllowed) all else all.filter { it.quality != StreamQuality.UHD }.ifEmpty { all } }
     // Chaîne ouverte sur sa meilleure version : départ par la qualité qui a fonctionné la dernière fois.
     val remembered = if (autoQuality && requested.isPrimary && options.size > 1 && useRemembered) {
         settings.workingQuality(primary.sourceId, primary.variantKey)?.let { name -> StreamQuality.entries.firstOrNull { it.name == name } }
@@ -217,5 +233,5 @@ internal suspend fun channelStart(
     // Qualité visée (réglages) : au plus HD, ou SD pour économiser la connexion.
     val qualityTarget = settings.qualityTarget.first()
     val startId = if (options.size > 1) qualityTarget.start(options, preferredId) else preferredId
-    return ChannelStart(options, startId, autoQuality, qualityTarget)
+    return ChannelStart(options, startId, autoQuality, qualityTarget, sounds)
 }

@@ -49,6 +49,13 @@ data class PlayerUiState(
     val quality: String? = null,
     /** Message après un changement automatique de qualité. */
     val qualityNotice: String? = null,
+    /**
+     * Versions du son de la chaîne (chaînes rassemblées : 0 son normal, 1 Dolby Digital, 2 double audio, voir
+     * QualityParser), vide quand elle n'en a qu'une.
+     */
+    val soundVersions: List<Int> = emptyList(),
+    /** Son de la version en cours de lecture (voir [soundVersions]). */
+    val soundVersion: Int = 0,
     /** Débit réellement mesuré sur les téléchargements du flux, en Mbit/s (absent avant la première mesure). */
     val bandwidthMbps: Double? = null,
     /**

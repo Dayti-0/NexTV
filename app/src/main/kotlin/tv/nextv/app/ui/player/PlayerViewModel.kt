@@ -423,6 +423,22 @@ class PlayerViewModel(
         }
     }
 
+    /**
+     * Version du son choisie dans les options (chaînes rassemblées : son normal, Dolby Digital, double audio) :
+     * retenue pour cette chaîne, qui repart tout de suite sur une version de ce son (retour au direct après une
+     * pause ou un différé). Pendant un replay, elle s'applique à la prochaine ouverture de la chaîne.
+     */
+    fun setSoundVersion(audio: Int) {
+        viewModelScope.launch {
+            val primary = session.channel ?: return@launch
+            if (primary.kind != ContentKind.LIVE.name) return@launch
+            container.settings.rememberChannelSound(primary.sourceId, primary.itemKey, audio)
+            if (delayed.replay != null || session.playing?.audio == audio) return@launch
+            // Même chaîne, ouverte de la même façon : seule sa version change.
+            load(channelId)
+        }
+    }
+
     /** Chaîne regardée juste avant celle-ci (touche « chaîne précédente », ⏪). */
     fun previousChannel() {
         val current = session.listed ?: return
@@ -522,6 +538,7 @@ class PlayerViewModel(
         if (replayed != null && isLive) {
             // Programme encore en cours : « Depuis le début », avec le bandeau du direct. Pas de qualité automatique.
             quality.reset()
+            mutableState.update { it.copy(soundVersions = emptyList()) }
             delayed.playReplay(requested, primary, replayed)
             return
         }
@@ -545,6 +562,7 @@ class PlayerViewModel(
                 match = null,
                 error = null,
                 qualityNotice = null,
+                soundVersions = quality.soundVersions,
                 buffering = true,
                 channelVersion = it.channelVersion + 1,
             )
@@ -573,6 +591,7 @@ class PlayerViewModel(
                 notices = stream.issues.map { issue -> resources.describe(issue) },
                 quality = StreamQuality.entries.firstOrNull { q -> q.name == variant.quality }?.label,
                 qualityNotice = notice,
+                soundVersion = variant.audio,
                 error = null,
             )
         }

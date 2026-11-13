@@ -106,13 +106,16 @@ internal class ChannelMenuController(
     fun open(current: ChannelEntity, fromFavorites: Boolean = false) {
         scope.launch {
             val dao = container.channelDao
-            val group = current.groupTitle.orEmpty()
+            // Catégorie où la chaîne est rangée (chaînes rassemblées : sa catégorie par thème).
+            val group = current.listGroup.orEmpty()
             // Lu dans la base : la liste des favoris du menu n'est pas encore chargée à la première ouverture.
             val favoriteIndex = suspend {
                 dao.observeFavoriteChannels(current.sourceId, System.currentTimeMillis()).first()
                     .indexOfFirst { it.itemKey == current.itemKey }
             }
-            val hidden = container.hiddenGroupDao.isHidden(current.sourceId, ContentKind.LIVE.name, group)
+            val hiddenGroups = container.hiddenGroupDao
+            val hidden = hiddenGroups.isHidden(current.sourceId, ContentKind.LIVE.name, group) ||
+                hiddenGroups.isHidden(current.sourceId, ContentKind.LIVE.name, current.groupTitle.orEmpty())
             val favorite = if (fromFavorites || hidden) favoriteIndex() else -1
             val (category, index) = when {
                 favorite >= 0 -> Category.Favorites to favorite

@@ -311,6 +311,10 @@
     <string name="player_no_subtitles">Aucun sous-titre</string>
     <string name="player_aspect">Format de l’image</string>
     <string name="player_quality_target_playing">Qualité visée · %1$s en cours</string>
+    <string name="player_sound_version">Version du son</string>
+    <string name="player_sound_normal">Son normal</string>
+    <string name="player_sound_dolby">Dolby Digital</string>
+    <string name="player_sound_multi">Double audio</string>
     <string name="player_aspect_fit">Adapté à l’écran</string>
     <string name="player_aspect_fill">Étiré (plein écran)</string>
     <string name="player_aspect_zoom">Agrandi (bords coupés)</string>
@@ -744,7 +748,7 @@
     <string name="settings_france3_region_national">France 3 seule</string>
     <string name="settings_france3_region_merged_help">Chaînes rassemblées : seule France 3 apparaît, avec juste après elle l’édition de votre région si vous la choisissez ici.</string>
     <string name="settings_merge_channels">Rassembler les chaînes</string>
-    <string name="settings_merge_channels_help">Une seule ligne par chaîne, même proposée en plusieurs versions de son (double audio, Dolby) ou écrite de plusieurs façons, sans les séparateurs de la playlist ni les autres éditions de France 3. Les listes sont rangées comme sur une télé : la TNT dans l’ordre des numéros, puis Canal+, le cinéma, les séries, le sport, la découverte, la jeunesse, la musique et l’info.</string>
+    <string name="settings_merge_channels_help">Une seule ligne par chaîne, même proposée en plusieurs versions de son (double audio, Dolby) ou écrite de plusieurs façons, sans les séparateurs de la playlist ni les autres éditions de France 3. Les listes sont rangées comme sur une télé : la TNT dans l’ordre des numéros, puis Canal+, le cinéma, les séries, le sport, la découverte, la jeunesse, la musique et l’info, chacun dans sa catégorie, et les chaînes portent leur vrai nom (sans « FR| »). La version du son se choisit dans les options du lecteur (touche Menu).</string>
     <string name="home_rows_trending">Tendances de la semaine</string>
     <string name="home_rows_newest">Nouveautés</string>
     <string name="home_rows_recommended">Recommandés pour vous</string>

@@ -117,10 +117,15 @@ Commandes :
   réglage « Région de France 3 ».
 - « Rassembler les chaînes » (réglage, activé d'office) : `LiveVariants.spelling` ramène les écritures d'un nom à une
   clé (« + », « & », pluriels), les séparateurs de la playlist (« ▀▄ FR ▀▄ CINEMA ▄▀ ») ont leur propre clé
-  (`SEPARATOR_PREFIX`), `core/catalog/ChannelLineup.kt` donne l'ordre rangé (TNT par numéro de `TntChannels`, Canal+,
-  cinéma… table `KNOWN`, rubriques de la playlist). En base : `audio`, `lineup` et `listOrder` (ordre des listes en
-  vigueur ; toutes les listes de chaînes et le zapping trient par lui) ; `ChannelDao.applyGrouping` bascule clés et
-  ordre au changement du réglage, `ChannelFilters` masque séparateurs et autres éditions de France 3.
+  (`SEPARATOR_PREFIX`), `core/catalog/ChannelLineup.kt` (`arrange`) donne l'ordre rangé (TNT par numéro de
+  `TntChannels`, Canal+, cinéma… table `KNOWN_CHANNELS`, rubriques de la playlist), la catégorie par thème
+  (`Section.title`) et le nom propre (`properName`) de chaque chaîne. En base : `audio`, `lineup`, `theme`, `niceTitle`,
+  `baseTitle` (nom de la playlist), et les colonnes en vigueur `listOrder` (ordre), `listGroup` (catégorie) et `title`
+  (nom) que lisent toutes les listes de chaînes, catégories, menu du lecteur, guide et zapping ;
+  `ChannelDao.applyGrouping` les bascule au changement du réglage. Une catégorie masquée l'est sous son nom de playlist
+  (`groupTitle`) comme sous son thème (`listGroup`). `ChannelFilters` masque séparateurs et autres éditions de France 3.
+  Version du son (options du lecteur) : `channelStart` (`AutoQualityController.kt`) ne garde que les versions du son
+  choisi pour la chaîne (`SettingsRepository.channelSound`).
 - Retour du lecteur à l'accueil : la chaîne regardée (`AppContainer.lastLiveChannel`) et la catégorie où elle a été
   choisie dans le menu des chaînes (`lastLiveCategory`) ; `HomeViewModel.followWatchedChannel` passe l'accueil à une
   catégorie qui la contient, `FollowLastChannel` / `restoreFocus` (`FocusMemory.kt`) y posent la sélection.

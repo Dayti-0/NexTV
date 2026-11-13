@@ -128,6 +128,7 @@ import tv.nextv.app.ui.home.qualityLabel
 import tv.nextv.app.ui.settings.qualityTargetLabel
 import tv.nextv.app.ui.theme.NexTvColors
 import tv.nextv.app.ui.theme.NexTvIcons
+import tv.nextv.core.catalog.QualityParser
 import tv.nextv.core.stream.QualityTarget
 import java.text.DateFormat
 import java.text.NumberFormat
@@ -568,6 +569,12 @@ fun PlayerScreen(
             qualityTarget = qualityTarget,
             playingQuality = state.quality,
             onQualityTarget = viewModel::setQualityTarget,
+            soundVersions = state.soundVersions,
+            soundVersion = state.soundVersion,
+            onSoundVersion = {
+                optionsVisible = false
+                viewModel.setSoundVersion(it)
+            },
             onBackToLive = if (canGoLive) {
                 {
                     optionsVisible = false
@@ -694,6 +701,10 @@ fun PlayerOptionsPanel(
     qualityTarget: QualityTarget = QualityTarget.BEST,
     playingQuality: String? = null,
     onQualityTarget: ((QualityTarget) -> Unit)? = null,
+    /** Versions du son de la chaîne (chaînes rassemblées : normal, Dolby Digital, double audio), vide : une seule. */
+    soundVersions: List<Int> = emptyList(),
+    soundVersion: Int = 0,
+    onSoundVersion: ((Int) -> Unit)? = null,
 ) {
     AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = modifier) {
         val firstFocus = remember { FocusRequester() }
@@ -730,7 +741,12 @@ fun PlayerOptionsPanel(
                         onClick = backToLive,
                     )
                 }
-                val focusFirst = onBackToLive == null
+                // Première ligne qui prend le focus : la première des sections qui proposent un choix.
+                val showSounds = isLive && onSoundVersion != null && soundVersions.size > 1
+                val audioFirst = onBackToLive == null && tracks.audio.size > 1
+                val soundFirst = onBackToLive == null && !audioFirst && showSounds
+                val subtitlesFirst = onBackToLive == null && !audioFirst && !soundFirst && tracks.subtitles.isNotEmpty()
+                val aspectFirst = onBackToLive == null && !audioFirst && !soundFirst && !subtitlesFirst
 
                 OptionsSection(stringResource(R.string.player_audio))
                 if (tracks.audio.size <= 1) {
@@ -740,8 +756,20 @@ fun PlayerOptionsPanel(
                         OptionRow(
                             track.label,
                             selected = track.selected,
-                            modifier = if (index == 0 && focusFirst) Modifier.focusRequester(firstFocus) else Modifier,
+                            modifier = if (index == 0 && audioFirst) Modifier.focusRequester(firstFocus) else Modifier,
                         ) { onAudio(track) }
+                    }
+                }
+
+                // Chaînes rassemblées : la même chaîne en son normal, Dolby Digital ou double audio, retenu pour elle.
+                if (showSounds && onSoundVersion != null) {
+                    OptionsSection(stringResource(R.string.player_sound_version))
+                    soundVersions.forEachIndexed { index, sound ->
+                        OptionRow(
+                            soundVersionLabel(sound),
+                            selected = sound == soundVersion,
+                            modifier = if (index == 0 && soundFirst) Modifier.focusRequester(firstFocus) else Modifier,
+                        ) { onSoundVersion(sound) }
                     }
                 }
 
@@ -752,7 +780,7 @@ fun PlayerOptionsPanel(
                     OptionRow(
                         stringResource(R.string.player_subtitles_off),
                         selected = tracks.subtitlesOff,
-                        modifier = if (tracks.audio.size <= 1 && focusFirst) Modifier.focusRequester(firstFocus) else Modifier,
+                        modifier = if (subtitlesFirst) Modifier.focusRequester(firstFocus) else Modifier,
                     ) { onSubtitles(null) }
                     tracks.subtitles.forEach { track -> OptionRow(track.label, selected = track.selected) { onSubtitles(track) } }
                 }
@@ -764,7 +792,7 @@ fun PlayerOptionsPanel(
                         AspectMode.FILL -> R.string.player_aspect_fill
                         AspectMode.ZOOM -> R.string.player_aspect_zoom
                     }
-                    val first = index == 0 && tracks.audio.size <= 1 && tracks.subtitles.isEmpty() && focusFirst
+                    val first = index == 0 && aspectFirst
                     OptionRow(
                         stringResource(label),
                         selected = mode == aspect,
@@ -794,6 +822,16 @@ fun PlayerOptionsPanel(
         }
     }
 }
+
+/** Nom d'une version du son (son annoncé par le nom de la chaîne, voir QualityParser). */
+@Composable
+private fun soundVersionLabel(sound: Int): String = stringResource(
+    when (sound) {
+        QualityParser.AUDIO_MULTI -> R.string.player_sound_multi
+        QualityParser.AUDIO_DOLBY -> R.string.player_sound_dolby
+        else -> R.string.player_sound_normal
+    },
+)
 
 @Composable
 private fun OptionsSection(title: String) {

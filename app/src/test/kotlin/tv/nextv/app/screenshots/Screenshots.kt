@@ -690,6 +690,10 @@ abstract class ScreenshotSuite(private val device: String) {
                 qualityTarget = QualityTarget.HD,
                 playingQuality = "HD",
                 onQualityTarget = {},
+                // Chaîne rassemblée proposée en son normal et en double audio.
+                soundVersions = listOf(0, tv.nextv.core.catalog.QualityParser.AUDIO_MULTI),
+                soundVersion = tv.nextv.core.catalog.QualityParser.AUDIO_MULTI,
+                onSoundVersion = {},
             )
         }
     }

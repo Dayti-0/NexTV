@@ -168,6 +168,49 @@ class ChannelLineupTest {
         )
     }
 
+    /** Chaînes rassemblées : une catégorie par thème et le nom propre de chaque chaîne (sans « FR| »). */
+    @Test
+    fun `merged channels get a theme and a proper name`() {
+        val channels = load(
+            "FR TV HD" to "|FR| TF1 HD", "FR TV FHD" to "|FR| TF1 FHD", "FR TV FHD" to "|FR| BFM TV FHD",
+            "FR TV FHD" to "|FR| PARIS PREMIERE FHD", "FR TV FHD" to "|FR| KTO FHD", "FR TV FHD" to "|FR| FRANCE 3 ALPES FHD",
+            "FR TV FHD" to "|FR| BFM MARSEILLE FHD", "FR TV HD" to "|FR| MARTINIQUE 1ERE HD",
+            "FR TV FHD" to "▀▄ FR ▀▄▀▄  CANAL+ ▄▀▄▀▄▀", "FR TV FHD" to "|FR| CANAL+ CINEMA.(S) FHD (DOUBLE AUDIO)",
+            "FR TV CINEMA FHD ( DOLBY DIGITAL)" to "|FR| CANAL+ CINEMA.(S) FHD DOLBY DIGITAL",
+            "FR TV FHD" to "▀▄ FR ▀▄▀▄  CINEMA  ▄▀▄▀▄▀", "FR TV FHD" to "|FR| CINE FRISSON FHD (DOUBLE AUDIO)",
+            "FR TV FHD" to "|FR| DRIVE IN MOVIE FHD",
+            "FR SPORTS" to "|FR| BEIN SPORTS 1 FHD", "FR SPORTS" to "|FR| CANAL+ LIVE 1 FHD", "FR SPORTS" to "|FR| CANAL+ LIVE 2 FHD",
+            "FR SPORTS" to "|FR| CANAL+ LIVE 3 FHD", "FR SPORTS" to "|FR| CANAL+ LIVE 4 FHD",
+            "PLUTO TV (FRANCE)" to "|FR| CINÉ WESTERN BY PLUTO TV HD", "PLUTO TV (FRANCE)" to "|FR| PLUTO TV POLAR HD",
+            "PLUTO TV (FRANCE)" to "|FR| EURONEWS HD", "BELGES" to "|BE| LA UNE FHD",
+        )
+        val shown = channels.associate { it.name to (it.theme to it.niceTitle) }
+        assertEquals("TNT" to "TF1", shown["|FR| TF1 HD"])
+        assertEquals("TNT" to "TF1", shown["|FR| TF1 FHD"])
+        assertEquals("TNT" to "BFMTV", shown["|FR| BFM TV FHD"])
+        // Versions double audio et Dolby Digital : la même chaîne, dans la même catégorie, sous le même nom.
+        assertEquals("Canal+" to "Canal+ Cinéma(s)", shown["|FR| CANAL+ CINEMA.(S) FHD (DOUBLE AUDIO)"])
+        assertEquals("Canal+" to "Canal+ Cinéma(s)", shown["|FR| CANAL+ CINEMA.(S) FHD DOLBY DIGITAL"])
+        assertEquals("Cinéma" to "Ciné+ Frisson", shown["|FR| CINE FRISSON FHD (DOUBLE AUDIO)"])
+        // Chaîne inconnue rangée par la rubrique de la playlist : son nom, sans le pays.
+        assertEquals("Cinéma" to "DRIVE IN MOVIE", shown["|FR| DRIVE IN MOVIE FHD"])
+        assertEquals("Séries et divertissement" to "Paris Première", shown["|FR| PARIS PREMIERE FHD"])
+        // Édition régionale de France 3 (celle de la région choisie reste seule visible) : dans la TNT, après France 3.
+        assertEquals("TNT" to "France 3 Alpes", shown["|FR| FRANCE 3 ALPES FHD"])
+        assertEquals("Régions" to "BFM Marseille Provence", shown["|FR| BFM MARSEILLE FHD"])
+        assertEquals("Outre-mer" to "MARTINIQUE 1ERE", shown["|FR| MARTINIQUE 1ERE HD"])
+        assertEquals("Sport" to "beIN Sports 1", shown["|FR| BEIN SPORTS 1 FHD"])
+        assertEquals("Matchs en direct" to "CANAL+ LIVE 1", shown["|FR| CANAL+ LIVE 1 FHD"])
+        assertEquals("Info" to "Euronews", shown["|FR| EURONEWS HD"])
+        // Sans thème, dans une catégorie presque toute rangée par thème : « Autres chaînes ».
+        assertEquals("Autres chaînes" to "KTO", shown["|FR| KTO FHD"])
+        // Catégorie d'un service à part (Pluto TV), chaîne d'un autre pays : leur catégorie reste celle de la playlist.
+        assertEquals(null to "CINÉ WESTERN BY PLUTO TV", shown["|FR| CINÉ WESTERN BY PLUTO TV HD"])
+        assertEquals(null to null, shown["|BE| LA UNE FHD"])
+        // Séparateurs : ni catégorie ni nom.
+        assertEquals(null to null, shown["▀▄ FR ▀▄▀▄  CINEMA  ▄▀▄▀▄▀"])
+    }
+
     @Test
     fun `a playlist without country prefix is ranged by the names of its channels`() {
         val channels = load(
