@@ -9,8 +9,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.isFocused
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performSemanticsAction
@@ -36,6 +45,7 @@ import tv.nextv.app.ui.theme.ThemeStyle
  * Chaîne ouverte depuis l'accueil, puis changée dans le lecteur (zapping) : au retour, la sélection est sur la chaîne
  * regardée en dernier, et non sur celle ouverte au départ.
  */
+@OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class, qualifiers = "fr-rFR-w960dp-h540dp-land-television-xhdpi")
 class ReturnFromLiveFocusTest {
@@ -117,6 +127,83 @@ class ReturnFromLiveFocusTest {
         println("Focus au retour : ${focusedText()}")
         assertTrue("Focus au retour : ${focusedText()}", focusedText()?.contains(watched.title) == true)
         assertEquals(watched.id, focusedChannels.last().id)
+    }
+
+    private fun press(key: Key) {
+        compose.onRoot().performKeyInput { pressKey(key) }
+        compose.mainClock.advanceTimeBy(500)
+        compose.waitForIdle()
+    }
+
+    /**
+     * Comme sur la télé : la chaîne est choisie à la télécommande puis ouverte par OK (la liste retient la chaîne qui
+     * avait le focus et la reprendrait d'elle-même au retour), on zappe sur une autre, puis retour.
+     */
+    private fun openWithRemoteZapAndReturn(layout: HomeLayout) {
+        home(layout)
+        repeat(6) { if (focusedChannels.isEmpty()) press(Key.DirectionDown) }
+        press(Key.DirectionRight)
+        val opened = focusedChannels.last()
+        press(Key.DirectionCenter)
+        assertEquals(opened.id, played.last())
+        val watched = SampleData.channels.first { it.id != opened.id && it.id > opened.id + 1 }
+        showHome = false
+        lastLive = watched.itemKey
+        compose.waitForIdle()
+        showHome = true
+        repeat(10) {
+            compose.mainClock.advanceTimeBy(150)
+            compose.waitForIdle()
+        }
+        println("$layout : ouverte ${opened.title}, regardée ${watched.title}, focus ${focusedChannels.last().title}")
+        assertEquals("$layout : focus au retour", watched.title, focusedChannels.last().title)
+    }
+
+    @Test
+    fun liveCenterWithTheRemote() = openWithRemoteZapAndReturn(HomeLayout.LIVE_CENTER)
+
+    @Test
+    fun streamingWithTheRemote() = openWithRemoteZapAndReturn(HomeLayout.STREAMING)
+
+    @Test
+    fun premiumWithTheRemote() = openWithRemoteZapAndReturn(HomeLayout.PREMIUM)
+
+    /**
+     * Sur la box Raspberry Pi, au retour du lecteur, l'écran refuse le focus un instant : la chaîne regardée en dernier doit le
+     * redemander jusqu'à l'avoir (elle le croyait pris, et la liste reprenait la chaîne ouverte au départ).
+     */
+    @Test
+    fun theLastWatchedChannelWaitsUntilItCanTakeTheFocus() {
+        var allowed by mutableStateOf(false)
+        val focused = mutableListOf<String>()
+        val lastOpened = mutableStateOf<OpenedItem?>(OpenedItem("live:tf1", 0, visit = -1))
+        compose.setContent {
+            CompositionLocalProvider(LocalLastLiveChannel provides "live:t18") {
+                androidx.compose.foundation.layout.Row {
+                    for (key in listOf("live:tf1", "live:t18")) {
+                        androidx.compose.foundation.layout.Box(
+                            androidx.compose.ui.Modifier
+                                .restoreFocus(key, lastOpened)
+                                .focusProperties { canFocus = key != "live:t18" || allowed }
+                                .onFocusChanged { if (it.isFocused) focused += key }
+                                .focusable()
+                                .size(40.dp),
+                        )
+                    }
+                }
+            }
+        }
+        compose.mainClock.advanceTimeBy(600)
+        compose.waitForIdle()
+        // Toujours refusée : la chaîne ouverte au départ ne prend pas sa place.
+        assertTrue("Focus pendant le refus : $focused", focused.isEmpty())
+        allowed = true
+        repeat(5) {
+            compose.mainClock.advanceTimeBy(150)
+            compose.waitForIdle()
+        }
+        assertEquals(listOf("live:t18"), focused)
+        assertEquals(null, lastOpened.value)
     }
 
     @Test

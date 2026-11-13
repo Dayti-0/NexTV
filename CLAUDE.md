@@ -7,9 +7,9 @@ Application IPTV Android en Kotlin / Jetpack Compose (Media3). Elle s'appelait N
 
 ## Échanges avec l'utilisateur
 
-- Il écrit en français, souvent avec des photos de l'écran : une Fire TV branchée sur un moniteur ASUS, une
-  télé Sony, et une box Raspberry Pi sous LineageOS (KonstaKANG, Android 13+). Demander sur quel appareil est prise
-  une photo avant d'en tirer une cause propre à un modèle. Répondre en français, simplement, sans jargon.
+- Il écrit en français, souvent avec des photos de l'écran : une Fire TV, une télé Sony, et une box Raspberry Pi
+  sous LineageOS (KonstaKANG, Android 13+) branchée sur le moniteur ASUS (une photo de l'écran ASUS, c'est la box).
+  Demander sur quel appareil est prise une autre photo avant d'en tirer une cause propre à un modèle. Répondre en français, simplement, sans jargon.
 - Les tests sur l'appareil sont faits par lui : dire clairement ce qui a été vérifié ici (tests, captures) et ce
   qui reste à voir sur la télé.
 - Point en attente : plantage du guide sur la Fire TV après la 25e chaîne, non reproduit. Il faut la photo de la

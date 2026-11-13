@@ -72,11 +72,13 @@ fun rememberLastOpened(): MutableState<OpenedItem?> = rememberSaveable(saver = O
 
 /**
  * Rend le focus à l'élément [key] si c'est le dernier ouvert, puis l'oublie : faire défiler la
- * liste ensuite ne déplace plus le focus. La demande est répétée brièvement : l'élément peut ne
- * devenir sélectionnable qu'une fois la liste remise à sa place.
+ * liste ensuite ne déplace plus le focus. La demande est répétée jusqu'à ce que l'élément ait vraiment le focus :
+ * il peut ne devenir sélectionnable qu'une fois la liste remise à sa place, et au retour du lecteur l'écran le refuse
+ * un instant (box Raspberry Pi) ; la liste reprenait alors d'elle-même l'élément choisi avant de partir.
  *
  * Chaîne changée dans le lecteur (zapping) : la dernière regardée ([LocalLastLiveChannel]) prend le focus si elle est
- * dans la même liste ([row] : sa rangée) ; celle ouverte au départ attend un instant, et ne le prend que sinon.
+ * dans la même liste ([row] : sa rangée) ; elle devient alors le dernier élément ouvert, celle ouverte au départ ne le
+ * cherche plus. Celle-ci attend un instant, et ne le prend que si l'autre n'est pas là.
  */
 @Composable
 internal fun Modifier.restoreFocus(key: String, lastOpened: MutableState<OpenedItem?>, row: String? = null): Modifier {
@@ -87,9 +89,12 @@ internal fun Modifier.restoreFocus(key: String, lastOpened: MutableState<OpenedI
     val deferred = watched != null && key == opened.key
     val requester = remember { FocusRequester() }
     LaunchedEffect(Unit) {
+        // Dernière chaîne regardée, présente dans la liste : c'est elle à sélectionner, plus celle ouverte au départ.
+        if (key != opened.key) lastOpened.value = opened.copy(key = key)
         if (deferred) delay(WATCHED_FIRST_MILLIS)
         repeat(FOCUS_ATTEMPTS) {
-            if (runCatching { requester.requestFocus() }.isSuccess) {
+            // Demande refusée (rendue `false`) : pas encore sélectionnable, nouvel essai.
+            if (runCatching { requester.requestFocus() }.getOrDefault(false)) {
                 lastOpened.value = null
                 return@LaunchedEffect
             }
@@ -160,7 +165,7 @@ internal fun RestoreRow(state: LazyListState, lastOpened: MutableState<OpenedIte
     }
 }
 
-private const val FOCUS_ATTEMPTS = 8
+private const val FOCUS_ATTEMPTS = 16
 
 /** Attente de la chaîne ouverte au départ, le temps que la dernière regardée prenne le focus si elle est là. */
 private const val WATCHED_FIRST_MILLIS = 300L
