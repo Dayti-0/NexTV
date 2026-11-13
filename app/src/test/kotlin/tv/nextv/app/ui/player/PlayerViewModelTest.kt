@@ -322,6 +322,55 @@ class PlayerViewModelTest {
     }
 
     /**
+     * Pause, reprise, pause, reprise sur un direct continu (aussi très vite) : la lecture reprend chaque fois depuis le
+     * direct gardé, sur la même connexion. La seconde pause arrêtait le lecteur et ouvrait une autre connexion ; la
+     * reprise relançait un lecteur arrêté (image figée jusqu'au changement de chaîne).
+     */
+    @Test
+    fun pausingALiveChannelAgainKeepsItPlaying() {
+        val server = mockwebserver3.MockWebServer()
+        // Flux MPEG-TS sans fin (paquets vides) : la connexion reste ouverte comme celle d'un vrai direct.
+        val packet = ByteArray(188).also {
+            it[0] = 0x47
+            it[1] = 0x1F
+            it[2] = 0xFF.toByte()
+            it[3] = 0x10
+        }
+        val body = okio.Buffer().apply { repeat(20_000) { write(packet) } }
+        server.enqueue(mockwebserver3.MockResponse.Builder().body(body).throttleBody(188L * 100, 100, java.util.concurrent.TimeUnit.MILLISECONDS).build())
+        server.start()
+        try {
+            val (live, _) = playlist(server.url("/live/1.ts").toString())
+            val (viewModel, store) = open(live)
+            viewModel.onStart()
+            idle()
+            fun assertPlaying(step: String) {
+                val player = checkNotNull(viewModel.player.value)
+                assertTrue("$step : lecteur arrêté", player.playbackState != androidx.media3.common.Player.STATE_IDLE)
+                assertTrue("$step : pas en lecture", player.playWhenReady)
+                assertTrue("$step : encore en pause", !viewModel.state.value.paused)
+            }
+            repeat(2) { round ->
+                viewModel.togglePause()
+                idle()
+                assertTrue(viewModel.state.value.paused)
+                viewModel.togglePause()
+                idle()
+                assertPlaying("reprise ${round + 1}")
+            }
+            // Très vite, sans attendre entre les appuis.
+            repeat(4) { viewModel.togglePause() }
+            idle()
+            assertPlaying("appuis rapides")
+            // Toujours la connexion du départ : pas de seconde connexion (souvent refusée par l'abonnement).
+            assertEquals(1, server.requestCount)
+            store.clear()
+        } finally {
+            server.close()
+        }
+    }
+
+    /**
      * Chaîne ouverte depuis les favoris : haut/bas zappe dans les favoris (dans leur ordre, en boucle) et « Retour »
      * ouvre le menu sur les favoris ; ouverte d'ailleurs, le menu reste sur sa catégorie.
      */

@@ -366,8 +366,17 @@ internal class DelayedPlaybackController(
     }
 
     private fun pauseLive(player: ExoPlayer) {
+        // Déjà relu depuis le direct gardé (pause précédente, retour en arrière), ou en train d'y passer : la connexion
+        // continue d'enregistrer la suite, il suffit d'arrêter la lecture. Un nouveau différé arrêtait ici le lecteur
+        // pour de bon (seconde connexion), et la reprise relançait un lecteur arrêté : image figée jusqu'au changement
+        // de chaîne, pauses et reprises n'y changeaient rien.
+        if (liveShift != null || shiftPending) {
+            player.pause()
+            state.update { it.copy(paused = true, pausedAtMillis = System.currentTimeMillis()) }
+            return
+        }
         // Direct gardé en mémoire : la même connexion enregistre la suite, rien n'est reperdu à la reprise.
-        if (liveShift == null && !restarting && replay == null && engine.liveRecording != null) {
+        if (!restarting && replay == null && engine.liveRecording != null) {
             if (shiftLive(extraSeconds = 0, pause = true)) {
                 // L'image se fige tout de suite ; la relecture depuis le disque prend la suite dès qu'il est prêt.
                 player.pause()
