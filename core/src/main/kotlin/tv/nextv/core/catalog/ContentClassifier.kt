@@ -102,6 +102,17 @@ object ContentClassifier {
         return Result(ContentKind.MOVIE, title, year, null)
     }
 
+    /**
+     * Titre d'une série d'après son nom (« L'impératrice remariée (MULTI) FHD » → « L'impératrice remariée ») : celui que
+     * donnent ses épisodes (avant « S01 E01 »), et donc sa clé.
+     */
+    fun seriesTitle(name: String): String {
+        val cleaned = cleanTitle(name)
+        val episode = EPISODE.find(cleaned)
+        val before = if (episode != null) cleaned.substring(0, episode.range.first) else cleaned
+        return extractYear(before).first.ifBlank { cleaned }
+    }
+
     /** Titre d'un film d'après son nom dans la playlist (« FR: The Virtuoso (2021) FHD » → « The Virtuoso »). */
     fun movieTitle(name: String): String = movieTitleAndYear(cleanTitle(name)).first
 

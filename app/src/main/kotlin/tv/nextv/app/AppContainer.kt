@@ -137,6 +137,14 @@ class AppContainer(context: Context) {
     /** Qualité des films et épisodes sans mention dans leur nom : mesurée à la lecture, ou lue sur le serveur. */
     val measuredQualities = MeasuredQualities(channelDao, { playlistStore.getSource(it) }, xtreamApi::vodVideo)
 
+    /** Durée des épisodes d'après le serveur Xtream (fiche d'une série). */
+    val episodeDurations = tv.nextv.app.data.catalog.EpisodeDurations(
+        source = { playlistStore.getSource(it) },
+        categories = xtreamApi::seriesCategories,
+        series = xtreamApi::series,
+        durations = xtreamApi::episodeDurations,
+    )
+
     /** Section Foot : tour des chaînes « événement » (LALIGA 1 à 5…) retenu d'un jour à l'autre. */
     val eventTurns = EventTurnStore(appContext.getSharedPreferences("event_turns", Context.MODE_PRIVATE))
 

@@ -165,4 +165,28 @@ class XtreamApiTest {
         assertTrue(XtreamApi.parseVodVideo("""{"info":[],"movie_data":{}}""")!!.unknown)
         assertNull(XtreamApi.parseVodVideo("<html>"))
     }
+    @Test
+    fun `series categories, series and episode durations are read`() {
+        assertEquals(
+            mapOf("12" to "Séries VF", "13" to "K-Drama"),
+            XtreamApi.parseCategories("""[{"category_id":"12","category_name":"Séries VF","parent_id":0},{"category_id":13,"category_name":"K-Drama"}]"""),
+        )
+        assertEquals(
+            listOf(XtreamSeries("345", "L'impératrice remariée (MULTI) FHD"), XtreamSeries("346", "Autre")),
+            XtreamApi.parseSeries("""[{"num":1,"name":"L'impératrice remariée (MULTI) FHD","series_id":345},{"name":"Autre","series_id":"346"},{"name":"Sans numéro"}]"""),
+        )
+        // Saisons en objet, durée en secondes ou en « hh:mm:ss » ; épisode sans durée : absent.
+        val byObject = XtreamApi.parseEpisodeDurations(
+            """{"seasons":[],"info":{"name":"S"},"episodes":{"1":[
+              {"id":"1001","episode_num":1,"season":1,"info":{"duration_secs":3120,"duration":"00:52:00"}},
+              {"id":"1002","episode_num":2,"season":1,"info":{"duration":"00:47:30"}},
+              {"id":"1003","episode_num":3,"season":1,"info":{}}],
+              "2":[{"id":1004,"episode_num":1,"info":{"duration_secs":"2700"}}]}}""",
+        )
+        assertEquals(mapOf("1001" to 3120, "1002" to 2850, "1004" to 2700), byObject)
+        // Certains serveurs : un tableau de saisons.
+        assertEquals(mapOf("7" to 1440), XtreamApi.parseEpisodeDurations("""{"episodes":[[{"id":"7","info":{"duration_secs":1440}}]]}"""))
+        assertEquals(emptyMap<String, Int>(), XtreamApi.parseEpisodeDurations("""{"episodes":[]}"""))
+        assertNull(XtreamApi.parseEpisodeDurations("<html>Erreur</html>"))
+    }
 }

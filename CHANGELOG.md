@@ -4,6 +4,10 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.138
+- Fiche d’une série : la durée des épisodes vient d’abord de ton serveur (durée exacte de chaque fichier), même pour une série que TMDB ne connaît pas encore ; TMDB reste utilisé sinon
+- Interface Classique : le bouton de retour au menu devient un rond discret avec une flèche ; sélectionné, il s’éclaire et affiche « Menu »
+
 ## 0.2.137
 - Retour à l’accueil après un changement de chaîne en plein écran : la sélection va enfin sur la dernière chaîne regardée (la liste la redonnait aussitôt à la chaîne ouverte au départ)
 

@@ -441,4 +441,10 @@ class FranceRegionsTest {
         assertNull(FranceRegions.regionOf("FR| France 5"))
         assertNull(FranceRegions.regionOf("FR| France 3 Backup"))
     }
+    @Test
+    fun `series title as the server writes it`() {
+        assertEquals("L'impératrice remariée", ContentClassifier.seriesTitle("L'impératrice remariée (MULTI) FHD"))
+        assertEquals("L'impératrice remariée", ContentClassifier.seriesTitle("L'impératrice remariée (MULTI) FHD S01 E01"))
+        assertEquals("Fairy Tail", ContentClassifier.seriesTitle("FR: Fairy Tail (2009)"))
+    }
 }

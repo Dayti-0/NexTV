@@ -101,17 +101,21 @@ data class DetailUiState(
     val seasonTrailers: Map<Int, Pair<String, String>?> = emptyMap(),
     /** Durées des épisodes des saisons lues sur TMDB (numéro de saison → numéro d'épisode → minutes ; vide : aucune). */
     val seasonRuntimes: Map<Int, Map<Int, Int>> = emptyMap(),
+    /** Durées des épisodes données par le serveur Xtream (identifiant de l'épisode → secondes). */
+    val episodeSeconds: Map<Long, Int> = emptyMap(),
     /** Versions du film quand la playlist en a plusieurs (vide sinon) ; [PlaylistItem.firstId] est celle choisie. */
     val versions: List<MovieVersion> = emptyList(),
     val selectedVersion: Int = 0,
 ) {
     /**
-     * Durée d'un épisode, en minutes : celle mesurée pendant sa lecture, sinon celle que TMDB donne pour lui, sinon la
-     * durée habituelle des épisodes de la série (numérotation de la playlist différente de celle de TMDB, épisode sans
-     * saison). `null` tant que sa saison n'est pas lue, ou si rien ne la donne.
+     * Durée d'un épisode, en minutes : celle mesurée pendant sa lecture, sinon celle du fichier d'après le serveur
+     * Xtream, sinon celle que TMDB donne pour lui, sinon la durée habituelle des épisodes de la série (numérotation de
+     * la playlist différente de celle de TMDB, épisode sans saison). `null` tant que sa saison n'est pas lue sur TMDB
+     * (et que le serveur ne l'a pas donnée), ou si rien ne la donne.
      */
     fun episodeMinutes(episode: EpisodeRow): Int? {
         progress?.takeIf { it.channelId == episode.id && it.durationMs >= 60_000 }?.let { return ((it.durationMs + 30_000) / 60_000).toInt() }
+        episodeSeconds[episode.id]?.takeIf { it >= 60 }?.let { return (it + 30) / 60 }
         val average = (metadata as? MetadataState.Available)?.details?.runtimeMinutes
         val season = episode.season ?: return average
         val runtimes = seasonRuntimes[season] ?: return null
@@ -170,6 +174,16 @@ class DetailViewModel(
                 .map { (number, episodes) -> Season(number, episodes) }
                 .sortedBy { it.number ?: 0 }
             mutableState.update { it.copy(seasons = seasons) }
+            // Durée de chaque épisode d'après le serveur Xtream (sans attendre TMDB, et même sans fiche TMDB).
+            viewModelScope.launch {
+                val episodes = seasons.flatMap { it.episodes }
+                val seconds = runCatching {
+                    container.episodeDurations.of(entity.sourceId, entity.itemKey.removePrefix("series:"), entity.groupTitle, episodes.map { it.streamUrl })
+                }.getOrDefault(emptyMap())
+                if (seconds.isEmpty()) return@launch
+                val byId = episodes.mapNotNull { episode -> seconds[episode.streamUrl]?.let { episode.id to it } }.toMap()
+                mutableState.update { it.copy(episodeSeconds = byId) }
+            }
         }
 
         if (kind == ContentKind.MOVIE) {

@@ -1,6 +1,8 @@
 package tv.nextv.app.ui.home
 
-import tv.nextv.app.ui.components.PillStyle
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.animation.animateContentSize
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import tv.nextv.app.ui.common.appContainer
 import java.util.Date
@@ -1013,14 +1015,43 @@ private fun MenuTopBar(section: HomeSection, window: WindowInfo, onMenu: () -> U
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Box(Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.surface.copy(alpha = PREMIUM_BAR_ALPHA))) {
-            PillButton(stringResource(R.string.menu_back), onMenu, Modifier.focusRequester(menuFocus), icon = Icons.AutoMirrored.Filled.ArrowBack, style = PillStyle.Ghost)
-        }
+        MenuBackButton(onMenu, Modifier.focusRequester(menuFocus))
         Icon(sectionIcon(section), contentDescription = null, tint = MaterialTheme.colorScheme.primary)
         Text(sectionLabel(section), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
         CurrentTime()
         Box(Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.surface.copy(alpha = PREMIUM_BAR_ALPHA))) {
             IconAction(Icons.Filled.Settings, stringResource(R.string.settings_title), onSettings)
+        }
+    }
+}
+
+/**
+ * Retour au menu d'accueil (Classique) : un rond discret avec sa flèche, comme le bouton des réglages en face.
+ * Sélectionné, il s'éclaire et dit où il mène (« Menu »).
+ */
+@Composable
+private fun MenuBackButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    var focused by remember { mutableStateOf(false) }
+    val label = stringResource(R.string.menu_back)
+    FocusSurface(
+        onClick = onClick,
+        modifier = modifier.semantics { contentDescription = label },
+        shape = CircleShape,
+        color = colors.surface.copy(alpha = PREMIUM_BAR_ALPHA),
+        focusedColor = colors.onSurface,
+        contentColor = if (focused) colors.surface else colors.onSurface,
+        focusScale = 1.08f,
+        onFocusChange = { focused = it },
+    ) {
+        Row(
+            Modifier.animateContentSize().padding(horizontal = if (focused) 14.dp else 10.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(22.dp))
+            if (focused) {
+                Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.padding(start = 8.dp, end = 2.dp))
+            }
         }
     }
 }

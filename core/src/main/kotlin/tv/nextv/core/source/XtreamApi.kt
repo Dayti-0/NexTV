@@ -41,6 +41,9 @@ data class VodVideo(val width: Int?, val height: Int?) {
     val unknown: Boolean get() = width == null && height == null
 }
 
+/** Série du catalogue Xtream (`get_series`) : son identifiant et son nom tel que le serveur l'écrit. */
+data class XtreamSeries(val id: String, val name: String)
+
 /** Programme d'une chaîne d'après le guide du compte Xtream (`get_short_epg`). */
 data class XtreamProgramme(val title: String, val description: String?, val startMillis: Long, val stopMillis: Long)
 
@@ -84,6 +87,26 @@ class XtreamApi(
      */
     suspend fun vodVideo(source: PlaylistSource, streamId: String): VodVideo? =
         call(source, action = "get_vod_info", callTimeoutMillis, mapOf("vod_id" to streamId)) { parseVodVideo(it.body.string()) }
+
+    /** Catégories de séries du compte (identifiant → nom) ; `null` : pas un compte Xtream ou pas de réponse. */
+    suspend fun seriesCategories(source: PlaylistSource): Map<String, String>? =
+        call(source, action = "get_series_categories", callTimeoutMillis) { parseCategories(it.body.string()) }
+
+    /**
+     * Séries d'une catégorie ([categoryId]), ou de tout le catalogue (`null` : plusieurs mégaoctets pour un gros
+     * catalogue) ; `null` : pas un compte Xtream ou pas de réponse.
+     */
+    suspend fun series(source: PlaylistSource, categoryId: String?): List<XtreamSeries>? =
+        call(source, action = "get_series", listTimeoutMillis, categoryId?.let { mapOf("category_id" to it) }.orEmpty()) {
+            parseSeries(it.body.string())
+        }
+
+    /**
+     * Durée des épisodes d'une série (`get_series_info`), en secondes, par identifiant de flux de l'épisode (celui de
+     * son adresse, « …/series/…/12345.mkv ») ; `null` : pas de compte Xtream ou pas de réponse.
+     */
+    suspend fun episodeDurations(source: PlaylistSource, seriesId: String): Map<String, Int>? =
+        call(source, action = "get_series_info", callTimeoutMillis, mapOf("series_id" to seriesId)) { parseEpisodeDurations(it.body.string()) }
 
     private suspend fun <T : Any> call(
         source: PlaylistSource,
@@ -150,6 +173,69 @@ class XtreamApi(
             VodVideo(video?.number("width")?.toInt()?.takeIf { it > 0 }, video?.number("height")?.toInt()?.takeIf { it > 0 })
         } catch (e: JSONException) {
             null
+        }
+
+        /** Réponse de `get_series_categories` : `[{"category_id":"12","category_name":"Séries VF"},…]`. */
+        fun parseCategories(body: String): Map<String, String>? = try {
+            val array = org.json.JSONArray(body)
+            buildMap {
+                for (i in 0 until array.length()) {
+                    val item = array.optJSONObject(i) ?: continue
+                    val id = item.text("category_id") ?: continue
+                    put(id, item.text("category_name") ?: continue)
+                }
+            }
+        } catch (e: JSONException) {
+            null
+        }
+
+        /** Réponse de `get_series` : `[{"series_id":345,"name":"…",…},…]`. */
+        fun parseSeries(body: String): List<XtreamSeries>? = try {
+            val array = org.json.JSONArray(body)
+            (0 until array.length()).mapNotNull { i ->
+                val item = array.optJSONObject(i) ?: return@mapNotNull null
+                val id = item.text("series_id") ?: return@mapNotNull null
+                XtreamSeries(id, item.text("name") ?: return@mapNotNull null)
+            }
+        } catch (e: JSONException) {
+            null
+        }
+
+        /**
+         * Réponse de `get_series_info` : `{"episodes":{"1":[{"id":"12345","info":{"duration_secs":3120,"duration":"00:52:00"}}]}}`
+         * (les épisodes sont parfois un tableau de tableaux). Épisodes sans durée : absents. `null` : illisible.
+         */
+        fun parseEpisodeDurations(body: String): Map<String, Int>? = try {
+            val episodes = JSONObject(body).opt("episodes")
+            val seasons: List<org.json.JSONArray> = when (episodes) {
+                is JSONObject -> episodes.keys().asSequence().mapNotNull { episodes.optJSONArray(it) }.toList()
+                is org.json.JSONArray -> (0 until episodes.length()).mapNotNull { episodes.optJSONArray(it) }
+                else -> emptyList()
+            }
+            buildMap {
+                for (season in seasons) {
+                    for (i in 0 until season.length()) {
+                        val episode = season.optJSONObject(i) ?: continue
+                        val id = episode.text("id") ?: continue
+                        val info = episode.optJSONObject("info") ?: continue
+                        val seconds = info.number("duration_secs")?.toInt()?.takeIf { it > 0 }
+                            ?: info.text("duration")?.let(::clockSeconds)
+                        if (seconds != null && seconds > 0) put(id, seconds)
+                    }
+                }
+            }
+        } catch (e: JSONException) {
+            null
+        }
+
+        /** « 00:52:10 » ou « 52:10 » → secondes ; `null` si illisible. */
+        private fun clockSeconds(text: String): Int? {
+            val parts = text.split(':').map { it.trim().toIntOrNull() ?: return null }
+            return when (parts.size) {
+                3 -> parts[0] * 3600 + parts[1] * 60 + parts[2]
+                2 -> parts[0] * 60 + parts[1]
+                else -> null
+            }
         }
 
         private fun JSONObject.text(name: String): String? = if (isNull(name)) null else optString(name).trim().takeIf { it.isNotEmpty() }

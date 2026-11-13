@@ -301,6 +301,8 @@ data class EpisodeRow(
     val episode: Int?,
     val logoUrl: String?,
     val streamSupport: String,
+    /** Adresse du flux (identifiant de l'épisode sur un serveur Xtream : sa durée y est connue). */
+    val streamUrl: String = "",
 )
 
 /** Programme de la grille du guide : tout sauf la description, lue à la demande ([ProgrammeDao.description]). */
@@ -639,7 +641,7 @@ interface ChannelDao {
 
     @Query(
         """
-        SELECT id, name, season, episode, logoUrl, streamSupport FROM channels
+        SELECT id, name, season, episode, logoUrl, streamSupport, streamUrl FROM channels
         WHERE sourceId = :sourceId AND kind = 'SERIES' AND itemKey = :itemKey
         ORDER BY IFNULL(season, 0), IFNULL(episode, 0), position
         """,
