@@ -98,6 +98,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
+          # Code inchangé (captures reprises du cache de Gradle, sans fichier) : celles de la branche restent valables.
+          if ! ls app/build/screenshots/*.png > /dev/null 2>&1; then
+            echo "Aucune nouvelle capture : la branche screenshots reste telle quelle."
+            exit 0
+          fi
           WORK="$RUNNER_TEMP/screenshots"
           mkdir -p "$WORK"
           cp app/build/screenshots/*.png "$WORK"/
