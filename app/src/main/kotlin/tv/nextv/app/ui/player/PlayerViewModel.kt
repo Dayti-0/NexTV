@@ -38,6 +38,7 @@ import tv.nextv.app.data.db.ChannelEntity
 import tv.nextv.app.data.db.ChannelListRow
 import tv.nextv.app.data.db.GroupRow
 import tv.nextv.app.data.db.ProgrammeEntity
+import tv.nextv.app.data.db.displayTitle
 import tv.nextv.app.data.settings.AspectMode
 import tv.nextv.app.player.PlaybackRequest
 import tv.nextv.app.player.toStream
@@ -446,12 +447,12 @@ class PlayerViewModel(
                 }
                 // Chaîne retirée des favoris entre-temps : zapping dans toute la playlist.
             }
-            // Ordre de la liste « Toutes » : depuis la place de la chaîne en cours dans cette liste.
-            val position = current.variantKey.takeIf { it.isNotEmpty() }?.let { dao.listedPosition(current.sourceId, it) } ?: current.position
+            // Ordre de la liste « Toutes » (rangé si les chaînes sont rassemblées) : depuis le rang de la chaîne en cours.
+            val order = current.variantKey.takeIf { it.isNotEmpty() }?.let { dao.listedOrder(current.sourceId, it) } ?: current.listOrder
             val target = if (direction > 0) {
-                dao.nextChannelId(current.sourceId, position) ?: dao.nextChannelId(current.sourceId, -1)
+                dao.nextChannelId(current.sourceId, order) ?: dao.nextChannelId(current.sourceId, Int.MIN_VALUE)
             } else {
-                dao.previousChannelId(current.sourceId, position) ?: dao.previousChannelId(current.sourceId, Int.MAX_VALUE)
+                dao.previousChannelId(current.sourceId, order) ?: dao.previousChannelId(current.sourceId, Int.MAX_VALUE)
             }
             if (target != null && target != current.id) load(target)
         }
@@ -530,7 +531,7 @@ class PlayerViewModel(
 
         mutableState.update {
             it.copy(
-                channelName = primary.title.ifBlank { primary.name },
+                channelName = primary.displayTitle(),
                 channelNumber = primary.channelNumber,
                 logoUrl = primary.logoUrl,
                 sourceName = source?.name.orEmpty(),

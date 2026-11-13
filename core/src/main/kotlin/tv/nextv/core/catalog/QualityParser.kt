@@ -20,9 +20,11 @@ object QualityParser {
      * 6 : éditions régionales de France 3 regroupées sous le nom de leur antenne, « Haute » gardé dans les noms,
      * chaînes dont les noms ne diffèrent que par « TV » regroupées ; 7 : « (True FR) » reconnu comme Truefrench ;
      * 8 : un film sous son titre français et son titre original regroupé, d'après sa fiche TMDB ;
-     * 9 : versions « Double audio » et « Dolby Digital » d'une chaîne regroupées avec elle).
+     * 9 : versions « Double audio » et « Dolby Digital » d'une chaîne regroupées avec elle ;
+     * 10 : écritures d'un même nom regroupées (« + », « & », pluriels), séparateurs de la playlist à part, ordre rangé
+     * des chaînes et versions de son gardées pour le réglage « Rassembler les chaînes »).
      */
-    const val VERSION = 9
+    const val VERSION = 10
 
     data class Result(
         /** Nom sans les mentions de qualité ni de codec. */
@@ -189,6 +191,9 @@ object QualityParser {
     )
     private val BACKUP = Regex("(?i)(?<![\\p{L}\\p{Nd}])(?:bkp|backup)\\d*(?![\\p{L}\\p{Nd}])")
 
+    /** « Chaîne » d'une mention « (CHAINE EXCLUSIVE) » : retirée avec elle (sinon « BEIN SPORTS (CHAINE ) »). */
+    private val EXCLUSIVE_CHANNEL = Regex("(?iu)(?<![\\p{L}\\p{Nd}])cha[iî]ne(?=\\s+exclu)")
+
     /** Mots qui accompagnent une mention de qualité, accentués ou non ([DESCRIPTIVE_TOKENS]). */
     private val DESCRIPTIVE = Regex(
         "(?iu)(?<![\\p{L}\\p{Nd}])(?:r[eé]solution|qualit[eé]|quality|r[eé]el(?:le)?|nati(?:ve|f)|d[eé]finition)(?![\\p{L}\\p{Nd}])",
@@ -199,6 +204,10 @@ object QualityParser {
 
     /** Parenthèses ou crochets vidés par le retrait des mentions (« ( ) », « [ : ] »). */
     private val EMPTY_BRACKETS = Regex("[\\[(][\\s:.,;|/_-]*[\\])]")
+
+    /** Espaces laissées contre une parenthèse par le retrait d'une mention (« ( StadiumFX) » → « (StadiumFX) »). */
+    private val OPENING_SPACES = Regex("([\\[(])\\s+")
+    private val CLOSING_SPACES = Regex("\\s+([\\])])")
     private val SPACES = Regex("\\s{2,}")
     private val MARKS = Regex("\\p{Mn}+")
 
@@ -211,15 +220,18 @@ object QualityParser {
         backup: Boolean,
         audio: Boolean,
     ): String {
-        val withoutQuality = if (hasTokens) name.replace(STRIP, " ") else name
+        val withoutQuality = if (hasTokens) name.replace(EXCLUSIVE_CHANNEL, " ").replace(STRIP, " ") else name
         val withoutAudio = if (audio) withoutQuality.replace(AUDIO, " ") else withoutQuality
         val stripped = if (backup) withoutAudio.replace(BACKUP, " ") else withoutAudio
         val described = if (dropDescriptive) stripped.replace(DESCRIPTIVE, " ") else stripped
         return (if (dropQualifiers) described.replace(QUALIFIERS, " ") else described)
             .replace(EMPTY_BRACKETS, " ")
+            .replace(OPENING_SPACES, "$1")
+            .replace(CLOSING_SPACES, "$1")
             .replace(SPACES, " ")
             .trim()
-            .trim('-', '|', ':', '_', '.', ' ')
+            // « BFM BUSINESS FHD/HD » : la barre entre deux mentions retirées.
+            .trim('-', '|', ':', '_', '.', '/', ' ')
             .trim()
     }
 

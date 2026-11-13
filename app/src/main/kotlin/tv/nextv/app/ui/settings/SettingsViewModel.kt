@@ -101,8 +101,10 @@ data class SettingsUiState(
     val hideUhd: Boolean = false,
     /** Son Dolby / DTS envoyé tel quel à l'ampli (sinon décodé par l'appareil). */
     val audioPassthrough: Boolean = false,
-    /** Région de France 3 gardée (clé), `null` : toutes. */
+    /** Région de France 3 gardée (clé), `null` : toutes (France 3 seule si les chaînes sont rassemblées). */
     val france3Region: String? = null,
+    /** « Rassembler les chaînes » : une ligne par chaîne, listes rangées comme sur une télé. */
+    val mergeChannels: Boolean = true,
     /** Éditions régionales de France 3 de la playlist active. */
     val france3Regions: List<FranceRegions.Region> = emptyList(),
 )
@@ -210,18 +212,24 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         val trailerSound: Boolean,
         val trailerDelaySeconds: Int,
         val previewHandoff: Boolean,
+        val mergeChannels: Boolean,
     )
+
+    private data class Toggles(val hideUhd: Boolean, val audioPassthrough: Boolean, val trailerAutoplay: Boolean, val mergeChannels: Boolean)
 
     /** Réglages ajoutés depuis : son de l'aperçu, fréquence de mise à jour, dernier plantage, filtres des chaînes. */
     private val extras = combine(
         combine(settings.previewVolume, settings.playlistRefresh, lastCrash, ::Triple),
-        combine(settings.hideUhd, settings.audioPassthrough, settings.trailerAutoplay, ::Triple),
+        combine(settings.hideUhd, settings.audioPassthrough, settings.trailerAutoplay, settings.mergeChannels, ::Toggles),
         combine(settings.france3Region, france3Regions, settings.trailerSound, settings.trailerDelaySeconds, settings.previewHandoff) { region, regions, sound, delay, handoff ->
             listOf(region, regions, sound, delay, handoff)
         },
-    ) { (volume, refresh, crash), (hideUhd, passthrough, trailers), more ->
+    ) { (volume, refresh, crash), toggles, more ->
         @Suppress("UNCHECKED_CAST")
-        Extras(volume, refresh, crash, hideUhd, passthrough, more[0] as String?, more[1] as List<FranceRegions.Region>, trailers, more[2] as Boolean, more[3] as Int, more[4] as Boolean)
+        Extras(
+            volume, refresh, crash, toggles.hideUhd, toggles.audioPassthrough, more[0] as String?, more[1] as List<FranceRegions.Region>,
+            toggles.trailerAutoplay, more[2] as Boolean, more[3] as Int, more[4] as Boolean, toggles.mergeChannels,
+        )
     }
 
     val state: StateFlow<SettingsUiState> = combine(
@@ -264,6 +272,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             audioPassthrough = extra.audioPassthrough,
             france3Region = extra.france3Region,
             france3Regions = extra.france3Regions,
+            mergeChannels = extra.mergeChannels,
             trailerAutoplay = extra.trailerAutoplay,
             trailerSound = extra.trailerSound,
             trailerDelaySeconds = extra.trailerDelaySeconds,
@@ -317,6 +326,10 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     fun setFrance3Region(region: String?) {
         viewModelScope.launch { settings.setFrance3Region(region) }
+    }
+
+    fun setMergeChannels(enabled: Boolean) {
+        viewModelScope.launch { settings.setMergeChannels(enabled) }
     }
 
     fun setAutoQuality(enabled: Boolean) {

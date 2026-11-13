@@ -32,12 +32,16 @@ object TntChannels {
         add(18, "t18", "cmitv")
         add(19, "novo19", "oftv", "ouestfrancetv")
         add(20, "tf1seriesfilms", "tf1seriefilms")
-        add(21, "lequipe", "lequipetv", "lequipe21")
+        add(21, "lequipe", "lequipetv", "lequipe21", "lachainelequipe")
         add(22, "6ter")
         add(23, "rmcstory")
         add(24, "rmcdecouverte")
-        add(25, "cherie25")
+        // Chérie 25, devenue RMC Life.
+        add(25, "rmclife", "cherie25")
     }
+
+    /** Numéro TNT d'un nom déjà normalisé ([EpgImporter.normalizeName] du nom nettoyé : « france2 »). */
+    fun numberOfNormalized(normalizedName: String): Int? = NUMBERS[normalizedName]
 
     /** Numéro TNT de la chaîne, ou `null` si ce n'est pas une chaîne gratuite de la TNT. */
     fun number(name: String, epgChannelId: String? = null): Int? {

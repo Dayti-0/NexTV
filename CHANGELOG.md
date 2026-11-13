@@ -4,6 +4,14 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.140
+- Nouveau réglage « Rassembler les chaînes » (Réglages › Lecture › Chaînes, activé d’office) : une seule ligne par chaîne, même quand la playlist la propose en plusieurs versions de son (double audio, Dolby Digital) ou l’écrit de plusieurs façons (« CHASSE & PÊCHE » et « CHASSE ET PECHE », « TELETOON +1 » et « TELETOON+ 1 »…), dans « Toutes les chaînes » comme dans chaque catégorie
+- « Toutes les chaînes » rangée comme sur une télé : la TNT dans l’ordre des numéros (TF1, France 2, France 3, France 4…), puis Canal+, le cinéma, les séries, le sport, la découverte, la jeunesse, la musique, l’info, les chaînes régionales et d’outre-mer, les chaînes « événement » (matchs en direct seulement), et enfin les autres ; les catégories, le zapping et le guide suivent le même ordre
+- Les fausses chaînes de séparation de la playlist (« ▀▄ FR ▀▄ REGIONALES ▄▀ ») disparaissent, et les autres éditions régionales de France 3 aussi : seule France 3 reste, avec juste après elle celle de ta région si tu l’as choisie (Réglages › Région France 3)
+- Réglage coupé : les chaînes telles que la playlist les présente, versions de son à part (« CANAL+ (Double audio) », « CANAL+ (Dolby) ») et dans l’ordre de la playlist
+- Noms plus propres : « BFM BUSINESS » au lieu de « BFM BUSINESS / », « BEIN SPORTS FRANCE LIGUE 1 » sans « (CHAINE ) »
+- La playlist est relue au lancement qui suit la mise à jour ; favoris et chaînes récentes suivent les chaînes regroupées
+
 ## 0.2.139
 - Chaînes en plusieurs versions de son (« CANAL+ CINEMA(S) », « … (DOUBLE AUDIO) », « … DOLBY DIGITAL », pareil pour Ciné+ Festival…) : une seule chaîne dans la liste, qui s’ouvre d’office sur la version double audio (VF et VO au choix), sinon Dolby Digital ; la playlist est relue au lancement qui suit la mise à jour
 - Favoris et chaînes récentes enregistrés sous une version « Double audio » ou « Dolby » suivent la chaîne regroupée

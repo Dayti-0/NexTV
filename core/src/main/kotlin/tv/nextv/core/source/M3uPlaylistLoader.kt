@@ -4,6 +4,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import tv.nextv.core.catalog.ChannelLineup
 import tv.nextv.core.catalog.ContentClassifier
 import tv.nextv.core.catalog.LiveVariants
 import tv.nextv.core.catalog.QualityParser
@@ -152,7 +153,11 @@ class M3uPlaylistLoader(
         }
         // Versions d'une chaîne écrites différemment d'une qualité à l'autre (« … TV IDF » et « … IDF ») : regroupées.
         // Versions « Double audio » ou « Dolby Digital » d'une chaîne : ouvertes avant la version au son ordinaire.
-        return LoadedPlaylist(LiveVariants.preferBetterAudio(LiveVariants.unify(channels)), playlist.epgUrls, warnings)
+        val grouped = LiveVariants.preferBetterAudio(LiveVariants.unify(channels))
+        // Ordre rangé des chaînes (TNT, Canal+, cinéma…), utilisé quand les chaînes sont rassemblées (réglages).
+        val lineup = ChannelLineup.compute(grouped)
+        val arranged = if (lineup.isEmpty()) grouped else grouped.map { channel -> lineup[channel.position]?.let { channel.copy(lineup = it) } ?: channel }
+        return LoadedPlaylist(arranged, playlist.epgUrls, warnings)
     }
 
     /** @param strings textes déjà rencontrés (groupes…) : une seule copie en mémoire pour des milliers d'entrées. */
@@ -172,6 +177,7 @@ class M3uPlaylistLoader(
         val classification = ContentClassifier.classify(name, stream.url, entry.group, attributes)
         val live = classification.kind == ModelContentKind.LIVE
         val quality = if (live) QualityParser.parse(name) else null
+        val key = quality?.variantKey?.let(LiveVariants::key).orEmpty()
         return Channel(
             position = position,
             name = name,
@@ -183,10 +189,12 @@ class M3uPlaylistLoader(
             channelNumber = attributes["tvg-chno"]?.takeIf { it.isNotBlank() },
             kind = classification.kind,
             title = quality?.baseName ?: classification.title,
-            variantKey = quality?.variantKey?.let(LiveVariants::key).orEmpty(),
+            // Séparateur de la playlist (« ▀▄ FR ▀▄ CANAL+ ▄▀ ») : jamais une version de la chaîne qu'il annonce.
+            variantKey = if (live && ChannelLineup.isSeparator(name)) LiveVariants.separatorKey(key) else key,
             quality = if (live) quality?.quality else vodQuality(name, entry.group, groupQualities),
             year = classification.year,
             episode = classification.episode,
+            audio = quality?.audioRank ?: 0,
         )
     }
 

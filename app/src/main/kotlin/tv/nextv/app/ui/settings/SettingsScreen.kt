@@ -256,6 +256,7 @@ fun SettingsScreen(
         onHideUhd = viewModel::setHideUhd,
         onAudioPassthrough = viewModel::setAudioPassthrough,
         onFrance3Region = viewModel::setFrance3Region,
+        onMergeChannels = viewModel::setMergeChannels,
         update = update,
         onQuickSetup = onQuickSetup,
         onCheckUpdate = viewModel::checkUpdate,
@@ -304,6 +305,7 @@ fun SettingsContent(
     onHideUhd: (Boolean) -> Unit = {},
     onAudioPassthrough: (Boolean) -> Unit = {},
     onFrance3Region: (String?) -> Unit = {},
+    onMergeChannels: (Boolean) -> Unit = {},
     update: UpdateState = UpdateState.Idle,
     onCheckUpdate: () -> Unit = {},
     onInstallUpdate: (AppRelease) -> Unit = {},
@@ -411,31 +413,39 @@ fun SettingsContent(
                 }
                 SectionCard(stringResource(R.string.settings_group_channels)) {
                     ToggleRow(
+                        title = stringResource(R.string.settings_merge_channels),
+                        description = stringResource(R.string.settings_merge_channels_help),
+                        checked = state.mergeChannels,
+                        onChange = onMergeChannels,
+                    )
+                    ToggleRow(
                         title = stringResource(R.string.settings_start_last_channel),
                         description = stringResource(R.string.settings_start_last_channel_help),
                         checked = state.startOnLastChannel,
                         onChange = onStartOnLastChannel,
                     )
-                    // Une seule édition régionale de France 3 dans les listes.
+                    // Une seule édition régionale de France 3 dans les listes (aucune sans choix, chaînes rassemblées).
                     var choosingRegion by remember { mutableStateOf(false) }
+                    val noRegion = stringResource(if (state.mergeChannels) R.string.settings_france3_region_national else R.string.settings_france3_region_all)
                     ValueRow(
                         title = stringResource(R.string.settings_france3_region),
                         value = state.france3Regions.firstOrNull { it.key == state.france3Region }?.label
                             ?: state.france3Region?.let { stringResource(R.string.settings_france3_region_missing) }
-                            ?: stringResource(R.string.settings_france3_region_all),
+                            ?: noRegion,
                         onClick = { choosingRegion = true },
                         enabled = state.france3Regions.isNotEmpty() || state.france3Region != null,
                     )
                     InfoText(
-                        if (state.france3Regions.isEmpty()) {
-                            stringResource(R.string.settings_france3_region_none)
-                        } else {
-                            stringResource(R.string.settings_france3_region_help)
+                        when {
+                            state.france3Regions.isEmpty() -> stringResource(R.string.settings_france3_region_none)
+                            state.mergeChannels -> stringResource(R.string.settings_france3_region_merged_help)
+                            else -> stringResource(R.string.settings_france3_region_help)
                         },
                     )
                     if (choosingRegion) {
                         RegionDialog(
                             regions = state.france3Regions,
+                            noRegion = noRegion,
                             selected = state.france3Region,
                             onSelect = {
                                 choosingRegion = false
@@ -902,6 +912,8 @@ private fun dnsLabel(dns: DnsProvider): String = when (dns) {
 @Composable
 private fun RegionDialog(
     regions: List<FranceRegions.Region>,
+    /** Libellé du choix « aucune région » : toutes les éditions, ou France 3 seule (chaînes rassemblées). */
+    noRegion: String,
     selected: String?,
     onSelect: (String?) -> Unit,
     onDismiss: () -> Unit,
@@ -916,7 +928,7 @@ private fun RegionDialog(
         ) {
             Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(stringResource(R.string.settings_france3_region), style = MaterialTheme.typography.titleLarge)
-                val choices = listOf<Pair<String?, String>>(null to stringResource(R.string.settings_france3_region_all)) +
+                val choices = listOf<Pair<String?, String>>(null to noRegion) +
                     regions.map { it.key to it.label }
                 val selectedIndex = choices.indexOfFirst { it.first == selected }.coerceAtLeast(0)
                 LazyColumn(

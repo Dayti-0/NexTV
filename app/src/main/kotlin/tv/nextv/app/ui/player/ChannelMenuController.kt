@@ -117,8 +117,8 @@ internal class ChannelMenuController(
             val (category, index) = when {
                 favorite >= 0 -> Category.Favorites to favorite
                 // Catégorie masquée et chaîne hors des favoris : la liste « Toutes ».
-                hidden -> Category.All to dao.indexInList(current.sourceId, 0, "", current.position)
-                else -> Category.Group(group) to dao.indexInList(current.sourceId, 1, group, current.position)
+                hidden -> Category.All to dao.indexInList(current.sourceId, 0, "", current.listOrder)
+                else -> Category.Group(group) to dao.indexInList(current.sourceId, 1, group, current.listOrder)
             }
             mutableMenu.value = ChannelMenuState(
                 open = true,

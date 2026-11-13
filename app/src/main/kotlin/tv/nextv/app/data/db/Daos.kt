@@ -11,6 +11,8 @@ import androidx.room.Upsert
 import androidx.sqlite.db.SimpleSQLiteQuery
 import androidx.sqlite.db.SupportSQLiteQuery
 import kotlinx.coroutines.flow.Flow
+import tv.nextv.core.catalog.LiveVariants
+import tv.nextv.core.catalog.QualityParser
 
 /*
  * Une chaîne peut exister en plusieurs versions (FHD, HD, SD…), souvent rangées dans des catégories
@@ -63,6 +65,43 @@ private const val BEST_IN_GROUP =
 private const val BEST_VISIBLE =
     "NOT EXISTS (SELECT 1 FROM channels b WHERE $BETTER_VERSION " +
         "AND IFNULL(b.groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'LIVE'))"
+
+/*
+ * « Rassembler les chaînes » (réglages) : activé, une chaîne n'a qu'une clé de version, celle de sa clé stable
+ * (`itemKey` sans « live: »), et les listes suivent l'ordre rangé (`lineup`) ; coupé, ses versions double audio et
+ * Dolby (`audio`) ont chacune leur clé et les listes suivent la playlist (`position`). `listOrder` porte l'ordre en
+ * vigueur, recalculé à chaque changement du réglage (ChannelDao.applyGrouping).
+ */
+
+/** Clé de version de `channels` selon `:merge` (1 : chaînes rassemblées ; voir LiveVariants.splitKey). */
+private const val GROUPED_KEY =
+    "CASE WHEN :merge = 1 OR audio = 0 THEN substr(itemKey, 6) " +
+        "WHEN audio = ${QualityParser.AUDIO_MULTI} THEN substr(itemKey, 6) || '${LiveVariants.MULTI_AUDIO_SUFFIX}' " +
+        "ELSE substr(itemKey, 6) || '${LiveVariants.DOLBY_SUFFIX}' END"
+
+/** Rang dans les listes de `channels` selon `:merge`. */
+private const val GROUPED_ORDER = "CASE WHEN :merge = 1 THEN lineup ELSE position END"
+
+/** Fin du nom affiché d'une version double audio, quand les chaînes ne sont pas rassemblées. */
+internal const val MULTI_AUDIO_LABEL = " (Double audio)"
+
+/** Fin du nom affiché d'une version Dolby Digital, quand les chaînes ne sont pas rassemblées. */
+internal const val DOLBY_LABEL = " (Dolby)"
+
+/**
+ * Nom affiché de la chaîne `c` : chaînes non rassemblées, une version double audio ou Dolby le dit (« CANAL+ (Dolby) »),
+ * sinon on ne saurait pas la distinguer de la chaîne au son ordinaire (voir [displayTitle]).
+ */
+private const val LIVE_TITLE =
+    "c.title || CASE WHEN c.audio = 0 OR c.variantKey = substr(c.itemKey, 6) THEN '' " +
+        "WHEN c.audio = ${QualityParser.AUDIO_MULTI} THEN '$MULTI_AUDIO_LABEL' ELSE '$DOLBY_LABEL' END AS title"
+
+/** Nom affiché d'une chaîne (lecteur), comme dans les listes ([LIVE_TITLE]). */
+fun ChannelEntity.displayTitle(): String {
+    val shown = title.ifBlank { name }
+    if (audio == 0 || variantKey.isEmpty() || variantKey == itemKey.removePrefix("live:")) return shown
+    return shown + if (audio == QualityParser.AUDIO_MULTI) MULTI_AUDIO_LABEL else DOLBY_LABEL
+}
 
 /** Jours de replay de `c` : ceux de la version qui en a le plus (toutes ne sont pas forcément enregistrées). */
 private const val CATCHUP_DAYS =
@@ -141,7 +180,7 @@ private val PAGE_CHANNELS_PARAMETERS = listOf("sourceId", "filterGroup", "group"
 
 internal val PAGE_CHANNELS: String = numberParameters(
     """
-    SELECT c.id, c.name, c.title, c.groupTitle, c.logoUrl, c.channelNumber, c.streamSupport, c.streamIssues,
+    SELECT c.id, c.name, $LIVE_TITLE, c.groupTitle, c.logoUrl, c.channelNumber, c.streamSupport, c.streamIssues,
         c.quality, c.variantCount, c.itemKey,
         p.title AS nowTitle, p.startMillis AS nowStart, p.stopMillis AS nowStop
     FROM channels c
@@ -149,7 +188,7 @@ internal val PAGE_CHANNELS: String = numberParameters(
     WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND $LISTED
       AND (:query = '' OR c.name LIKE '%' || :query || '%' ESCAPE '\'
         OR (:key != '' AND c.itemKey LIKE 'live:%' || :key || '%'))
-    ORDER BY c.position
+    ORDER BY c.listOrder
     """.trimIndent(),
     PAGE_CHANNELS_PARAMETERS,
 )
@@ -354,7 +393,8 @@ data class GuideVersionRow(
     val title: String,
     val logoUrl: String?,
     val epgChannelId: String,
-    val position: Int,
+    /** Rang dans les listes ([ChannelEntity.listOrder]). */
+    val listOrder: Int,
     val catchupDays: Int,
     val itemKey: String,
 )
@@ -545,7 +585,7 @@ interface ChannelDao {
     /** Chaînes favorites, dans l'ordre choisi. */
     @Query(
         """
-        SELECT c.id, c.name, c.title, c.groupTitle, c.logoUrl, c.channelNumber, c.streamSupport, c.streamIssues,
+        SELECT c.id, c.name, $LIVE_TITLE, c.groupTitle, c.logoUrl, c.channelNumber, c.streamSupport, c.streamIssues,
             c.quality, c.variantCount, c.itemKey,
             p.title AS nowTitle, p.startMillis AS nowStart, p.stopMillis AS nowStop
         FROM favorites f
@@ -560,7 +600,7 @@ interface ChannelDao {
     /** Chaînes désignées par leur clé (chaînes récentes), meilleure version de chacune, dans le désordre. */
     @Query(
         """
-        SELECT c.id, c.name, c.title, c.groupTitle, c.logoUrl, c.channelNumber, c.streamSupport, c.streamIssues,
+        SELECT c.id, c.name, $LIVE_TITLE, c.groupTitle, c.logoUrl, c.channelNumber, c.streamSupport, c.streamIssues,
             c.quality, c.variantCount, c.itemKey,
             p.title AS nowTitle, p.startMillis AS nowStart, p.stopMillis AS nowStop
         FROM channels c
@@ -659,47 +699,47 @@ interface ChannelDao {
     suspend fun variants(sourceId: Long, variantKey: String): List<VariantRow>
 
     /**
-     * Chaîne suivante (zapping), dans l'ordre de la liste « Toutes » : meilleure version visible de
-     * la chaîne suivante.
+     * Chaîne suivante (zapping), dans l'ordre de la liste « Toutes » ([ChannelEntity.listOrder]) : meilleure version
+     * visible de la chaîne suivante.
      */
     @Query(
         """
         SELECT c.id FROM channels c
-        WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.position > :position
+        WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.listOrder > :order
           AND c.streamSupport != 'UNSUPPORTED' AND $NOT_HIDDEN AND $BEST_VISIBLE
-        ORDER BY c.position ASC LIMIT 1
+        ORDER BY c.listOrder ASC LIMIT 1
         """,
     )
-    suspend fun nextChannelId(sourceId: Long, position: Int): Long?
+    suspend fun nextChannelId(sourceId: Long, order: Int): Long?
 
     @Query(
         """
         SELECT c.id FROM channels c
-        WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.position < :position
+        WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.listOrder < :order
           AND c.streamSupport != 'UNSUPPORTED' AND $NOT_HIDDEN AND $BEST_VISIBLE
-        ORDER BY c.position DESC LIMIT 1
+        ORDER BY c.listOrder DESC LIMIT 1
         """,
     )
-    suspend fun previousChannelId(sourceId: Long, position: Int): Long?
+    suspend fun previousChannelId(sourceId: Long, order: Int): Long?
 
-    /** Place d'une chaîne dans la liste « Toutes » (sa meilleure version visible), point de départ du zapping. */
+    /** Rang d'une chaîne dans la liste « Toutes » (celui de sa meilleure version visible), point de départ du zapping. */
     @Query(
         """
-        SELECT c.position FROM channels c
+        SELECT c.listOrder FROM channels c
         WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.variantKey = :variantKey AND $NOT_HIDDEN
         ORDER BY c.qualityRank DESC, c.position LIMIT 1
         """,
     )
-    suspend fun listedPosition(sourceId: Long, variantKey: String): Int?
+    suspend fun listedOrder(sourceId: Long, variantKey: String): Int?
 
-    /** Rang d'une chaîne dans sa liste (pour placer le focus du menu des chaînes). */
+    /** Place d'une chaîne dans sa liste, d'après son rang [order] (pour placer le focus du menu des chaînes). */
     @Query(
         """
         SELECT COUNT(*) FROM channels c
-        WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.position < :position AND $LISTED
+        WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.listOrder < :order AND $LISTED
         """,
     )
-    suspend fun indexInList(sourceId: Long, filterGroup: Int, group: String, position: Int): Int
+    suspend fun indexInList(sourceId: Long, filterGroup: Int, group: String, order: Int): Int
 
     /** Chaînes dont le nom peut désigner France 3 (éditions régionales comprises) : clé et nom de chaque version. */
     @Query(
@@ -710,6 +750,53 @@ interface ChannelDao {
         """,
     )
     suspend fun franceTroisCandidates(sourceId: Long): List<ItemNameRow>
+
+    /** Clés des séparateurs de la playlist (« ▀▄ FR ▀▄ CINEMA ▄▀ ») : masqués quand les chaînes sont rassemblées. */
+    @Query("SELECT DISTINCT itemKey FROM channels WHERE sourceId = :sourceId AND kind = 'LIVE' AND itemKey LIKE 'live:${LiveVariants.SEPARATOR_PREFIX}%'")
+    suspend fun separatorKeys(sourceId: Long): List<String>
+
+    /**
+     * Chaînes rassemblées ([merge]) ou non, selon le réglage « Rassembler les chaînes » : clé de version et rang dans les
+     * listes de chaque chaîne, puis meilleure version et nombre de versions (comme à l'enregistrement de la playlist,
+     * voir VariantInfo). Ne fait rien si les chaînes sont déjà rangées ainsi.
+     */
+    @androidx.room.Transaction
+    suspend fun applyGrouping(sourceId: Long, merge: Boolean) {
+        val flag = if (merge) 1 else 0
+        if (!groupingOutdated(sourceId, flag)) return
+        setGroupedKeys(sourceId, flag)
+        setListOrder(sourceId, flag)
+        refreshLiveVariants(sourceId)
+    }
+
+    /** Une chaîne n'a pas la clé ou le rang que demande [merge] (1 : rassemblées). */
+    @Query(
+        """
+        SELECT EXISTS (SELECT 1 FROM channels WHERE sourceId = :sourceId AND kind = 'LIVE'
+          AND (listOrder != $GROUPED_ORDER OR (variantKey != '' AND itemKey LIKE 'live:%' AND variantKey != $GROUPED_KEY)))
+        """,
+    )
+    suspend fun groupingOutdated(sourceId: Long, merge: Int): Boolean
+
+    @Query("UPDATE channels SET variantKey = $GROUPED_KEY WHERE sourceId = :sourceId AND kind = 'LIVE' AND variantKey != '' AND itemKey LIKE 'live:%'")
+    suspend fun setGroupedKeys(sourceId: Long, merge: Int)
+
+    @Query("UPDATE channels SET listOrder = $GROUPED_ORDER WHERE sourceId = :sourceId AND kind = 'LIVE'")
+    suspend fun setListOrder(sourceId: Long, merge: Int)
+
+    /** Meilleure version (qualité, puis ordre de la playlist) et nombre de versions de chaque chaîne, d'après sa clé. */
+    @Query(
+        """
+        UPDATE channels SET
+            isPrimary = NOT EXISTS (SELECT 1 FROM channels b WHERE b.sourceId = channels.sourceId AND b.kind = 'LIVE'
+                AND b.variantKey = channels.variantKey AND (b.qualityRank > channels.qualityRank
+                    OR (b.qualityRank = channels.qualityRank AND b.position < channels.position))),
+            variantCount = (SELECT COUNT(*) FROM channels v WHERE v.sourceId = channels.sourceId AND v.kind = 'LIVE'
+                AND v.variantKey = channels.variantKey)
+        WHERE sourceId = :sourceId AND kind = 'LIVE' AND variantKey != ''
+        """,
+    )
+    suspend fun refreshLiveVariants(sourceId: Long)
 
     /**
      * Identité des lignes [ids] encore présentes (au plus quelques centaines) : pour vérifier qu'une reprise de
@@ -777,7 +864,12 @@ interface ChannelDao {
     suspend fun fillQuality(id: Long, quality: String, rank: Int)
 
     /** Meilleure version d'une chaîne désignée par sa clé (chaîne précédente, dernière chaîne regardée). */
-    @Query("SELECT id FROM channels WHERE sourceId = :sourceId AND kind = 'LIVE' AND isPrimary = 1 AND itemKey = :itemKey LIMIT 1")
+    @Query(
+        """
+        SELECT id FROM channels WHERE sourceId = :sourceId AND kind = 'LIVE' AND isPrimary = 1 AND itemKey = :itemKey
+        ORDER BY qualityRank DESC, position LIMIT 1
+        """,
+    )
     suspend fun primaryIdByKey(sourceId: Long, itemKey: String): Long?
 
     /** Nombre de chaînes de la liste « Toutes ». */
@@ -843,9 +935,9 @@ interface ChannelDao {
     /** Chaînes associées au guide, pour la grille des programmes (hors catégories masquées). */
     @Query(
         """
-        SELECT c.id, c.name, c.title, c.logoUrl, c.channelNumber, c.epgChannelId, c.itemKey, $CATCHUP_DAYS FROM channels c
+        SELECT c.id, c.name, $LIVE_TITLE, c.logoUrl, c.channelNumber, c.epgChannelId, c.itemKey, $CATCHUP_DAYS FROM channels c
         WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.epgChannelId IS NOT NULL AND $LISTED
-        ORDER BY c.position LIMIT :limit
+        ORDER BY c.listOrder LIMIT :limit
         """,
     )
     suspend fun guideChannels(sourceId: Long, filterGroup: Int, group: String, limit: Int): List<GuideChannelRow>
@@ -857,7 +949,7 @@ interface ChannelDao {
      */
     @Query(
         """
-        SELECT c.id, c.name, c.title, c.logoUrl, c.epgChannelId, c.position, c.itemKey, $CATCHUP_DAYS FROM channels c
+        SELECT c.id, c.name, c.title, c.logoUrl, c.epgChannelId, c.listOrder, c.itemKey, $CATCHUP_DAYS FROM channels c
         WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.epgChannelId IS NOT NULL AND $NOT_HIDDEN
         ORDER BY c.streamSupport = 'UNSUPPORTED', c.qualityRank DESC, c.position
         """,
@@ -870,7 +962,7 @@ interface ChannelDao {
      */
     @Query(
         """
-        SELECT c.id, c.name, c.title, c.logoUrl, c.epgChannelId, c.position, c.itemKey, $CATCHUP_DAYS
+        SELECT c.id, c.name, c.title, c.logoUrl, c.epgChannelId, c.listOrder, c.itemKey, $CATCHUP_DAYS
         FROM favorites f
         JOIN channels c ON c.id = (
             SELECT c2.id FROM channels c2

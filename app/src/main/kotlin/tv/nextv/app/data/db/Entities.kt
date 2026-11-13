@@ -52,6 +52,7 @@ data class SourceEntity(
         Index(value = ["sourceId", "kind", "groupTitle"]),
         Index(value = ["sourceId", "variantKey"]),
         Index(value = ["sourceId", "kind", "itemKey", "position"]),
+        Index(value = ["sourceId", "listOrder"]),
     ],
 )
 data class ChannelEntity(
@@ -76,7 +77,11 @@ data class ChannelEntity(
     val kind: String = "LIVE",
     /** Titre nettoyé (sans qualité, année ni préfixe de langue). */
     val title: String = name,
-    /** Clé commune aux versions (qualités) d'une même chaîne. */
+    /**
+     * Clé commune aux versions (qualités) d'une même chaîne. Chaînes rassemblées (réglage « Rassembler les chaînes »)
+     * : celle de la clé stable ([itemKey] sans « live: ») ; sinon, une version double audio ou Dolby ([audio]) a la
+     * sienne (voir LiveVariants.splitKey).
+     */
     val variantKey: String = "",
     /** [tv.nextv.core.model.StreamQuality] annoncée par le nom, si présente. */
     val quality: String? = null,
@@ -94,6 +99,15 @@ data class ChannelEntity(
     val itemKey: String = "",
     /** Jours de programmes passés gardés par le serveur pour le replay (0 : pas de replay). */
     val catchupDays: Int = 0,
+    /** Son annoncé par le nom d'une chaîne : 2 double audio, 1 Dolby, 0 sinon (version 12 du schéma). */
+    val audio: Int = 0,
+    /** Rang de la chaîne dans l'ordre rangé (TNT, Canal+, cinéma… voir ChannelLineup). */
+    val lineup: Int = 0,
+    /**
+     * Rang dans les listes de chaînes : [lineup] quand les chaînes sont rassemblées, sinon [position] (ordre de la
+     * playlist). Les films et les épisodes gardent leur [position].
+     */
+    val listOrder: Int = 0,
 )
 
 /**

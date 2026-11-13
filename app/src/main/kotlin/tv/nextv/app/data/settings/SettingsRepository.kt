@@ -263,8 +263,21 @@ class SettingsRepository(
     }
 
     /**
+     * « Rassembler les chaînes » (activé d'office) : une seule ligne par chaîne, ses versions double audio ou Dolby
+     * réunies, sans les séparateurs de la playlist ni les éditions régionales de France 3 autres que celle choisie, et
+     * des listes rangées comme sur une télé (TNT, Canal+, cinéma…). Coupé : les chaînes telles que la playlist les
+     * présente.
+     */
+    val mergeChannels: Flow<Boolean> = preferences.map { it[MERGE_CHANNELS] ?: true }.distinctUntilChanged()
+
+    suspend fun setMergeChannels(enabled: Boolean) {
+        edit { it[MERGE_CHANNELS] = enabled }
+    }
+
+    /**
      * Région de France 3 gardée dans les listes (« Alpes », clé de [tv.nextv.core.catalog.FranceRegions]) ;
-     * les autres éditions régionales sont masquées. `null` : toutes affichées.
+     * les autres éditions régionales sont masquées. `null` : toutes affichées (seulement France 3 si les chaînes
+     * sont rassemblées).
      */
     val france3Region: Flow<String?> = preferences
         // Choix fait quand la région portait une autre écriture (« paris idf ») : la clé de son antenne.
@@ -547,6 +560,7 @@ class SettingsRepository(
         val LIVE_CENTER_MOSAIC = booleanKey("live_center_mosaic")
         val HIDE_UHD = booleanKey("hide_uhd")
         val FRANCE3_REGION = stringKey("france3_region")
+        val MERGE_CHANNELS = booleanKey("merge_channels")
         val AUDIO_PASSTHROUGH = booleanKey("audio_passthrough")
 
         /** Réglages de la version 0.2.10 retirés depuis (rappels, code parental). */

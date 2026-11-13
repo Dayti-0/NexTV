@@ -60,6 +60,9 @@ data class EpisodeInfo(
  * @property variantKey clé commune aux versions d'une même chaîne en différentes qualités.
  * @property title titre nettoyé (sans préfixe de langue, qualité ni année), pour l'affichage et TMDB.
  * @property catchupDays jours de programmes passés que le serveur garde pour le replay (0 : pas de replay).
+ * @property audio son annoncé par le nom d'une chaîne (double audio, Dolby : voir QualityParser.AUDIO_MULTI), 0 sinon.
+ * @property lineup rang de la chaîne dans l'ordre « rangé » (TNT, Canal+, cinéma… voir ChannelLineup) ; `null` :
+ *   celui de la playlist.
  */
 data class Channel(
     val position: Int,
@@ -77,6 +80,8 @@ data class Channel(
     val year: Int? = null,
     val episode: EpisodeInfo? = null,
     val catchupDays: Int = 0,
+    val audio: Int = 0,
+    val lineup: Int? = null,
 )
 
 /** Programme d'un guide EPG, horaires en millisecondes epoch UTC. */

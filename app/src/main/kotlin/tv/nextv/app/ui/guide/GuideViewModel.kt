@@ -201,7 +201,7 @@ class GuideViewModel(
             .distinctBy { it.epgChannelId }
             .map { it to TntChannels.number(it.title.ifBlank { it.name }, it.epgChannelId) }
             .distinctBy { (row, tnt) -> tnt?.toString() ?: row.epgChannelId }
-            .sortedWith(compareBy({ it.second == null }, { it.second ?: 0 }, { it.first.position }))
+            .sortedWith(compareBy({ it.second == null }, { it.second ?: 0 }, { it.first.listOrder }))
 
     private fun GuideVersionRow.toGuideChannel(tnt: Int?, programmes: List<GuideProgramme>) = GuideChannel(
         id = id,

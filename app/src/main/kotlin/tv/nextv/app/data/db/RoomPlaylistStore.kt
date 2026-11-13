@@ -4,6 +4,7 @@ import androidx.room.withTransaction
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import tv.nextv.core.catalog.ContentClassifier
+import tv.nextv.core.catalog.LiveVariants
 import tv.nextv.core.epg.EpgChannelRef
 import tv.nextv.core.error.SourceError
 import tv.nextv.core.model.Channel
@@ -21,8 +22,16 @@ import tv.nextv.core.model.SourceWarning
 import tv.nextv.core.repository.EpgImportSession
 import tv.nextv.core.repository.PlaylistStore
 
-/** Implémentation Room de [PlaylistStore]. */
-class RoomPlaylistStore(private val database: NexTvDatabase) : PlaylistStore {
+/**
+ * Implémentation Room de [PlaylistStore].
+ *
+ * @param mergeChannels réglage « Rassembler les chaînes », lu à chaque enregistrement d'une playlist : les chaînes
+ *   sont enregistrées rassemblées (versions de son réunies, ordre rangé) ou telles que la playlist les présente.
+ */
+class RoomPlaylistStore(
+    private val database: NexTvDatabase,
+    private val mergeChannels: suspend () -> Boolean = { true },
+) : PlaylistStore {
 
     private val sourceDao = database.sourceDao()
     private val channelDao = database.channelDao()
@@ -89,12 +98,13 @@ class RoomPlaylistStore(private val database: NexTvDatabase) : PlaylistStore {
             }
             // Même film sous son titre français et son titre original (« Le Virtuose », « The Virtuoso ») : une affiche.
             val aligned = MovieCopies.mergeTitles(MovieCopies.alignYears(known), movieTitles())
-            val variants = VariantInfo.compute(aligned)
+            val merge = mergeChannels()
+            val variants = VariantInfo.compute(aligned) { groupedKey(it, merge) }
             var saved = 0
             aligned.chunked(BATCH_SIZE).forEach { batch ->
                 channelDao.insertAll(
                     batch.map {
-                        toEntity(sourceId, it, previous[assignmentKey(it.tvgId, it.name)], variants.getValue(it.position))
+                        toEntity(sourceId, it, previous[assignmentKey(it.tvgId, it.name)], variants.getValue(it.position), merge)
                             .copy(id = previousIds[urlKey(it.stream.url)]?.removeFirstOrNull() ?: 0)
                     },
                 )
@@ -271,35 +281,50 @@ class RoomPlaylistStore(private val database: NexTvDatabase) : PlaylistStore {
             )
         }
 
-        private fun toEntity(sourceId: Long, channel: Channel, epgChannelId: String?, variant: VariantInfo) = ChannelEntity(
-            sourceId = sourceId,
-            position = channel.position,
-            name = channel.name,
-            groupTitle = channel.groupTitle,
-            logoUrl = channel.logoUrl,
-            tvgId = channel.tvgId,
-            tvgName = channel.tvgName,
-            channelNumber = channel.channelNumber,
-            streamUrl = channel.stream.url,
-            streamHeaders = HeaderCodec.encode(channel.stream.headers),
-            streamFormat = channel.stream.format.name,
-            streamSupport = channel.stream.support.name,
-            streamIssues = channel.stream.issues.joinToString(",") { it.name },
-            epgChannelId = epgChannelId,
-            kind = channel.kind.name,
-            title = channel.title,
-            variantKey = channel.variantKey,
-            quality = channel.quality?.name,
-            year = channel.year,
-            seriesName = channel.episode?.seriesName,
-            season = channel.episode?.season,
-            episode = channel.episode?.episode,
-            qualityRank = StreamQuality.rankOf(channel.quality),
-            isPrimary = variant.primary,
-            variantCount = variant.count,
-            itemKey = ItemKeys.of(channel),
-            catchupDays = channel.catchupDays,
-        )
+        /**
+         * Clé de version enregistrée : chaînes rassemblées, celle de la chaîne ; sinon, une version double audio ou
+         * Dolby a la sienne (même calcul que ChannelDao.applyGrouping au changement du réglage).
+         */
+        internal fun groupedKey(channel: Channel, merge: Boolean): String =
+            if (merge || channel.kind != ContentKind.LIVE) channel.variantKey else LiveVariants.splitKey(channel.variantKey, channel.audio)
+
+        private fun toEntity(sourceId: Long, channel: Channel, epgChannelId: String?, variant: VariantInfo, merge: Boolean): ChannelEntity {
+            val live = channel.kind == ContentKind.LIVE
+            // Ordre rangé des chaînes (TNT, Canal+…) ; les films et les épisodes gardent celui de la playlist.
+            val lineup = if (live) channel.lineup ?: channel.position else channel.position
+            return ChannelEntity(
+                sourceId = sourceId,
+                position = channel.position,
+                name = channel.name,
+                groupTitle = channel.groupTitle,
+                logoUrl = channel.logoUrl,
+                tvgId = channel.tvgId,
+                tvgName = channel.tvgName,
+                channelNumber = channel.channelNumber,
+                streamUrl = channel.stream.url,
+                streamHeaders = HeaderCodec.encode(channel.stream.headers),
+                streamFormat = channel.stream.format.name,
+                streamSupport = channel.stream.support.name,
+                streamIssues = channel.stream.issues.joinToString(",") { it.name },
+                epgChannelId = epgChannelId,
+                kind = channel.kind.name,
+                title = channel.title,
+                variantKey = groupedKey(channel, merge),
+                quality = channel.quality?.name,
+                year = channel.year,
+                seriesName = channel.episode?.seriesName,
+                season = channel.episode?.season,
+                episode = channel.episode?.episode,
+                qualityRank = StreamQuality.rankOf(channel.quality),
+                isPrimary = variant.primary,
+                variantCount = variant.count,
+                itemKey = ItemKeys.of(channel),
+                catchupDays = channel.catchupDays,
+                audio = channel.audio,
+                lineup = lineup,
+                listOrder = if (live && merge) lineup else channel.position,
+            )
+        }
 
         private fun encode(location: SourceLocation): Triple<String, String, String?> = when (location) {
             is SourceLocation.Remote -> Triple(KIND_REMOTE, location.url, null)
@@ -324,12 +349,15 @@ class RoomPlaylistStore(private val database: NexTvDatabase) : PlaylistStore {
  */
 internal data class VariantInfo(val primary: Boolean, val count: Int) {
     companion object {
-        /** @return informations par position de chaîne dans la playlist. */
-        fun compute(channels: List<Channel>): Map<Int, VariantInfo> {
+        /**
+         * @param liveKey clé de version enregistrée d'une chaîne en direct (versions de son à part ou non).
+         * @return informations par position de chaîne dans la playlist.
+         */
+        fun compute(channels: List<Channel>, liveKey: (Channel) -> String = { it.variantKey }): Map<Int, VariantInfo> {
             val result = HashMap<Int, VariantInfo>(channels.size)
             val groups = channels.groupBy { channel ->
                 when {
-                    channel.kind == ContentKind.LIVE && channel.variantKey.isNotEmpty() -> channel.variantKey
+                    channel.kind == ContentKind.LIVE && channel.variantKey.isNotEmpty() -> liveKey(channel)
                     channel.kind == ContentKind.SERIES -> "\u0001" + ItemKeys.of(channel)
                     channel.kind == ContentKind.MOVIE -> MovieCopies.groupKey(channel) ?: "\u0000${channel.position}"
                     else -> "\u0000${channel.position}"

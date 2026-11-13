@@ -105,7 +105,8 @@ class AppContainer(context: Context) {
     )
 
     private val database = NexTvDatabase.create(appContext)
-    val playlistStore = RoomPlaylistStore(database)
+    // Lu à chaque enregistrement d'une playlist (après la création des réglages, plus bas).
+    val playlistStore = RoomPlaylistStore(database) { settings.mergeChannels.first() }
     val channelDao = database.channelDao()
     val programmeDao = database.programmeDao()
     val hiddenGroupDao = database.hiddenGroupDao()
@@ -326,18 +327,19 @@ class AppContainer(context: Context) {
             safely("Noms des playlists") { sourceRepository.cleanStoredNames() }
         }
 
-        // Filtres des réglages (4K masquée, région de France 3) : à chaque changement, et après chaque
-        // mise à jour d'une playlist (nouvelles chaînes).
+        // Filtres des réglages (4K masquée, région de France 3, chaînes rassemblées) : à chaque changement, et après
+        // chaque mise à jour d'une playlist (nouvelles chaînes).
         applicationScope.launch {
             combine(
                 settings.hideUhd,
                 settings.france3Region,
+                settings.mergeChannels,
                 sourceRepository.sources.map { sources -> sources.map { it.id to it.status?.lastSuccessAtMillis } }.distinctUntilChanged(),
-                ::Triple,
-            ).collectLatest { (hideUhd, region, sources) ->
-                // Une écriture impossible (stockage plein) n'arrête pas la surveillance : nouvel essai au changement suivant.
-                safely("Filtres des chaînes") { sources.forEach { (id, _) -> channelFilters.apply(id, hideUhd, region) } }
-            }
+            ) { hideUhd, region, merge, sources -> ChannelFilters.Settings(hideUhd, region, merge) to sources }
+                .collectLatest { (filters, sources) ->
+                    // Une écriture impossible (stockage plein) n'arrête pas la surveillance : nouvel essai au changement suivant.
+                    safely("Filtres des chaînes") { sources.forEach { (id, _) -> channelFilters.apply(id, filters) } }
+                }
         }
 
         // Reprises de lecture : rattachées à leurs films et épisodes au lancement et après chaque mise à jour d'une

@@ -260,11 +260,18 @@ class DaoQueriesTest {
             execSQL("ALTER TABLE `programmes` DROP COLUMN `imageUrl`")
             execSQL("ALTER TABLE `tmdb_cache` DROP COLUMN `trailerLanguage`")
             execSQL("DROP TABLE `measured_quality`")
+            execSQL("DROP INDEX `index_channels_sourceId_listOrder`")
+            execSQL("ALTER TABLE `channels` DROP COLUMN `audio`")
+            execSQL("ALTER TABLE `channels` DROP COLUMN `lineup`")
+            execSQL("ALTER TABLE `channels` DROP COLUMN `listOrder`")
             version = 6
         }
         old.close()
         val migrated = Room.databaseBuilder(context, NexTvDatabase::class.java, name)
-            .addMigrations(NexTvDatabase.MIGRATION_6_7, NexTvDatabase.MIGRATION_7_8, NexTvDatabase.MIGRATION_8_9, NexTvDatabase.MIGRATION_9_10, NexTvDatabase.MIGRATION_10_11)
+            .addMigrations(
+                NexTvDatabase.MIGRATION_6_7, NexTvDatabase.MIGRATION_7_8, NexTvDatabase.MIGRATION_8_9, NexTvDatabase.MIGRATION_9_10,
+                NexTvDatabase.MIGRATION_10_11, NexTvDatabase.MIGRATION_11_12,
+            )
             .allowMainThreadQueries()
             .build()
         try {
