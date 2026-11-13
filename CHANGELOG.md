@@ -4,6 +4,13 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.131
+- Aperçu → chaîne en grand (OK), et retour : l’image ne reste plus noire ; elle passe d’un écran à l’autre sans que le décodeur change de destination (Android 10 et plus)
+- Retour à l’accueil depuis une chaîne : l’image continue en grand jusqu’à ce que l’aperçu la reprenne, au lieu d’un écran noir
+- Réglages › Aperçu : nouveau réglage « Passage sans coupure vers le plein écran » (activé) ; coupé, la chaîne est rouverte à chaque passage, comme avant
+- Android 9 ou avant : la chaîne est rouverte à chaque passage entre l’aperçu et le plein écran (le passage sans coupure pouvait y laisser l’image noire)
+- Infos de lecture, ligne « Aperçu » : dit aussi pourquoi la chaîne a été rouverte (Android 9 ou avant, réglage coupé)
+
 ## 0.2.130
 - Aperçu → chaîne en grand (OK) : le flux de l’aperçu est vraiment repris, aussi avec « Baisser le son des pubs », un décodeur choisi, et pour les chaînes en plusieurs versions (l’aperçu joue la version que la chaîne ouvrira)
 - Chaîne refusée un instant par l’abonnement juste après la fermeture de l’aperçu : nouvel essai dans la même qualité, au lieu de « Connexion lente » et d’une qualité plus basse

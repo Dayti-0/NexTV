@@ -349,6 +349,9 @@
     <string name="player_info_preview_other_channel">rouvert : l’aperçu montrait une autre chaîne</string>
     <string name="player_info_preview_passthrough">rouvert : son envoyé tel quel à l’ampli</string>
     <string name="player_info_preview_not_playing">rouvert : aperçu en erreur</string>
+    <string name="player_info_preview_old_android">rouvert : Android 9 ou avant (passage sans coupure impossible)</string>
+    <string name="player_info_preview_setting_off">rouvert : « Passage sans coupure » désactivé (Réglages)</string>
+    <string name="player_info_preview_no_layer">rouvert : l’appareil refuse la couche vidéo</string>
     <string name="player_info_dropped">Images perdues</string>
     <string name="player_info_version">Version</string>
     <string name="player_info_unknown">—</string>
@@ -496,6 +499,8 @@
     <string name="settings_start_last_channel_help">À l’ouverture, la dernière chaîne regardée se lance directement, comme une télévision ; Retour mène à l’accueil.</string>
     <string name="settings_channel_preview">Aperçu de la chaîne sélectionnée</string>
     <string name="settings_channel_preview_help">À l’accueil, la chaîne sélectionnée démarre en petit, sans le son, au bout d’une seconde. À désactiver si l’abonnement n’autorise qu’une connexion à la fois ou si l’appareil est lent.</string>
+    <string name="settings_preview_handoff">Passage sans coupure vers le plein écran</string>
+    <string name="settings_preview_handoff_help">OK sur l’aperçu : la chaîne continue en grand sans être rouverte, et revient dans l’aperçu au retour. À désactiver si l’image reste noire en passant de l’un à l’autre.</string>
     <string name="settings_channel_groups">Catégories de chaînes</string>
     <string name="settings_movie_groups">Catégories de films</string>
     <string name="exit_press_again">Appuyer à nouveau pour quitter</string>

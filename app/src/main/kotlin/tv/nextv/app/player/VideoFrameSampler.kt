@@ -4,7 +4,7 @@ import android.graphics.Bitmap
 import android.os.Handler
 import android.os.Looper
 import android.view.PixelCopy
-import android.view.SurfaceView
+import android.view.Surface
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -20,12 +20,15 @@ class VideoFrameSampler {
     private val pixels = IntArray(AdVolumeControl.FRAME_WIDTH * AdVolumeControl.FRAME_HEIGHT)
     private val handler = Handler(Looper.getMainLooper())
 
-    /** Image en cours de [view], ou `null` si elle ne peut pas être lue (pas encore d'image, appareil qui le refuse). */
-    suspend fun sample(view: SurfaceView): ByteArray? {
-        if (!view.holder.surface.isValid) return null
+    /**
+     * Image en cours de [surface] (zone vidéo de l'écran, ou couche vidéo du lecteur), ou `null` si elle ne peut pas
+     * être lue (pas encore d'image, appareil qui le refuse).
+     */
+    suspend fun sample(surface: Surface): ByteArray? {
+        if (!surface.isValid) return null
         val copied = suspendCancellableCoroutine { continuation ->
             try {
-                PixelCopy.request(view, bitmap, { result -> continuation.resume(result == PixelCopy.SUCCESS) }, handler)
+                PixelCopy.request(surface, bitmap, { result -> continuation.resume(result == PixelCopy.SUCCESS) }, handler)
             } catch (e: IllegalArgumentException) {
                 // Surface détruite entre-temps (changement de chaîne, sortie du lecteur).
                 continuation.resume(false)

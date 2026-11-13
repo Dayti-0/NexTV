@@ -695,6 +695,9 @@ class PlayerViewModel(
                 HandoffMiss.OTHER_CHANNEL -> PreviewStart.OTHER_CHANNEL
                 HandoffMiss.PASSTHROUGH -> PreviewStart.PASSTHROUGH
                 HandoffMiss.NOT_PLAYING -> PreviewStart.NOT_PLAYING
+                HandoffMiss.OLD_ANDROID -> PreviewStart.OLD_ANDROID
+                HandoffMiss.SETTING_OFF -> PreviewStart.SETTING_OFF
+                HandoffMiss.NO_LAYER -> PreviewStart.NO_LAYER
             }
         }
         if (previewStart != null) {

@@ -1,6 +1,5 @@
 package tv.nextv.app.ui.player
 
-import android.view.SurfaceView
 import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -104,6 +103,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.abs
 import tv.nextv.app.player.VideoFrameSampler
+import tv.nextv.app.player.VideoViews
 import tv.nextv.app.R
 import org.videolan.libvlc.util.VLCVideoLayout
 import tv.nextv.app.data.db.ChannelListRow
@@ -426,7 +426,7 @@ fun PlayerScreen(
             try {
                 while (true) {
                     delay(LOGO_SAMPLE_MILLIS)
-                    val surface = view.videoSurfaceView as? SurfaceView ?: continue
+                    val surface = VideoViews.frameSurface(view) ?: continue
                     sampler.sample(surface)?.let { frame -> withContext(Dispatchers.Default) { viewModel.onVideoFrame(frame) } }
                 }
             } finally {
@@ -435,7 +435,7 @@ fun PlayerScreen(
         }
         AndroidView(
             factory = { viewContext ->
-                PlayerView(viewContext).apply {
+                VideoViews.create(viewContext).apply {
                     layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                     // Commandes dessinées par NixTV (direct, replay, films) : jamais celles de Media3.
                     useController = false
@@ -448,14 +448,15 @@ fun PlayerScreen(
                 // Pause, différé, saut dans un replay : la dernière image reste affichée pendant le changement de flux.
                 view.setKeepContentOnPlayerReset(state.paused || state.liveDelayMs > 0 || state.seekable)
                 view.keepScreenOn = keepScreenOn
-                view.player = player
+                // Direct rendu à l'accueil (retour) : son image reste ici jusqu'à ce que l'aperçu la prenne.
+                VideoViews.bind(view, player)
                 view.resizeMode = when (aspect) {
                     AspectMode.FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT
                     AspectMode.FILL -> AspectRatioFrameLayout.RESIZE_MODE_FILL
                     AspectMode.ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                 }
             },
-            onRelease = { view -> view.player = null },
+            onRelease = { view -> VideoViews.release(view) },
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -1455,6 +1456,9 @@ fun PlaybackInfoPanel(state: PlayerUiState, visible: Boolean, modifier: Modifier
                             PreviewStart.OTHER_CHANNEL -> R.string.player_info_preview_other_channel
                             PreviewStart.PASSTHROUGH -> R.string.player_info_preview_passthrough
                             PreviewStart.NOT_PLAYING -> R.string.player_info_preview_not_playing
+                            PreviewStart.OLD_ANDROID -> R.string.player_info_preview_old_android
+                            PreviewStart.SETTING_OFF -> R.string.player_info_preview_setting_off
+                            PreviewStart.NO_LAYER -> R.string.player_info_preview_no_layer
                         },
                     )
                     InfoLine(stringResource(R.string.player_info_preview), text, warning = start != PreviewStart.TAKEN)

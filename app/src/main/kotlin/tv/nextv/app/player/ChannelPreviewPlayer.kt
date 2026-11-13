@@ -43,7 +43,8 @@ fun ChannelEntity.toStream() = StreamDescriptor(
  * l'accueil, [adopt] reprend de même le direct du plein écran.
  *
  * Le lecteur est réglé comme celui du plein écran (type de son, pistes) : le passage de l'un à l'autre ne change
- * que la mémoire tampon, le volume et la prise du son.
+ * que la mémoire tampon, le volume et la prise du son. Il dessine dans sa propre couche vidéo ([VideoLayers]) : chaque
+ * écran la place sous sa zone vidéo, le décodeur ne change jamais de destination (sinon l'image pouvait rester noire).
  */
 @OptIn(UnstableApi::class)
 class ChannelPreviewPlayer(
@@ -74,8 +75,11 @@ class ChannelPreviewPlayer(
     /** « Baisser le son des pubs » du lecteur : coupé ici, le plein écran le règle s'il reprend le lecteur. */
     private var adVolume: AdVolumeControl? = null
 
-    /** Le plein écran peut reprendre ce lecteur (créé comme il l'aurait créé lui-même). */
+    /** Le plein écran peut reprendre ce lecteur (créé comme il l'aurait créé lui-même, avec sa couche vidéo). */
     private var transferable = false
+
+    /** Pourquoi le plein écran ne pourra pas reprendre ce lecteur ([transferable] faux). */
+    private var untransferable = HandoffMiss.PASSTHROUGH
 
     /** Pourquoi le dernier [handOff] n'a rien confié (infos du lecteur plein écran). */
     var lastMiss: HandoffMiss? = null
@@ -124,8 +128,18 @@ class ChannelPreviewPlayer(
         )
         // Son envoyé tel quel à l'ampli : le volume de l'aperçu ne s'y applique pas, le plein écran crée son lecteur
         // autrement et rouvrira le flux. Décodeurs choisis et « baisser le son des pubs » : l'aperçu les a aussi.
+        // Passage sans coupure (réglage) : le lecteur dessine dans sa propre couche vidéo, que le plein écran reprend.
+        var layered = false
         if (exoPlayer == null) {
-            transferable = settings?.let { !it.audioPassthrough.first() } ?: false
+            val passthrough = settings?.audioPassthrough?.first() ?: true
+            val handoff = settings?.previewHandoff?.first() ?: false
+            untransferable = when {
+                passthrough -> HandoffMiss.PASSTHROUGH
+                !VideoLayers.supported -> HandoffMiss.OLD_ANDROID
+                !handoff -> HandoffMiss.SETTING_OFF
+                else -> HandoffMiss.NO_LAYER
+            }
+            layered = !passthrough && handoff && VideoLayers.supported
         }
         // Langues du plein écran (dernières choisies) : les mêmes pistes, rien ne change s'il reprend l'aperçu.
         val audioLanguage = settings?.audioLanguage?.first()
@@ -141,10 +155,13 @@ class ChannelPreviewPlayer(
                 adVolume = control,
                 preview = true,
                 liveBuffer = liveBuffer,
+                layered = layered,
             ).also {
                 it.addListener(errors)
                 it.addAnalyticsListener(decoders)
                 exoPlayer = it
+                // Sans sa couche vidéo (appareil qui la refuse), la nouvelle zone vidéo du plein écran pouvait rester noire.
+                transferable = VideoLayers.has(it)
             }
         }
         adVolume?.enabled = false
@@ -174,7 +191,7 @@ class ChannelPreviewPlayer(
             return missed(HandoffMiss.NOT_SHOWN)
         }
         if (id != channelId) return missed(HandoffMiss.OTHER_CHANNEL)
-        if (!transferable) return missed(HandoffMiss.PASSTHROUGH)
+        if (!transferable) return missed(untransferable)
         if (player.playerError != null || (player.playbackState != Player.STATE_READY && player.playbackState != Player.STATE_BUFFERING)) {
             return missed(HandoffMiss.NOT_PLAYING)
         }
@@ -209,8 +226,8 @@ class ChannelPreviewPlayer(
         exoPlayer = player
         buffer = handoff.buffer
         adVolume = handoff.adVolume.also { it.enabled = false }
-        // Le plein écran ne le confie que réglé comme il l'aurait été ici (son, décodeurs, mémoire du direct).
-        transferable = true
+        // Le plein écran ne le confie que réglé comme il l'aurait été ici (son, décodeurs, mémoire du direct, couche vidéo).
+        transferable = VideoLayers.has(player)
         channelId = id
         shownId = handoff.playingId ?: id
         request = handoff.request
@@ -272,6 +289,15 @@ enum class HandoffMiss {
 
     /** Son envoyé tel quel à l'ampli. */
     PASSTHROUGH,
+
+    /** Android 9 ou avant : pas de couche vidéo à passer d'un écran à l'autre (l'image pouvait rester noire). */
+    OLD_ANDROID,
+
+    /** Réglage « passage sans coupure » désactivé. */
+    SETTING_OFF,
+
+    /** L'appareil a refusé de créer la couche vidéo du lecteur. */
+    NO_LAYER,
 
     /** Flux de l'aperçu en erreur ou arrêté. */
     NOT_PLAYING,

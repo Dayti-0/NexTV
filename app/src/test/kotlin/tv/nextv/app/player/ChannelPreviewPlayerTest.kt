@@ -94,6 +94,30 @@ class ChannelPreviewPlayerTest {
     }
 
     @Test
+    fun withoutTheSettingTheFullScreenReopensTheChannel() = runBlocking {
+        // « Passage sans coupure » coupé : pas de couche vidéo, le plein écran rouvre la chaîne (comme avant).
+        container.settings.setPreviewHandoff(false)
+        val previewer = ChannelPreviewPlayer(container.playerFactory, container.sourceRepository, container.settings)
+        previewer.show(channel(1))
+        val player = checkNotNull(previewer.player.value)
+        assertEquals(false, VideoLayers.has(player))
+        assertNull(previewer.handOff(1))
+        assertEquals(HandoffMiss.SETTING_OFF, previewer.lastMiss)
+        previewer.release()
+        container.settings.setPreviewHandoff(true)
+    }
+
+    @Test
+    fun thePreviewDrawsInALayerTheFullScreenCanTake() = runBlocking {
+        val previewer = ChannelPreviewPlayer(container.playerFactory, container.sourceRepository, container.settings)
+        previewer.show(channel(1))
+        val player = checkNotNull(previewer.player.value)
+        // Sa couche vidéo passe avec lui au plein écran : le décodeur ne change pas de destination.
+        assertEquals(true, VideoLayers.has(player))
+        previewer.release()
+    }
+
+    @Test
     fun theHomePreviewContinuesOnAStreamHandedBack() = runBlocking {
         val previewer = ChannelPreviewPlayer(container.playerFactory, container.sourceRepository, container.settings)
         previewer.volume = 0.3f
@@ -101,7 +125,7 @@ class ChannelPreviewPlayerTest {
         val own = checkNotNull(previewer.player.value)
         // Direct du plein écran rendu à l'accueil (chaîne 2).
         val buffer = container.playerFactory.liveLoadControl(preview = false)
-        val full = container.playerFactory.create(liveBuffer = buffer)
+        val full = container.playerFactory.create(liveBuffer = buffer, layered = true)
         val taps = StreamTaps()
         val request = PlaybackRequest(channel(2).toStream(), null, null, null)
         full.setMediaSource(container.playerFactory.mediaSource(request, taps = taps))

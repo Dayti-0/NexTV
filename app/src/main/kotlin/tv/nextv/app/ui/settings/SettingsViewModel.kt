@@ -73,6 +73,8 @@ data class SettingsUiState(
     val hiddenGroups: Map<ContentKind, Int> = emptyMap(),
     /** Aperçu vidéo de la chaîne sélectionnée à l'accueil. */
     val channelPreview: Boolean = true,
+    /** Passage sans coupure de l'aperçu au plein écran, et retour (Android 10 et plus). */
+    val previewHandoff: Boolean = true,
     /** Bande-annonce en fond de la grande affiche (Streaming). */
     val trailerAutoplay: Boolean = true,
     /** Bande-annonce avec le son dès son lancement. */
@@ -207,16 +209,19 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         val trailerAutoplay: Boolean,
         val trailerSound: Boolean,
         val trailerDelaySeconds: Int,
+        val previewHandoff: Boolean,
     )
 
     /** Réglages ajoutés depuis : son de l'aperçu, fréquence de mise à jour, dernier plantage, filtres des chaînes. */
     private val extras = combine(
         combine(settings.previewVolume, settings.playlistRefresh, lastCrash, ::Triple),
         combine(settings.hideUhd, settings.audioPassthrough, settings.trailerAutoplay, ::Triple),
-        combine(settings.france3Region, france3Regions, settings.trailerSound, settings.trailerDelaySeconds) { region, regions, sound, delay -> listOf(region, regions, sound, delay) },
+        combine(settings.france3Region, france3Regions, settings.trailerSound, settings.trailerDelaySeconds, settings.previewHandoff) { region, regions, sound, delay, handoff ->
+            listOf(region, regions, sound, delay, handoff)
+        },
     ) { (volume, refresh, crash), (hideUhd, passthrough, trailers), more ->
         @Suppress("UNCHECKED_CAST")
-        Extras(volume, refresh, crash, hideUhd, passthrough, more[0] as String?, more[1] as List<FranceRegions.Region>, trailers, more[2] as Boolean, more[3] as Int)
+        Extras(volume, refresh, crash, hideUhd, passthrough, more[0] as String?, more[1] as List<FranceRegions.Region>, trailers, more[2] as Boolean, more[3] as Int, more[4] as Boolean)
     }
 
     val state: StateFlow<SettingsUiState> = combine(
@@ -262,6 +267,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             trailerAutoplay = extra.trailerAutoplay,
             trailerSound = extra.trailerSound,
             trailerDelaySeconds = extra.trailerDelaySeconds,
+            previewHandoff = extra.previewHandoff,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
@@ -380,6 +386,10 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     fun setChannelPreview(enabled: Boolean) {
         viewModelScope.launch { settings.setChannelPreview(enabled) }
+    }
+
+    fun setPreviewHandoff(enabled: Boolean) {
+        viewModelScope.launch { settings.setPreviewHandoff(enabled) }
     }
 
     fun setTrailerAutoplay(enabled: Boolean) {

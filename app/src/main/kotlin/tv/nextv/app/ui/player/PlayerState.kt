@@ -174,6 +174,15 @@ enum class PreviewStart {
 
     /** Rouvert : le flux de l'aperçu était en erreur ou arrêté. */
     NOT_PLAYING,
+
+    /** Rouvert : Android 9 ou avant, pas de couche vidéo à passer d'un écran à l'autre. */
+    OLD_ANDROID,
+
+    /** Rouvert : réglage « passage sans coupure » désactivé. */
+    SETTING_OFF,
+
+    /** Rouvert : l'appareil a refusé la couche vidéo du lecteur de l'aperçu. */
+    NO_LAYER,
 }
 
 /** Chaîne du menu, avec la catégorie dont elle provient : la liste affichée correspond-elle au choix ? */

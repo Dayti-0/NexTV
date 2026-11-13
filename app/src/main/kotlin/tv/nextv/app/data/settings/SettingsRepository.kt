@@ -300,6 +300,16 @@ class SettingsRepository(
         edit { it[CHANNEL_PREVIEW] = enabled }
     }
 
+    /**
+     * Passage sans coupure de l'aperçu au plein écran, et retour (Android 10 et plus) : le direct garde sa connexion et
+     * sa couche vidéo ([tv.nextv.app.player.VideoLayers]). Coupé : la chaîne est rouverte à chaque passage, comme avant.
+     */
+    val previewHandoff: Flow<Boolean> = preferences.map { it[PREVIEW_HANDOFF] ?: true }.distinctUntilChanged()
+
+    suspend fun setPreviewHandoff(enabled: Boolean) {
+        edit { it[PREVIEW_HANDOFF] = enabled }
+    }
+
     /** Bande-annonce en fond de la grande affiche (Streaming) : plus de connexion, peut ralentir l'appareil. */
     val trailerAutoplay: Flow<Boolean> = preferences.map { it[TRAILER_AUTOPLAY] ?: !lowMemoryDevice }.distinctUntilChanged()
 
@@ -512,6 +522,7 @@ class SettingsRepository(
         val TILES_PER_ROW = intKey("tiles_per_row")
         val DNS_PROVIDER = stringKey("dns_provider")
         val CHANNEL_PREVIEW = booleanKey("channel_preview")
+        val PREVIEW_HANDOFF = booleanKey("preview_handoff")
         val TRAILER_AUTOPLAY = booleanKey("trailer_autoplay")
         val TRAILER_SOUND = booleanKey("trailer_sound")
         val TRAILER_DELAY = intKey("trailer_delay")

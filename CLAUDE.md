@@ -7,8 +7,9 @@ Application IPTV Android en Kotlin / Jetpack Compose (Media3). Elle s'appelait N
 
 ## Échanges avec l'utilisateur
 
-- Il écrit en français, souvent avec des photos de l'écran : une Fire TV branchée sur un moniteur ASUS, et une
-  télé Sony. Répondre en français, simplement, sans jargon.
+- Il écrit en français, souvent avec des photos de l'écran : une Fire TV branchée sur un moniteur ASUS, une
+  télé Sony, et une box Raspberry Pi sous LineageOS (KonstaKANG, Android 13+). Demander sur quel appareil est prise
+  une photo avant d'en tirer une cause propre à un modèle. Répondre en français, simplement, sans jargon.
 - Les tests sur l'appareil sont faits par lui : dire clairement ce qui a été vérifié ici (tests, captures) et ce
   qui reste à voir sur la télé.
 - Point en attente : plantage du guide sur la Fire TV après la 25e chaîne, non reproduit. Il faut la photo de la
@@ -63,6 +64,9 @@ Commandes :
 - libVLC : jamais `stop()` ni `release()` sur le fil principal (application figée, « ne répond plus »).
 - Base Room : augmenter `NexTvDatabase.VERSION` demande d'ajouter la migration à `MIGRATIONS` et le schéma
   `app/schemas/…json` au dépôt (`MigrationsTest` le vérifie). Sans migration, l'application ne démarre plus.
+- Ne jamais donner une autre surface au décodeur d'un lecteur en cours (`setVideoSurfaceView` d'une autre vue) : sur
+  la box Raspberry Pi l'image reste noire alors que Media3 croit l'afficher, et sur plusieurs Fire TV Media3 rouvre
+  le décodeur, qui attend la prochaine image complète (jusqu'à 20 s). D'où les couches vidéo (`VideoLayer`).
 - Le lint ne tourne pas toujours ici (dépôt Maven qui limite les requêtes) : regarder le résultat de la CI après
   chaque envoi (`Android build & lint`), et corriger dans la version suivante.
 
@@ -91,6 +95,10 @@ Commandes :
 - Journal « Dernier incident » : `CrashLog.kt` (trace réduite sans perdre la cause, erreurs de fond) et
   `SystemExits.kt` (fermetures par le système : raison, écran affiché, mémoire). C'est lui qu'il faut demander en
   photo pour tout plantage.
+- Passage aperçu ↔ plein écran (même lecteur, même connexion) : `PreviewHandoff.kt`, `ChannelPreviewPlayer.handOff` /
+  `adopt`, `PlayerEngine.adopt` / `handBack`. Image : chaque lecteur de direct dessine dans sa propre couche
+  (`player/VideoLayer.kt`, SurfaceControl, Android 10+), que `VideoViews` place sous la zone vidéo de l'écran qui le
+  montre ; seuls ces lecteurs passent d'un écran à l'autre (réglage « Passage sans coupure », `previewHandoff`).
 - Lecteur : `ui/player/PlayerViewModel.kt` avec `PlayerEngine` (un seul ExoPlayer par écran, une source réseau par
   flux via `PlayerFactory.mediaSource`), `DelayedPlaybackController` (pause, différé, replay, avance rapide),
   `AutoQualityController`, `ResumeController`, `ChannelMenuController`.

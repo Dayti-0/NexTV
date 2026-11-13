@@ -87,6 +87,7 @@ import tv.nextv.app.data.settings.PreviewVolume
 import tv.nextv.app.data.update.UpdateFailure
 import tv.nextv.app.data.update.UpdateState
 import tv.nextv.app.player.VideoDecoders
+import tv.nextv.app.player.VideoLayers
 import tv.nextv.app.ui.common.appViewModel
 import tv.nextv.app.ui.common.describe
 import tv.nextv.app.ui.common.relativeTime
@@ -239,6 +240,7 @@ fun SettingsScreen(
         },
         onCycleDecoder = viewModel::cycleDecoder,
         onChannelPreview = viewModel::setChannelPreview,
+        onPreviewHandoff = viewModel::setPreviewHandoff,
         onTrailerAutoplay = viewModel::setTrailerAutoplay,
         onTrailerSound = viewModel::setTrailerSound,
         onCycleTrailerDelay = viewModel::cycleTrailerDelay,
@@ -286,6 +288,7 @@ fun SettingsContent(
     onGroups: (ContentKind) -> Unit = {},
     onCycleDecoder: (String) -> Unit = {},
     onChannelPreview: (Boolean) -> Unit = {},
+    onPreviewHandoff: (Boolean) -> Unit = {},
     onTrailerAutoplay: (Boolean) -> Unit = {},
     onTrailerSound: (Boolean) -> Unit = {},
     onCycleTrailerDelay: () -> Unit = {},
@@ -485,6 +488,15 @@ fun SettingsContent(
                             value = previewVolumeLabel(state.previewVolume),
                             onClick = onCyclePreviewVolume,
                         )
+                        // Couche vidéo du lecteur : Android 10 et plus seulement.
+                        if (VideoLayers.supported) {
+                            ToggleRow(
+                                title = stringResource(R.string.settings_preview_handoff),
+                                description = stringResource(R.string.settings_preview_handoff_help),
+                                checked = state.previewHandoff,
+                                onChange = onPreviewHandoff,
+                            )
+                        }
                     }
                     ToggleRow(
                         title = stringResource(R.string.settings_trailer_autoplay),

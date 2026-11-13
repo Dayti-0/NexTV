@@ -86,6 +86,8 @@ class PlayerFactory(
      * @param preview aperçu de l'accueil : petite mémoire tampon, sans prendre le son au système.
      * @param passthrough son Dolby / DTS envoyé tel quel à l'ampli.
      * @param liveBuffer mémoire tampon d'un direct qui peut passer de l'aperçu au plein écran (et inversement).
+     * @param layered direct qui peut passer de l'aperçu au plein écran : il dessine dans sa propre couche vidéo
+     * ([VideoLayers], Android 10 et plus), que chaque écran place sous sa zone vidéo.
      */
     fun create(
         bandwidthMeter: DefaultBandwidthMeter? = null,
@@ -103,6 +105,7 @@ class PlayerFactory(
         /** Film ou épisode (et non un direct) : plus d'avance en mémoire, et moins de reprises hachées. */
         film: Boolean = false,
         liveBuffer: LiveLoadControl? = null,
+        layered: Boolean = false,
     ): ExoPlayer {
         // Repli automatique sur un autre décodeur si le premier ne démarre pas (box aux décodeurs capricieux).
         val renderers = object : DefaultRenderersFactory(context) {
@@ -141,7 +144,10 @@ class PlayerFactory(
             .setLoadControl(liveBuffer ?: if (preview) liveLoadControl(preview = true) else if (film) filmLoadControl() else loadControl())
         if (bandwidthMeter != null) builder.setBandwidthMeter(bandwidthMeter)
         // L'aperçu de l'accueil ne prend pas le son au système.
-        return builder.build().also { if (preview) releaseSound(it) else takeSound(it) }
+        return builder.build().also {
+            if (preview) releaseSound(it) else takeSound(it)
+            if (layered) VideoLayers.attach(it)
+        }
     }
 
     /**

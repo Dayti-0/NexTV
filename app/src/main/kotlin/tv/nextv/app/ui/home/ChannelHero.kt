@@ -34,12 +34,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import tv.nextv.app.player.ContinuingPlayers
+import tv.nextv.app.player.VideoLayers
+import tv.nextv.app.player.VideoViews
 import androidx.media3.common.Player
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.LaunchedEffect
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
-import androidx.media3.ui.PlayerView
 import tv.nextv.app.R
 import tv.nextv.app.ui.components.Badge
 import tv.nextv.app.ui.components.ChannelLogo
@@ -182,7 +183,8 @@ internal fun PreviewVideo(player: Player, modifier: Modifier = Modifier, zoom: B
     // Streaming), et le décodeur attend la prochaine image complète, parfois 20 s. Au bout de quelques secondes
     // de son sans image, l'aperçu repart au direct : l'image arrive aussitôt, comme en changeant de chaîne.
     LaunchedEffect(player) {
-        var rendered = false
+        // Couche vidéo (passage sans coupure) : le décodeur ne change pas de zone, l'image déjà là continue.
+        var rendered = VideoLayers.of(player)?.hasImage == true
         // Temps passé sans image depuis l'arrivée de l'aperçu (ou de sa nouvelle chaîne, ou de la dernière reprise).
         var waited = 0L
         var restarts = 0
@@ -217,7 +219,7 @@ internal fun PreviewVideo(player: Player, modifier: Modifier = Modifier, zoom: B
     }
     AndroidView(
         factory = { context ->
-            PlayerView(context).apply {
+            VideoViews.create(context, hideWithoutImage = true).apply {
                 layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                 useController = false
                 resizeMode = if (zoom) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
@@ -229,18 +231,19 @@ internal fun PreviewVideo(player: Player, modifier: Modifier = Modifier, zoom: B
             }
         },
         update = { view ->
-            if (view.player !== player) {
+            if (VideoViews.playerOf(view) !== player) {
                 // L'aperçu jouait déjà sans image (retour d'un autre menu : le son continuait) : avec ce nouvel
                 // écran, le décodeur attendrait la prochaine image complète du flux, parfois plusieurs secondes.
                 // On repart au direct : l'image revient aussitôt, comme en ouvrant la chaîne. Pas pour le direct
                 // que le plein écran vient de rendre : il a toujours eu une image, et repartir rouvrirait le flux.
+                // Ni pour un lecteur qui a sa couche vidéo : son décodeur ne change pas de zone, l'image continue.
                 val running = player.playbackState == Player.STATE_READY && player.playWhenReady
                 val continuing = ContinuingPlayers.consume(player)
-                view.player = player
-                if (running && !continuing) player.seekToDefaultPosition()
+                VideoViews.bind(view, player)
+                if (running && !continuing && !VideoLayers.has(player)) player.seekToDefaultPosition()
             }
         },
-        onRelease = { view -> view.player = null },
+        onRelease = { view -> VideoViews.release(view) },
         modifier = modifier,
     )
 }

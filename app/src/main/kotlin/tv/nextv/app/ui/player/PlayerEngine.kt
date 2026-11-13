@@ -41,6 +41,7 @@ import tv.nextv.app.player.LiveRecording
 import tv.nextv.core.model.StreamFormat
 import tv.nextv.app.player.TimeshiftBuffer
 import tv.nextv.app.player.VideoDecoders
+import tv.nextv.app.player.VideoLayers
 import tv.nextv.app.player.codecName
 
 /**
@@ -82,6 +83,7 @@ internal class PlayerEngine(
         val excludedDecoders: Set<String>,
         val softwareAudio: Boolean,
         val film: Boolean,
+        val layered: Boolean,
     )
 
     /** Le flux en cours est un film ou un épisode (plus d'avance en mémoire qu'un direct). */
@@ -94,7 +96,7 @@ internal class PlayerEngine(
     /** Mémoire tampon du lecteur en cours, s'il lit un direct (réglable pour l'aperçu). */
     private var liveBuffer: LiveLoadControl? = null
 
-    /** Lecteur réglé comme celui de l'aperçu (son décodé, décodeurs par défaut) : il peut lui être rendu. */
+    /** Lecteur réglé comme celui de l'aperçu (son décodé, décodeurs, couche vidéo) : il peut lui être rendu. */
     private var previewCompatible = false
 
     /** Aperçu de l'accueil montré dès l'ouverture de l'écran, pas encore repris ([play] le reprend ou le libère). */
@@ -153,6 +155,9 @@ internal class PlayerEngine(
     /** Son Dolby / DTS envoyé tel quel à l'ampli (sinon décodé par l'appareil). */
     private var audioPassthrough = false
 
+    /** Réglage « passage sans coupure » : un direct dessine dans sa couche vidéo, qu'il peut garder vers l'aperçu. */
+    private var previewHandoff = true
+
     // Images perdues déjà prises en compte, pour les compteurs du décodeur en cours (nouveaux à chaque flux).
     private var countedCounters: DecoderCounters? = null
     private var countedDroppedFrames = 0
@@ -162,6 +167,7 @@ internal class PlayerEngine(
         scope.launch { container.settings.audioLanguage.collect { audioLanguage = it } }
         scope.launch { container.settings.audioPassthrough.collect { audioPassthrough = it } }
         scope.launch { container.settings.subtitleLanguage.collect { subtitleLanguage = it } }
+        scope.launch { container.settings.previewHandoff.collect { previewHandoff = it } }
         scope.launch {
             container.settings.lowerAdVolume.collect {
                 adVolumeEnabled = it
@@ -504,9 +510,10 @@ internal class PlayerEngine(
             )
         }
         listener.onPlaybackStateChanged(playbackState)
-        // Démarrage sur ce nouvel écran : terminé à sa première image (pas une coupure avant elle).
+        // Démarrage sur ce nouvel écran : terminé à sa première image (pas une coupure avant elle). Sa couche vidéo a
+        // déjà la sienne (le décodeur n'a pas changé de destination) : rien à attendre.
         events.onContinued()
-        awaitingFirstFrame = true
+        awaitingFirstFrame = VideoLayers.of(player)?.hasImage != true
         zapStartedAt = 0L
         container.logger.debug(TAG, "zapping → aperçu repris, sans rouvrir le flux")
         return true
@@ -514,21 +521,24 @@ internal class PlayerEngine(
 
     /** Le lecteur actuel, ou un nouveau si le réglage du son direct ou du décodeur préféré a changé. */
     private fun reusablePlayer(): ExoPlayer {
-        val config = PlayerConfig(audioPassthrough, preferredDecoders, excludedDecoders, softwareAudio, film)
+        // Direct : sa couche vidéo (passage sans coupure) le laisse rendre à l'aperçu de l'accueil sans changer la
+        // destination de son décodeur. Pas pour un film, jamais montré dans l'aperçu.
+        val layered = !film && previewHandoff && VideoLayers.supported
+        val config = PlayerConfig(audioPassthrough, preferredDecoders, excludedDecoders, softwareAudio, film, layered)
         exoPlayer?.takeIf { exoPlayerConfig == config }?.let { return it }
         release()
         // Direct : mémoire tampon réglable, pour le cas où il est rendu à l'aperçu de l'accueil.
         val buffer = if (film) null else container.playerFactory.liveLoadControl(preview = false)
         return container.playerFactory.create(
             bandwidthMeter, preferredDecoders, adVolume, passthrough = audioPassthrough, excludedDecoders = excludedDecoders, softwareAudio = softwareAudio,
-            film = film, liveBuffer = buffer,
+            film = film, liveBuffer = buffer, layered = layered,
         ).apply {
             addListener(listener)
             addAnalyticsListener(analytics)
             exoPlayer = this
             exoPlayerConfig = config
             liveBuffer = buffer
-            previewCompatible = !film && !audioPassthrough && !softwareAudio && excludedDecoders.isEmpty()
+            previewCompatible = !film && !audioPassthrough && !softwareAudio && excludedDecoders.isEmpty() && VideoLayers.has(this)
         }
     }
 

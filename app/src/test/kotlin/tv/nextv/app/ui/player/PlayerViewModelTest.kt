@@ -218,6 +218,8 @@ class PlayerViewModelTest {
             viewModel.keepStreamForHome()
             val handoff = checkNotNull(container.previewHandoff.waiting.value)
             assertSame(playing, handoff.player)
+            // Sa couche vidéo part avec lui : le décodeur ne change pas de destination en passant dans l'aperçu.
+            assertTrue(tv.nextv.app.player.VideoLayers.has(playing))
             assertTrue(handoff.toPreview)
             assertTrue(live in handoff.channelIds)
             assertTrue(handoff.buffer.preview)
@@ -234,6 +236,24 @@ class PlayerViewModelTest {
             assertSame(playing, previewer.player.value)
             assertEquals(androidx.media3.common.Player.STATE_BUFFERING, playing.playbackState)
             previewer.release()
+        }
+    }
+
+    @Test
+    fun withoutSmoothSwitchingTheStreamIsClosedBackToHome() {
+        java.net.ServerSocket(0).use { server ->
+            kotlinx.coroutines.runBlocking { container.settings.setPreviewHandoff(false) }
+            val (live, _) = playlist("http://127.0.0.1:${server.localPort}/live/1.ts")
+            val (viewModel, store) = open(live)
+            viewModel.onStart()
+            idle()
+            val playing = checkNotNull(viewModel.player.value)
+            // Réglage coupé : pas de couche vidéo, le direct n'est pas confié à l'aperçu (fermé puis rouvert, comme avant).
+            assertTrue(!tv.nextv.app.player.VideoLayers.has(playing))
+            viewModel.keepStreamForHome()
+            assertNull(container.previewHandoff.waiting.value)
+            store.clear()
+            kotlinx.coroutines.runBlocking { container.settings.setPreviewHandoff(true) }
         }
     }
 
