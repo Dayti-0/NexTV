@@ -333,6 +333,9 @@ class HomeViewModel(
     /** Lecteur de l'aperçu (sans le son), `null` sans aperçu. */
     val previewPlayer = previewer.player
 
+    /** Dernière chaîne lue en plein écran (clé) : au retour, la sélection se pose sur elle. */
+    val lastLiveChannel: StateFlow<String?> = container.lastLiveChannel
+
     /** Dernière chaîne sélectionnée dans la grille des chaînes. */
     private val focusedChannel = MutableStateFlow<ChannelListRow?>(null)
 

@@ -339,6 +339,7 @@ internal fun SearchResults(
         else -> series.itemCount
     }
     val tv = section == HomeSection.TV
+    if (tv) FollowLastChannel(lastOpened, rowKey) { key -> channels.itemSnapshotList.indexOfFirst { it?.itemKey == key } }
     Shelf(
         title = title,
         count = itemCount(section, count),
@@ -560,6 +561,7 @@ internal fun LazyListScope.shelfItems(
 ) {
     // Type de rangée : la liste réutilise une rangée du même genre en défilant (moins de travail par rangée).
     items(shelves, key = { it.key }, contentType = { it::class }) { spec ->
+        if (spec is ShelfSpec.Channels) FollowLastChannel(lastOpened, spec.key) { key -> spec.channels.indexOfFirst { it.itemKey == key } }
         when (spec) {
             is ShelfSpec.Channels -> Shelf(
                 title = stringResource(spec.title),
@@ -695,6 +697,7 @@ private fun GroupShelf(
             value = loadSafely { content.rows.fresh<ChannelListRow>(section, title, version, limit) } ?: value.orEmpty()
         }
         val list = channels.orEmpty()
+        FollowLastChannel(lastOpened, spec.key) { key -> list.indexOfFirst { it.itemKey == key } }
         Shelf(name, count, padding, null, sizes.channel, CHANNEL_RATIO, spec.key, list.size, lastOpened, loading = channels == null, style = style, onNearEnd = loadMore(list.size), prefetch = remember(list) { list.map { it.logoUrl } }) {
             itemsIndexed(list, key = { _, it -> it.id }) { index, channel ->
                 ShelfChannel(channel, index, spec.key, sizes.channel, content, lastOpened, actions, style)
@@ -946,7 +949,7 @@ internal fun ShelfChannel(
     val modifier = Modifier
         .width(width)
         .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
-        .restoreFocus(channel.itemKey, lastOpened)
+        .restoreFocus(channel.itemKey, lastOpened, row)
         .onFocusChanged { if (it.isFocused) actions.onChannelFocus(channel) }
     val onClick = {
         lastOpened.value = OpenedItem(channel.itemKey, index, row)

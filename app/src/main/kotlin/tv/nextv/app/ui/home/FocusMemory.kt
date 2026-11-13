@@ -74,13 +74,20 @@ fun rememberLastOpened(): MutableState<OpenedItem?> = rememberSaveable(saver = O
  * Rend le focus à l'élément [key] si c'est le dernier ouvert, puis l'oublie : faire défiler la
  * liste ensuite ne déplace plus le focus. La demande est répétée brièvement : l'élément peut ne
  * devenir sélectionnable qu'une fois la liste remise à sa place.
+ *
+ * Chaîne changée dans le lecteur (zapping) : la dernière regardée ([LocalLastLiveChannel]) prend le focus si elle est
+ * dans la même liste ([row] : sa rangée) ; celle ouverte au départ attend un instant, et ne le prend que sinon.
  */
 @Composable
-internal fun Modifier.restoreFocus(key: String, lastOpened: MutableState<OpenedItem?>): Modifier {
+internal fun Modifier.restoreFocus(key: String, lastOpened: MutableState<OpenedItem?>, row: String? = null): Modifier {
     val opened = lastOpened.value
-    if (opened?.key != key || !opened.pending()) return this
+    if (opened == null || !opened.pending()) return this
+    val watched = LocalLastLiveChannel.current?.takeIf { it != opened.key && opened.key.startsWith(LIVE_KEY) && opened.row == row }
+    if (key != opened.key && key != watched) return this
+    val deferred = watched != null && key == opened.key
     val requester = remember { FocusRequester() }
     LaunchedEffect(Unit) {
+        if (deferred) delay(WATCHED_FIRST_MILLIS)
         repeat(FOCUS_ATTEMPTS) {
             if (runCatching { requester.requestFocus() }.isSuccess) {
                 lastOpened.value = null
@@ -117,6 +124,30 @@ internal fun RestoreScroll(state: LazyListState, lastOpened: MutableState<Opened
     }
 }
 
+/** Dernière chaîne lue en plein écran (clé, voir AppContainer.lastLiveChannel). */
+internal val LocalLastLiveChannel = androidx.compose.runtime.compositionLocalOf<String?> { null }
+
+/**
+ * Chaîne ouverte depuis la liste, puis changée dans le lecteur (zapping, menu des chaînes) : au retour, c'est la
+ * dernière regardée qui reprend le focus (et l'aperçu continue sur elle), si elle est dans cette liste ([row] : sa
+ * rangée ; [indexOf] : sa place, -1 si elle n'y est pas). Sinon, celle ouverte au départ, comme avant.
+ *
+ * Appelé avant de composer les éléments de la liste : aucun ne doit reprendre le focus avant que le dernier élément
+ * ouvert soit remplacé (un effet arriverait trop tard, après celui de la chaîne ouverte au départ). Jamais sauté : la
+ * liste se remplit souvent juste après le retour, et c'est alors que la chaîne s'y trouve.
+ */
+@Composable
+@androidx.compose.runtime.NonRestartableComposable
+internal fun FollowLastChannel(lastOpened: MutableState<OpenedItem?>, row: String? = null, indexOf: (String) -> Int) {
+    val watched = LocalLastLiveChannel.current ?: return
+    val opened = lastOpened.value ?: return
+    if (!opened.pending() || opened.row != row || opened.key == watched || !opened.key.startsWith(LIVE_KEY)) return
+    val index = indexOf(watched)
+    if (index >= 0) lastOpened.value = opened.copy(key = watched, index = index)
+}
+
+private const val LIVE_KEY = "live:"
+
 /** Rangée (interfaces à rangées) contenant le dernier élément ouvert : remise en vue. */
 @Composable
 internal fun RestoreRow(state: LazyListState, lastOpened: MutableState<OpenedItem?>, rowKeys: List<String>) {
@@ -130,4 +161,7 @@ internal fun RestoreRow(state: LazyListState, lastOpened: MutableState<OpenedIte
 }
 
 private const val FOCUS_ATTEMPTS = 8
+
+/** Attente de la chaîne ouverte au départ, le temps que la dernière regardée prenne le focus si elle est là. */
+private const val WATCHED_FIRST_MILLIS = 300L
 private const val FOCUS_RETRY_MILLIS = 120L

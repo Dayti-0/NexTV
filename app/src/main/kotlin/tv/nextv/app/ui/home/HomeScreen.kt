@@ -287,6 +287,8 @@ fun HomeScreen(
 
     // Films et épisodes déjà vus : badge « Déjà vu » sur leurs affiches.
     val watchedKeys by viewModel.watchedKeys.collectAsStateWithLifecycle()
+    // Chaîne regardée en dernier en plein écran : la sélection revient sur elle.
+    val lastLiveChannel by viewModel.lastLiveChannel.collectAsStateWithLifecycle()
     // Affiches TMDB (celles des fiches) dans les rangées.
     val posters by viewModel.posters.collectAsStateWithLifecycle()
     val requestPoster = remember(viewModel) { { item: PosterItem -> viewModel.requestPoster(item) } }
@@ -375,7 +377,7 @@ fun HomeScreen(
         return
     }
 
-    CompositionLocalProvider(LocalWatchedKeys provides watchedKeys, LocalPosterArt provides posterArt) {
+    CompositionLocalProvider(LocalWatchedKeys provides watchedKeys, LocalPosterArt provides posterArt, LocalLastLiveChannel provides lastLiveChannel) {
         HomeContent(
             onMenu = if (layout == HomeLayout.PREMIUM) ({ premiumMenu = true }) else null,
             section = section,
@@ -1517,6 +1519,14 @@ internal fun TvBody(
         favoritesMode -> favorites.size
         recentMode -> recent.size
         else -> channels.itemCount
+    }
+    // Chaîne changée dans le lecteur : la sélection revient sur la dernière regardée (avant de composer les chaînes).
+    FollowLastChannel(lastOpened) { key ->
+        when {
+            favoritesMode -> favorites.indexOfFirst { it.itemKey == key }
+            recentMode -> recent.indexOfFirst { it.itemKey == key }
+            else -> channels.itemSnapshotList.indexOfFirst { it?.itemKey == key }
+        }
     }
     RestoreScroll(state, lastOpened, count)
     TopOnNewList(state, category, if (channels.itemCount > 0) channels.peek(0)?.id else null, lastOpened)

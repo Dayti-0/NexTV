@@ -175,6 +175,12 @@ class AppContainer(context: Context) {
     /** Aperçu de l'accueil confié au lecteur plein écran, quand on ouvre la chaîne de l'aperçu. */
     val previewHandoff = PreviewHandoffSlot(applicationScope)
 
+    /**
+     * Clé de la dernière chaîne lue en plein écran (après un zapping, celle sur laquelle on s'est arrêté) : au retour,
+     * l'accueil se place sur elle plutôt que sur celle ouverte au départ.
+     */
+    val lastLiveChannel = MutableStateFlow<String?>(null)
+
     /** Clé TMDB : celle saisie dans les réglages, sinon celle fournie à la compilation (secret CI). */
     private val tmdbKey: StateFlow<String?> = settings.tmdbApiKey
         .stateIn(applicationScope, SharingStarted.Eagerly, null)

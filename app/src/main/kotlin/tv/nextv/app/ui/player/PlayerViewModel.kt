@@ -511,6 +511,8 @@ class PlayerViewModel(
         val primary = if (isLive && requested.variantKey.isNotEmpty()) dao.primaryOf(requested.sourceId, requested.variantKey) ?: requested else requested
         session.channel = primary
         session.listed = requested
+        // Retour à l'accueil : il se place sur la chaîne regardée en dernier.
+        if (isLive) container.lastLiveChannel.value = primary.itemKey
         val replayed = delayed.replay
         if (replayed != null && isLive) {
             // Programme encore en cours : « Depuis le début », avec le bandeau du direct. Pas de qualité automatique.

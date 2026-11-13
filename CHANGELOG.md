@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.133
+- Retour à l’accueil après avoir changé de chaîne en plein écran : la sélection (et l’aperçu) est sur la chaîne regardée en dernier, et non plus sur celle ouverte au départ (si elle est dans la liste affichée)
+
 ## 0.2.132
 - Films en double sous leur titre français et leur titre original (« Le Virtuose » et « The Virtuoso », « Star Trek : Sans limites » et « Star Trek Beyond ») : une seule affiche, sous le titre français ; l’autre copie se choisit sur la fiche (bouton « Version », avec son titre). Les doublons déjà affichés une fois disparaissent à la prochaine lecture de la playlist (au lancement qui suit la mise à jour)
 - Recherche de films : le titre original trouve aussi le film rangé sous son titre français
