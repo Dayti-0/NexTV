@@ -75,6 +75,11 @@ class ReturnFromPlayerFocusTest {
         compose.onNode(isFocused()).fetchSemanticsNode().config.toString()
     }.getOrDefault("(rien)")
 
+    /** Nombre d'éléments affichés contenant [text] (message d'échec). */
+    private fun shown(text: String): Int = runCatching {
+        compose.onAllNodesWithText(text, substring = true).fetchSemanticsNodes().size
+    }.getOrDefault(-1)
+
     /** Chaînes de la catégorie « SPORT » (après celles de la TNT), pour changer de catégorie dans le lecteur. */
     private val sports = listOf("beIN Sports 1", "RMC Sport 1", "Eurosport 1")
 
@@ -156,12 +161,20 @@ class ReturnFromPlayerFocusTest {
             idle(20)
             application.container.lastLiveCategory.value = Category.Group("SPORT")
             application.container.lastLiveChannel.value = "live:bein sports 1"
-            idle(10)
+            // Comme sur la télé, l'accueil (encore ouvert sous le lecteur) a le temps de passer à « SPORT » avant le
+            // retour : la catégorie est cherchée dans la base, hors du fil principal (plus lent sur la CI).
+            idle(40)
             scenario.onActivity { it.onLongBack?.invoke() }
             idle(40)
-            repeat(30) { if (!focusedText().contains("beIN Sports 1")) advance() }
+            // Au plus quelques secondes réelles (machines de la CI plus lentes), sans attendre quand c'est fait.
+            val deadline = System.nanoTime() + RETURN_WAIT_NANOS
+            while (!focusedText().contains("beIN Sports 1") && System.nanoTime() < deadline) advance()
             println("au retour : ${focusedText()}")
-            assertTrue("Sélection au retour : ${focusedText()}", focusedText().contains("beIN Sports 1"))
+            assertTrue(
+                "Sélection au retour : ${focusedText()} ; beIN Sports 1 affichée : ${shown("beIN Sports 1")}, TF1 affichée : " +
+                    "${shown("TF1")}, catégorie suivie : ${application.container.lastLiveCategory.value}",
+                focusedText().contains("beIN Sports 1"),
+            )
         } finally {
             scenario.close()
         }
@@ -172,4 +185,9 @@ class ReturnFromPlayerFocusTest {
 
     @Test
     fun liveCenter() = zapAndReturn(HomeLayout.LIVE_CENTER)
+
+    private companion object {
+        /** Attente du focus au retour, en temps réel. */
+        const val RETURN_WAIT_NANOS = 8_000_000_000L
+    }
 }
