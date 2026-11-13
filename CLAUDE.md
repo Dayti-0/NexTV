@@ -115,6 +115,15 @@ Commandes :
   (abréviations, lettre de travers, ville du siège) ; ce nom sert à la clé de version (`LiveVariants`, qui regroupe
   aussi les noms ne différant que par « TV »), au guide (`EpgImporter.match`, avec repli sur France 3 national) et au
   réglage « Région de France 3 ».
+- « Rassembler les chaînes » (réglage, activé d'office) : `LiveVariants.spelling` ramène les écritures d'un nom à une
+  clé (« + », « & », pluriels), les séparateurs de la playlist (« ▀▄ FR ▀▄ CINEMA ▄▀ ») ont leur propre clé
+  (`SEPARATOR_PREFIX`), `core/catalog/ChannelLineup.kt` donne l'ordre rangé (TNT par numéro de `TntChannels`, Canal+,
+  cinéma… table `KNOWN`, rubriques de la playlist). En base : `audio`, `lineup` et `listOrder` (ordre des listes en
+  vigueur ; toutes les listes de chaînes et le zapping trient par lui) ; `ChannelDao.applyGrouping` bascule clés et
+  ordre au changement du réglage, `ChannelFilters` masque séparateurs et autres éditions de France 3.
+- Retour du lecteur à l'accueil : la chaîne regardée (`AppContainer.lastLiveChannel`) et la catégorie où elle a été
+  choisie dans le menu des chaînes (`lastLiveCategory`) ; `HomeViewModel.followWatchedChannel` passe l'accueil à une
+  catégorie qui la contient, `FollowLastChannel` / `restoreFocus` (`FocusMemory.kt`) y posent la sélection.
 - Versions d'un film (« Titre (Truefrench) », « Titre (FR) », la même en 4K) : `ContentClassifier` retire les mentions du
   titre (`versionOf` donne la mention et la préférence), `MovieCopies` (dans `RoomPlaylistStore.kt`) choisit la copie
   affichée à l'import, les requêtes `MOVIE_IN_GROUP` / `MOVIE_VISIBLE` de `Daos.kt` n'en gardent qu'une par film, la
