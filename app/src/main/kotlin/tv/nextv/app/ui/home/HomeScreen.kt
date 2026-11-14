@@ -1528,11 +1528,15 @@ private const val NEW_LIST_WAIT_MILLIS = 5_000L
  * un instant affichée ; à l'arrivée de la nouvelle, la grille se recalait sur une chaîne de l'ancienne, loin dans
  * la liste (« Toutes les chaînes » semblait garder la catégorie précédente). Pas au retour du lecteur
  * ([lastOpened] : la grille y revient sur l'élément ouvert).
+ *
+ * Ni quand la sélection est dans la grille ([listFocus]) : c'est alors la même liste, relue (programmes toutes les
+ * 5 minutes, guide ou playlist actualisés) à partir de l'élément affiché, et son premier élément a changé. La grille
+ * remontait en haut, la sélection restée loin en bas, hors de l'écran.
  */
 @Composable
-private fun TopOnNewList(state: LazyGridState, category: Category, firstKey: Any?, lastOpened: MutableState<OpenedItem?>) {
+private fun TopOnNewList(state: LazyGridState, category: Category, firstKey: Any?, lastOpened: MutableState<OpenedItem?>, listFocus: HeldFocus) {
     LaunchedEffect(category, firstKey) {
-        if (firstKey != null && lastOpened.value == null && state.firstVisibleItemIndex > 0) state.scrollToItem(0)
+        if (firstKey != null && lastOpened.value == null && !listFocus.held && state.firstVisibleItemIndex > 0) state.scrollToItem(0)
     }
 }
 
@@ -1648,7 +1652,9 @@ internal fun TvBody(
         if (loaded in 1..pendingIndex) channels[loaded - 1]
     }
     RestoreScroll(state, lastOpened, count)
-    TopOnNewList(state, category, if (channels.itemCount > 0) channels.peek(0)?.id else null, lastOpened)
+    // Sélection dans la grille (suivie sans recomposer) : une liste relue ne la renvoie pas en haut.
+    val listFocus = remember { HeldFocus() }
+    TopOnNewList(state, category, if (channels.itemCount > 0) channels.peek(0)?.id else null, lastOpened, listFocus)
     TakeFocusOnNewList(state, category, firstFocus) {
         if (favoritesMode || recentMode) null else channels.itemSnapshotList.items
     }
@@ -1659,7 +1665,10 @@ internal fun TvBody(
             contentPadding = padding,
             horizontalArrangement = Arrangement.spacedBy(grid.spacing),
             verticalArrangement = Arrangement.spacedBy(if (grid.columns == 1) 2.dp else grid.spacing),
-            modifier = Modifier.fillMaxSize().then(fade).onFocusChanged { if (!it.hasFocus) focused.value = null },
+            modifier = Modifier.fillMaxSize().then(fade).onFocusChanged {
+                listFocus.held = it.hasFocus
+                if (!it.hasFocus) focused.value = null
+            },
         ) {
             if (favoritesMode) {
                 items(favorites.size, key = { favorites[it].itemKey }) { index -> card(favorites[index], index, true) }
@@ -1727,7 +1736,9 @@ private fun MoviesBody(
     }
     val state = rememberSaveable(category, saver = LazyGridState.Saver) { LazyGridState() }
     RestoreScroll(state, lastOpened, if (favoritesMode) favorites.size else movies.itemCount)
-    TopOnNewList(state, category, if (movies.itemCount > 0) movies.peek(0)?.id else null, lastOpened)
+    // Sélection dans la grille (suivie sans recomposer) : une liste relue ne la renvoie pas en haut.
+    val listFocus = remember { HeldFocus() }
+    TopOnNewList(state, category, if (movies.itemCount > 0) movies.peek(0)?.id else null, lastOpened, listFocus)
     FadingBottom({ state.canScrollForward }, { state.canScrollBackward }) { fade ->
         LazyVerticalGrid(
             columns = GridCells.Fixed(grid.columns),
@@ -1735,7 +1746,10 @@ private fun MoviesBody(
             contentPadding = grid.padding,
             horizontalArrangement = Arrangement.spacedBy(grid.spacing),
             verticalArrangement = Arrangement.spacedBy(grid.spacing),
-            modifier = Modifier.fillMaxSize().then(fade).onFocusChanged { if (!it.hasFocus) focused.value = null },
+            modifier = Modifier.fillMaxSize().then(fade).onFocusChanged {
+                listFocus.held = it.hasFocus
+                if (!it.hasFocus) focused.value = null
+            },
         ) {
             if (favoritesMode) {
                 items(favorites.size, key = { favorites[it].itemKey }) { index -> poster(favorites[index], index, true) }
@@ -1801,7 +1815,9 @@ private fun SeriesBody(
     }
     val state = rememberSaveable(category, saver = LazyGridState.Saver) { LazyGridState() }
     RestoreScroll(state, lastOpened, if (favoritesMode) favorites.size else series.itemCount)
-    TopOnNewList(state, category, if (series.itemCount > 0) series.peek(0)?.itemKey else null, lastOpened)
+    // Sélection dans la grille (suivie sans recomposer) : une liste relue ne la renvoie pas en haut.
+    val listFocus = remember { HeldFocus() }
+    TopOnNewList(state, category, if (series.itemCount > 0) series.peek(0)?.itemKey else null, lastOpened, listFocus)
     FadingBottom({ state.canScrollForward }, { state.canScrollBackward }) { fade ->
         LazyVerticalGrid(
             columns = GridCells.Fixed(grid.columns),
@@ -1809,7 +1825,10 @@ private fun SeriesBody(
             contentPadding = grid.padding,
             horizontalArrangement = Arrangement.spacedBy(grid.spacing),
             verticalArrangement = Arrangement.spacedBy(grid.spacing),
-            modifier = Modifier.fillMaxSize().then(fade).onFocusChanged { if (!it.hasFocus) focused.value = null },
+            modifier = Modifier.fillMaxSize().then(fade).onFocusChanged {
+                listFocus.held = it.hasFocus
+                if (!it.hasFocus) focused.value = null
+            },
         ) {
             if (favoritesMode) {
                 items(favorites.size, key = { favorites[it].itemKey }) { index -> poster(favorites[index], index, true) }

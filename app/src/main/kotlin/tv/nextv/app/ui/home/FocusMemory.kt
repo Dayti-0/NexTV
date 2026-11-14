@@ -112,7 +112,7 @@ internal fun Modifier.restoreFocus(key: String, lastOpened: MutableState<OpenedI
 }
 
 /** L'élément a le focus (suivi sans recomposer). */
-private class HeldFocus {
+internal class HeldFocus {
     var held = false
 }
 

@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.146
+- Liste des chaînes : elle ne remonte plus toute seule en haut quand ses programmes sont relus (toutes les 5 minutes) ou après une actualisation du guide ou de la playlist ; elle reste sur la chaîne sélectionnée (celle-ci restait choisie, mais hors de l’écran)
+
 ## 0.2.145
 - Retour à l’accueil juste après avoir choisi une chaîne d’une autre catégorie dans le menu du lecteur : la liste ne change plus de catégorie sous tes yeux une fois affichée (la sélection pouvait se perdre, et le menu de gauche s’ouvrir)
 

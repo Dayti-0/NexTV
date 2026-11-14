@@ -49,6 +49,9 @@ class ReturnFromPlayerFocusTest {
     @Before
     fun television() {
         shadowOf(application.packageManager).setSystemFeature(PackageManager.FEATURE_LEANBACK, true)
+        // Télécommande, comme sur la télé : pas de mode tactile (Robolectric part en mode tactile quand aucun autre test
+        // ne l'a quitté avant, et la sélection rendue au retour du lecteur s'y perdait parfois).
+        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().setInTouchMode(false)
     }
 
     private fun idle(times: Int = 10) {
@@ -91,7 +94,11 @@ class ReturnFromPlayerFocusTest {
 
     private fun focusedText(): String = runCatching {
         compose.onNode(isFocused()).fetchSemanticsNode().config.toString()
-    }.getOrDefault("(rien)")
+    }.getOrElse { error ->
+        val nodes = runCatching { compose.onAllNodes(isFocused()).fetchSemanticsNodes() }.getOrDefault(emptyList())
+        val roots = runCatching { compose.onAllNodes(androidx.compose.ui.test.isRoot()).fetchSemanticsNodes().size }.getOrDefault(-1)
+        "(rien : ${nodes.size} sélectionnés, $roots racines, ${nodes.map { Regex("Text : \\[[^]]*]").find(it.config.toString())?.value ?: it.config.toString().take(60) }} ; ${error.message?.take(120)})"
+    }
 
     /** Nombre d'éléments affichés contenant [text] (message d'échec). */
     private fun shown(text: String): Int = runCatching {
