@@ -94,10 +94,14 @@ class ReturnFromPlayerFocusTest {
 
     private fun focusedText(): String = runCatching {
         compose.onNode(isFocused()).fetchSemanticsNode().config.toString()
-    }.getOrElse { error ->
+    }.getOrDefault("(rien)")
+
+    /** Éléments sélectionnés et fenêtres Compose à l'écran (message d'échec quand [focusedText] n'en trouve pas un seul). */
+    private fun focusReport(): String {
         val nodes = runCatching { compose.onAllNodes(isFocused()).fetchSemanticsNodes() }.getOrDefault(emptyList())
         val roots = runCatching { compose.onAllNodes(androidx.compose.ui.test.isRoot()).fetchSemanticsNodes().size }.getOrDefault(-1)
-        "(rien : ${nodes.size} sélectionnés, $roots racines, ${nodes.map { Regex("Text : \\[[^]]*]").find(it.config.toString())?.value ?: it.config.toString().take(60) }} ; ${error.message?.take(120)})"
+        val texts = nodes.map { Regex("Text : \\[[^]]*]").find(it.config.toString())?.value ?: it.config.toString().take(80) }
+        return "${nodes.size} sélectionné(s) $texts, $roots fenêtre(s)"
     }
 
     /** Nombre d'éléments affichés contenant [text] (message d'échec). */
@@ -199,7 +203,7 @@ class ReturnFromPlayerFocusTest {
             while (!focusedText().contains("beIN Sports 1") && System.nanoTime() < deadline) advance()
             println("au retour : ${focusedText()}")
             assertTrue(
-                "Sélection au retour : ${focusedText()} ; beIN Sports 1 affichée : ${shown("beIN Sports 1")}, TF1 affichée : " +
+                "Sélection au retour : ${focusedText()} (${focusReport()}) ; beIN Sports 1 affichée : ${shown("beIN Sports 1")}, TF1 affichée : " +
                     "${shown("TF1")}, catégorie suivie : ${application.container.lastLiveCategory.value}",
                 focusedText().contains("beIN Sports 1"),
             )
@@ -260,7 +264,7 @@ class ReturnFromPlayerFocusTest {
             while (!focusedText().contains("Chaîne $FAR_CHANNELS") && System.nanoTime() < deadline) advance()
             println("streaming, au retour : ${focusedText()}")
             assertTrue(
-                "Sélection au retour : ${focusedText()} ; place notée : ${container.lastLivePlace.value} ; " +
+                "Sélection au retour : ${focusedText()} (${focusReport()}) ; place notée : ${container.lastLivePlace.value} ; " +
                     "Chaîne $FAR_CHANNELS affichée : ${shown("Chaîne $FAR_CHANNELS")}, beIN affichée : ${shown("beIN Sports 1")}",
                 focusedText().contains("Chaîne $FAR_CHANNELS"),
             )
