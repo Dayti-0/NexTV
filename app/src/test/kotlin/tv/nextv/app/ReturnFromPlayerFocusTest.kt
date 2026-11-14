@@ -71,6 +71,24 @@ class ReturnFromPlayerFocusTest {
         idle(5)
     }
 
+    /** Attend (au plus quelques secondes réelles) que le lecteur ait chargé la chaîne [key] (la chaîne regardée). */
+    private fun awaitWatched(key: String) {
+        val deadline = System.nanoTime() + RETURN_WAIT_NANOS
+        while (application.container.lastLiveChannel.value != key && System.nanoTime() < deadline) idle(1)
+        assertTrue("Chaîne regardée : ${application.container.lastLiveChannel.value}", application.container.lastLiveChannel.value == key)
+    }
+
+    /**
+     * Attend (au plus quelques secondes réelles) que l'accueil, caché par le lecteur, ait suivi la chaîne regardée [key] :
+     * catégorie qui la contient, puis sa place dans la liste.
+     */
+    private fun awaitPlace(key: String) {
+        val deadline = System.nanoTime() + RETURN_WAIT_NANOS
+        while (application.container.lastLivePlace.value?.key != key && System.nanoTime() < deadline) idle(1)
+        idle(5)
+        assertTrue("Place de $key : ${application.container.lastLivePlace.value}", application.container.lastLivePlace.value?.key == key)
+    }
+
     private fun focusedText(): String = runCatching {
         compose.onNode(isFocused()).fetchSemanticsNode().config.toString()
     }.getOrDefault("(rien)")
@@ -159,11 +177,14 @@ class ReturnFromPlayerFocusTest {
             assertTrue("Sélection avant OK : ${focusedText()}", focusedText().contains("TF1"))
             press(Key.DirectionCenter)
             idle(20)
+            // Lecteur ouvert sur TF1 (il note la chaîne regardée en la chargeant) avant d'y choisir une autre chaîne.
+            awaitWatched("live:tf1")
             application.container.lastLiveCategory.value = Category.Group("SPORT")
             application.container.lastLiveChannel.value = "live:bein sports 1"
             // Comme sur la télé, l'accueil (encore ouvert sous le lecteur) a le temps de passer à « SPORT » avant le
-            // retour : la catégorie est cherchée dans la base, hors du fil principal (plus lent sur la CI).
-            idle(40)
+            // retour : la catégorie est cherchée dans la base, hors du fil principal (plus lent sur la CI). Sa place
+            // dans la liste est notée en dernier.
+            awaitPlace("live:bein sports 1")
             scenario.onActivity { it.onLongBack?.invoke() }
             idle(40)
             // Au plus quelques secondes réelles (machines de la CI plus lentes), sans attendre quand c'est fait.
@@ -221,15 +242,21 @@ class ReturnFromPlayerFocusTest {
             assertTrue("Sélection avant OK : ${focusedText()}", focusedText().contains("beIN Sports 1"))
             press(Key.DirectionCenter)
             idle(20)
-            // Dans le lecteur : une chaîne de la TNT, loin dans « Toutes les chaînes ».
+            awaitWatched("live:bein sports 1")
+            // Dans le lecteur : une chaîne de la TNT, loin dans « Toutes les chaînes ». L'accueil passe à cette liste et
+            // y note sa place pendant la lecture (recherche dans la base, plus lente sur la CI).
             container.lastLiveChannel.value = "live:chaine $FAR_CHANNELS"
-            idle(40)
+            awaitPlace("live:chaine $FAR_CHANNELS")
             scenario.onActivity { it.onLongBack?.invoke() }
             idle(40)
             val deadline = System.nanoTime() + RETURN_WAIT_NANOS
             while (!focusedText().contains("Chaîne $FAR_CHANNELS") && System.nanoTime() < deadline) advance()
             println("streaming, au retour : ${focusedText()}")
-            assertTrue("Sélection au retour : ${focusedText()}", focusedText().contains("Chaîne $FAR_CHANNELS"))
+            assertTrue(
+                "Sélection au retour : ${focusedText()} ; place notée : ${container.lastLivePlace.value} ; " +
+                    "Chaîne $FAR_CHANNELS affichée : ${shown("Chaîne $FAR_CHANNELS")}, beIN affichée : ${shown("beIN Sports 1")}",
+                focusedText().contains("Chaîne $FAR_CHANNELS"),
+            )
         } finally {
             scenario.close()
         }

@@ -68,7 +68,9 @@ class WatchedChannelCategoryTest {
         viewModel.selectSection(HomeSection.TV)
         viewModel.selectCategory(Category.Group("FR TV HD"))
         idle { viewModel.category.value == Category.Group("FR TV HD") }
-        // Chaîne ouverte depuis l'accueil.
+        // Chaîne ouverte depuis l'accueil : le lecteur cache l'accueil (comme PlayerViewModel à son ouverture).
+        container.playerOpened()
+        idle { container.playbackOpen.value }
         container.lastLiveCategory.value = null
         container.lastLiveChannel.value = "live:fr tf1"
         return viewModel
@@ -90,6 +92,20 @@ class WatchedChannelCategoryTest {
         container.lastLiveChannel.value = "live:fr rmc sport 1"
         idle { viewModel.category.value == Category.All }
         assertEquals(Category.All, viewModel.category.value)
+    }
+
+    /**
+     * Accueil déjà affiché (lecteur fermé) quand la catégorie de la chaîne regardée est trouvée : la liste ne change pas
+     * sous les yeux (elle emportait la sélection, qu'Android donnait au menu de gauche de Streaming).
+     */
+    @Test
+    fun theHomeKeepsItsCategoryOnceShown() {
+        val viewModel = home()
+        container.playerClosed()
+        idle { !container.playbackOpen.value }
+        container.lastLiveChannel.value = "live:fr rmc sport 1"
+        idle { false }
+        assertEquals(Category.Group("FR TV HD"), viewModel.category.value)
     }
 
     @Test

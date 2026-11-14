@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.145
+- Retour à l’accueil juste après avoir choisi une chaîne d’une autre catégorie dans le menu du lecteur : la liste ne change plus de catégorie sous tes yeux une fois affichée (la sélection pouvait se perdre, et le menu de gauche s’ouvrir)
+
 ## 0.2.144
 - Live TV : haut / bas (et chaîne + / −) restent dans la catégorie d’où la chaîne a été ouverte (accueil, guide ou menu des chaînes), en boucle : depuis la première chaîne de « Canal+ », bas va à la dernière chaîne de « Canal+ » (il partait à la chaîne d’avant dans toutes les chaînes). Ouverte depuis « Toutes les chaînes » ou une recherche : toutes les chaînes, comme avant ; depuis les favoris : les favoris
 - Interface Streaming : au retour à l’accueil (appui long sur Retour), la sélection va sur la chaîne regardée même quand elle est loin dans la liste ; elle se perdait parfois, et le menu de gauche s’ouvrait

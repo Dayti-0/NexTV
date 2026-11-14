@@ -131,9 +131,10 @@ Commandes :
   choisi pour la chaîne (`SettingsRepository.channelSound`).
 - Retour du lecteur à l'accueil : la chaîne regardée (`AppContainer.lastLiveChannel`) et la catégorie où elle a été
   choisie dans le menu des chaînes (`lastLiveCategory`) ; `HomeViewModel.followWatchedChannel` passe l'accueil à une
-  catégorie qui la contient et note sa place dans cette liste (`watchedPlace`, lue dans la base) ; `TvBody` charge la
-  liste jusqu'à elle, `FollowLastChannel` / `restoreFocus` (`FocusMemory.kt`) y posent la sélection (à défaut, sur la
-  première chaîne : une sélection perdue ouvrait le menu de gauche de Streaming).
+  catégorie qui la contient (seulement lecteur ouvert, `playbackOpen` : jamais sous les yeux) et note sa place dans
+  cette liste (`AppContainer.lastLivePlace`, lue dans la base) ; `TvBody` charge la liste jusqu'à elle,
+  `FollowLastChannel` / `restoreFocus` (`FocusMemory.kt`) y posent la sélection (à défaut, sur la première chaîne : une
+  sélection perdue ouvrait le menu de gauche de Streaming). Les tests attendent cette place avant le retour (CI lente).
 - Zapping (haut/bas, chaîne +/-) : `PlayerViewModel.zap` reste, en boucle, dans la liste d'où la chaîne a été ouverte :
   favoris (`ARG_FAVORITES`), catégorie (`ARG_GROUP` : `Routes.groupPlayer`, depuis `HomeActions.onPlayGroupChannel` et le
   guide), sinon toutes les chaînes ; `playFromMenu` prend la catégorie du menu. Requêtes `ChannelDao.nextChannelId` /
