@@ -60,6 +60,15 @@ class PlayerViewModelTest {
         live to movie
     }
 
+    /**
+     * Attend (au plus quelques secondes réelles) que le lecteur passe à une autre chaîne que [before] : le zapping et
+     * l'ouverture de la chaîne lisent la base hors du fil principal (plus lents sur la CI qu'un temps d'attente fixe).
+     */
+    private fun awaitOtherChannel(viewModel: PlayerViewModel, before: String?) {
+        val deadline = System.nanoTime() + 8_000_000_000L
+        do idle() while (viewModel.state.value.channelName == before && System.nanoTime() < deadline)
+    }
+
     private fun open(channelId: Long): Pair<PlayerViewModel, ViewModelStore> {
         val viewModel = PlayerViewModel(container, SavedStateHandle(mapOf(PlayerViewModel.ARG_CHANNEL_ID to channelId)), application)
         // Fermeture de l'écran : comme le fait la navigation.
@@ -537,9 +546,16 @@ class PlayerViewModelTest {
         idle()
         assertEquals("Canal+", viewModel.state.value.channelName)
         fun zap(direction: Int): String? {
+            val before = viewModel.state.value.channelName
             viewModel.zap(direction)
-            idle()
+            awaitOtherChannel(viewModel, before)
             return viewModel.state.value.channelName
+        }
+        fun pick(category: Category, key: String) {
+            val before = viewModel.state.value.channelName
+            viewModel.selectMenuCategory(category)
+            viewModel.playFromMenu(idOf(key))
+            awaitOtherChannel(viewModel, before)
         }
         // Bas depuis la première chaîne de la catégorie : la dernière de la catégorie.
         assertEquals("Canal+ Cinéma", zap(-1))
@@ -553,18 +569,14 @@ class PlayerViewModelTest {
         assertEquals(Category.Group("CANAL+"), viewModel.menu.value.category)
 
         // Chaîne choisie dans « Toutes les chaînes » du menu : haut/bas parcourt toute la playlist.
-        viewModel.selectMenuCategory(Category.All)
-        viewModel.playFromMenu(idOf("live:bein sports 1"))
-        idle()
+        pick(Category.All, "live:bein sports 1")
         assertEquals("beIN Sports 1", viewModel.state.value.channelName)
         assertEquals("TF1", zap(1))
 
         // Chaîne choisie dans une autre catégorie du menu : le zapping reste dans celle-ci.
         viewModel.openMenu()
         idle()
-        viewModel.selectMenuCategory(Category.Group("TNT"))
-        viewModel.playFromMenu(idOf("live:france 2"))
-        idle()
+        pick(Category.Group("TNT"), "live:france 2")
         assertEquals("France 2", viewModel.state.value.channelName)
         assertEquals("TF1", zap(1))
         assertEquals("France 2", zap(1))
@@ -588,11 +600,12 @@ class PlayerViewModelTest {
         val (viewModel, store) = open(france2)
         viewModel.onStart()
         idle()
+        assertEquals("France 2", viewModel.state.value.channelName)
         viewModel.zap(1)
-        idle()
+        awaitOtherChannel(viewModel, "France 2")
         assertEquals("Canal+", viewModel.state.value.channelName)
         viewModel.zap(1)
-        idle()
+        awaitOtherChannel(viewModel, "Canal+")
         assertEquals("TF1", viewModel.state.value.channelName)
         store.clear()
     }
