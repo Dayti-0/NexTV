@@ -46,6 +46,10 @@ private enum class PromptStep { CHECK, ASK, DONE }
  */
 @Composable
 fun LaunchUpdatePrompt() {
+    // Version de développement (tests, captures, APK de la CI) : signée autrement, la version publiée ne s'installe pas
+    // par-dessus. Pas de proposition au lancement : elle s'ouvrait aussi au milieu des tests qui lancent l'application
+    // (leur version « 0.2.0 » paraît ancienne), par-dessus l'accueil, et prenait la sélection.
+    if (BuildConfig.DEBUG) return
     val updater = appContainer().updater
     val context = LocalContext.current
     var step by rememberSaveable { mutableStateOf(PromptStep.CHECK) }

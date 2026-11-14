@@ -72,6 +72,11 @@ Commandes :
   ailleurs : suivre la sélection image par image (`HomeFocusTest.streamingCategoryPickKeepsTheFocusInTheList`).
 - Le lint ne tourne pas toujours ici (dépôt Maven qui limite les requêtes) : regarder le résultat de la CI après
   chaque envoi (`Android build & lint`), et corriger dans la version suivante.
+- Tests qui lancent la vraie application (`ActivityScenario` / `MainActivity`) : l'API de GitHub répond (ici comme sur la
+  CI), et la version de test « 0.2.0 » paraît ancienne. La proposition de mise à jour au lancement s'ouvrait alors au
+  milieu du test, dans une seconde fenêtre qui prenait la sélection (échecs au hasard, surtout sur la CI) : elle est
+  coupée en debug (`LaunchUpdatePrompt`). Ces tests passent aussi en mode télécommande (`setInTouchMode(false)`) ; en
+  cas d'échec de sélection, lister tous les éléments sélectionnés et les fenêtres (`ReturnFromPlayerFocusTest.focusReport`).
 
 ## Publier une version
 
