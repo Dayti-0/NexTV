@@ -883,6 +883,37 @@ class HomeFocusTest {
         assertEquals(chosen.id, focused.lastOrNull()?.id)
     }
 
+    /**
+     * Chaîne ouverte depuis une catégorie : le lecteur reçoit la catégorie, haut/bas y restera (depuis « Toutes les
+     * chaînes », aucune : voir openedChannelGetsFocusBackAfterReturning).
+     */
+    @Test
+    fun aChannelOpenedFromACategoryTellsThePlayerItsCategory() {
+        val inGroup = mutableListOf<Pair<Long, String>>()
+        val plain = mutableListOf<Long>()
+        val focused = mutableListOf<ChannelListRow>()
+        compose.setContent {
+            Home(
+                HomeLayout.LIVE_CENTER,
+                HomeActions(
+                    onPlayChannel = { plain += it },
+                    onPlayGroupChannel = { id, group -> inGroup += id to group },
+                    onChannelFocus = { focused += it },
+                ),
+                category = Category.Group("Groupe 2"),
+            )
+        }
+        compose.waitForIdle()
+        // Onglets → recherche → catégories, puis la liste des chaînes.
+        press(Key.DirectionDown)
+        press(Key.DirectionDown)
+        press(Key.DirectionRight)
+        val chosen = focused.last()
+        press(Key.DirectionCenter)
+        assertEquals(listOf(chosen.id to "Groupe 2"), inGroup)
+        assertTrue("Ouverte sans sa catégorie : $plain", plain.isEmpty())
+    }
+
     @Test
     fun tabsChangeSectionWithoutOk() {
         var section by mutableStateOf(HomeSection.TV)

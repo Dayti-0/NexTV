@@ -131,7 +131,13 @@ Commandes :
   choisi pour la chaîne (`SettingsRepository.channelSound`).
 - Retour du lecteur à l'accueil : la chaîne regardée (`AppContainer.lastLiveChannel`) et la catégorie où elle a été
   choisie dans le menu des chaînes (`lastLiveCategory`) ; `HomeViewModel.followWatchedChannel` passe l'accueil à une
-  catégorie qui la contient, `FollowLastChannel` / `restoreFocus` (`FocusMemory.kt`) y posent la sélection.
+  catégorie qui la contient et note sa place dans cette liste (`watchedPlace`, lue dans la base) ; `TvBody` charge la
+  liste jusqu'à elle, `FollowLastChannel` / `restoreFocus` (`FocusMemory.kt`) y posent la sélection (à défaut, sur la
+  première chaîne : une sélection perdue ouvrait le menu de gauche de Streaming).
+- Zapping (haut/bas, chaîne +/-) : `PlayerViewModel.zap` reste, en boucle, dans la liste d'où la chaîne a été ouverte :
+  favoris (`ARG_FAVORITES`), catégorie (`ARG_GROUP` : `Routes.groupPlayer`, depuis `HomeActions.onPlayGroupChannel` et le
+  guide), sinon toutes les chaînes ; `playFromMenu` prend la catégorie du menu. Requêtes `ChannelDao.nextChannelId` /
+  `previousChannelId` / `listedOrder` (une catégorie ou « Toutes », comme `pageChannels`).
 - Versions d'un film (« Titre (Truefrench) », « Titre (FR) », la même en 4K) : `ContentClassifier` retire les mentions du
   titre (`versionOf` donne la mention et la préférence), `MovieCopies` (dans `RoomPlaylistStore.kt`) choisit la copie
   affichée à l'import, les requêtes `MOVIE_IN_GROUP` / `MOVIE_VISIBLE` de `Daos.kt` n'en gardent qu'une par film, la

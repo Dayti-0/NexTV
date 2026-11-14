@@ -79,6 +79,13 @@ class PlayerViewModel(
      */
     private var fromFavorites: Boolean = handle.get<Boolean>(ARG_FAVORITES) ?: false
 
+    /**
+     * Catégorie d'où la chaîne a été ouverte (accueil, guide ou menu des chaînes ; `""` : sans groupe) : haut/bas
+     * zappe dans cette catégorie, en boucle. `null` : ouverte depuis « Toutes les chaînes », une recherche… : haut/bas
+     * parcourt toutes les chaînes.
+     */
+    private var zapGroup: String? = handle.get<String>(ARG_GROUP)
+
     private val resources = context.resources
 
     /** Chaîne, version et flux en cours, partagés par les parties du lecteur. */
@@ -450,7 +457,10 @@ class PlayerViewModel(
         }
     }
 
-    /** Chaîne suivante (+1) ou précédente (-1) de la playlist (des favoris, si ouverte depuis eux), en boucle. */
+    /**
+     * Chaîne suivante (+1) ou précédente (-1), en boucle, dans la liste d'où la chaîne a été ouverte : les favoris, sa
+     * catégorie (depuis la première chaîne, « bas » va à la dernière de la catégorie), sinon toutes les chaînes.
+     */
     fun zap(direction: Int) {
         val current = session.listed ?: return
         if (current.kind != ContentKind.LIVE.name) return
@@ -465,14 +475,28 @@ class PlayerViewModel(
                 }
                 // Chaîne retirée des favoris entre-temps : zapping dans toute la playlist.
             }
-            // Ordre de la liste « Toutes » (rangé si les chaînes sont rassemblées) : depuis le rang de la chaîne en cours.
-            val order = current.variantKey.takeIf { it.isNotEmpty() }?.let { dao.listedOrder(current.sourceId, it) } ?: current.listOrder
-            val target = if (direction > 0) {
-                dao.nextChannelId(current.sourceId, order) ?: dao.nextChannelId(current.sourceId, Int.MIN_VALUE)
-            } else {
-                dao.previousChannelId(current.sourceId, order) ?: dao.previousChannelId(current.sourceId, Int.MAX_VALUE)
-            }
+            // Catégorie sans autre chaîne lisible (vide entre-temps) : zapping dans toute la playlist.
+            val target = zapGroup?.let { neighbourChannel(current, filterGroup = 1, group = it, direction) }
+                ?: neighbourChannel(current, filterGroup = 0, group = "", direction)
             if (target != null && target != current.id) load(target)
+        }
+    }
+
+    /**
+     * Chaîne voisine de [current] dans la liste de la catégorie [group] ([filterGroup] 1) ou de « Toutes » (0), dans son
+     * ordre (rangé si les chaînes sont rassemblées), en boucle ; `null` si la liste n'a aucune chaîne lisible. Départ :
+     * la place de la chaîne en cours dans cette liste (sa version que la liste affiche) ; une chaîne qui n'y est pas
+     * (chaîne précédente d'une autre catégorie) part de son rang, la voisine restant dans la liste.
+     */
+    private suspend fun neighbourChannel(current: ChannelEntity, filterGroup: Int, group: String, direction: Int): Long? {
+        val dao = container.channelDao
+        val order = current.variantKey.takeIf { it.isNotEmpty() }
+            ?.let { dao.listedOrder(current.sourceId, filterGroup, group, it) }
+            ?: current.listOrder
+        return if (direction > 0) {
+            dao.nextChannelId(current.sourceId, filterGroup, group, order) ?: dao.nextChannelId(current.sourceId, filterGroup, group, Int.MIN_VALUE)
+        } else {
+            dao.previousChannelId(current.sourceId, filterGroup, group, order) ?: dao.previousChannelId(current.sourceId, filterGroup, group, Int.MAX_VALUE)
         }
     }
 
@@ -491,12 +515,16 @@ class PlayerViewModel(
     fun hideProgramme() = channelMenu.hideProgramme()
 
     fun playFromMenu(id: Long) {
-        // Chaîne choisie dans la catégorie « Favoris » du menu : on y reste ; ailleurs, la playlist entière.
-        val favorites = channelMenu.menu.value.category == Category.Favorites
+        // Haut/bas zappe ensuite dans la catégorie du menu où la chaîne a été choisie : les favoris, une catégorie, ou
+        // toutes les chaînes.
+        val category = channelMenu.menu.value.category
+        val favorites = category == Category.Favorites
         // Au retour, l'accueil montre la catégorie où elle a été choisie (et la sélection se pose sur elle).
-        container.lastLiveCategory.value = channelMenu.menu.value.category
+        container.lastLiveCategory.value = category
         fromFavorites = favorites
         handle[ARG_FAVORITES] = favorites
+        zapGroup = (category as? Category.Group)?.title
+        handle[ARG_GROUP] = zapGroup
         closeMenu()
         if (id != session.listed?.id) load(id)
     }
@@ -1107,6 +1135,9 @@ class PlayerViewModel(
 
         /** Chaîne ouverte depuis les favoris : menu des chaînes et zapping restent dans les favoris. */
         const val ARG_FAVORITES = "favorites"
+
+        /** Catégorie d'où la chaîne a été ouverte (`""` : sans groupe ; absente : toutes les chaînes) : le zapping y reste. */
+        const val ARG_GROUP = "group"
 
         /** Demander s'il faut reprendre un film ou un épisode commencé. */
         const val RESUME_ASK = "ask"

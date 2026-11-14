@@ -505,6 +505,98 @@ class PlayerViewModelTest {
         store.clear()
     }
 
+    /**
+     * Chaîne ouverte depuis une catégorie (accueil, guide) : haut/bas reste dans cette catégorie, en boucle. Depuis la
+     * première chaîne de « CANAL+ », « bas » va à la dernière de « CANAL+ », et non à la chaîne d'avant dans toute la
+     * playlist (France 2). Une chaîne choisie ensuite dans le menu zappe dans la catégorie du menu où elle a été choisie.
+     */
+    @Test
+    fun aChannelOpenedFromACategoryZapsInThatCategory() {
+        val sourceId = runBlocking {
+            val id = container.sourceRepository.add(SourceInput(name = "Catégories", location = SourceLocation.Remote("http://127.0.0.1:9/groups.m3u")))
+            container.playlistStore.replaceChannels(
+                id,
+                listOf(
+                    "TF1" to "TNT", "France 2" to "TNT",
+                    "Canal+" to "CANAL+", "Canal+ Sport" to "CANAL+", "Canal+ Cinéma" to "CANAL+",
+                    "beIN Sports 1" to "SPORT",
+                ).mapIndexed { index, (name, group) ->
+                    Channel(position = index, name = name, stream = StreamDescriptor("http://127.0.0.1:9/live/$index.ts"), groupTitle = group, title = name)
+                },
+            )
+            id
+        }
+        fun idOf(key: String) = runBlocking { checkNotNull(container.channelDao.primaryIdByKey(sourceId, key)) }
+        val viewModel = PlayerViewModel(
+            container,
+            SavedStateHandle(mapOf(PlayerViewModel.ARG_CHANNEL_ID to idOf("live:canal"), PlayerViewModel.ARG_GROUP to "CANAL+")),
+            application,
+        )
+        val store = ViewModelStore().apply { put("player", viewModel) }
+        viewModel.onStart()
+        idle()
+        assertEquals("Canal+", viewModel.state.value.channelName)
+        fun zap(direction: Int): String? {
+            viewModel.zap(direction)
+            idle()
+            return viewModel.state.value.channelName
+        }
+        // Bas depuis la première chaîne de la catégorie : la dernière de la catégorie.
+        assertEquals("Canal+ Cinéma", zap(-1))
+        // Haut depuis la dernière : retour à la première, pas beIN Sports 1 (catégorie suivante).
+        assertEquals("Canal+", zap(1))
+        assertEquals("Canal+ Sport", zap(1))
+        assertEquals("Canal+", zap(-1))
+        // « Retour » : le menu s'ouvre sur cette catégorie.
+        viewModel.openMenu()
+        idle()
+        assertEquals(Category.Group("CANAL+"), viewModel.menu.value.category)
+
+        // Chaîne choisie dans « Toutes les chaînes » du menu : haut/bas parcourt toute la playlist.
+        viewModel.selectMenuCategory(Category.All)
+        viewModel.playFromMenu(idOf("live:bein sports 1"))
+        idle()
+        assertEquals("beIN Sports 1", viewModel.state.value.channelName)
+        assertEquals("TF1", zap(1))
+
+        // Chaîne choisie dans une autre catégorie du menu : le zapping reste dans celle-ci.
+        viewModel.openMenu()
+        idle()
+        viewModel.selectMenuCategory(Category.Group("TNT"))
+        viewModel.playFromMenu(idOf("live:france 2"))
+        idle()
+        assertEquals("France 2", viewModel.state.value.channelName)
+        assertEquals("TF1", zap(1))
+        assertEquals("France 2", zap(1))
+        store.clear()
+    }
+
+    /** Chaîne ouverte d'ailleurs (« Toutes les chaînes », recherche, chaînes récentes) : haut/bas parcourt toute la playlist. */
+    @Test
+    fun aChannelOpenedFromAllChannelsZapsThroughThePlaylist() {
+        val sourceId = runBlocking {
+            val id = container.sourceRepository.add(SourceInput(name = "Toutes", location = SourceLocation.Remote("http://127.0.0.1:9/all.m3u")))
+            container.playlistStore.replaceChannels(
+                id,
+                listOf("TF1" to "TNT", "France 2" to "TNT", "Canal+" to "CANAL+").mapIndexed { index, (name, group) ->
+                    Channel(position = index, name = name, stream = StreamDescriptor("http://127.0.0.1:9/live/$index.ts"), groupTitle = group, title = name)
+                },
+            )
+            id
+        }
+        val france2 = runBlocking { checkNotNull(container.channelDao.primaryIdByKey(sourceId, "live:france 2")) }
+        val (viewModel, store) = open(france2)
+        viewModel.onStart()
+        idle()
+        viewModel.zap(1)
+        idle()
+        assertEquals("Canal+", viewModel.state.value.channelName)
+        viewModel.zap(1)
+        idle()
+        assertEquals("TF1", viewModel.state.value.channelName)
+        store.clear()
+    }
+
     @Test
     fun theRemoteKeysOfAMovieNeverCrash() {
         val (_, movie) = playlist()

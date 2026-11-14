@@ -144,9 +144,24 @@ internal fun RestoreScroll(state: LazyListState, lastOpened: MutableState<Opened
 internal val LocalLastLiveChannel = androidx.compose.runtime.compositionLocalOf<String?> { null }
 
 /**
+ * Dernière chaîne lue en plein écran ([key]) et sa place ([index]) dans la liste des chaînes de [category], lue dans la
+ * base : au retour, la liste peut ne pas l'avoir encore chargée (liste longue, autre catégorie affichée entre-temps).
+ */
+@Immutable
+data class WatchedPlace(val category: Category, val key: String, val index: Int)
+
+/** Place de la dernière chaîne lue dans la liste des chaînes (voir HomeViewModel.watchedPlace). */
+internal val LocalWatchedPlace = androidx.compose.runtime.compositionLocalOf<WatchedPlace?> { null }
+
+/**
  * Chaîne ouverte depuis la liste, puis changée dans le lecteur (zapping, menu des chaînes) : au retour, c'est la
  * dernière regardée qui reprend le focus (et l'aperçu continue sur elle), si elle est dans cette liste ([row] : sa
- * rangée ; [indexOf] : sa place, -1 si elle n'y est pas). Sinon, celle ouverte au départ, comme avant.
+ * rangée ; [indexOf] : sa place, -1 si elle n'y est pas encore ; [watchedIndex] : sa place dans la liste entière, connue
+ * même quand elle n'est pas encore chargée). Sinon, celle ouverte au départ, comme avant.
+ *
+ * [fallbackKey] (liste des chaînes) : ni l'une ni l'autre dans la liste (autre catégorie affichée pendant la lecture),
+ * la sélection va sur la chaîne qu'il donne (la première, `null` tant que la liste se charge) au lieu de se perdre :
+ * Android la donnait alors au premier élément en haut à gauche, le menu de gauche de Streaming, qui s'ouvrait.
  *
  * Appelé avant de composer les éléments de la liste : aucun ne doit reprendre le focus avant que le dernier élément
  * ouvert soit remplacé (un effet arriverait trop tard, après celui de la chaîne ouverte au départ). Jamais sauté : la
@@ -154,12 +169,33 @@ internal val LocalLastLiveChannel = androidx.compose.runtime.compositionLocalOf<
  */
 @Composable
 @androidx.compose.runtime.NonRestartableComposable
-internal fun FollowLastChannel(lastOpened: MutableState<OpenedItem?>, row: String? = null, indexOf: (String) -> Int) {
-    val watched = LocalLastLiveChannel.current ?: return
+internal fun FollowLastChannel(
+    lastOpened: MutableState<OpenedItem?>,
+    row: String? = null,
+    watchedIndex: Int? = null,
+    fallbackKey: (() -> String?)? = null,
+    indexOf: (String) -> Int,
+) {
     val opened = lastOpened.value ?: return
-    if (!opened.pending() || opened.row != row || opened.key == watched || !opened.key.startsWith(LIVE_KEY)) return
-    val index = indexOf(watched)
-    if (index >= 0) lastOpened.value = opened.copy(key = watched, index = index)
+    if (!opened.pending() || opened.row != row || !opened.key.startsWith(LIVE_KEY)) return
+    val watched = LocalLastLiveChannel.current
+    if (watched != null && watched != opened.key) {
+        // Pas encore chargée mais dans la liste : c'est elle qu'on attend (la liste se charge jusqu'à elle).
+        val index = indexOf(watched).takeIf { it >= 0 } ?: watchedIndex
+        if (index != null) {
+            lastOpened.value = opened.copy(key = watched, index = index)
+            return
+        }
+    }
+    if (fallbackKey == null) return
+    val index = indexOf(opened.key)
+    if (index >= 0) {
+        // Ailleurs dans cette liste (autre catégorie affichée pendant la lecture) : la liste va à sa place.
+        if (index != opened.index) lastOpened.value = opened.copy(index = index)
+        return
+    }
+    val first = fallbackKey() ?: return
+    lastOpened.value = opened.copy(key = first, index = 0)
 }
 
 private const val LIVE_KEY = "live:"

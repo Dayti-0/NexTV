@@ -180,6 +180,61 @@ class ReturnFromPlayerFocusTest {
         }
     }
 
+    /**
+     * Streaming : chaîne ouverte depuis une catégorie (« SPORT », choisie dans le volet), puis une chaîne d'une autre
+     * catégorie regardée dans le lecteur (touche « chaîne précédente »…) : pendant la lecture, l'accueil passe à « Toutes
+     * les chaînes », où cette chaîne est loin (pas encore chargée). Au retour (appui long sur « Retour »), la sélection
+     * doit être dans la liste, sur elle : elle se perdait, et Android la donnait au menu de gauche, qui s'ouvrait.
+     */
+    @Test
+    fun streamingReturnToAChannelFarInAllChannels() = runBlocking {
+        val container = application.container
+        val id = container.sourceRepository.add(SourceInput("Test", SourceLocation.Remote("http://127.0.0.1:9/big.m3u")))
+        val entries = (1..FAR_CHANNELS).map { "Chaîne $it" to "TNT" } + sports.map { it to "SPORT" }
+        container.playlistStore.replaceChannels(
+            id,
+            entries.mapIndexed { index, (name, group) ->
+                Channel(position = index, name = name, stream = StreamDescriptor("http://127.0.0.1:9/live/$index.ts"), groupTitle = group, title = name)
+            },
+        ) {}
+        val now = System.currentTimeMillis()
+        container.playlistStore.updateStatus(id, SourceStatus(lastAttemptAtMillis = now, lastSuccessAtMillis = now, channelCount = entries.size))
+        container.settings.setActivePlaylist(id)
+        container.settings.setQuickSetupDone()
+        container.settings.setCatalogImportVersion(QualityParser.VERSION)
+        container.settings.setEpgImportVersion(EpgImporter.VERSION)
+        container.settings.setHomeLayout(HomeLayout.STREAMING)
+        val scenario = ActivityScenario.launch(MainActivity::class.java)
+        try {
+            repeat(60) { if (compose.onAllNodesWithText("Chaîne 2", substring = true).fetchSemanticsNodes().isEmpty()) idle(2) }
+            val start = System.nanoTime() + RETURN_WAIT_NANOS
+            while (!focusedText().contains("Chaîne 1") && System.nanoTime() < start) advance()
+            repeat(4) { if (!focusedText().contains("Chaîne")) press(Key.DirectionDown) }
+            println("streaming, au départ : ${focusedText()}")
+            // ← : le volet des catégories ; « SPORT » ; OK.
+            press(Key.DirectionLeft)
+            repeat(20) { if (!focusedText().contains("Toutes")) advance() }
+            repeat(8) { if (!focusedText().contains("SPORT")) press(Key.DirectionDown) }
+            assertTrue("Catégorie : ${focusedText()}", focusedText().contains("SPORT"))
+            press(Key.DirectionCenter)
+            repeat(40) { if (!focusedText().contains("beIN Sports 1")) advance() }
+            assertTrue("Sélection avant OK : ${focusedText()}", focusedText().contains("beIN Sports 1"))
+            press(Key.DirectionCenter)
+            idle(20)
+            // Dans le lecteur : une chaîne de la TNT, loin dans « Toutes les chaînes ».
+            container.lastLiveChannel.value = "live:chaine $FAR_CHANNELS"
+            idle(40)
+            scenario.onActivity { it.onLongBack?.invoke() }
+            idle(40)
+            val deadline = System.nanoTime() + RETURN_WAIT_NANOS
+            while (!focusedText().contains("Chaîne $FAR_CHANNELS") && System.nanoTime() < deadline) advance()
+            println("streaming, au retour : ${focusedText()}")
+            assertTrue("Sélection au retour : ${focusedText()}", focusedText().contains("Chaîne $FAR_CHANNELS"))
+        } finally {
+            scenario.close()
+        }
+    }
+
     @Test
     fun streaming() = zapAndReturn(HomeLayout.STREAMING)
 
@@ -189,5 +244,8 @@ class ReturnFromPlayerFocusTest {
     private companion object {
         /** Attente du focus au retour, en temps réel. */
         const val RETURN_WAIT_NANOS = 8_000_000_000L
+
+        /** Chaînes de la TNT avant « SPORT » : la dernière est au-delà de ce que la liste charge d'abord. */
+        const val FAR_CHANNELS = 250
     }
 }

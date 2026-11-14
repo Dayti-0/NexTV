@@ -123,6 +123,8 @@ fun GuideScreen(
     onReplay: (Long, Long, Long) -> Unit = { _, _, _ -> },
     /** Chaîne ouverte depuis la catégorie « Favoris » : le lecteur reste dans les favoris. */
     onPlayFavorite: (Long) -> Unit = onPlay,
+    /** Chaîne ouverte depuis une catégorie ([String] vide : sans groupe) : le zapping reste dans cette catégorie. */
+    onPlayInGroup: (Long, String) -> Unit = { id, _ -> onPlay(id) },
 ) {
     val context = LocalContext.current
     val viewModel = appViewModel(key = "guide-$sourceId") { container, _ -> GuideViewModel(container, sourceId, context.resources) }
@@ -138,8 +140,12 @@ fun GuideScreen(
         tonight = tonight,
         onTonightDay = { viewModel.tonightDay.value = it },
         onPlay = { id ->
-            val favorites = selectedGroup == GuideViewModel.FAVORITES || selectedGroup == GuideViewModel.FAVORITES_TONIGHT
-            if (favorites) onPlayFavorite(id) else onPlay(id)
+            when (val group = selectedGroup) {
+                GuideViewModel.FAVORITES, GuideViewModel.FAVORITES_TONIGHT -> onPlayFavorite(id)
+                // « Toutes » et « Ce soir » : haut/bas parcourt toutes les chaînes.
+                null, GuideViewModel.TONIGHT -> onPlay(id)
+                else -> onPlayInGroup(id, group)
+            }
         },
         onReplay = { channel, programme -> onReplay(channel.id, programme.startMillis, programme.stopMillis) },
         modifier = modifier,

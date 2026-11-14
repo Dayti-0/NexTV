@@ -147,6 +147,8 @@ class HomeActions(
     val onPlayChannel: (Long) -> Unit = {},
     /** Chaîne ouverte depuis les favoris : le lecteur reste dans les favoris (menu, haut/bas). */
     val onPlayFavoriteChannel: (Long) -> Unit = onPlayChannel,
+    /** Chaîne ouverte depuis une catégorie ([String] vide : sans groupe) : haut/bas zappe dans cette catégorie. */
+    val onPlayGroupChannel: (Long, String) -> Unit = { id, _ -> onPlayChannel(id) },
     val onOpenMovie: (Long) -> Unit = {},
     val onOpenSeries: (Long) -> Unit = {},
     val onToggleFavorite: (ContentKind, String, String, String?) -> Unit = { _, _, _, _ -> },
@@ -176,6 +178,8 @@ fun HomeScreen(
     onReplay: (Long, Long, Long) -> Unit = { _, _, _ -> },
     /** Chaîne ouverte depuis les favoris (le lecteur reste dans les favoris). */
     onPlayFavorite: (Long) -> Unit = onPlay,
+    /** Chaîne ouverte depuis une catégorie ([String] vide : sans groupe) : le zapping reste dans cette catégorie. */
+    onPlayInGroup: (Long, String) -> Unit = { id, _ -> onPlay(id) },
 ) {
     val resources = LocalContext.current.resources
     val viewModel = appViewModel { container, _ -> HomeViewModel(container, resources) }
@@ -266,6 +270,10 @@ fun HomeScreen(
         viewModel.openFromPreview(it)
         onPlayFavorite(it)
     }
+    val playInGroup: (Long, String) -> Unit = { id, group ->
+        viewModel.openFromPreview(id)
+        onPlayInGroup(id, group)
+    }
 
     val actions = HomeActions(
         onSection = viewModel::selectSection,
@@ -273,6 +281,7 @@ fun HomeScreen(
         onQuery = viewModel::setQuery,
         onPlayChannel = playChannel,
         onPlayFavoriteChannel = playFavorite,
+        onPlayGroupChannel = playInGroup,
         onOpenMovie = onMovie,
         onOpenSeries = onSeries,
         onToggleFavorite = viewModel::toggleFavorite,
@@ -289,8 +298,9 @@ fun HomeScreen(
 
     // Films et épisodes déjà vus : badge « Déjà vu » sur leurs affiches.
     val watchedKeys by viewModel.watchedKeys.collectAsStateWithLifecycle()
-    // Chaîne regardée en dernier en plein écran : la sélection revient sur elle.
+    // Chaîne regardée en dernier en plein écran : la sélection revient sur elle (sa place dans la liste, même pas chargée).
     val lastLiveChannel by viewModel.lastLiveChannel.collectAsStateWithLifecycle()
+    val watchedPlace by viewModel.watchedPlace.collectAsStateWithLifecycle()
     // Affiches TMDB (celles des fiches) dans les rangées.
     val posters by viewModel.posters.collectAsStateWithLifecycle()
     val requestPoster = remember(viewModel) { { item: PosterItem -> viewModel.requestPoster(item) } }
@@ -379,7 +389,12 @@ fun HomeScreen(
         return
     }
 
-    CompositionLocalProvider(LocalWatchedKeys provides watchedKeys, LocalPosterArt provides posterArt, LocalLastLiveChannel provides lastLiveChannel) {
+    CompositionLocalProvider(
+        LocalWatchedKeys provides watchedKeys,
+        LocalPosterArt provides posterArt,
+        LocalLastLiveChannel provides lastLiveChannel,
+        LocalWatchedPlace provides watchedPlace,
+    ) {
         HomeContent(
             onMenu = if (layout == HomeLayout.PREMIUM) ({ premiumMenu = true }) else null,
             section = section,
@@ -401,7 +416,7 @@ fun HomeScreen(
             trailers = trailers,
             guide = { modifier ->
                 sourceId?.let {
-                    GuideScreen(it, playChannel, modifier, onPlayFavorite = playFavorite, onReplay = { channelId, start, stop ->
+                    GuideScreen(it, playChannel, modifier, onPlayFavorite = playFavorite, onPlayInGroup = playInGroup, onReplay = { channelId, start, stop ->
                         viewModel.setPreviewActive(false)
                         onReplay(channelId, start, stop)
                     })
@@ -1567,7 +1582,12 @@ internal fun TvBody(
         } else {
             {
                 lastOpened.value = OpenedItem(channel.itemKey, index)
-                if (inFavorites) actions.onPlayFavoriteChannel(channel.id) else actions.onPlayChannel(channel.id)
+                when {
+                    inFavorites -> actions.onPlayFavoriteChannel(channel.id)
+                    // Chaîne d'une catégorie : haut/bas reste dans cette catégorie pendant la lecture.
+                    category is Category.Group -> actions.onPlayGroupChannel(channel.id, category.title)
+                    else -> actions.onPlayChannel(channel.id)
+                }
             }
         }
         val onLongClick = if (reorder.active) null else {
@@ -1592,13 +1612,40 @@ internal fun TvBody(
         recentMode -> recent.size
         else -> channels.itemCount
     }
-    // Chaîne changée dans le lecteur : la sélection revient sur la dernière regardée (avant de composer les chaînes).
-    FollowLastChannel(lastOpened) { key ->
+    // Chaîne changée dans le lecteur : la sélection revient sur la dernière regardée (avant de composer les chaînes),
+    // même si la liste ne l'a pas encore chargée (sa place, lue dans la base, concerne cette liste-ci). Attendue tant
+    // que la liste n'est pas lue jusqu'à cette place ; au-delà sans l'avoir trouvée, elle n'y est plus (repli).
+    val watchedIndex = LocalWatchedPlace.current
+        ?.takeIf { !favoritesMode && !recentMode && it.category == category && it.key == LocalLastLiveChannel.current }
+        ?.index
+        ?.takeIf { channels.itemCount <= it && !channels.loadState.append.endOfPaginationReached }
+    FollowLastChannel(
+        lastOpened,
+        watchedIndex = watchedIndex,
+        fallbackKey = {
+            when {
+                favoritesMode -> favorites.firstOrNull()?.itemKey
+                recentMode -> recent.firstOrNull()?.itemKey
+                // Liste pas encore là (premières chaînes en lecture) : on attend.
+                channels.itemCount == 0 -> null
+                // Liste encore à lire jusqu'à la place de la chaîne attendue : on attend qu'elle y soit.
+                channels.itemCount <= (lastOpened.value?.index ?: -1) && !channels.loadState.append.endOfPaginationReached -> null
+                else -> channels.peek(0)?.itemKey
+            }
+        },
+    ) { key ->
         when {
             favoritesMode -> favorites.indexOfFirst { it.itemKey == key }
             recentMode -> recent.indexOfFirst { it.itemKey == key }
             else -> channels.itemSnapshotList.indexOfFirst { it?.itemKey == key }
         }
+    }
+    // Chaîne à resélectionner plus loin que la partie chargée de la liste : la suite est lue jusqu'à elle (la liste ne
+    // charge d'elle-même que ses premières pages, puis au défilement).
+    val pendingIndex = lastOpened.value?.takeIf { it.pending() && it.row == null && !favoritesMode && !recentMode }?.index ?: -1
+    LaunchedEffect(pendingIndex, channels.itemCount) {
+        val loaded = channels.itemCount
+        if (loaded in 1..pendingIndex) channels[loaded - 1]
     }
     RestoreScroll(state, lastOpened, count)
     TopOnNewList(state, category, if (channels.itemCount > 0) channels.peek(0)?.id else null, lastOpened)

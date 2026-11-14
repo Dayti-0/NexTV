@@ -774,42 +774,54 @@ interface ChannelDao {
     suspend fun variants(sourceId: Long, variantKey: String): List<VariantRow>
 
     /**
-     * Chaîne suivante (zapping), dans l'ordre de la liste « Toutes » ([ChannelEntity.listOrder]) : meilleure version
-     * visible de la chaîne suivante.
+     * Chaîne suivante (zapping), dans l'ordre de la liste ([ChannelEntity.listOrder]) de la catégorie [group]
+     * ([filterGroup] 1, `''` : sans groupe) ou de la liste « Toutes » (0) : la chaîne telle que cette liste l'affiche
+     * (sa meilleure version dans la catégorie, ou sa meilleure version visible).
      */
     @Query(
         """
         SELECT c.id FROM channels c
         WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.listOrder > :order
-          AND c.streamSupport != 'UNSUPPORTED' AND $NOT_HIDDEN AND $BEST_VISIBLE
+          AND c.streamSupport != 'UNSUPPORTED' AND $LISTED
         ORDER BY c.listOrder ASC LIMIT 1
         """,
     )
-    suspend fun nextChannelId(sourceId: Long, order: Int): Long?
+    suspend fun nextChannelId(sourceId: Long, filterGroup: Int, group: String, order: Int): Long?
 
+    /** Chaîne précédente (zapping) dans la même liste que [nextChannelId]. */
     @Query(
         """
         SELECT c.id FROM channels c
         WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.listOrder < :order
-          AND c.streamSupport != 'UNSUPPORTED' AND $NOT_HIDDEN AND $BEST_VISIBLE
+          AND c.streamSupport != 'UNSUPPORTED' AND $LISTED
         ORDER BY c.listOrder DESC LIMIT 1
         """,
     )
-    suspend fun previousChannelId(sourceId: Long, order: Int): Long?
+    suspend fun previousChannelId(sourceId: Long, filterGroup: Int, group: String, order: Int): Long?
 
-    /** Rang d'une chaîne dans la liste « Toutes » (celui de sa meilleure version visible), point de départ du zapping. */
+    /**
+     * Rang d'une chaîne dans la liste de la catégorie [group] ([filterGroup] 1) ou dans « Toutes » (0) : celui de la
+     * version que cette liste affiche, point de départ du zapping. `null` : la chaîne n'est pas dans cette liste.
+     */
     @Query(
         """
         SELECT c.listOrder FROM channels c
-        WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.variantKey = :variantKey AND $NOT_HIDDEN
+        WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.variantKey = :variantKey AND $LISTED
         ORDER BY c.qualityRank DESC, c.position LIMIT 1
         """,
     )
-    suspend fun listedOrder(sourceId: Long, variantKey: String): Int?
+    suspend fun listedOrder(sourceId: Long, filterGroup: Int, group: String, variantKey: String): Int?
 
     /** La chaîne [itemKey] est dans la liste de la catégorie [group] ([filterGroup] 1), ou dans « Toutes » (0). */
     @Query("SELECT EXISTS (SELECT 1 FROM channels c WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.itemKey = :itemKey AND $LISTED)")
     suspend fun isListed(sourceId: Long, filterGroup: Int, group: String, itemKey: String): Boolean
+
+    /**
+     * Rang ([ChannelEntity.listOrder]) de la chaîne [itemKey] dans la liste de la catégorie [group] ([filterGroup] 1) ou
+     * de « Toutes » (0) : celui de sa première ligne dans cette liste ; `null` si elle n'y est pas.
+     */
+    @Query("SELECT MIN(c.listOrder) FROM channels c WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND c.itemKey = :itemKey AND $LISTED")
+    suspend fun listedOrderOf(sourceId: Long, filterGroup: Int, group: String, itemKey: String): Int?
 
     /** Place d'une chaîne dans sa liste, d'après son rang [order] (pour placer le focus du menu des chaînes). */
     @Query(

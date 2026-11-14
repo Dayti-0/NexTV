@@ -120,8 +120,21 @@ class MergeChannelsTest {
 
         // Zapping dans le même ordre : après RMC Life (25), Canal+.
         val rmcLife = dao.get(tnt.first { it.title == "RMC Life" }.id)!!
-        val next = dao.nextChannelId(id, dao.listedOrder(id, rmcLife.variantKey)!!)
+        val next = dao.nextChannelId(id, 0, "", dao.listedOrder(id, 0, "", rmcLife.variantKey)!!)
         assertEquals("|FR| CANAL+ 4K HDR UHD (Résolution Exclusive)", next?.let { dao.get(it) }?.name)
+        // Zapping dans une catégorie (chaîne ouverte depuis elle) : il n'en sort pas. RMC Life est la dernière de la TNT
+        // (le lecteur repart de la première), TF1 la première.
+        assertEquals(null, dao.nextChannelId(id, 1, "TNT", dao.listedOrder(id, 1, "TNT", rmcLife.variantKey)!!))
+        assertEquals(tnt.first().id, dao.nextChannelId(id, 1, "TNT", Int.MIN_VALUE))
+        // Canal+ : de la première (Canal+), « bas » ne trouve rien avant elle dans la catégorie (le lecteur va à la
+        // dernière, Canal+ Cinéma(s), telle que la catégorie l'affiche) ; « haut » va à Canal+ Cinéma(s).
+        val canalPlus = dao.get(canal.first().id)!!
+        val canalOrder = dao.listedOrder(id, 1, "Canal+", canalPlus.variantKey)!!
+        assertEquals(null, dao.previousChannelId(id, 1, "Canal+", canalOrder))
+        assertEquals(canal.last().id, dao.previousChannelId(id, 1, "Canal+", Int.MAX_VALUE))
+        assertEquals(canal.last().id, dao.nextChannelId(id, 1, "Canal+", canalOrder))
+        // Hors de la catégorie, pas de place : le lecteur part du rang de la chaîne.
+        assertEquals(null, dao.listedOrder(id, 1, "Canal+", rmcLife.variantKey))
 
         // Région choisie : son édition juste après France 3, dans la TNT.
         container.channelFilters.apply(id, ChannelFilters.Settings(hideUhd = false, france3Region = "alpes", mergeChannels = true))

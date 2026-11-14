@@ -1,5 +1,6 @@
 package tv.nextv.app.ui
 
+import android.net.Uri
 import androidx.activity.compose.LocalActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.animation.core.tween
@@ -42,7 +43,7 @@ import tv.nextv.app.ui.startup.StartupViewModel
 import tv.nextv.app.ui.startup.WelcomeScreen
 import tv.nextv.core.model.ContentKind
 
-private object Routes {
+internal object Routes {
     const val STARTUP = "startup?${StartupViewModel.ARG_RELOAD}={${StartupViewModel.ARG_RELOAD}}"
     const val WELCOME = "welcome"
     const val HOME = "home"
@@ -50,7 +51,7 @@ private object Routes {
     const val EDITOR = "editor?${SourceEditorViewModel.ARG_SOURCE_ID}={${SourceEditorViewModel.ARG_SOURCE_ID}}"
     const val PLAYER = "player/{${PlayerViewModel.ARG_CHANNEL_ID}}?${PlayerViewModel.ARG_RESUME}={${PlayerViewModel.ARG_RESUME}}" +
         "&${PlayerViewModel.ARG_REPLAY_START}={${PlayerViewModel.ARG_REPLAY_START}}&${PlayerViewModel.ARG_REPLAY_STOP}={${PlayerViewModel.ARG_REPLAY_STOP}}" +
-        "&${PlayerViewModel.ARG_FAVORITES}={${PlayerViewModel.ARG_FAVORITES}}"
+        "&${PlayerViewModel.ARG_FAVORITES}={${PlayerViewModel.ARG_FAVORITES}}&${PlayerViewModel.ARG_GROUP}={${PlayerViewModel.ARG_GROUP}}"
     const val MOVIE = "movie/{$ARG_ITEM}"
     const val SERIES = "series/{$ARG_ITEM}"
     const val SETTINGS = "settings"
@@ -67,6 +68,9 @@ private object Routes {
     /** Chaîne ouverte depuis les favoris : menu des chaînes et zapping restent dans les favoris. */
     fun favoritePlayer(channelId: Long) = "player/$channelId?${PlayerViewModel.ARG_FAVORITES}=true"
 
+    /** Chaîne ouverte depuis une catégorie ([group] vide : sans groupe) : le zapping reste dans cette catégorie. */
+    fun groupPlayer(channelId: Long, group: String) = "player/$channelId?${PlayerViewModel.ARG_GROUP}=${Uri.encode(group)}"
+
     /** Programme passé d'une chaîne avec replay. */
     fun replay(channelId: Long, startMillis: Long, stopMillis: Long) =
         "player/$channelId?${PlayerViewModel.ARG_REPLAY_START}=$startMillis&${PlayerViewModel.ARG_REPLAY_STOP}=$stopMillis"
@@ -76,6 +80,32 @@ private object Routes {
 }
 
 private const val ARG_ITEM = "itemId"
+
+/** Arguments de l'écran du lecteur ([Routes.PLAYER]) et leurs valeurs par défaut. */
+internal val playerArguments = listOf(
+    navArgument(PlayerViewModel.ARG_CHANNEL_ID) { type = NavType.LongType },
+    navArgument(PlayerViewModel.ARG_RESUME) {
+        type = NavType.StringType
+        defaultValue = PlayerViewModel.RESUME_ASK
+    },
+    navArgument(PlayerViewModel.ARG_REPLAY_START) {
+        type = NavType.LongType
+        defaultValue = 0L
+    },
+    navArgument(PlayerViewModel.ARG_REPLAY_STOP) {
+        type = NavType.LongType
+        defaultValue = 0L
+    },
+    navArgument(PlayerViewModel.ARG_FAVORITES) {
+        type = NavType.BoolType
+        defaultValue = false
+    },
+    navArgument(PlayerViewModel.ARG_GROUP) {
+        type = NavType.StringType
+        nullable = true
+        defaultValue = null
+    },
+)
 
 /** Fondu d'entrée et de sortie des écrans. */
 private const val PAGE_FADE_IN_MILLIS = 240
@@ -164,6 +194,7 @@ private fun AppNavHost(navController: NavHostController) {
             HomeScreen(
                 onPlay = { navController.navigate(Routes.player(it)) },
                 onPlayFavorite = { navController.navigate(Routes.favoritePlayer(it)) },
+                onPlayInGroup = { id, group -> navController.navigate(Routes.groupPlayer(id, group)) },
                 onMovie = { navController.navigate(Routes.movie(it)) },
                 onSeries = { navController.navigate(Routes.series(it)) },
                 onSettings = { navController.navigate(Routes.SETTINGS) },
@@ -199,28 +230,7 @@ private fun AppNavHost(navController: NavHostController) {
                 onOpenItem = { id, kind -> navController.navigate(if (kind == ContentKind.SERIES) Routes.series(id) else Routes.movie(id)) },
             )
         }
-        composable(
-            Routes.PLAYER,
-            arguments = listOf(
-                navArgument(PlayerViewModel.ARG_CHANNEL_ID) { type = NavType.LongType },
-                navArgument(PlayerViewModel.ARG_RESUME) {
-                    type = NavType.StringType
-                    defaultValue = PlayerViewModel.RESUME_ASK
-                },
-                navArgument(PlayerViewModel.ARG_REPLAY_START) {
-                    type = NavType.LongType
-                    defaultValue = 0L
-                },
-                navArgument(PlayerViewModel.ARG_REPLAY_STOP) {
-                    type = NavType.LongType
-                    defaultValue = 0L
-                },
-                navArgument(PlayerViewModel.ARG_FAVORITES) {
-                    type = NavType.BoolType
-                    defaultValue = false
-                },
-            ),
-        ) {
+        composable(Routes.PLAYER, arguments = playerArguments) {
             // Interface sur l'image : toujours sombre, même avec une palette claire.
             VideoTheme {
                 PlayerScreen(

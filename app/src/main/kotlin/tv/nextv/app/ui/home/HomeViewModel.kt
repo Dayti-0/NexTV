@@ -336,6 +336,10 @@ class HomeViewModel(
     /** Dernière chaîne lue en plein écran (clé) : au retour, la sélection se pose sur elle. */
     val lastLiveChannel: StateFlow<String?> = container.lastLiveChannel
 
+    /** Place de la dernière chaîne lue dans la liste des chaînes à afficher au retour (voir [followWatchedChannel]). */
+    private val mutableWatchedPlace = MutableStateFlow<WatchedPlace?>(null)
+    val watchedPlace: StateFlow<WatchedPlace?> = mutableWatchedPlace.asStateFlow()
+
     init {
         // Chaîne choisie dans une autre catégorie du menu des chaînes du lecteur, ou atteinte en zappant : la liste
         // des chaînes passe, pendant la lecture, à une catégorie qui la contient. Au retour, la sélection se pose sur
@@ -349,14 +353,23 @@ class HomeViewModel(
 
     /**
      * Catégorie des chaînes à afficher pour que la chaîne regardée [watched] y soit : celle où elle a été choisie dans le
-     * lecteur ([picked]), sinon celle affichée si elle y est, sinon « Toutes les chaînes ».
+     * lecteur ([picked]), sinon celle affichée si elle y est, sinon « Toutes les chaînes ». Sa place dans cette liste est
+     * notée ([watchedPlace]) : au retour, la liste se charge jusqu'à elle (elle peut être loin, pas encore lue).
      */
     private suspend fun followWatchedChannel(watched: String, picked: Category?) {
+        mutableWatchedPlace.value = null
         if (section.value != HomeSection.TV || queries.value[HomeSection.TV].orEmpty().isNotEmpty()) return
         val id = sourceId.value ?: return
         val current = categories.value[HomeSection.TV] ?: Category.All
         val target = listOfNotNull(picked, current, Category.All).distinct().firstOrNull { shows(id, it, watched) } ?: return
         if (target != current) categories.update { it + (HomeSection.TV to target) }
+        val (filterGroup, group) = when (target) {
+            Category.All -> 0 to ""
+            is Category.Group -> 1 to target.title
+            else -> return
+        }
+        val order = dao.listedOrderOf(id, filterGroup, group, watched) ?: return
+        mutableWatchedPlace.value = WatchedPlace(target, watched, dao.indexInList(id, filterGroup, group, order))
     }
 
     /** La liste des chaînes de [category] montre la chaîne [itemKey]. */

@@ -61,6 +61,10 @@ class ReturnFromLiveFocusTest {
     /** Accueil affiché (sinon : le lecteur plein écran), et dernière chaîne lue en plein écran. */
     private var showHome by mutableStateOf(true)
     private var lastLive by mutableStateOf<String?>(null)
+
+    /** Catégorie affichée et ses chaînes (l'accueil peut en changer pendant la lecture). */
+    private var shownCategory by mutableStateOf<Category>(Category.All)
+    private var shownChannels by mutableStateOf(SampleData.channels)
     private val focusedChannels = mutableListOf<ChannelListRow>()
     private val played = mutableListOf<Long>()
 
@@ -76,9 +80,9 @@ class ReturnFromLiveFocusTest {
                             HomeContent(
                                 section = HomeSection.TV,
                                 groups = SampleData.groups,
-                                category = Category.All,
+                                category = shownCategory,
                                 query = "",
-                                channels = remember { flowOf(PagingData.from(SampleData.channels)) }.collectAsLazyPagingItems(),
+                                channels = remember(shownChannels) { flowOf(PagingData.from(shownChannels)) }.collectAsLazyPagingItems(),
                                 favoriteChannels = emptyList(),
                                 movies = remember { flowOf(PagingData.from(SampleData.movies)) }.collectAsLazyPagingItems(),
                                 favoriteMovies = emptyList(),
@@ -213,6 +217,33 @@ class ReturnFromLiveFocusTest {
         openZapAndReturn(opened, watched = null)
         assertTrue("Focus au retour : ${focusedText()}", focusedText()?.contains(opened.title) == true)
         assertEquals(opened.id, focusedChannels.last().id)
+    }
+
+    /**
+     * Pendant la lecture, l'accueil est passé à une autre catégorie, où ni la chaîne ouverte ni la dernière regardée ne
+     * sont : au retour, la sélection va sur la première chaîne de la liste. Elle se perdait, et Android la donnait au
+     * premier élément en haut à gauche : le menu de gauche de Streaming, qui s'ouvrait.
+     */
+    @Test
+    fun withNeitherChannelInTheListTheFocusGoesToTheFirstChannel() {
+        home(HomeLayout.STREAMING)
+        val opened = SampleData.channels[2]
+        compose.onAllNodesWithText(opened.title, substring = true)[0].performSemanticsAction(SemanticsActions.OnClick)
+        assertEquals(opened.id, played.last())
+        showHome = false
+        lastLive = "live:ailleurs"
+        shownCategory = Category.Group("Cinéma")
+        shownChannels = SampleData.channels.drop(4)
+        compose.waitForIdle()
+        showHome = true
+        repeat(10) {
+            compose.mainClock.advanceTimeBy(150)
+            compose.waitForIdle()
+        }
+        val first = shownChannels.first()
+        println("Focus au retour : ${focusedText()}")
+        assertTrue("Focus au retour : ${focusedText()}", focusedText()?.contains(first.title) == true)
+        assertEquals(first.id, focusedChannels.last().id)
     }
 
     @Test

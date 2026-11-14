@@ -700,7 +700,7 @@ private fun GroupShelf(
         FollowLastChannel(lastOpened, spec.key) { key -> list.indexOfFirst { it.itemKey == key } }
         Shelf(name, count, padding, null, sizes.channel, CHANNEL_RATIO, spec.key, list.size, lastOpened, loading = channels == null, style = style, onNearEnd = loadMore(list.size), prefetch = remember(list) { list.map { it.logoUrl } }) {
             itemsIndexed(list, key = { _, it -> it.id }) { index, channel ->
-                ShelfChannel(channel, index, spec.key, sizes.channel, content, lastOpened, actions, style)
+                ShelfChannel(channel, index, spec.key, sizes.channel, content, lastOpened, actions, style, group = title)
             }
         }
     } else {
@@ -945,6 +945,8 @@ internal fun ShelfChannel(
     style: ShelfStyle = ShelfStyle.STREAMING,
     /** Premier élément ajouté par « Voir plus » : il prend la sélection. */
     focusRequester: FocusRequester? = null,
+    /** Rangée d'une catégorie ([String] vide : sans groupe) : haut/bas reste dans cette catégorie pendant la lecture. */
+    group: String? = null,
 ) {
     val modifier = Modifier
         .width(width)
@@ -953,7 +955,11 @@ internal fun ShelfChannel(
         .onFocusChanged { if (it.isFocused) actions.onChannelFocus(channel) }
     val onClick = {
         lastOpened.value = OpenedItem(channel.itemKey, index, row)
-        if (row == FAVORITES_ROW) actions.onPlayFavoriteChannel(channel.id) else actions.onPlayChannel(channel.id)
+        when {
+            row == FAVORITES_ROW -> actions.onPlayFavoriteChannel(channel.id)
+            group != null -> actions.onPlayGroupChannel(channel.id, group)
+            else -> actions.onPlayChannel(channel.id)
+        }
     }
     val onLongClick = { actions.onToggleFavorite(ContentKind.LIVE, channel.itemKey, channel.title, channel.logoUrl) }
     if (style == ShelfStyle.PREMIUM) {
