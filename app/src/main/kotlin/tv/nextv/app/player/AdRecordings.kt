@@ -36,7 +36,7 @@ class AdRecordings(private val directory: File, private val version: String) {
     var current: AdRecorder? = null
         private set
 
-    /** Il reste assez de place sur l'appareil pour un enregistrement de 20 minutes. */
+    /** Il reste assez de place sur l'appareil pour un enregistrement d’une heure (90 Mo environ). */
     fun hasRoom(): Boolean = (directory.parentFile ?: directory).usableSpace > MIN_FREE_BYTES
 
     /**
@@ -193,9 +193,9 @@ class AdRecordings(private val directory: File, private val version: String) {
     }
 
     private companion object {
-        const val MAX_FILES = 6
-        const val MAX_MILLIS = 20 * 60_000L
-        const val MIN_FREE_BYTES = 300L * 1024 * 1024
+        const val MAX_FILES = 4
+        const val MAX_MILLIS = 60 * 60_000L
+        const val MIN_FREE_BYTES = 400L * 1024 * 1024
         const val PORT = 8090
         const val CODE_LETTERS = "abcdefghjkmnpqrstuvwxyz23456789"
 

@@ -269,7 +269,7 @@ class PlayerViewModel(
                 if (state.value.adMuted != adMuted || state.value.adWatch != adWatch || state.value.adDetails != adDetails ||
                     state.value.adRecordingMinutes != adRecording
                 ) {
-                    // Enregistrement d'analyse fini tout seul (20 minutes, ou chaîne changée) : dit dans le bandeau.
+                    // Enregistrement d'analyse fini tout seul (une heure, ou chaîne changée) : dit dans le bandeau.
                     val ended = state.value.adRecordingMinutes != null && adRecording == null
                     mutableState.update {
                         it.copy(

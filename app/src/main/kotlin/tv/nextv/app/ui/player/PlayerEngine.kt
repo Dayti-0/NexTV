@@ -669,7 +669,7 @@ internal class PlayerEngine(
     fun adDetails(): AdDetails? = adVolume.details()
 
     /**
-     * Enregistrement pour l'analyse des pubs de la chaîne en cours (20 minutes au plus) : le commence, ou l'arrête s'il
+     * Enregistrement pour l'analyse des pubs de la chaîne en cours (une heure au plus) : le commence, ou l'arrête s'il
      * est en cours. `false` s'il n'a pas pu commencer (option des pubs désactivée, plus assez de place).
      */
     fun toggleAdRecording(channel: String): Boolean {

@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.155
+- « Enregistrer pour l’analyse des pubs » (options du lecteur) : une heure au lieu de 20 minutes (environ 90 Mo), pour avoir plusieurs pages de pub dans un même enregistrement
+
 ## 0.2.154
 - Options du lecteur › « Enregistrer pour l’analyse des pubs (20 min) » : l’application garde ce que la détection des pubs reçoit (le son en qualité réduite, une petite image en gris par seconde, ses décisions), sans la vidéo, pour améliorer la détection sur TF1, M6, France Télévisions…
 - Réglages › Son › « Enregistrements pour l’analyse des pubs » : une adresse à ouvrir sur un téléphone relié au même Wi-Fi, pour télécharger les enregistrements
