@@ -199,7 +199,8 @@ fun PlayerScreen(
     }
     // Écran maintenu allumé pendant la lecture, et pendant la pause d'un direct (son différé continue). Film mis en
     // pause, ou erreur affichée : l'économiseur d'écran du système peut se lancer (pause oubliée sur une télé).
-    val keepScreenOn = state.error == null && (playWhenReady || (state.isLive && state.paused))
+    // Enregistrement automatique (toute la nuit) : l'écran reste allumé même sur une chaîne en erreur, le temps de passer à la suivante.
+    val keepScreenOn = (state.error == null && (playWhenReady || (state.isLive && state.paused))) || state.autoRecordingChannels != null
     // Film ou épisode : commandes NixTV (titre, progression, boutons), affichées au départ puis masquées.
     val film = !bannerMode && !state.isLive
     var filmControls by remember { mutableStateOf(true) }
@@ -577,6 +578,8 @@ fun PlayerScreen(
             lowerAdVolume = state.lowerAdVolume,
             onLowerAdVolume = viewModel::setLowerAdVolume,
             adRecordingMinutes = state.adRecordingMinutes,
+            autoRecordingChannels = state.autoRecordingChannels,
+            onAutoRecording = viewModel::toggleAutoRecording.takeIf { state.lowerAdVolume && state.isLive && vlc == null },
             onAdRecording = viewModel::toggleAdRecording.takeIf { state.lowerAdVolume && state.isLive && vlc == null },
             qualityTarget = qualityTarget,
             playingQuality = state.quality,
@@ -707,6 +710,10 @@ fun PlayerOptionsPanel(
     onLowerAdVolume: (Boolean) -> Unit = {},
     /** Enregistrement pour l'analyse des pubs en cours : minutes enregistrées ; `null` sans enregistrement. */
     adRecordingMinutes: Int? = null,
+    /** Enregistrement automatique en cours : chaînes parcourues ; `null` sinon. */
+    autoRecordingChannels: Int? = null,
+    /** Commence ou arrête l'enregistrement automatique (essais) ; `null` : pas proposé. */
+    onAutoRecording: (() -> Unit)? = null,
     /** Commence ou arrête l'enregistrement pour l'analyse des pubs ; `null` : pas proposé. */
     onAdRecording: (() -> Unit)? = null,
     onBackToLive: (() -> Unit)? = null,
@@ -852,6 +859,18 @@ fun PlayerOptionsPanel(
                             stringResource(R.string.player_ad_recording_start)
                         },
                         selected = adRecordingMinutes != null,
+                        onClick = toggle,
+                    )
+                }
+                // Essais : enregistrement qui change de chaîne tout seul (toute la nuit), dans la liste d'où la chaîne a été ouverte.
+                onAutoRecording?.let { toggle ->
+                    OptionRow(
+                        if (autoRecordingChannels != null) {
+                            stringResource(R.string.player_auto_recording_stop, autoRecordingChannels)
+                        } else {
+                            stringResource(R.string.player_auto_recording_start)
+                        },
+                        selected = autoRecordingChannels != null,
                         onClick = toggle,
                     )
                 }

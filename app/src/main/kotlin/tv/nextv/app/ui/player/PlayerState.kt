@@ -108,6 +108,8 @@ data class PlayerUiState(
     val adDetails: AdDetails? = null,
     /** Enregistrement pour l'analyse des pubs en cours : minutes enregistrées ; `null` sans enregistrement. */
     val adRecordingMinutes: Int? = null,
+    /** Enregistrement automatique en cours (essais) : chaînes parcourues ; `null` sinon. */
+    val autoRecordingChannels: Int? = null,
     /** Le flux n'a pas de son, ou dans un format que l'appareil ne lit pas. */
     val audioProblem: AudioProblem? = null,
     /** Lecture par le moteur VLC (son ou image que le lecteur de l'appli ne sait pas lire). */

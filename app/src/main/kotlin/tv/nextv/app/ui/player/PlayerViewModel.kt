@@ -13,6 +13,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import android.os.SystemClock
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -237,6 +238,9 @@ class PlayerViewModel(
 
     /** Chaîne notée en dernier dans l'enregistrement d'analyse. */
     private var adRecordedChannel = ""
+
+    /** Enregistrement automatique (essais) : change de chaîne tout seul, toute la nuit s'il le faut. */
+    private var autoRecording: kotlinx.coroutines.Job? = null
 
     init {
         // Attention : rien de ce qui est déclaré plus bas dans la classe n'est encore prêt ici.
@@ -473,11 +477,58 @@ class PlayerViewModel(
                 qualityNotice = when {
                     recording -> resources.getString(R.string.player_ad_recording_stopped)
                     !started && engine.adRecordingRefusal == "usb" -> resources.getString(R.string.player_ad_recording_no_usb)
+                    !started && engine.adRecordingRefusal == "autorisation" -> resources.getString(R.string.player_ad_recording_no_access)
+                    !started && engine.adRecordingRefusal == "usb_illisible" -> resources.getString(R.string.player_ad_recording_usb_unwritable)
                     !started -> resources.getString(R.string.player_ad_recording_failed)
                     else -> it.qualityNotice
                 },
             )
         }
+    }
+
+    /**
+     * Options › « Enregistrement automatique » (pour les essais) : enregistre pour l'analyse des pubs et passe tout seul à
+     * la chaîne suivante de la liste d'où la chaîne a été ouverte (favoris, catégorie…) toutes les [AUTO_STAY_MILLIS] —
+     * sans quitter une page de pubs en cours (au plus [AUTO_EXTRA_MILLIS] de plus), et tout de suite après
+     * [AUTO_ERROR_MILLIS] sur une chaîne qui ne se lit pas. S'arrête avec l'enregistrement (à la main, ou place pleine).
+     */
+    fun toggleAutoRecording() {
+        if (autoRecording != null) {
+            stopAutoRecording()
+            if (state.value.adRecordingMinutes != null) toggleAdRecording()
+            return
+        }
+        if (state.value.adRecordingMinutes == null) toggleAdRecording()
+        if (state.value.adRecordingMinutes == null) return
+        mutableState.update { it.copy(autoRecordingChannels = 1) }
+        autoRecording = viewModelScope.launch {
+            var since = SystemClock.elapsedRealtime()
+            var errorSince = 0L
+            while (true) {
+                delay(AUTO_CHECK_MILLIS)
+                // Enregistrement arrêté (à la main, place pleine, clé retirée) : l'automatique aussi.
+                if (engine.adRecordingMillis == null) break
+                val now = SystemClock.elapsedRealtime()
+                val stayed = now - since
+                errorSince = if (state.value.error != null) errorSince.takeIf { it > 0 } ?: now else 0L
+                val failing = errorSince > 0 && now - errorSince >= AUTO_ERROR_MILLIS
+                val inBreak = engine.adVolume.attenuating
+                if (failing || (stayed >= AUTO_STAY_MILLIS && !inBreak) || stayed >= AUTO_STAY_MILLIS + AUTO_EXTRA_MILLIS) {
+                    zap(+1)
+                    since = now
+                    errorSince = 0L
+                    mutableState.update { it.copy(autoRecordingChannels = (it.autoRecordingChannels ?: 0) + 1) }
+                }
+            }
+            autoRecording = null
+            mutableState.update { it.copy(autoRecordingChannels = null) }
+        }
+    }
+
+    private fun stopAutoRecording() {
+        autoRecording?.cancel()
+        autoRecording = null
+        mutableState.update { it.copy(autoRecordingChannels = null) }
     }
 
     fun setLowerAdVolume(enabled: Boolean) {
@@ -1233,6 +1284,14 @@ class PlayerViewModel(
     }
 
     companion object {
+        /** Enregistrement automatique : temps passé sur chaque chaîne, prolongé pendant une page de pubs. */
+        const val AUTO_STAY_MILLIS = 30 * 60_000L
+        const val AUTO_EXTRA_MILLIS = 10 * 60_000L
+
+        /** Chaîne qui ne se lit pas : la suivante après ce délai. */
+        const val AUTO_ERROR_MILLIS = 60_000L
+        const val AUTO_CHECK_MILLIS = 10_000L
+
         const val ARG_CHANNEL_ID = "channelId"
         const val ARG_RESUME = "resume"
 

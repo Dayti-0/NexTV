@@ -203,7 +203,11 @@ Commandes :
   chaîne : détection repartie de zéro, horloge mise bout à bout), « chaine »), récupéré par l'utilisateur sur son
   téléphone via Réglages › Son (petit serveur web local, adresse avec un code). Emplacement au choix (0.2.157) :
   mémoire de l'appareil ou clé USB (`removableRecordingPlaces` : dossier de l'appli sur chaque volume amovible,
-  `getExternalFilesDirs`, sans autorisation ; réglage `ad_recordings_location` = identifiant du volume). Le rejouer : `AdDeviceReplayTool` (`AD_DEVICE`,
+  `getExternalFilesDirs`, sans autorisation ; à défaut, Android 11+, dossier `NixTV/` à la racine avec « Accès à tous les
+  fichiers » `MANAGE_EXTERNAL_STORAGE`, `allFilesAccessIntent` ; `describeStorage` liste les volumes vus pour la photo ;
+  réglage `ad_recordings_location` = identifiant du volume). Essai « Enregistrement automatique » (0.2.158,
+  `PlayerViewModel.toggleAutoRecording`) : zappe dans la liste d'origine toutes les 30 min (pas pendant une baisse, au
+  plus +10 min ; 1 min si la chaîne est en erreur), écran gardé allumé. Le rejouer : `AdDeviceReplayTool` (`AD_DEVICE`,
   `AD_PRINTS`, `AD_IMAGES=10` écrit une image par 10 s pour relever les pages de pub à l'œil dans `<nom>.truth.tsv`).
   C'est la seule façon de mesurer TF1, M6 et France Télévisions (pas de flux lisible d'ici, même avec un compte).
 

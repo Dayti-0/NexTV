@@ -671,6 +671,50 @@ class PlayerViewModelTest {
         store.clear()
     }
 
+    /**
+     * Enregistrement automatique (essais) : il enregistre et passe tout seul à la chaîne suivante de la liste. Ici les
+     * chaînes ne se lisent pas (adresse fermée) : la suivante vient au bout d'une minute, sans attendre la demi-heure.
+     */
+    @Test
+    fun automaticRecordingMovesToTheNextChannelByItself() {
+        runBlocking { container.settings.setLowerAdVolume(true) }
+        val sourceId = runBlocking {
+            val id = container.sourceRepository.add(SourceInput(name = "Auto", location = SourceLocation.Remote("http://127.0.0.1:9/auto.m3u")))
+            container.playlistStore.replaceChannels(
+                id,
+                listOf("TF1", "France 2", "M6").mapIndexed { index, name ->
+                    Channel(position = index, name = name, stream = StreamDescriptor("http://127.0.0.1:9/live/$index.ts"), groupTitle = "TNT", title = name)
+                },
+            )
+            id
+        }
+        val tf1 = runBlocking { checkNotNull(container.channelDao.primaryIdByKey(sourceId, "live:tf1")) }
+        val (viewModel, store) = open(tf1)
+        viewModel.onStart()
+        idle()
+        assertEquals("TF1", viewModel.state.value.channelName)
+        viewModel.toggleAutoRecording()
+        idle()
+        assertNotNull(viewModel.state.value.adRecordingMinutes)
+        assertEquals(1, viewModel.state.value.autoRecordingChannels)
+        // Temps du lecteur avancé par pas de 10 s (au plus 40 min) jusqu'au changement de chaîne.
+        var steps = 0
+        while (viewModel.state.value.channelName == "TF1" && steps++ < 240) {
+            shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(10))
+            Thread.sleep(5)
+        }
+        awaitOtherChannel(viewModel, "TF1")
+        assertEquals("France 2", viewModel.state.value.channelName)
+        assertTrue((viewModel.state.value.autoRecordingChannels ?: 0) >= 2)
+        // L'enregistrement continue d'une chaîne à l'autre ; arrêter l'automatique arrête aussi l'enregistrement.
+        assertNotNull(viewModel.state.value.adRecordingMinutes)
+        viewModel.toggleAutoRecording()
+        idle()
+        assertNull(viewModel.state.value.autoRecordingChannels)
+        assertNull(viewModel.state.value.adRecordingMinutes)
+        store.clear()
+    }
+
     @Test
     fun theRemoteKeysOfAMovieNeverCrash() {
         val (_, movie) = playlist()

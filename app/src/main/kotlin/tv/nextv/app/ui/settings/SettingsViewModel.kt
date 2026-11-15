@@ -1,5 +1,7 @@
 package tv.nextv.app.ui.settings
 
+import tv.nextv.app.player.allFilesAccessIntent
+import tv.nextv.app.player.describeStorage
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import tv.nextv.app.player.AdRecordings
@@ -320,7 +322,14 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     private fun adPlace(key: String?): AdPlace {
         val location = container.adRecordings.locations().firstOrNull { it.key == key }
-        return AdPlace(usb = key != null, label = location?.label, freeBytes = location?.freeBytes, missing = location == null)
+        return AdPlace(
+            usb = key != null,
+            label = location?.label,
+            freeBytes = location?.takeIf { it.access == AdRecordings.Access.READY }?.freeBytes,
+            missing = location == null,
+            access = location?.access ?: AdRecordings.Access.READY,
+            storage = describeStorage(container.appContext),
+        )
     }
 
     /** Relit les emplacements (clé USB branchée ou retirée) et les enregistrements. */
@@ -499,5 +508,17 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
  * @property usb une clé USB est choisie (sinon la mémoire de l'appareil).
  * @property label nom de la clé donné par le système.
  * @property missing la clé choisie n'est pas branchée.
+ * @property access peut-on y écrire (sinon : autorisation à donner, clé illisible…).
  */
-data class AdPlace(val usb: Boolean = false, val label: String? = null, val freeBytes: Long? = null, val missing: Boolean = false)
+data class AdPlace(
+    val usb: Boolean = false,
+    val label: String? = null,
+    val freeBytes: Long? = null,
+    val missing: Boolean = false,
+    val access: AdRecordings.Access = AdRecordings.Access.READY,
+    /** Stockages annoncés par le système (pour la photo quand une clé n'est pas proposée). */
+    val storage: String = "",
+)
+
+/** Écran du système qui accorde l'accès aux clés USB (« Accès à tous les fichiers »), s'il existe. */
+fun SettingsViewModel.allFilesAccess(context: android.content.Context): android.content.Intent? = allFilesAccessIntent(context)

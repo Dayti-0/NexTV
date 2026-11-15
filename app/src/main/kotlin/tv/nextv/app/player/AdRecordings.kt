@@ -43,8 +43,22 @@ class AdRecordings(
      * @property label nom donné par le système (« Clé USB SanDisk ») ; `null` : la mémoire de l'appareil.
      * @property directory dossier des enregistrements à cet emplacement.
      */
-    data class Location(val key: String?, val label: String?, val directory: File) {
+    data class Location(val key: String?, val label: String?, val directory: File, val access: Access = Access.READY) {
         val freeBytes: Long get() = (directory.parentFile ?: directory).usableSpace
+    }
+
+    /** Peut-on écrire à cet emplacement ? */
+    enum class Access {
+        READY,
+
+        /** Clé branchée, mais il faut l'autorisation « Accès à tous les fichiers » (Android 11 et plus). */
+        NEEDS_PERMISSION,
+
+        /** Clé branchée, mais le système n'y laisse pas écrire (lecture seule, format non pris en charge…). */
+        READ_ONLY,
+
+        /** Clé vue par le système, mais pas prête (en cours de vérification, à formater…). */
+        NOT_MOUNTED,
     }
 
     /** Emplacement choisi dans les réglages (`null` : mémoire de l'appareil), tenu à jour par l'application. */
@@ -57,7 +71,7 @@ class AdRecordings(
     /** Emplacement choisi, s'il est disponible (une clé USB choisie mais débranchée : `null`). */
     fun target(): Location? = locations().firstOrNull { it.key == selected }
 
-    private fun directories(): List<File> = locations().map { it.directory }
+    private fun directories(): List<File> = locations().filter { it.access == Access.READY }.map { it.directory }
 
     init {
         // Enregistrement interrompu (application fermée par le système) : ce qui a été écrit est gardé.
@@ -99,6 +113,8 @@ class AdRecordings(
         val location = target()
         refusal = when {
             location == null -> "usb"
+            location.access == Access.NEEDS_PERMISSION -> "autorisation"
+            location.access != Access.READY -> "usb_illisible"
             location.freeBytes <= MIN_FREE_BYTES -> "place"
             else -> null
         }
@@ -148,7 +164,7 @@ class AdRecordings(
         File(directory, zipName.removeSuffix(".zip")).takeIf { it.isDirectory && it.parentFile == directory && !it.name.endsWith(PART) }
     }
 
-    private fun list(): List<Recording> = locations().flatMap { location ->
+    private fun list(): List<Recording> = locations().filter { it.access == Access.READY }.flatMap { location ->
         location.directory.listFiles { file -> file.isDirectory && !file.name.endsWith(PART) }.orEmpty().map { folder ->
             folder to Recording(folder.name + ".zip", folder.listFiles()?.sumOf { it.length() } ?: 0L, location.label)
         }

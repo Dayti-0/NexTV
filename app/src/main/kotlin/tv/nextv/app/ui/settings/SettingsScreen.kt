@@ -135,8 +135,15 @@ fun SettingsScreen(
     val account by viewModel.account.collectAsStateWithLifecycle()
     val adRecordings by viewModel.adRecordings.collectAsStateWithLifecycle()
     val adPlace by viewModel.adPlace.collectAsStateWithLifecycle()
-    // Clé USB branchée ou retirée depuis la dernière visite : emplacements relus à chaque ouverture des réglages.
-    LaunchedEffect(Unit) { viewModel.refreshAdPlaces() }
+    // Clé USB branchée ou retirée, autorisation accordée : emplacements relus à chaque retour sur les réglages.
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) viewModel.refreshAdPlaces()
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
     val context = LocalContext.current
     val resources = context.resources
     val snackbar = remember { SnackbarHostState() }
@@ -255,6 +262,10 @@ fun SettingsScreen(
         adRecordings = adRecordings,
         adPlace = adPlace,
         onCycleAdPlace = viewModel::cycleAdPlace,
+        onAllowUsb = {
+            val opened = viewModel.allFilesAccess(context)?.let { intent -> runCatching { context.startActivity(intent) }.isSuccess } ?: false
+            if (!opened) scope.launch { snackbar.showSnackbar(resources.getString(R.string.settings_ad_recordings_allow_manual)) }
+        },
         onShareAdRecordings = viewModel::shareAdRecordings,
         onDeleteAdRecordings = viewModel::deleteAdRecordings,
         onAppearance = onAppearance,
@@ -311,6 +322,7 @@ fun SettingsContent(
     adRecordings: List<AdRecordings.Recording> = emptyList(),
     adPlace: AdPlace = AdPlace(),
     onCycleAdPlace: () -> Unit = {},
+    onAllowUsb: () -> Unit = {},
     onShareAdRecordings: () -> AdRecordings.Share? = { null },
     onDeleteAdRecordings: () -> Unit = {},
     onAppearance: () -> Unit = {},
@@ -509,12 +521,25 @@ fun SettingsContent(
                             title = stringResource(R.string.settings_ad_recordings_place),
                             value = when {
                                 adPlace.missing -> stringResource(R.string.settings_ad_recordings_missing)
+                                adPlace.access == AdRecordings.Access.NEEDS_PERMISSION -> stringResource(R.string.settings_ad_recordings_needs_access, placeName)
+                                adPlace.access == AdRecordings.Access.READ_ONLY -> stringResource(R.string.settings_ad_recordings_read_only, placeName)
+                                adPlace.access == AdRecordings.Access.NOT_MOUNTED -> stringResource(R.string.settings_ad_recordings_not_mounted, placeName)
                                 adPlace.freeBytes != null -> stringResource(R.string.settings_ad_recordings_free, placeName, gigabytes(adPlace.freeBytes))
                                 else -> placeName
                             },
                             onClick = onCycleAdPlace,
                         )
+                        // Clé vue mais fermée à l'appli : l'autorisation se donne dans les réglages du système.
+                        if (adPlace.access == AdRecordings.Access.NEEDS_PERMISSION) {
+                            ValueRow(
+                                title = stringResource(R.string.settings_ad_recordings_allow),
+                                value = stringResource(R.string.settings_ad_recordings_allow_help),
+                                onClick = onAllowUsb,
+                            )
+                        }
                         InfoText(stringResource(R.string.settings_ad_recordings_place_help))
+                        // Stockages annoncés par le système : la photo de cette ligne dit pourquoi une clé n'est pas proposée.
+                        if (adPlace.storage.isNotEmpty()) InfoText(stringResource(R.string.settings_ad_recordings_storage, adPlace.storage))
                     }
                     ToggleRow(
                         title = stringResource(R.string.settings_audio_passthrough),

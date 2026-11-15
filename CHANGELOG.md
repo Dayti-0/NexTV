@@ -4,6 +4,10 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.158
+- Clé USB pour les enregistrements d’analyse : mieux détectée. Quand le système ne donne pas de dossier à l’appli sur la clé (box sous LineageOS…), Réglages › Son propose « Autoriser l’accès à la clé USB » (accès à tous les fichiers) et l’enregistrement va dans un dossier « NixTV » de la clé. Si la clé est vue mais pas utilisable, la ligne dit pourquoi, et la liste des stockages vus par l’appli s’affiche
+- Essai : « Enregistrement automatique » dans les options du lecteur. Il enregistre et passe tout seul à la chaîne suivante toutes les 30 minutes (sans quitter une page de pubs en cours ; tout de suite si la chaîne ne se lit pas), dans la liste d’où la chaîne a été ouverte (favoris, catégorie). On peut le laisser tourner toute la nuit ; l’écran reste allumé
+
 ## 0.2.157
 - Réglages › Son › « Emplacement des enregistrements » : les enregistrements pour l’analyse des pubs peuvent aller sur une clé USB branchée à l’appareil, au lieu de sa mémoire. Sur la clé, tous sont gardés ; si elle est débranchée, l’appli le dit au lieu d’enregistrer
 
