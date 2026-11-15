@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.165
+- Récupération des enregistrements sur le téléphone : la télé annonce maintenant la taille exacte du fichier. Certains téléphones (iPhone) enregistraient un fichier vide
+
 ## 0.2.164
 - « Baisser le son des pubs » et enregistrement d’analyse : un changement de qualité (ou de serveur) sur la même chaîne ne remet plus tout à zéro comme un changement de chaîne. Une page de pub en cours reste détectée (son toujours baissé), le logo appris est gardé, et l’enregistrement continue sans coupure
 

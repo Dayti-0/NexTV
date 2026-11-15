@@ -336,19 +336,15 @@ class AdRecordings(
                             if (folder == null) {
                                 out.write("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
                             } else {
-                                // Zip fabriqué à la volée (taille inconnue d'avance : la connexion se ferme à la fin).
+                                // Zip fabriqué à la volée, sans compression : sa taille exacte est connue d'avance et
+                                // annoncée (les téléphones enregistraient parfois un fichier vide sans elle).
+                                val files = folder.listFiles()?.filter { it.isFile }?.sortedBy { it.name }.orEmpty()
+                                val crcs = files.map(::crcOf)
                                 out.write(
-                                    ("HTTP/1.1 200 OK\r\nContent-Type: application/zip\r\n" +
+                                    ("HTTP/1.1 200 OK\r\nContent-Type: application/zip\r\nContent-Length: ${storedZipLength(files)}\r\n" +
                                         "Content-Disposition: attachment; filename=\"${folder.name}.zip\"\r\nConnection: close\r\n\r\n").toByteArray(),
                                 )
-                                val zip = ZipOutputStream(out.buffered())
-                                folder.listFiles()?.sortedBy { it.name }?.forEach { file ->
-                                    zip.putNextEntry(ZipEntry(file.name))
-                                    file.inputStream().use { input -> input.copyTo(zip) }
-                                    zip.closeEntry()
-                                }
-                                zip.finish()
-                                zip.flush()
+                                writeStoredZip(files, crcs, out)
                             }
                         }
                         else -> out.write("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
@@ -410,6 +406,47 @@ class AdRecordings(
 
 
         const val PORT = 8090
+
+        /** Somme de contrôle d'un fichier (zip sans compression : elle s'écrit avant les données). */
+        fun crcOf(file: File): Long {
+            val crc = java.util.zip.CRC32()
+            file.inputStream().use { input ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    crc.update(buffer, 0, read)
+                }
+            }
+            return crc.value
+        }
+
+        /** Taille exacte du zip sans compression de [files] écrit par [writeStoredZip] (noms en ASCII). */
+        fun storedZipLength(files: List<File>): Long =
+            files.sumOf { 30L + it.name.length + it.length() + 46L + it.name.length } + 22L
+
+        /** Zip sans compression (les images sont déjà en JPEG) : en-têtes, données, puis le sommaire. */
+        fun writeStoredZip(files: List<File>, crcs: List<Long>, out: java.io.OutputStream) {
+            val zip = ZipOutputStream(out.buffered())
+            zip.setMethod(ZipOutputStream.STORED)
+            files.forEachIndexed { index, file ->
+                val entry = ZipEntry(file.name).apply {
+                    method = ZipEntry.STORED
+                    size = file.length()
+                    compressedSize = file.length()
+                    crc = crcs[index]
+                    time = file.lastModified().coerceAtLeast(DOS_EPOCH)
+                }
+                zip.putNextEntry(entry)
+                file.inputStream().use { input -> input.copyTo(zip) }
+                zip.closeEntry()
+            }
+            zip.finish()
+            zip.flush()
+        }
+
+        /** 1er janvier 1981 : les dates d'un zip commencent en 1980 (sinon un champ en plus changerait la taille). */
+        private const val DOS_EPOCH = 347_155_200_000L
         const val MUSIC_PATH = "musique/"
         const val MAX_HEADER = 8 * 1024
         const val CODE_LETTERS = "abcdefghjkmnpqrstuvwxyz23456789"

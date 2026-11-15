@@ -73,6 +73,9 @@ class AdRecorderTest {
             assertEquals(200, connection.responseCode)
             val zip = folder.newFile()
             connection.inputStream.use { input -> zip.outputStream().use { input.copyTo(it) } }
+            // Taille annoncée d'avance, exacte : le téléphone sait quand le fichier est complet.
+            assertTrue(connection.contentLengthLong > 0)
+            assertEquals(connection.contentLengthLong, zip.length())
             return ZipFile(zip).use { file -> file.entries().toList().associate { it.name to file.getInputStream(it).readBytes() } }
         }
     }
