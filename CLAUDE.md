@@ -150,6 +150,27 @@ Commandes :
   fiche propose les autres (`movieVersions`, bouton « Version »). Toute nouvelle règle qui change un titre : augmenter
   `QualityParser.VERSION` (la playlist est relue au lancement) ; `ItemKeyRelinker` rattache les favoris, reprises,
   « Déjà vu » et chaînes récentes enregistrés sous l'ancienne clé (films, séries et chaînes).
-- « Baisser le son des pubs » : `core/audio/AdVolumeGuard.kt` (silences entre deux pubs ; les pubs ne sont pas plus
-  fortes que le programme) et `LogoWatcher.kt` (logo de la chaîne, absent pendant les pubs), branchés par
-  `AdVolumeAudioProcessor` et `VideoFrameSampler` (une image par seconde). Réglé sur de vraies coupures pub de 2024.
+- « Baisser le son des pubs » (direct et replay seulement, jamais un film : `PlayerEngine.adBreaks`) :
+  `core/audio/AdVolumeGuard.kt` reconnaît les **jonctions** entre deux pubs — un silence complet pendant lequel l'image
+  change de plan ou montre le carton de la chaîne (`SmallFrame`, images 96 × 54) — et décide selon le logo
+  (`LogoWatcher.kt` : gabarit de gradients du logo dans un coin ; affiché = programme, jamais de baisse). Ce qu'une chaîne
+  a appris est gardé (`AdMarks` : logo, carton, « le logo suit les coupures » ; `AdMarksStore`, un fichier par flux dans
+  `files/ad_marks`). Branché par `AdVolumeControl` / `AdVolumeAudioProcessor` (son décodé) et `VideoFrameSampler` (image
+  480 × 270 : une par seconde, dix par seconde pendant un silence — boucle de `PlayerScreen`). La ligne « Pubs » des infos
+  de lecture (`AdWatch`) dit ce que la détection voit sur l'appareil : **la demander en photo** quand elle ne marche pas.
+  Réglé le 14/11/2026 sur 8 chaînes ; pour rejouer des enregistrements dans le code : `AdReplayTool` (test ignoré sans
+  `AD_SAMPLES` ; dossiers contenant `levels.f32` (carré moyen par 20 ms), `frames.gray` (480 × 270, 1 image/s) et
+  `small.gray` (96 × 54, 12,5 images/s)). Tout changement de règle : comparer avant / après sur des enregistrements, pas
+  seulement sur les tests.
+
+## Essais sur de vrais flux
+
+- La variable `NEXTV_M3U_URL` de l'environnement donne la playlist (se présenter comme l'appli : agent `NixTV/1.0`). La
+  liste des chaînes et l'état du compte passent ; **la vidéo est refusée depuis le cloud** (erreur 511, machine hors de
+  France) : ne pas chercher à contourner. L'abonnement n'a qu'une connexion : ne rien ouvrir si `active_cons` vaut 1.
+- À la place : les directs publics officiels des chaînes (liste `iptv-org.github.io/iptv/countries/fr.m3u`, ne garder
+  que les serveurs des chaînes elles-mêmes). Joignables le 14/11/2026 : RMC Story, RMC Découverte, RMC Life, L'Équipe,
+  BFM 2, TV Monaco, Euronews, Fréquence Novelas. Les trois RMC annoncent leurs pages de pub dans la liste HLS
+  (`EXT-X-DATERANGE` … `SCTE35-OUT`, début et durée) : une vérité de référence toute faite.
+- TF1, M6, France Télévisions : aucun flux public lisible d'ici (DRM, France seulement), et le téléchargement
+  d'archives vidéo a été refusé par la sécurité de la session. Leurs pages de pub n'ont donc pas été mesurées.

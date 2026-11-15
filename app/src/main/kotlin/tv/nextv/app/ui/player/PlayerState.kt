@@ -1,6 +1,7 @@
 package tv.nextv.app.ui.player
 
 import tv.nextv.app.data.db.ChannelListRow
+import tv.nextv.app.player.AdWatch
 import tv.nextv.app.ui.guide.GuideChannel
 import tv.nextv.app.ui.guide.GuideProgramme
 import tv.nextv.app.ui.home.Category
@@ -93,6 +94,8 @@ data class PlayerUiState(
     val lowerAdVolume: Boolean = false,
     /** Pub détectée : son baissé. */
     val adMuted: Boolean = false,
+    /** Ce que « baisser le son des pubs » observe du flux (infos de lecture) ; `null` : option désactivée ou film. */
+    val adWatch: AdWatch? = null,
     /** Le flux n'a pas de son, ou dans un format que l'appareil ne lit pas. */
     val audioProblem: AudioProblem? = null,
     /** Lecture par le moteur VLC (son ou image que le lecteur de l'appli ne sait pas lire). */

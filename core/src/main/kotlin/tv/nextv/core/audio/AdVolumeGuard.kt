@@ -7,7 +7,7 @@ import kotlin.math.pow
 
 /** Logo de la chaîne à l'image, d'après [LogoWatcher] : il disparaît pendant les publicités. */
 enum class LogoState {
-    /** Pas de logo connu pour cette chaîne (ou image non lisible) : seul le son décide. */
+    /** Pas de logo connu pour cette chaîne (ou image non lisible) : seuls le son et les changements de plan décident. */
     UNKNOWN,
     VISIBLE,
     HIDDEN,
@@ -16,83 +16,142 @@ enum class LogoState {
 /**
  * Baisse le son pendant les pages de publicité.
  *
- * Les publicités ne sont pas plus fortes que le programme : les chaînes les diffusent au même niveau
- * moyen (mesuré sur des coupures de M6, France 2 et RTS de 2024 : −26 à −28 dB, comme le programme
- * autour). Ce qui les distingue, c'est le **silence complet entre deux spots** : 0,3 à 1,5 s, toutes
- * les 5 à 31 secondes. Un film ou une émission n'en a presque jamais (trois en douze minutes de film,
- * jamais deux à moins d'une minute d'écart).
+ * Les publicités ne sont pas plus fortes que le programme. Ce qui les distingue, c'est leur **jonction** :
+ * entre deux spots, la chaîne laisse un silence complet (0,2 à 1,5 s) pendant lequel l'image passe d'un spot
+ * à l'autre, souvent par un carton à ses couleurs (dix images sur les chaînes RMC, trois sur L'Équipe). Mesuré
+ * le 14 novembre 2026 sur les directs de RMC Story, RMC Découverte, RMC Life, L'Équipe, BFM 2, TV Monaco,
+ * Euronews et Fréquence Novelas.
  *
- * - Entrée : deux silences complets séparés de [minIntervalMillis] à [maxIntervalMillis] (un spot, ou
- *   le jingle « publicité », tient entre les deux). Un seul suffit quand le logo de la chaîne vient de
- *   disparaître de l'image.
- * - Maintien : tant que les silences se suivent à moins de [holdMillis] (durée d'un spot de trente
- *   secondes, avec une marge).
- * - Sortie : dès que le logo de la chaîne revient à l'image ; sans logo connu, quand le son dure plus
- *   longtemps qu'un spot sans silence.
+ * Un silence seul ne suffit pas : une émission de plateau en fait à chaque pause d'un invité (76 en 36 minutes
+ * sur L'Équipe, 214 sur BFM 2), sans que l'image change. Un silence ne compte donc comme jonction que si
+ * l'image d'après n'est plus celle d'avant ([frame] : images réduites, rapprochées pendant les silences — voir
+ * [wantsFrames]).
  *
- * Un logo resté affiché alors que les silences s'enchaînent ne dit rien des publicités de cette
- * chaîne : il n'est plus écouté.
+ * Une série ou un film changent aussi de scène sur un silence. Le logo de la chaîne les départage : il reste
+ * à l'image pendant le programme et disparaît pendant les publicités ([logo]).
  *
- * Utilisé bloc par bloc par le lecteur (blocs d'environ 20 ms) : [process] reçoit l'énergie moyenne du
- * bloc (carré moyen des échantillons, entre 0 et 1) et sa durée, et rend le gain linéaire à appliquer.
+ * - Logo affiché : c'est le programme, le son n'est jamais baissé.
+ * - Logo parti depuis peu, et déjà vu revenir à la fin d'une page de pubs ([logoFollowsBreaks]) : la première
+ *   jonction ouvre la page.
+ * - Sinon : deux jonctions montrant le même carton ([separator], ensuite reconnu dès la première), deux jonctions
+ *   juste après le départ du logo, ou quatre jonctions espacées comme des spots (durées de 5 en 5 secondes).
+ * - Sortie : dès que le logo revient ; sinon quand plus aucune jonction n'arrive ([HOLD_MILLIS]).
+ * - Sans image du tout (appareil qui ne laisse pas lire l'écran) : le son seul, avec prudence — quatre silences
+ *   espacés comme des spots. Mieux vaut alors manquer une page de pubs que baisser le son d'un programme.
+ *
+ * Utilisé bloc par bloc par le lecteur (blocs d'environ 20 ms) : [process] reçoit l'énergie moyenne du bloc
+ * (carré moyen des échantillons, entre 0 et 1) et sa durée, et rend le gain linéaire à appliquer. L'horloge
+ * est la durée de son reçue : une image est datée du son traité à son arrivée. Le son est traité un peu
+ * avant d'être entendu (jusqu'à une seconde), ce dont les délais ci-dessous tiennent compte.
  */
-class AdVolumeGuard(
-    private val attenuationDb: Double = -24.0,
-    /** Silence complet le plus court et le plus long entre deux spots. */
-    private val minGapMillis: Long = 200,
-    private val maxGapMillis: Long = 4_000,
-    /** Écart entre deux silences : plus court, c'est le même ; plus long, ce n'est pas un spot. */
-    private val minIntervalMillis: Long = 2_500,
-    private val maxIntervalMillis: Long = 50_000,
-    /** Sans nouveau silence après ce délai, le programme a repris. */
-    private val holdMillis: Long = 33_000,
-    /** Logo disparu depuis moins longtemps que cela : le premier silence ouvre la page de pubs. */
-    private val logoJustHiddenMillis: Long = 90_000,
-) {
+class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
+
     private var elapsed = 0L
     private var heard = false
     private var silentMillis = 0L
+    private var silenceStart = 0L
 
-    /** Fin du dernier silence complet. */
-    private var lastGap: Long? = null
+    /** Silences finis dont l'image d'après n'est pas encore arrivée : début et fin. */
+    private val pending = ArrayDeque<LongArray>()
+    private var burstUntil = 0L
+
+    private val scenes = SceneMemory()
+    private var lastPicture = NEVER
+
+    /** Jonctions récentes qui se suivent à moins de [MAX_INTERVAL_MILLIS]. */
+    private val chain = ArrayList<Junction>()
+    private var lastJunction = 0L
+
+    /** Carton de la chaîne entre deux spots, une fois reconnu (deux jonctions de suite l'ont montré). */
+    var separator: ByteArray? = null
+        @Synchronized get
+
+        @Synchronized set
 
     private var logoSince = 0L
-    private var logoTrusted = true
+    private var logoSeen = false
 
-    /** Silences enchaînés alors que le logo restait affiché. */
-    private var vetoed = 0
+    /**
+     * Le logo suit les coupures de cette chaîne : il a déjà été vu revenir à la fin d'une page de pubs. Tant que ce
+     * n'est pas le cas, son absence ne prouve rien (un habillage propre à une émission disparaît avec elle).
+     */
+    var logoFollowsBreaks = false
+        @Synchronized get
+
+        @Synchronized set
+
+    /** Logo resté affiché pendant des publicités : il ne dit rien du programme, jusqu'à ce qu'il disparaisse. */
+    private var logoStays = false
+
+    /** Logo qui n'est pas revenu avec le programme : son absence ne dit rien, jusqu'à ce qu'il revienne. */
+    private var logoMissing = false
+
+    /** Logo absent pendant la page de pubs en cours : s'il revient à sa fin, c'est bien qu'il suit les coupures. */
+    private var awayInBreak = false
 
     private var gainDb = 0.0
 
+    /** Mise au point : ce que la détection décide, au fil du son. */
+    internal var trace: ((String) -> Unit)? = null
+
     /** Son baissé (page de pubs détectée). */
+    @Volatile
     var attenuating: Boolean = false
+        private set
+
+    /**
+     * Images rapprochées demandées (une dizaine par seconde) : un silence est en cours ou vient de finir, et
+     * c'est l'image de ce moment qui dit s'il sépare deux spots.
+     */
+    @Volatile
+    var wantsFrames: Boolean = false
         private set
 
     /** Logo de la chaîne à l'image, tenu à jour par le lecteur. */
     var logo: LogoState = LogoState.UNKNOWN
-        set(value) {
+        @Synchronized set(value) {
             if (field == value) return
             field = value
             logoSince = elapsed
-            // Un logo qui disparaît puis revient suit de nouveau les coupures : il est réécouté.
-            if (value == LogoState.HIDDEN) logoTrusted = true
+            when (value) {
+                LogoState.VISIBLE -> {
+                    logoSeen = true
+                    logoMissing = false
+                }
+                // Un logo qui disparaît suit de nouveau les coupures : il est réécouté.
+                LogoState.HIDDEN -> logoStays = false
+                LogoState.UNKNOWN -> Unit
+            }
         }
 
+    /** Image réduite ([SmallFrame]) affichée en ce moment. */
+    @Synchronized
+    fun frame(small: ByteArray) {
+        if (small.size < SmallFrame.SIZE) return
+        scenes.add(elapsed, small)
+        lastPicture = elapsed
+    }
+
+    @Synchronized
     fun process(meanSquare: Double, durationMillis: Long): Double {
         val duration = durationMillis.coerceAtLeast(1)
         elapsed += duration
         if (decibels(meanSquare) < SILENCE_DB) {
+            if (silentMillis == 0L) silenceStart = elapsed - duration
             silentMillis += duration
+            // Sous le logo de la chaîne, c'est le programme : images rapprochées seulement pour un long silence.
+            if (silentMillis >= (if (showsProgramme()) BURST_AFTER_UNDER_LOGO_MILLIS else BURST_AFTER_MILLIS)) burstUntil = elapsed + SETTLE_MILLIS + BURST_MARGIN_MILLIS
         } else {
             // Le silence d'avant le premier son (ouverture du flux) ne sépare rien.
-            if (heard && silentMillis in minGapMillis..maxGapMillis) onGap(elapsed - duration)
+            if (heard && silentMillis in MIN_GAP_MILLIS..MAX_GAP_MILLIS) pending.addLast(longArrayOf(silenceStart, elapsed - duration))
             silentMillis = 0
             heard = true
         }
+        wantsFrames = elapsed < burstUntil
+        settle()
         if (attenuating) {
-            val since = lastGap ?: elapsed
-            val logoBack = logoTrusted && logo == LogoState.VISIBLE
-            if (logoBack || elapsed - since > holdMillis) attenuating = false
+            if (logo == LogoState.HIDDEN) awayInBreak = true
+            leaveIfOver()
         }
 
         // Gain lissé : baisse en une demi-seconde, retour en une seconde (pas de claquement).
@@ -102,39 +161,262 @@ class AdVolumeGuard(
         return 10.0.pow(gainDb / 20)
     }
 
-    /** Un silence complet vient de finir à [time]. */
-    private fun onGap(time: Long) {
-        val previous = lastGap
-        lastGap = time
-        if (attenuating) return
-        val visible = logoTrusted && logo == LogoState.VISIBLE
-        val spotBefore = previous != null && time - previous in minIntervalMillis..maxIntervalMillis
-        val logoJustHidden = logoTrusted && logo == LogoState.HIDDEN && time - logoSince <= logoJustHiddenMillis
-        when {
-            // Deux silences trop rapprochés : le même, il ne compte qu'une fois.
-            previous != null && time - previous < minIntervalMillis -> Unit
-            !spotBefore && !logoJustHidden -> vetoed = 0
-            !visible -> enter()
-            // Logo affiché : pas une page de pubs… sauf si les silences continuent de s'enchaîner.
-            ++vetoed >= VETOES_BEFORE_DISTRUST -> {
-                logoTrusted = false
-                enter()
-            }
+    /** Silences dont l'image d'après est arrivée (ou n'arrivera plus) : jonction ou simple pause ? */
+    private fun settle() {
+        while (pending.isNotEmpty()) {
+            val (start, end) = pending.first()
+            if (elapsed < end + SETTLE_MILLIS) return
+            val after = scenes.firstFrom(end + AFTER_MILLIS)
+            // Image en retard (une par seconde seulement) : on l'attend encore un peu.
+            if (after == null && pictures() && elapsed < end + SETTLE_MILLIS + LATE_MILLIS) return
+            pending.removeFirst()
+            onSilence(start, end, after)
         }
     }
 
-    private fun enter() {
-        attenuating = true
-        vetoed = 0
+    private fun pictures() = lastPicture != NEVER && elapsed - lastPicture <= PICTURE_MAX_AGE_MILLIS
+
+    private fun onSilence(start: Long, end: Long, after: ByteArray?) {
+        val before = scenes.lastBefore(start)
+        if (before == null || after == null) {
+            // Pas d'image de ce moment : le son seul, pour un silence assez long.
+            if (end - start >= BLIND_MIN_GAP_MILLIS) onJunction(Junction(end, card = null, blind = true, underLogo = showsProgramme()))
+            return
+        }
+        // Carton entre deux spots : une image unie, le temps du silence, qui n'est ni celle d'avant ni celle d'après.
+        // Celui de la chaîne, une fois connu, est reconnu même entre deux spots qui lui ressemblent.
+        var card: ByteArray? = null
+        var channelCard = false
+        scenes.between(start, end + AFTER_MILLIS - CARD_MARGIN_MILLIS) { candidate ->
+            if (channelCard || SmallFrame.flatShare(candidate) < FLAT_SHARE) return@between
+            val signature = SmallFrame.signature(candidate)
+            if (black(signature)) return@between
+            if (separator?.let { SmallFrame.sameSignature(it, signature) } == true) {
+                card = signature
+                channelCard = true
+            } else if (card == null && SmallFrame.changedShare(before, candidate) >= CARD_SHARE && SmallFrame.changedShare(candidate, after) >= CARD_SHARE) {
+                card = signature
+            }
+        }
+        // Même plan avant et après : une pause dans le programme, pas une jonction.
+        if (!channelCard && SmallFrame.changedShare(before, after) < CUT_SHARE) return
+        onJunction(Junction(end, card, blind = false, underLogo = showsProgramme()))
     }
+
+    /** Logo affiché, et qui suit bien les coupures : c'est le programme. */
+    private fun showsProgramme() = logo == LogoState.VISIBLE && !logoStays
+
+    private fun onJunction(junction: Junction) {
+        val previous = chain.lastOrNull()
+        if (previous != null && junction.time - previous.time < MIN_INTERVAL_MILLIS) {
+            // Deux silences trop rapprochés : la même jonction, elle ne compte qu'une fois.
+            if (previous.card == null) previous.card = junction.card
+            return
+        }
+        if (previous != null && junction.time - previous.time > MAX_INTERVAL_MILLIS) chain.clear()
+        chain += junction
+        if (chain.size > CHAIN_KEPT) chain.removeAt(0)
+        lastJunction = junction.time
+        // Le même carton à deux jonctions de suite : celui que la chaîne met entre ses spots.
+        val repeated = junction.card?.takeIf { card -> drawn(card) && chain.any { it !== junction && it.card?.let { other -> SmallFrame.sameSignature(other, card) } == true } }
+        if (repeated != null) separator = repeated
+        trace?.invoke("jonction à ${junction.time} ms : ${if (junction.blind) "sans image" else if (junction.card != null) "carton" else "coupe"}, suite de ${chain.size}, logo $logo")
+        if (!attenuating && opens(junction, repeated != null)) {
+            attenuating = true
+            trace?.invoke("son baissé à $elapsed ms")
+        }
+    }
+
+    /** La jonction qui vient d'être vue ouvre-t-elle une page de pubs ? */
+    private fun opens(junction: Junction, repeatedCard: Boolean): Boolean {
+        val card = junction.card
+        val channelCard = card != null && (repeatedCard || separator?.let { SmallFrame.sameSignature(it, card) } == true)
+        if (showsProgramme()) {
+            // Logo à l'image : le programme… sauf si le carton de la chaîne revient sous lui de jonction en jonction
+            // (chaîne qui garde son logo pendant les publicités) : il n'est alors plus écouté.
+            val keepsLogo = channelCard && chain.takeLastWhile { it.underLogo }.size >= LOGO_STAYS_CHAIN
+            if (keepsLogo) logoStays = true
+            return keepsLogo
+        }
+        if (!junction.blind) {
+            if (channelCard) return true
+            if (logo == LogoState.HIDDEN && logoSeen && !logoMissing) {
+                val hiddenFor = junction.time - logoSince
+                val justHidden = hiddenFor <= LOGO_JUST_HIDDEN_MILLIS
+                val opened = if (logoFollowsBreaks) {
+                    // Logo qui suit les coupures : la première jonction après son départ, ou deux jonctions de suite.
+                    justHidden || (card != null && hiddenFor <= LOGO_HIDDEN_CARD_MILLIS) || chain.size >= 2
+                } else {
+                    // Logo pas encore vu revenir d'une page de pubs : il vient de partir et deux jonctions se suivent.
+                    justHidden && chain.size >= 2
+                }
+                if (opened) return true
+            }
+        }
+        // Logo inconnu, ou pas d'image du tout : des jonctions espacées comme des spots.
+        return spotsInARow()
+    }
+
+    /** Les dernières jonctions se suivent comme des spots : [SPOT_CHAIN] de suite, aux durées de 5 en 5 secondes. */
+    private fun spotsInARow(): Boolean =
+        chain.size >= SPOT_CHAIN && (1 until SPOT_CHAIN).all { spotLike(chain[chain.size - it].time - chain[chain.size - it - 1].time) }
+
+    private fun leaveIfOver() {
+        // Logo vu sur ce flux et absent : la page de pubs continue, même sans silence entre deux spots.
+        val away = logo == LogoState.HIDDEN && logoSeen && !logoMissing
+        val over = when {
+            // Le logo est revenu : le programme a repris. Parti pendant la page et revenu à sa fin, il suit les coupures.
+            showsProgramme() -> {
+                if (awayInBreak) logoFollowsBreaks = true
+                true
+            }
+            elapsed - lastJunction > (if (away) HOLD_LOGO_HIDDEN_MILLIS else if (pictures()) HOLD_MILLIS else HOLD_BLIND_MILLIS) -> {
+                // Plus de jonction depuis longtemps et toujours pas de logo : il ne revient pas avec ce programme.
+                if (away) logoMissing = true
+                true
+            }
+            else -> false
+        }
+        if (!over) return
+        attenuating = false
+        awayInBreak = false
+        // Les jonctions de cette page ne comptent pas pour la suivante.
+        chain.clear()
+        trace?.invoke("son remis à $elapsed ms")
+    }
+
+    /** Écart entre deux jonctions qui tient à des spots : durées de 5 en 5 secondes, plus le silence qui les sépare. */
+    private fun spotLike(intervalMillis: Long): Boolean {
+        if (intervalMillis !in MIN_INTERVAL_MILLIS..MAX_INTERVAL_MILLIS) return false
+        val beyond = (intervalMillis + SPOT_EARLY_MILLIS) % SPOT_STEP_MILLIS
+        return beyond <= SPOT_EARLY_MILLIS + SPOT_LATE_MILLIS
+    }
+
+    /** Image noire : quelques images noires séparent aussi deux scènes d'un film. */
+    private fun black(signature: ByteArray) = signature.all { (it.toInt() and 0xFF) < BLACK_LEVEL }
+
+    /** Carton qui porte un dessin (le logo de la chaîne) : un simple aplat blanc ou de couleur ne se reconnaît pas. */
+    private fun drawn(signature: ByteArray) = signature.maxOf { it.toInt() and 0xFF } - signature.minOf { it.toInt() and 0xFF } >= DRAWN_CONTRAST
 
     private fun decibels(energy: Double) = 10 * log10(energy + 1e-12)
 
+    private class Junction(val time: Long, var card: ByteArray?, val blind: Boolean, val underLogo: Boolean)
+
+    /** Les dernières images réduites reçues, avec l'instant de leur arrivée. */
+    private class SceneMemory {
+        private val times = LongArray(CAPACITY) { NEVER }
+        private val frames = Array(CAPACITY) { ByteArray(SmallFrame.SIZE) }
+        private var next = 0
+
+        fun add(time: Long, small: ByteArray) {
+            times[next] = time
+            small.copyInto(frames[next], 0, 0, SmallFrame.SIZE)
+            next = (next + 1) % CAPACITY
+        }
+
+        /** Dernière image arrivée avant [time], si elle n'est pas trop vieille. */
+        fun lastBefore(time: Long): ByteArray? {
+            var best = -1
+            for (i in 0 until CAPACITY) {
+                val t = times[i]
+                if (t != NEVER && t <= time && time - t <= BEFORE_MAX_AGE_MILLIS && (best < 0 || t >= times[best])) best = i
+            }
+            return frames.getOrNull(best)
+        }
+
+        /** Première image arrivée à partir de [time]. */
+        fun firstFrom(time: Long): ByteArray? {
+            var best = -1
+            for (i in 0 until CAPACITY) {
+                val t = times[i]
+                if (t != NEVER && t >= time && (best < 0 || t < times[best])) best = i
+            }
+            return frames.getOrNull(best)
+        }
+
+        /** Images arrivées après [from] et jusqu'à [to], dans l'ordre. */
+        fun between(from: Long, to: Long, action: (ByteArray) -> Unit) {
+            for (step in 0 until CAPACITY) {
+                val i = (next + step) % CAPACITY
+                val t = times[i]
+                if (t != NEVER && t > from && t <= to) action(frames[i])
+            }
+        }
+
+        private companion object {
+            const val CAPACITY = 96
+        }
+    }
+
     private companion object {
+        const val NEVER = Long.MIN_VALUE
+
         /** Silence complet : bien en dessous des passages calmes d'un film (−50 dB environ). */
         const val SILENCE_DB = -60.0
+
+        /** Silence complet le plus court et le plus long entre deux spots. */
+        const val MIN_GAP_MILLIS = 160L
+        const val MAX_GAP_MILLIS = 4_000L
+
+        /** Écart entre deux jonctions : plus court, c'est la même ; plus long, elles ne sont pas de la même page. */
+        const val MIN_INTERVAL_MILLIS = 2_500L
+        const val MAX_INTERVAL_MILLIS = 65_000L
+
+        /** Sans nouvelle jonction après ce délai, le programme a repris (le plus long spot dure une minute). */
+        const val HOLD_MILLIS = 50_000L
+
+        /** Sans image, rien d'autre ne dit que le programme a repris : le délai est plus court. */
+        const val HOLD_BLIND_MILLIS = 40_000L
+
+        /** Logo connu et toujours absent : la page de pubs continue, même sans silence entre deux spots. */
+        const val HOLD_LOGO_HIDDEN_MILLIS = 80_000L
+
+        /** Logo disparu depuis moins longtemps que cela : la première jonction ouvre la page de pubs. */
+        const val LOGO_JUST_HIDDEN_MILLIS = 90_000L
+
+        /** Pareil pour une jonction qui montre un carton (après des bandes-annonces, par exemple). */
+        const val LOGO_HIDDEN_CARD_MILLIS = 240_000L
+
+        /** Logo inconnu : nombre de jonctions de suite, espacées comme des spots, pour ouvrir la page de pubs. */
+        const val SPOT_CHAIN = 4
+
+        /** Logo affiché : jonctions de suite montrant le carton de la chaîne, à partir desquelles il n'est plus écouté. */
+        const val LOGO_STAYS_CHAIN = 3
+        const val CHAIN_KEPT = 8
+
+        /** Délai après la fin d'un silence pour juger l'image : le son est traité jusqu'à une seconde avant d'être entendu. */
+        const val AFTER_MILLIS = 1_300L
+        const val SETTLE_MILLIS = 1_600L
+        const val LATE_MILLIS = 1_000L
+        const val CARD_MARGIN_MILLIS = 100L
+        const val BEFORE_MAX_AGE_MILLIS = 2_500L
+        const val PICTURE_MAX_AGE_MILLIS = 3_000L
+
+        /** Images rapprochées : demandées après ce temps de silence, jusqu'au jugement de l'image. */
+        const val BURST_AFTER_MILLIS = 60L
+        const val BURST_AFTER_UNDER_LOGO_MILLIS = 280L
+        const val BURST_MARGIN_MILLIS = 200L
+
+        /** Part de l'image qui doit avoir changé entre avant et après le silence : un autre plan. */
+        const val CUT_SHARE = 0.5f
+
+        /** Carton : image unie (part de la teinte dominante), différente de celles d'avant et d'après. */
+        const val FLAT_SHARE = 0.7f
+        const val CARD_SHARE = 0.3f
+
+        /** Image noire : tous ses pavés sous ce niveau. Carton dessiné : cet écart entre son pavé le plus clair et le plus sombre. */
+        const val BLACK_LEVEL = 40
+        const val DRAWN_CONTRAST = 30
+
+        /** Sans image de ce moment : silence d'au moins cette durée. */
+        const val BLIND_MIN_GAP_MILLIS = 280L
+
+        /** Durées des spots : de 5 en 5 secondes, à cette avance et ce retard près (le silence qui les sépare). */
+        const val SPOT_STEP_MILLIS = 5_000L
+        const val SPOT_EARLY_MILLIS = 700L
+        const val SPOT_LATE_MILLIS = 1_800L
+
         const val FALL_MILLIS = 500.0
         const val RISE_MILLIS = 1_000.0
-        const val VETOES_BEFORE_DISTRUST = 3
     }
 }

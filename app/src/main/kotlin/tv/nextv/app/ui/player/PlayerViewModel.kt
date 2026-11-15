@@ -231,6 +231,9 @@ class PlayerViewModel(
         },
     )
 
+    /** Passages de la surveillance depuis la dernière sauvegarde de ce que « baisser le son des pubs » a appris. */
+    private var adMarksChecks = 0
+
     init {
         // Attention : rien de ce qui est déclaré plus bas dans la classe n'est encore prêt ici.
         // Lecteur ouvert : les actualisations automatiques de la playlist et du guide attendent sa fermeture.
@@ -258,7 +261,13 @@ class PlayerViewModel(
                 // Épisode : le suivant est proposé 40 s avant la fin.
                 resume.checkUpNext()
                 val adMuted = engine.adVolume.enabled && engine.adVolume.attenuating
-                if (state.value.adMuted != adMuted) mutableState.update { it.copy(adMuted = adMuted) }
+                val adWatch = if (vlc == null) engine.adVolume.watch() else null
+                if (state.value.adMuted != adMuted || state.value.adWatch != adWatch) mutableState.update { it.copy(adMuted = adMuted, adWatch = adWatch) }
+                // Logo de la chaîne appris pendant cette lecture : gardé chaque minute, pas seulement à la sortie.
+                if (++adMarksChecks >= AD_MARKS_SAVE_CHECKS) {
+                    adMarksChecks = 0
+                    engine.saveAdMarks()
+                }
                 val dropped = engine.newDroppedFrames()
                 // Pause ou différé : changer de version ramènerait au direct. Moteur VLC : le lecteur de l'appli est arrêté.
                 if (vlc != null || delayed.recording || state.value.paused || state.value.liveDelayMs > 0) continue
@@ -406,8 +415,14 @@ class PlayerViewModel(
             ?: request.stream.url
     }
 
-    /** Image affichée par le lecteur (réduite, en niveaux de gris), pour suivre le logo de la chaîne pendant les pubs. */
+    /**
+     * Image affichée par le lecteur (réduite, en niveaux de gris), pour « baisser le son des pubs » : le logo de la
+     * chaîne, et le changement de plan qui sépare deux pubs.
+     */
     fun onVideoFrame(gray: ByteArray) = engine.adVolume.frame(gray)
+
+    /** Images rapprochées demandées (un silence est en cours) au lieu d'une par seconde. */
+    val adFramesWanted: Boolean get() = engine.adVolume.wantsFrames
 
     fun setLowerAdVolume(enabled: Boolean) {
         viewModelScope.launch { container.settings.setLowerAdVolume(enabled) }
@@ -741,7 +756,9 @@ class PlayerViewModel(
         val live = state.value.isLive && delayed.replay == null && !delayed.restarting
         // Avant l'ouverture : un aperçu repris joue déjà, il annonce aussitôt que le chargement est fini.
         mutableState.update { it.copy(buffering = true) }
-        val fromPreview = engine.play(playbackRequest, forceHls, session.startPositionMs, record = live, film = !state.value.isLive)
+        val fromPreview = engine.play(
+            playbackRequest, forceHls, session.startPositionMs, record = live, film = !state.value.isLive, replay = delayed.replay != null,
+        )
         // Chaîne ouverte depuis l'aperçu : flux repris, ou rouvert (et pourquoi), affiché dans les infos de lecture.
         val previewStart = fromPreview ?: container.previewHandoff.takeMiss(channelId)?.let { miss ->
             when (miss) {
@@ -1180,6 +1197,9 @@ class PlayerViewModel(
         /** Même période que la section Foot : la réponse de football-data.org est partagée. */
         private const val FOOTBALL_WINDOW_MILLIS = 8 * 24 * 60 * 60_000L
         private const val QUALITY_CHECK_MILLIS = 500L
+
+        /** Une sauvegarde par minute (surveillance deux fois par seconde). */
+        private const val AD_MARKS_SAVE_CHECKS = 120
         private val HLS_FALLBACK_FORMATS = setOf(StreamFormat.UNKNOWN, StreamFormat.PROGRESSIVE)
         private val HLS_FALLBACK_ERRORS = setOf(
             PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,

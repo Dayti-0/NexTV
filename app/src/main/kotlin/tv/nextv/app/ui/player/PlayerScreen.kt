@@ -1,5 +1,6 @@
 package tv.nextv.app.ui.player
 
+import android.os.SystemClock
 import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -102,6 +103,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.abs
+import tv.nextv.app.player.AdWatch
 import tv.nextv.app.player.VideoFrameSampler
 import tv.nextv.app.player.VideoViews
 import tv.nextv.app.R
@@ -417,16 +419,22 @@ fun PlayerScreen(
             },
     ) {
         var playerView by remember { mutableStateOf<PlayerView?>(null) }
-        // « Baisser le son des pubs » : une image par seconde pour suivre le logo de la chaîne, qui disparaît
-        // pendant les pubs et revient avec le programme. Chaînes en direct, lecteur de l'appli seulement.
-        val watchLogo = state.lowerAdVolume && state.isLive && vlc == null
-        LaunchedEffect(watchLogo, playerView) {
+        // « Baisser le son des pubs » : une image par seconde pour suivre le logo de la chaîne, qui disparaît pendant
+        // les pubs et revient avec le programme ; et des images rapprochées pendant un silence, pour voir s'il sépare
+        // deux pubs (l'image change de plan) ou si c'est une pause du programme. Chaînes en direct et leurs replays,
+        // lecteur de l'appli seulement.
+        val watchPicture = state.lowerAdVolume && (state.isLive || state.replay != null) && vlc == null
+        LaunchedEffect(watchPicture, playerView) {
             val view = playerView ?: return@LaunchedEffect
-            if (!watchLogo) return@LaunchedEffect
+            if (!watchPicture) return@LaunchedEffect
             val sampler = VideoFrameSampler()
             try {
+                var sampledAt = 0L
                 while (true) {
-                    delay(LOGO_SAMPLE_MILLIS)
+                    delay(AD_FRAME_MILLIS)
+                    val now = SystemClock.elapsedRealtime()
+                    if (!viewModel.adFramesWanted && now - sampledAt < AD_IDLE_FRAME_MILLIS) continue
+                    sampledAt = now
                     val surface = VideoViews.frameSurface(view) ?: continue
                     sampler.sample(surface)?.let { frame -> withContext(Dispatchers.Default) { viewModel.onVideoFrame(frame) } }
                 }
@@ -1428,7 +1436,9 @@ private fun MenuChannelRow(
 private const val BANNER_DURATION_MILLIS = 5_000L
 
 /** Rythme des images lues pour suivre le logo de la chaîne (« baisser le son des pubs »). */
-private const val LOGO_SAMPLE_MILLIS = 1_000L
+/** « Baisser le son des pubs » : une image par seconde, et une tous les dixièmes de seconde pendant un silence. */
+private const val AD_IDLE_FRAME_MILLIS = 1_000L
+private const val AD_FRAME_MILLIS = 100L
 
 /** Film : pas d'un appui sur ← → (commandes masquées), et des touches avance / retour rapide de la télécommande. */
 private const val FILM_STEP_SECONDS = 10
@@ -1484,6 +1494,20 @@ fun PlaybackInfoPanel(state: PlayerUiState, visible: Boolean, modifier: Modifier
                 state.bandwidthMbps?.let { InfoLine(stringResource(R.string.player_info_bitrate), stringResource(R.string.player_speed, formatDecimal(it))) }
                 InfoLine(stringResource(R.string.player_info_dropped), info.droppedFrames.toString(), warning = info.droppedFrames > 0)
                 InfoLine(stringResource(R.string.player_info_version), state.quality ?: unknown)
+                // « Baisser le son des pubs » : ce que la détection arrive à observer sur cet appareil.
+                state.adWatch?.let { watch ->
+                    val text = stringResource(
+                        when (watch) {
+                            AdWatch.NO_SOUND -> R.string.player_info_ads_no_sound
+                            AdWatch.NO_PICTURE -> R.string.player_info_ads_no_picture
+                            AdWatch.LEARNING -> R.string.player_info_ads_learning
+                            AdWatch.LOGO_VISIBLE -> R.string.player_info_ads_logo_visible
+                            AdWatch.LOGO_HIDDEN -> R.string.player_info_ads_logo_hidden
+                            AdWatch.LOWERED -> R.string.player_info_ads_lowered
+                        },
+                    )
+                    InfoLine(stringResource(R.string.player_info_ads), text, warning = watch == AdWatch.NO_SOUND || watch == AdWatch.NO_PICTURE)
+                }
                 // Chaîne ouverte depuis l'aperçu : son flux repris, ou rouvert (et pourquoi).
                 info.previewStart?.let { start ->
                     val text = stringResource(

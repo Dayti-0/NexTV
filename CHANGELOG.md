@@ -4,6 +4,15 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.147
+- « Baisser le son des pubs » entièrement refait, à partir de vrais enregistrements de huit chaînes (RMC Story, RMC Découverte, RMC Life, L’Équipe, BFM 2, Euronews, TV Monaco, Fréquence Novelas). Une pub n’est plus reconnue au seul silence entre deux pubs, mais au silence pendant lequel l’image change de plan ou montre le carton de la chaîne : la pause d’un invité dans une émission ne compte plus
+- Le son ne baisse plus en plein programme. Sur les mêmes enregistrements, l’ancienne détection baissait le son à tort pendant 18 minutes sur 5 h 20 de programme (émission de plateau de L’Équipe, BFM 2, Euronews, une telenovela) ; la nouvelle, moins d’une minute en tout, à la reprise du programme
+- Le son reste baissé d’un bout à l’autre de la page de pub : il remontait au milieu quand deux pubs s’enchaînaient sans silence, ou quand les mentions légales d’une pub étaient prises pour le logo de la chaîne
+- Films, séries et épisodes à la demande : la détection ne s’applique plus (il n’y a pas de pub, et un changement de scène pouvait baisser le son). Elle s’applique aux chaînes en direct et à leurs replays
+- Le logo de chaque chaîne est appris une fois (une minute et demie de programme) puis gardé sur l’appareil : ensuite, la pub est reconnue dès la fin de sa première réclame, et le son revient une à trois secondes après la reprise du programme. La toute première fois sur une chaîne, compte environ une minute de pub avant la baisse
+- Infos de lecture (touche Menu › Infos de lecture) : nouvelle ligne « Pubs », qui dit ce que la détection voit sur ton appareil (logo de la chaîne à l’image, absent, pas encore reconnu, image illisible, son envoyé tel quel à l’ampli)
+- Appareil qui ne laisse pas lire l’image : la détection se fait au son seul, avec prudence (elle préfère manquer une page de pub que baisser le son d’un programme)
+
 ## 0.2.146
 - Liste des chaînes : elle ne remonte plus toute seule en haut quand ses programmes sont relus (toutes les 5 minutes) ou après une actualisation du guide ou de la playlist ; elle reste sur la chaîne sélectionnée (celle-ci restait choisie, mais hors de l’écran)
 

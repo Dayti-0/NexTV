@@ -31,6 +31,7 @@ import kotlinx.coroutines.launch
 import tv.nextv.app.AppContainer
 import tv.nextv.app.R
 import tv.nextv.app.player.AdVolumeControl
+import tv.nextv.core.audio.AdMarks
 import tv.nextv.app.player.PlaybackRequest
 import tv.nextv.app.player.LiveLoadControl
 import tv.nextv.app.player.PreviewHandoff
@@ -145,6 +146,21 @@ internal class PlayerEngine(
     /** Réglage « baisser le son des pubs ». */
     private var adVolumeEnabled = false
 
+    /**
+     * Le flux en cours peut contenir des pages de pubs : une chaîne en direct ou son replay, jamais un film ou un
+     * épisode (la détection y prendrait un changement de scène pour une coupure).
+     */
+    private var adBreaks = false
+
+    /** Adresse du direct en cours, sous laquelle sont gardés les repères appris (logo de la chaîne…). */
+    private var adMarksKey: String? = null
+
+    /** Repères connus du direct en cours : relus à son ouverture, puis ce qu'il a appris depuis. */
+    private var adMarks: AdMarks? = null
+
+    /** Autre chaîne demandée : ses repères sont à relire. */
+    private var adMarksToLoad = false
+
     private val bandwidthMeter: DefaultBandwidthMeter = container.playerFactory.newBandwidthMeter()
     private var preferredDecoders: Map<String, String> = emptyMap()
 
@@ -170,8 +186,15 @@ internal class PlayerEngine(
         scope.launch { container.settings.previewHandoff.collect { previewHandoff = it } }
         scope.launch {
             container.settings.lowerAdVolume.collect {
+                val turnedOn = it && !adVolumeEnabled
                 adVolumeEnabled = it
-                adVolume.enabled = it
+                if (turnedOn && adBreaks && mutablePlayer.value != null) {
+                    // Option activée pendant la lecture : ce que la chaîne a déjà appris est repris tout de suite.
+                    adMarksToLoad = true
+                    startAdWatch()
+                } else {
+                    adVolume.enabled = it && adBreaks
+                }
                 state.update { s -> s.copy(lowerAdVolume = it) }
             }
         }
@@ -280,8 +303,22 @@ internal class PlayerEngine(
      * @return [PreviewStart.TAKEN] si le flux continue sur le lecteur de l'aperçu de l'accueil (déjà en lecture), une
      * autre valeur s'il y avait un aperçu à reprendre mais qu'il a fallu rouvrir le flux, `null` sans aperçu à reprendre.
      */
-    fun play(request: PlaybackRequest, forceHls: Boolean, startPositionMs: Long, record: Boolean = false, film: Boolean = false): PreviewStart? {
+    fun play(
+        request: PlaybackRequest,
+        forceHls: Boolean,
+        startPositionMs: Long,
+        record: Boolean = false,
+        film: Boolean = false,
+        /** Replay d'une chaîne : lu comme un film, mais avec les pubs de la chaîne. */
+        replay: Boolean = false,
+    ): PreviewStart? {
         this.film = film
+        saveAdMarks()
+        adBreaks = !film || replay
+        // Repères gardés pour le direct seulement : l'adresse d'un replay change à chaque programme.
+        adMarksKey = request.stream.url.takeIf { !film }
+        adMarks = null
+        adMarksToLoad = true
         // Direct continu (MPEG-TS…) : les dernières secondes sont gardées en mémoire pour revenir en arrière.
         // Le direct précédent cède l'anneau avant que le nouveau n'y écrive.
         liveRecording?.retire()
@@ -361,8 +398,11 @@ internal class PlayerEngine(
         val info = state.value.info
         // Le traitement « baisser le son des pubs » reste branché sur ce lecteur : coupé dans l'aperçu ; cet écran en
         // prend un nouveau pour un éventuel lecteur suivant.
+        saveAdMarks()
         val control = adVolume.also { it.enabled = false }
-        adVolume = AdVolumeControl().also { it.enabled = adVolumeEnabled }
+        adVolume = AdVolumeControl()
+        adMarksKey = null
+        adMarks = null
         val handoff = PreviewHandoff(player, request, taps, buffer, control, ids, toPreview = true, playingId, info.videoDecoder, info.audioDecoder)
         handoff.setPreview(true)
         exoPlayer = null
@@ -429,7 +469,7 @@ internal class PlayerEngine(
         liveRequest = null
         // État propre au flux précédent : erreur, infos, son coupé (avance rapide), pistes choisies, vitesse.
         generation++
-        adVolume.newStream()
+        startAdWatch()
         receivedRate.reset()
         state.update { it.copy(error = null, info = PlaybackInfo(), audioProblem = null, unsupportedAudio = null, receivedMbps = null) }
         audioGivenUp = false
@@ -460,8 +500,8 @@ internal class PlayerEngine(
         }
         generation++
         // « Baisser le son des pubs » : le traitement du son de ce lecteur, réglé comme en plein écran.
-        adVolume = handoff.adVolume.also { it.enabled = adVolumeEnabled }
-        adVolume.newStream()
+        adVolume = handoff.adVolume
+        startAdWatch()
         receivedRate.reset()
         state.update { it.copy(error = null, info = PlaybackInfo(), audioProblem = null, unsupportedAudio = null, receivedMbps = null) }
         audioGivenUp = false
@@ -542,9 +582,48 @@ internal class PlayerEngine(
         }
     }
 
+    /**
+     * « Baisser le son des pubs » pour le flux qui s'ouvre : en service pour un direct ou un replay seulement, avec
+     * ce qui a déjà été appris de cette chaîne (logo, carton entre deux pubs).
+     */
+    private fun startAdWatch() {
+        val enabled = adVolumeEnabled && adBreaks
+        if (adMarksToLoad) {
+            adMarksToLoad = false
+            adMarks = if (enabled) adMarksKey?.let(container.adMarks::load) else null
+        } else if (adVolume.enabled) {
+            // Même chaîne rouverte (différé, retour au direct) : ce qu'elle vient d'apprendre est gardé.
+            adMarks = learnedAdMarks()
+        }
+        adVolume.enabled = enabled
+        adVolume.newStream(adMarks)
+    }
+
+    /** Repères connus du direct en cours, avec ce que la détection vient d'en apprendre. */
+    private fun learnedAdMarks(): AdMarks {
+        val learned = adVolume.marks()
+        val known = adMarks
+        // Logo oublié en cours de route (absent trop longtemps) : celui d'avant est gardé jusqu'au prochain appris.
+        return AdMarks(learned.logo ?: known?.logo, learned.separator ?: known?.separator, learned.logoFollowsBreaks || known?.logoFollowsBreaks == true)
+    }
+
+    /**
+     * Garde ce que la détection a appris du direct en cours, pour sa prochaine ouverture. Appelé aussi de temps en
+     * temps pendant la lecture ([PlayerViewModel]) : l'application peut être fermée par le système sans prévenir.
+     */
+    fun saveAdMarks() {
+        val key = adMarksKey ?: return
+        if (!adVolume.enabled) return
+        val marks = learnedAdMarks()
+        if (marks.isEmpty || marks.sameAs(adMarks)) return
+        adMarks = marks
+        container.adMarks.save(key, marks)
+    }
+
     /** Arrête la lecture et ferme la connexion ; le lecteur est gardé pour le flux suivant. */
     fun stop() {
         releasePendingHandoff()
+        saveAdMarks()
         exoPlayer?.let {
             it.stop()
             it.clearMediaItems()
@@ -558,6 +637,7 @@ internal class PlayerEngine(
     /** Libère le lecteur (écran du lecteur fermé). */
     fun release() {
         releasePendingHandoff()
+        saveAdMarks()
         exoPlayer?.let {
             it.removeListener(listener)
             it.removeAnalyticsListener(analytics)

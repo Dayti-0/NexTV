@@ -358,6 +358,13 @@
     <string name="player_info_preview_no_layer">rouvert : l’appareil refuse la couche vidéo</string>
     <string name="player_info_dropped">Images perdues</string>
     <string name="player_info_version">Version</string>
+    <string name="player_info_ads">Pubs</string>
+    <string name="player_info_ads_no_sound">son envoyé tel quel à l’ampli : rien n’est détecté ni baissé</string>
+    <string name="player_info_ads_no_picture">image illisible sur cet appareil : détection au son seul</string>
+    <string name="player_info_ads_learning">logo de la chaîne pas encore reconnu</string>
+    <string name="player_info_ads_logo_visible">logo de la chaîne à l’image : programme</string>
+    <string name="player_info_ads_logo_hidden">logo de la chaîne absent de l’image</string>
+    <string name="player_info_ads_lowered">page de pub : son baissé</string>
     <string name="player_info_unknown">—</string>
     <string name="player_info_fps">%1$s i/s</string>
     <string name="player_info_mono">mono</string>
