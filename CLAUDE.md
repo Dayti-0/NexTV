@@ -64,6 +64,10 @@ Commandes :
   (film, chaîne, veille, touches), `ApplicationStartTest` (lancement réel de l'application et de l'activité),
   `GuideNavigationTest` (navigation à la télécommande). Les tests unitaires seuls ne voient pas ces erreurs.
 - libVLC : jamais `stop()` ni `release()` sur le fil principal (application figée, « ne répond plus »).
+- Clé USB : jamais d'accès aux fichiers d'une clé (création de dossier, fichier d'essai, place libre, liste) sur le fil
+  principal : sur la box, `mkdirs` sur la clé a bloqué l'ouverture des Réglages plus de 5 s (ANR, 0.2.161). Les
+  emplacements sont relus en arrière-plan (`AdRecordings.locations`, `AppContainer.refreshAdPlacesInBackground`) ; le fil
+  principal lit `knownLocations` / `AdMusicLibrary.knownTracks`.
 - Base Room : augmenter `NexTvDatabase.VERSION` demande d'ajouter la migration à `MIGRATIONS` et le schéma
   `app/schemas/…json` au dépôt (`MigrationsTest` le vérifie). Sans migration, l'application ne démarre plus.
 - Ne jamais donner une autre surface au décodeur d'un lecteur en cours (`setVideoSurfaceView` d'une autre vue) : sur
