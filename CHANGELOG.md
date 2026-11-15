@@ -4,6 +4,11 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.153
+- « Baisser le son des pubs » : quand le flux annonce lui-même ses pages de pub (repères de la régie, laissés par certaines chaînes ou fournisseurs), le son baisse dès la première seconde de pub et revient pile à la reprise du programme
+- « Baisser le son des pubs » : l’application retient les pubs qu’elle a entendues (une empreinte du son, quelques Mo au plus) et les reconnaît en deux à trois secondes quand elles repassent, sur n’importe quelle chaîne
+- Infos de lecture : deux nouvelles lignes, « Repères de pub » (le flux en porte-t-il ?) et « Pubs déjà entendues » (minutes apprises, pubs reconnues)
+
 ## 0.2.152
 - Fire TV (et autres appareils avant Android 12) : l’aperçu vidéo du volet de droite affiche de nouveau l’image. Le son passait mais l’image restait invisible, cachée par le fondu du bas du volet, retiré sur ces appareils
 

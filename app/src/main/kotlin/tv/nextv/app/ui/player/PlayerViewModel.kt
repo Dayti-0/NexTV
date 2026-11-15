@@ -261,9 +261,13 @@ class PlayerViewModel(
                 delayed.updateWatchedAt()
                 // Épisode : le suivant est proposé 40 s avant la fin.
                 resume.checkUpNext()
+                if (vlc == null) engine.updateAdCues()
                 val adMuted = engine.adVolume.enabled && engine.adVolume.attenuating
                 val adWatch = if (vlc == null) engine.adVolume.watch() else null
-                if (state.value.adMuted != adMuted || state.value.adWatch != adWatch) mutableState.update { it.copy(adMuted = adMuted, adWatch = adWatch) }
+                val adDetails = if (vlc == null) engine.adDetails() else null
+                if (state.value.adMuted != adMuted || state.value.adWatch != adWatch || state.value.adDetails != adDetails) {
+                    mutableState.update { it.copy(adMuted = adMuted, adWatch = adWatch, adDetails = adDetails) }
+                }
                 // Logo de la chaîne appris pendant cette lecture : gardé chaque minute, pas seulement à la sortie.
                 if (++adMarksChecks >= AD_MARKS_SAVE_CHECKS) {
                     adMarksChecks = 0

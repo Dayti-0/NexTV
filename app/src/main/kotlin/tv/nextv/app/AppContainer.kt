@@ -49,11 +49,14 @@ import tv.nextv.app.data.security.KeystoreSecretCipher
 import tv.nextv.app.data.settings.SettingsRepository
 import tv.nextv.app.data.update.AppUpdater
 import tv.nextv.app.player.AdMarksStore
+import tv.nextv.app.player.AdPrintStore
 import tv.nextv.app.player.PlayerFactory
 import tv.nextv.app.player.PreviewHandoffSlot
 import tv.nextv.app.player.TIMESHIFT_FILE
+import tv.nextv.app.player.smallMemoryDevice
 import tv.nextv.app.ui.home.Category
 import tv.nextv.app.ui.home.WatchedPlace
+import tv.nextv.core.audio.AdPrintLibrary
 import tv.nextv.core.catalog.ChannelLineup
 import tv.nextv.core.epg.EpgImporter
 import tv.nextv.core.epg.EpgLoader
@@ -187,6 +190,16 @@ class AppContainer(context: Context) {
 
     /** « Baisser le son des pubs » : logo et carton de chaque chaîne, appris une fois et gardés sur l'appareil. */
     val adMarks = AdMarksStore(File(appContext.filesDir, "ad_marks"), applicationScope)
+
+    /** « Baisser le son des pubs » : pubs déjà entendues (empreintes du son), reconnues sur toutes les chaînes. */
+    val adPrints by lazy {
+        AdPrintStore(
+            File(appContext.filesDir, "ad_prints/library.bin"),
+            applicationScope,
+            // Appareil d'environ 1 Go (Fire TV d'entrée de gamme) : moitié moins de pubs gardées (~2 Mo en mémoire).
+            if (smallMemoryDevice(appContext)) AdPrintLibrary.DEFAULT_MAX_PRINTS / 2 else AdPrintLibrary.DEFAULT_MAX_PRINTS,
+        )
+    }
 
     /** Aperçu de l'accueil confié au lecteur plein écran, quand on ouvre la chaîne de l'aperçu. */
     val previewHandoff = PreviewHandoffSlot(applicationScope)

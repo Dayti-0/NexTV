@@ -11,11 +11,16 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import tv.nextv.core.audio.AdMarks
+import tv.nextv.core.audio.AudioFingerprinter
 import tv.nextv.core.audio.LogoState
 import tv.nextv.core.audio.LogoWatcher
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.io.File
+import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.sin
 import kotlin.random.Random
@@ -179,6 +184,82 @@ class AdVolumeAudioProcessorTest {
         }
         assertEquals(LogoState.VISIBLE, control.logo)
         assertEquals(marks.logo!!.size, control.marks().logo!!.size)
+    }
+
+    @Test
+    fun `a break announced by the stream turns the sound down at once, its end brings it back`() {
+        picture = scene()
+        assertFullVolume(play(10.0))
+        assertEquals(0, control.details()!!.cues)
+        // Message SCTE-35 : page de pub dans 2 s, pour 30 s (positions de lecture, ici l'horloge du son).
+        control.cues.splice(out = true, atMs = now + 2_000, durationMs = 30_000)
+        control.cueAt(now)
+        assertFullVolume(play(1.0))
+        control.cueAt(now + 1_500)
+        val lowered = play(2.0)
+        assertTrue(control.attenuating)
+        assertTrue("son baissé : $lowered", lowered < AMPLITUDE / 10)
+        assertTrue(control.details()!!.cueBreak)
+        // Fin annoncée : le son revient, sans attendre le logo ni la fin des jonctions.
+        control.cueAt(now + 40_000)
+        play(1.5)
+        assertFalse(control.attenuating)
+        assertFullVolume(play(0.5))
+    }
+
+    @Test
+    fun `an ad already heard on another channel is recognized within seconds`() {
+        val store = AdPrintStore(File.createTempFile("prints", ".bin").also { it.delete() }, CoroutineScope(Dispatchers.Unconfined), 100_000)
+        val spot = voice(seed = 3, seconds = 12.0)
+        // Apprise ailleurs (page de pubs annoncée par le flux d'une autre chaîne).
+        val fingerprinter = AudioFingerprinter(SAMPLE_RATE)
+        val prints = ArrayList<Int>()
+        val loud = ArrayList<Boolean>()
+        fingerprinter.feed(FloatArray(spot.size) { spot[it] / 32_768f }, spot.size) { print, audible ->
+            prints += print
+            loud += audible
+        }
+        assertTrue(store.library.learn(prints.toIntArray(), loud.toBooleanArray(), confirmed = true, now = 1) > 0)
+
+        control.prints = store
+        control.newStream()
+        picture = scene()
+        playSamples(voice(seed = 4, seconds = 20.0))
+        assertFalse("programme baissé", control.attenuating)
+        val loweredAfter = playSamples(spot, stopWhenLowered = true)
+        assertTrue("baissé après $loweredAfter s", loweredAfter in 0.0..3.5)
+        assertTrue(control.details()!!.recognizedCount >= 1)
+    }
+
+    /** Son « parlé » (notes et souffle qui changent tous les dixièmes de seconde), 16 bits. */
+    private fun voice(seed: Int, seconds: Double): ShortArray {
+        val random = Random(seed)
+        val steps = (seconds * 10).toInt() + 1
+        val notes = DoubleArray(steps) { 200.0 + random.nextDouble() * 2_500 }
+        val levels = DoubleArray(steps) { 0.2 + random.nextDouble() }
+        return ShortArray((seconds * SAMPLE_RATE).toInt()) { i ->
+            val t = i / SAMPLE_RATE.toDouble()
+            val step = (t * 10).toInt()
+            val tone = sin(2 * PI * notes[step] * t) + 0.5 * sin(2 * PI * notes[step] * 1.5 * t)
+            (AMPLITUDE * 0.5 * (tone * levels[step] + (random.nextDouble() - 0.5) * 0.3)).toInt().toShort()
+        }
+    }
+
+    /** Joue [samples] (mono, envoyé sur les deux canaux) ; rend le temps (s) au bout duquel le son a été baissé, ou −1. */
+    private fun playSamples(samples: ShortArray, stopWhenLowered: Boolean = false): Double {
+        var i = 0
+        while (i + BLOCK <= samples.size) {
+            if (block % 47 == 0 || (control.wantsFrames && block % 5 == 0)) picture?.let { control.frame(it, now) }
+            val input = ByteBuffer.allocateDirect(BLOCK * 4).order(ByteOrder.nativeOrder())
+            for (k in i until i + BLOCK) input.putShort(samples[k]).putShort(samples[k])
+            input.flip()
+            processor.queueInput(input)
+            processor.output
+            block++
+            i += BLOCK
+            if (stopWhenLowered && control.attenuating) return i / SAMPLE_RATE.toDouble()
+        }
+        return -1.0
     }
 
     private fun ByteArray.withLogo() = apply {

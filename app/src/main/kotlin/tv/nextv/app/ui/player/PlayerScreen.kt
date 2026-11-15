@@ -1570,6 +1570,24 @@ fun PlaybackInfoPanel(state: PlayerUiState, visible: Boolean, modifier: Modifier
                     )
                     InfoLine(stringResource(R.string.player_info_ads), text, warning = watch == AdWatch.NO_SOUND || watch == AdWatch.NO_PICTURE)
                 }
+                // Renforts : repères de pub du flux (vérité de la régie, quand le fournisseur les laisse), pubs déjà apprises.
+                state.adDetails?.let { details ->
+                    val cues = when {
+                        details.cues == 0 -> stringResource(R.string.player_info_ad_cues_none)
+                        details.cueBreak -> stringResource(R.string.player_info_ad_cues_break, details.cues)
+                        else -> stringResource(R.string.player_info_ad_cues_seen, details.cues)
+                    } + (if (details.unreadableCues > 0) stringResource(R.string.player_info_ad_cues_unreadable, details.unreadableCues) else "")
+                    InfoLine(stringResource(R.string.player_info_ad_cues), cues)
+                    val minutes = (details.knownSeconds + 30) / 60
+                    InfoLine(
+                        stringResource(R.string.player_info_ad_prints),
+                        if (details.recognized) {
+                            stringResource(R.string.player_info_ad_prints_now, minutes)
+                        } else {
+                            stringResource(R.string.player_info_ad_prints_value, minutes, details.recognizedCount)
+                        },
+                    )
+                }
                 // Chaîne ouverte depuis l'aperçu : son flux repris, ou rouvert (et pourquoi).
                 info.previewStart?.let { start ->
                     val text = stringResource(

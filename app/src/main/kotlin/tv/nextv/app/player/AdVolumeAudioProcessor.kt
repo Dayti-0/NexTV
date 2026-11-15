@@ -5,8 +5,11 @@ import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.BaseAudioProcessor
 import androidx.media3.common.util.UnstableApi
+import tv.nextv.core.audio.AdCues
 import tv.nextv.core.audio.AdMarks
+import tv.nextv.core.audio.AdPrintWatch
 import tv.nextv.core.audio.AdVolumeGuard
+import tv.nextv.core.audio.CueState
 import tv.nextv.core.audio.LogoState
 import tv.nextv.core.audio.LogoWatcher
 import tv.nextv.core.audio.SmallFrame
@@ -31,6 +34,25 @@ enum class AdWatch {
     LOWERED,
 }
 
+/**
+ * Renforts de la détection des pubs, affichés dans les infos de lecture : ce que dit le flux, ce que l'appareil a appris.
+ *
+ * @property cues repères de pub lus dans le flux (0 : il n'en porte pas, ou pas encore vu).
+ * @property unreadableCues messages SCTE-35 d'un type que l'application ne lit pas encore.
+ * @property cueBreak le flux annonce une page de pub en ce moment.
+ * @property knownSeconds durée des pubs déjà apprises (toutes chaînes).
+ * @property recognized une pub connue passe en ce moment.
+ * @property recognizedCount pubs connues reconnues depuis l'ouverture de la chaîne.
+ */
+data class AdDetails(
+    val cues: Int,
+    val unreadableCues: Int,
+    val cueBreak: Boolean,
+    val knownSeconds: Int,
+    val recognized: Boolean,
+    val recognizedCount: Int,
+)
+
 /** Option « baisser le son des pubs », partagée entre le lecteur et le traitement du son. */
 class AdVolumeControl {
     @Volatile
@@ -52,6 +74,20 @@ class AdVolumeControl {
      */
     @Volatile
     var guard: AdVolumeGuard = AdVolumeGuard()
+        private set
+
+    /** Pubs déjà entendues, communes à toutes les chaînes (absentes pour l'aperçu de l'accueil). */
+    @Volatile
+    var prints: AdPrintStore? = null
+
+    /** Pages de pub annoncées par le flux en cours (repères HLS ou SCTE-35), lues par le lecteur. */
+    @Volatile
+    var cues: AdCues = AdCues()
+        private set
+
+    /** Reconnaissance des pubs déjà entendues pour le flux en cours, branchée sur [guard]. */
+    @Volatile
+    var printWatch: AdPrintWatch? = null
         private set
 
     private val logoWatcher = LogoWatcher(FRAME_WIDTH, FRAME_HEIGHT)
@@ -83,12 +119,38 @@ class AdVolumeControl {
             logoFrameAt = NEVER
             pictureAt = NEVER
             soundAt = NEVER
-            guard = AdVolumeGuard().also {
+            cues = AdCues()
+            val fresh = AdVolumeGuard().also {
                 it.separator = marks?.separator
                 it.logoFollowsBreaks = marks?.logoFollowsBreaks == true
                 it.logo = logo
             }
+            printWatch = prints?.let { store ->
+                store.load()
+                AdPrintWatch(store.library, fresh, learner = store::learn, forget = store::forget)
+            }
+            guard = fresh
         }
+    }
+
+    /** Repères du flux à la position de lecture [positionMs] (temps de la période du lecteur), donnés à la détection. */
+    fun cueAt(positionMs: Long) {
+        guard.cue = cues.state(positionMs)
+    }
+
+    /** Renforts de la détection, pour les infos de lecture ; `null` si l'option est désactivée. */
+    fun details(): AdDetails? {
+        if (!enabled) return null
+        val cues = cues
+        val watch = printWatch
+        return AdDetails(
+            cues = cues.count,
+            unreadableCues = cues.unreadable,
+            cueBreak = guard.cue == CueState.BREAK,
+            knownSeconds = prints?.library?.seconds ?: 0,
+            recognized = watch?.recognized == true,
+            recognizedCount = watch?.matches ?: 0,
+        )
     }
 
     /** Ce qui a été appris de ce flux, à garder pour sa prochaine ouverture. */
@@ -146,6 +208,9 @@ class AdVolumeAudioProcessor(private val control: AdVolumeControl) : BaseAudioPr
     private var guard: AdVolumeGuard? = null
     private var gain = 1.0
 
+    /** Son de la tranche en cours ramené en mono, pour les empreintes. */
+    private var mono = FloatArray(0)
+
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat =
         if (inputAudioFormat.encoding == C.ENCODING_PCM_16BIT) inputAudioFormat else AudioProcessor.AudioFormat.NOT_SET
 
@@ -174,6 +239,8 @@ class AdVolumeAudioProcessor(private val control: AdVolumeControl) : BaseAudioPr
         val slice = (sampleRate / 50).coerceAtLeast(1) * channels
         var target = gain
         var offset = 0
+        val watch = control.printWatch?.takeIf { it.guard === guard }
+        if (watch != null && mono.size < slice / channels + 1) mono = FloatArray(slice / channels + 1)
         while (offset < samples) {
             val count = min(slice, samples - offset)
             var energy = 0.0
@@ -182,6 +249,16 @@ class AdVolumeAudioProcessor(private val control: AdVolumeControl) : BaseAudioPr
                 energy += sample * sample
             }
             target = guard.process(energy / count, (count / channels * 1_000L / sampleRate).coerceAtLeast(1))
+            if (watch != null) {
+                // Empreintes du son (pubs déjà entendues) : moyenne des canaux.
+                val frames = count / channels
+                for (f in 0 until frames) {
+                    var sum = 0
+                    for (c in 0 until channels) sum += inputBuffer.getShort(start + 2 * (offset + f * channels + c)).toInt()
+                    mono[f] = sum / (32_768f * channels)
+                }
+                watch.feed(mono, frames, sampleRate, guard.now)
+            }
             offset += count
         }
         control.attenuating = guard.attenuating

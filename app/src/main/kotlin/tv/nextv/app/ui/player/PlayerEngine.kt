@@ -6,9 +6,11 @@ import android.os.SystemClock
 import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.Format
+import androidx.media3.common.Metadata
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Timeline
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
@@ -19,8 +21,12 @@ import androidx.media3.exoplayer.DecoderCounters
 import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
+import androidx.media3.exoplayer.hls.HlsManifest
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
+import androidx.media3.extractor.metadata.scte35.SpliceCommand
+import androidx.media3.extractor.metadata.scte35.SpliceInsertCommand
+import androidx.media3.extractor.metadata.scte35.SpliceNullCommand
 import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,6 +36,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import tv.nextv.app.AppContainer
 import tv.nextv.app.R
+import tv.nextv.app.player.AdDetails
 import tv.nextv.app.player.AdVolumeControl
 import tv.nextv.core.audio.AdMarks
 import tv.nextv.app.player.PlaybackRequest
@@ -211,6 +218,11 @@ internal class PlayerEngine(
         }
 
         override fun onPlayerError(error: PlaybackException) = events.onError(error)
+
+        // Repères de pub du flux : liste HLS relue (direct), messages SCTE-35 d'un flux continu.
+        override fun onTimelineChanged(timeline: Timeline, reason: Int) = readPlaylistCues()
+
+        override fun onMetadata(metadata: Metadata) = readSpliceCues(metadata)
 
         override fun onTracksChanged(tracks: Tracks) {
             unsupportedAudio = null
@@ -596,8 +608,65 @@ internal class PlayerEngine(
             adMarks = learnedAdMarks()
         }
         adVolume.enabled = enabled
+        adVolume.prints = if (enabled) container.adPrints else null
         adVolume.newStream(adMarks)
     }
+
+    /** Position de lecture dans la « période » du lecteur (celle des repères de pub), en millisecondes. */
+    private fun periodPositionMs(player: Player): Long? {
+        val timeline = player.currentTimeline
+        if (timeline.isEmpty || player.currentMediaItemIndex >= timeline.windowCount) return null
+        return timeline.getWindow(player.currentMediaItemIndex, Timeline.Window()).positionInFirstPeriodMs + player.currentPosition
+    }
+
+    /** Liste HLS du direct relue : ses balises de pub (`EXT-X-DATERANGE`, `EXT-X-CUE-OUT`…). */
+    private fun readPlaylistCues() {
+        val player = mutablePlayer.value ?: return
+        if (!adVolume.enabled) return
+        val playlist = (player.currentManifest as? HlsManifest)?.mediaPlaylist ?: return
+        val timeline = player.currentTimeline
+        if (timeline.isEmpty || player.currentMediaItemIndex >= timeline.windowCount) return
+        // Premier morceau de la liste : début de la fenêtre du direct.
+        val first = timeline.getWindow(player.currentMediaItemIndex, Timeline.Window()).positionInFirstPeriodMs
+        adVolume.cues.hlsPlaylist(playlist.tags, first)
+    }
+
+    /** Messages SCTE-35 d'un flux continu (MPEG-TS) : début ou fin d'une page de pub. */
+    private fun readSpliceCues(metadata: Metadata) {
+        val player = mutablePlayer.value ?: return
+        if (!adVolume.enabled) return
+        for (i in 0 until metadata.length()) {
+            when (val entry = metadata.get(i)) {
+                is SpliceInsertCommand -> {
+                    if (!entry.programSpliceFlag && entry.programSplicePlaybackPositionUs == C.TIME_UNSET && !entry.spliceImmediateFlag) continue
+                    // Instant de la coupure (temps des images du flux, celui de la période) ; immédiate : maintenant.
+                    val at = entry.programSplicePlaybackPositionUs.takeIf { !entry.spliceImmediateFlag && it != C.TIME_UNSET }?.div(1_000)
+                        ?: metadata.presentationTimeUs.takeIf { it != C.TIME_UNSET }?.div(1_000)
+                        ?: periodPositionMs(player)
+                        ?: continue
+                    val duration = entry.breakDurationUs.takeIf { it != C.TIME_UNSET && it > 0 }?.div(1_000)
+                    adVolume.cues.splice(entry.outOfNetworkIndicator, at, duration, cancel = entry.spliceEventCancelIndicator)
+                }
+                // « Splice null » : simple signal de vie, sans rien annoncer.
+                is SpliceNullCommand -> Unit
+                is SpliceCommand -> adVolume.cues.other()
+            }
+        }
+    }
+
+    /**
+     * Repères de pub du flux à la position de lecture, donnés à la détection (appelé deux fois par seconde). Un peu
+     * d'avance : le son est traité avant d'être entendu.
+     */
+    fun updateAdCues() {
+        val player = mutablePlayer.value ?: return
+        if (!adVolume.enabled) return
+        val position = periodPositionMs(player) ?: return
+        adVolume.cueAt(position + CUE_LEAD_MILLIS)
+    }
+
+    /** Renforts de la détection des pubs (repères du flux, pubs connues), pour les infos de lecture. */
+    fun adDetails(): AdDetails? = adVolume.details()
 
     /** Repères connus du direct en cours, avec ce que la détection vient d'en apprendre. */
     private fun learnedAdMarks(): AdMarks {
@@ -858,6 +927,9 @@ internal class PlayerEngine(
 
     private companion object {
         const val TAG = "Player"
+
+        /** Avance donnée aux repères de pub du flux : le son est traité un peu avant d'être entendu. */
+        const val CUE_LEAD_MILLIS = 300L
 
         /** Changement d'écran d'un direct repris : images perdues ignorées pendant ce temps. */
         const val SETTLE_MILLIS = 4_000L

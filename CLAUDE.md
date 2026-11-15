@@ -182,6 +182,19 @@ Commandes :
   `AD_SAMPLES` ; dossiers contenant `levels.f32` (carré moyen par 20 ms), `frames.gray` (480 × 270, 1 image/s) et
   `small.gray` (96 × 54, 12,5 images/s)). Tout changement de règle : comparer avant / après sur des enregistrements, pas
   seulement sur les tests.
+  Deux renforts passent avant ces règles (0.2.153) : les **repères du flux** (`core/audio/AdCues.kt` : balises HLS
+  `EXT-X-DATERANGE` SCTE35-OUT, `EXT-X-CUE-OUT/IN`, et messages SCTE-35 « splice insert » d'un flux MPEG-TS ; lus par
+  `PlayerEngine.readPlaylistCues` / `readSpliceCues`, donnés deux fois par seconde par `updateAdCues`) décident seuls
+  dès que le flux en porte (`AdVolumeGuard.cue`) ; les **pubs déjà entendues** (`AudioFingerprinter` : empreintes
+  32 bits toutes les 16 ms ; `AdPrintLibrary` commune à toutes les chaînes, fichier `files/ad_prints/library.bin`
+  via `AdPrintStore` ; `AdPrintWatch` par flux) ouvrent la page en 2-3 s. Apprentissage à la fin d'une page sûre
+  (`AdVolumeGuard.onBreak`) : annoncée par le flux (morceau « sûr ») ou ouverte par logo / carton et refermée par le
+  retour du logo (« à l'essai » : ignoré sous le logo, oublié s'il y repasse). Lignes « Repères de pub » et « Pubs déjà
+  entendues » des infos de lecture : les demander en photo (on ne sait pas encore si le fournisseur laisse les repères).
+  Notation : `AdReplayTool` lit aussi `audio.s16` (11 025 Hz mono) et `tags.tsv` (balises HLS datées : vérité de
+  référence), options `AD_PRINTS`, `AD_TEACH`, `AD_CUES`, `AD_WINDOW` ; enregistreur des directs publics :
+  `tools/ad_record.py` (ffmpeg ; lancer 2 h sur plusieurs chaînes en parallèle). Le 15/11/2026 sur RMC Story / Découverte / Life :
+  sans renfort 81 % des secondes de pub baissées (délai moyen 21 s), avec les repères 100 %.
 
 ## Essais sur de vrais flux
 
