@@ -265,8 +265,18 @@ class PlayerViewModel(
                 val adMuted = engine.adVolume.enabled && engine.adVolume.attenuating
                 val adWatch = if (vlc == null) engine.adVolume.watch() else null
                 val adDetails = if (vlc == null) engine.adDetails() else null
-                if (state.value.adMuted != adMuted || state.value.adWatch != adWatch || state.value.adDetails != adDetails) {
-                    mutableState.update { it.copy(adMuted = adMuted, adWatch = adWatch, adDetails = adDetails) }
+                val adRecording = engine.adRecordingMillis?.let { (it / 60_000).toInt() }
+                if (state.value.adMuted != adMuted || state.value.adWatch != adWatch || state.value.adDetails != adDetails ||
+                    state.value.adRecordingMinutes != adRecording
+                ) {
+                    // Enregistrement d'analyse fini tout seul (20 minutes, ou chaîne changée) : dit dans le bandeau.
+                    val ended = state.value.adRecordingMinutes != null && adRecording == null
+                    mutableState.update {
+                        it.copy(
+                            adMuted = adMuted, adWatch = adWatch, adDetails = adDetails, adRecordingMinutes = adRecording,
+                            qualityNotice = if (ended) resources.getString(R.string.player_ad_recording_stopped) else it.qualityNotice,
+                        )
+                    }
                 }
                 // Logo de la chaîne appris pendant cette lecture : gardé chaque minute, pas seulement à la sortie.
                 if (++adMarksChecks >= AD_MARKS_SAVE_CHECKS) {
@@ -437,6 +447,22 @@ class PlayerViewModel(
 
     /** Images rapprochées demandées (un silence est en cours) au lieu d'une par seconde. */
     val adFramesWanted: Boolean get() = engine.adVolume.wantsFrames
+
+    /** Options › « Enregistrer pour l'analyse des pubs » : commence ou arrête l'enregistrement de la chaîne en cours. */
+    fun toggleAdRecording() {
+        val recording = state.value.adRecordingMinutes != null
+        val started = engine.toggleAdRecording(state.value.channelName.ifBlank { "chaine" })
+        mutableState.update {
+            it.copy(
+                adRecordingMinutes = if (recording || !started) null else 0,
+                qualityNotice = when {
+                    recording -> resources.getString(R.string.player_ad_recording_stopped)
+                    !started -> resources.getString(R.string.player_ad_recording_failed)
+                    else -> it.qualityNotice
+                },
+            )
+        }
+    }
 
     fun setLowerAdVolume(enabled: Boolean) {
         viewModelScope.launch { container.settings.setLowerAdVolume(enabled) }

@@ -166,7 +166,7 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
 
     @Synchronized
     fun process(meanSquare: Double, durationMillis: Long): Double {
-        val duration = durationMillis.coerceAtLeast(1)
+        val duration = durationMillis.coerceAtLeast(0)
         elapsed += duration
         if (decibels(meanSquare) < SILENCE_DB) {
             if (silentMillis == 0L) silenceStart = elapsed - duration

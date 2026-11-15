@@ -1,5 +1,6 @@
 package tv.nextv.app.ui.settings
 
+import tv.nextv.app.player.AdRecordings
 import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -306,6 +307,14 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     /** Mise à jour de l'application. */
     val update: StateFlow<UpdateState> = container.updater.state
+
+    /** Enregistrements pour l'analyse des pubs gardés sur l'appareil. */
+    val adRecordings: StateFlow<List<AdRecordings.Recording>> = container.adRecordings.files
+
+    /** Partage des enregistrements sur le réseau local, tant que le résultat n'est pas fermé ; `null` sans réseau. */
+    fun shareAdRecordings(): AdRecordings.Share? = container.adRecordings.share()
+
+    fun deleteAdRecordings() = container.adRecordings.deleteAll()
 
     fun checkUpdate() = container.updater.check()
 

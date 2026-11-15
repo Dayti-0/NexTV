@@ -34,3 +34,8 @@ dependencies {
     testImplementation(libs.kxml2)
     testImplementation(libs.orgjson)
 }
+
+// Outils de mise au point des pubs (AdReplayTool, AdDeviceReplayTool) : des heures d'enregistrement en mémoire.
+tasks.test {
+    maxHeapSize = "3g"
+}

@@ -106,6 +106,8 @@ data class PlayerUiState(
     val adWatch: AdWatch? = null,
     /** Renforts de la détection des pubs (repères du flux, pubs déjà apprises) : infos de lecture. */
     val adDetails: AdDetails? = null,
+    /** Enregistrement pour l'analyse des pubs en cours : minutes enregistrées ; `null` sans enregistrement. */
+    val adRecordingMinutes: Int? = null,
     /** Le flux n'a pas de son, ou dans un format que l'appareil ne lit pas. */
     val audioProblem: AudioProblem? = null,
     /** Lecture par le moteur VLC (son ou image que le lecteur de l'appli ne sait pas lire). */

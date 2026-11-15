@@ -50,6 +50,7 @@ import tv.nextv.app.data.settings.SettingsRepository
 import tv.nextv.app.data.update.AppUpdater
 import tv.nextv.app.player.AdMarksStore
 import tv.nextv.app.player.AdPrintStore
+import tv.nextv.app.player.AdRecordings
 import tv.nextv.app.player.PlayerFactory
 import tv.nextv.app.player.PreviewHandoffSlot
 import tv.nextv.app.player.TIMESHIFT_FILE
@@ -190,6 +191,9 @@ class AppContainer(context: Context) {
 
     /** « Baisser le son des pubs » : logo et carton de chaque chaîne, appris une fois et gardés sur l'appareil. */
     val adMarks = AdMarksStore(File(appContext.filesDir, "ad_marks"), applicationScope)
+
+    /** Enregistrements pour l'analyse des pubs (options du lecteur), récupérés depuis Réglages par le réseau local. */
+    val adRecordings by lazy { AdRecordings(File(appContext.filesDir, "ad_recordings"), BuildConfig.VERSION_NAME) }
 
     /** « Baisser le son des pubs » : pubs déjà entendues (empreintes du son), reconnues sur toutes les chaînes. */
     val adPrints by lazy {

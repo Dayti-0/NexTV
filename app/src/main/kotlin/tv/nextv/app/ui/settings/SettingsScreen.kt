@@ -1,5 +1,7 @@
 package tv.nextv.app.ui.settings
 
+import tv.nextv.app.player.AdRecordings
+import androidx.compose.runtime.DisposableEffect
 import tv.nextv.app.ui.components.FadingBottom
 import android.content.ActivityNotFoundException
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -131,6 +133,7 @@ fun SettingsScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val update by viewModel.update.collectAsStateWithLifecycle()
     val account by viewModel.account.collectAsStateWithLifecycle()
+    val adRecordings by viewModel.adRecordings.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val resources = context.resources
     val snackbar = remember { SnackbarHostState() }
@@ -246,6 +249,9 @@ fun SettingsScreen(
         onCycleTrailerDelay = viewModel::cycleTrailerDelay,
         onStartOnLastChannel = viewModel::setStartOnLastChannel,
         onLowerAdVolume = viewModel::setLowerAdVolume,
+        adRecordings = adRecordings,
+        onShareAdRecordings = viewModel::shareAdRecordings,
+        onDeleteAdRecordings = viewModel::deleteAdRecordings,
         onAppearance = onAppearance,
         onCycleQualityTarget = viewModel::cycleQualityTarget,
         onCyclePreviewVolume = viewModel::cyclePreviewVolume,
@@ -296,6 +302,10 @@ fun SettingsContent(
     onCycleTrailerDelay: () -> Unit = {},
     onStartOnLastChannel: (Boolean) -> Unit = {},
     onLowerAdVolume: (Boolean) -> Unit = {},
+    /** Enregistrements pour l'analyse des pubs gardés sur l'appareil. */
+    adRecordings: List<AdRecordings.Recording> = emptyList(),
+    onShareAdRecordings: () -> AdRecordings.Share? = { null },
+    onDeleteAdRecordings: () -> Unit = {},
     onAppearance: () -> Unit = {},
     onCycleQualityTarget: () -> Unit = {},
     onCyclePreviewVolume: () -> Unit = {},
@@ -470,6 +480,23 @@ fun SettingsContent(
                         checked = state.lowerAdVolume,
                         onChange = onLowerAdVolume,
                     )
+                    // Enregistrements pour l'analyse des pubs : récupérés sur un téléphone du même réseau.
+                    if (state.lowerAdVolume || adRecordings.isNotEmpty()) {
+                        var sharing by remember { mutableStateOf(false) }
+                        ValueRow(
+                            title = stringResource(R.string.settings_ad_recordings),
+                            value = if (adRecordings.isEmpty()) {
+                                stringResource(R.string.settings_ad_recordings_none)
+                            } else {
+                                stringResource(R.string.settings_ad_recordings_count, adRecordings.size, megabytes(adRecordings.sumOf { it.bytes }))
+                            },
+                            onClick = { sharing = true },
+                            enabled = adRecordings.isNotEmpty(),
+                        )
+                        if (sharing) {
+                            AdRecordingsDialog(adRecordings, onShareAdRecordings, onDeleteAdRecordings, onDismiss = { sharing = false })
+                        }
+                    }
                     ToggleRow(
                         title = stringResource(R.string.settings_audio_passthrough),
                         description = stringResource(R.string.settings_audio_passthrough_help),
@@ -959,6 +986,65 @@ private fun RegionDialog(
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Enregistrements pour l'analyse des pubs : l'adresse à ouvrir sur un téléphone du même réseau (petit serveur web de
+ * l'appareil, ouvert tant que la fenêtre l'est), et la liste des fichiers.
+ */
+@Composable
+private fun AdRecordingsDialog(
+    recordings: List<AdRecordings.Recording>,
+    onShare: () -> AdRecordings.Share?,
+    onDelete: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var address by remember { mutableStateOf<String?>(null) }
+    var noNetwork by remember { mutableStateOf(false) }
+    DisposableEffect(Unit) {
+        val share = onShare()
+        address = share?.address
+        noNetwork = share == null
+        onDispose { share?.close() }
+    }
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { firstFocus.requestFocus() } }
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            modifier = Modifier.widthIn(max = 620.dp).ignoreHeldOk(),
+        ) {
+            Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(stringResource(R.string.settings_ad_recordings), style = MaterialTheme.typography.titleLarge)
+                if (noNetwork) {
+                    Text(stringResource(R.string.settings_ad_recordings_no_network), style = MaterialTheme.typography.bodyMedium)
+                } else {
+                    Text(stringResource(R.string.settings_ad_recordings_help), style = MaterialTheme.typography.bodyMedium)
+                    Text(address.orEmpty(), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
+                }
+                recordings.forEach { file ->
+                    Text(
+                        "${file.name}  ·  ${megabytes(file.bytes)} Mo",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    PillButton(stringResource(R.string.settings_ad_recordings_close), onDismiss, modifier = Modifier.focusRequester(firstFocus), style = PillStyle.Primary)
+                    PillButton(
+                        stringResource(R.string.settings_ad_recordings_delete),
+                        {
+                            onDelete()
+                            onDismiss()
+                        },
+                        icon = Icons.Filled.Delete,
+                        style = PillStyle.Ghost,
+                    )
                 }
             }
         }

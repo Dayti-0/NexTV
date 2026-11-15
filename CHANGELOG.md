@@ -4,6 +4,11 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.154
+- Options du lecteur › « Enregistrer pour l’analyse des pubs (20 min) » : l’application garde ce que la détection des pubs reçoit (le son en qualité réduite, une petite image en gris par seconde, ses décisions), sans la vidéo, pour améliorer la détection sur TF1, M6, France Télévisions…
+- Réglages › Son › « Enregistrements pour l’analyse des pubs » : une adresse à ouvrir sur un téléphone relié au même Wi-Fi, pour télécharger les enregistrements
+- « Baisser le son des pubs » : l’horloge de la détection ne prend plus de retard (environ 1 seconde par minute)
+
 ## 0.2.153
 - « Baisser le son des pubs » : quand le flux annonce lui-même ses pages de pub (repères de la régie, laissés par certaines chaînes ou fournisseurs), le son baisse dès la première seconde de pub et revient pile à la reprise du programme
 - « Baisser le son des pubs » : l’application retient les pubs qu’elle a entendues (une empreinte du son, quelques Mo au plus) et les reconnaît en deux à trois secondes quand elles repassent, sur n’importe quelle chaîne

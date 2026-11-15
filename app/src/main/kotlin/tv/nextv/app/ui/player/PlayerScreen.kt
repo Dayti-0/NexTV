@@ -576,6 +576,8 @@ fun PlayerScreen(
             vlcActive = vlc != null,
             lowerAdVolume = state.lowerAdVolume,
             onLowerAdVolume = viewModel::setLowerAdVolume,
+            adRecordingMinutes = state.adRecordingMinutes,
+            onAdRecording = viewModel::toggleAdRecording.takeIf { state.lowerAdVolume && state.isLive && vlc == null },
             qualityTarget = qualityTarget,
             playingQuality = state.quality,
             onQuality = viewModel::chooseQuality,
@@ -703,6 +705,10 @@ fun PlayerOptionsPanel(
     modifier: Modifier = Modifier,
     lowerAdVolume: Boolean = false,
     onLowerAdVolume: (Boolean) -> Unit = {},
+    /** Enregistrement pour l'analyse des pubs en cours : minutes enregistrées ; `null` sans enregistrement. */
+    adRecordingMinutes: Int? = null,
+    /** Commence ou arrête l'enregistrement pour l'analyse des pubs ; `null` : pas proposé. */
+    onAdRecording: (() -> Unit)? = null,
     onBackToLive: (() -> Unit)? = null,
     /**
      * « Lire avec le moteur VLC » (son ou image que le lecteur de l'appli lit mal), ou, [vlcActive], « Lire avec
@@ -830,6 +836,18 @@ fun PlayerOptionsPanel(
                 OptionsSection(stringResource(R.string.player_more))
                 if (isLive) OptionRow(stringResource(R.string.player_last_channel), selected = false, onClick = onPreviousChannel)
                 if (isLive) OptionRow(stringResource(R.string.player_lower_ads), selected = lowerAdVolume) { onLowerAdVolume(!lowerAdVolume) }
+                // Enregistrement pour l'analyse des pubs (son, petites images, décisions), récupéré depuis Réglages.
+                onAdRecording?.let { toggle ->
+                    OptionRow(
+                        if (adRecordingMinutes != null) {
+                            stringResource(R.string.player_ad_recording_stop, adRecordingMinutes)
+                        } else {
+                            stringResource(R.string.player_ad_recording_start)
+                        },
+                        selected = adRecordingMinutes != null,
+                        onClick = toggle,
+                    )
+                }
                 OptionRow(stringResource(R.string.player_info_title), selected = infoVisible, onClick = onToggleInfo)
                 onVlc?.let {
                     OptionRow(stringResource(if (vlcActive) R.string.player_use_app_player else R.string.player_use_vlc), selected = false, onClick = it)

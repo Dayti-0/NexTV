@@ -194,7 +194,14 @@ Commandes :
   Notation : `AdReplayTool` lit aussi `audio.s16` (11 025 Hz mono) et `tags.tsv` (balises HLS datées : vérité de
   référence), options `AD_PRINTS`, `AD_TEACH`, `AD_CUES`, `AD_WINDOW` ; enregistreur des directs publics :
   `tools/ad_record.py` (ffmpeg ; lancer 2 h sur plusieurs chaînes en parallèle). Le 15/11/2026 sur RMC Story / Découverte / Life :
-  sans renfort 81 % des secondes de pub baissées (délai moyen 21 s), avec les repères 100 %.
+  sans renfort 81 % des secondes de pub baissées (délai moyen 21 s), avec les repères 100 %. Les baisses « à tort »
+  restantes, vues sur les images, étaient des bandes-annonces de la chaîne entre deux programmes (hors repères).
+- Enregistrement d'analyse fait sur l'appareil (0.2.154) : options du lecteur › « Enregistrer pour l'analyse des pubs »
+  (`AdRecordings` / `AdRecorder`, 20 min, `.zip` : `levels.bin`, `audio.ulaw` ~8 kHz, `frames.bin` petites images et
+  logo en JPEG datés à l'horloge de la détection, `events.tsv`), récupéré par l'utilisateur sur son téléphone via
+  Réglages › Son (petit serveur web local, adresse avec un code). Le rejouer : `AdDeviceReplayTool` (`AD_DEVICE`,
+  `AD_PRINTS`, `AD_IMAGES=10` écrit une image par 10 s pour relever les pages de pub à l'œil dans `<nom>.truth.tsv`).
+  C'est la seule façon de mesurer TF1, M6 et France Télévisions (pas de flux lisible d'ici, même avec un compte).
 
 ## Essais sur de vrais flux
 

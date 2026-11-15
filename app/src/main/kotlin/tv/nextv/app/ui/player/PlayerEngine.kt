@@ -668,6 +668,23 @@ internal class PlayerEngine(
     /** Renforts de la détection des pubs (repères du flux, pubs connues), pour les infos de lecture. */
     fun adDetails(): AdDetails? = adVolume.details()
 
+    /**
+     * Enregistrement pour l'analyse des pubs de la chaîne en cours (20 minutes au plus) : le commence, ou l'arrête s'il
+     * est en cours. `false` s'il n'a pas pu commencer (option des pubs désactivée, plus assez de place).
+     */
+    fun toggleAdRecording(channel: String): Boolean {
+        if (adVolume.recordingMillis != null) {
+            container.adRecordings.stop()
+            adVolume.stopRecording()
+            return true
+        }
+        if (!adVolume.enabled) return false
+        return container.adRecordings.start(channel, adVolume) != null
+    }
+
+    /** Durée de l'enregistrement d'analyse en cours (ms) ; `null` sans enregistrement. */
+    val adRecordingMillis: Long? get() = adVolume.recordingMillis
+
     /** Repères connus du direct en cours, avec ce que la détection vient d'en apprendre. */
     private fun learnedAdMarks(): AdMarks {
         val learned = adVolume.marks()
@@ -707,6 +724,7 @@ internal class PlayerEngine(
     fun release() {
         releasePendingHandoff()
         saveAdMarks()
+        adVolume.stopRecording()
         exoPlayer?.let {
             it.removeListener(listener)
             it.removeAnalyticsListener(analytics)

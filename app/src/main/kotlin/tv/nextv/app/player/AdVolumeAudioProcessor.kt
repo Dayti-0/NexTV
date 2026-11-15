@@ -90,6 +90,42 @@ class AdVolumeControl {
     var printWatch: AdPrintWatch? = null
         private set
 
+    /** Enregistrement pour l'analyse des pubs en cours ([AdRecordings]) : reçoit le son, les images et les décisions. */
+    @Volatile
+    var recorder: AdRecorder? = null
+        private set
+
+    private var recordedLogo: LogoState? = null
+    private var recordedAttenuating = false
+    private var recordedCue: CueState? = null
+
+    /** Branche un enregistrement pour l'analyse ; il s'arrête avec le flux ([newStream]). */
+    fun record(recorder: AdRecorder) {
+        this.recorder?.finish()
+        recordedLogo = null
+        recordedCue = null
+        this.recorder = recorder
+    }
+
+    /** Arrête l'enregistrement d'analyse en cours (lecteur fermé). */
+    fun stopRecording() {
+        recorder?.finish()
+        recorder = null
+    }
+
+    /** Durée de l'enregistrement d'analyse en cours (ms) ; `null` sans enregistrement. */
+    val recordingMillis: Long? get() = recorder?.takeIf { it.active }?.recordedMillis
+
+    /** Ce que la détection décide, pour l'enregistrement d'analyse (appelé depuis le fil du son). */
+    internal fun recordDecision() {
+        val recorder = recorder?.takeIf { it.active } ?: return
+        val guard = guard
+        if (guard.attenuating != recordedAttenuating) {
+            recordedAttenuating = guard.attenuating
+            recorder.event(guard.now, "baisse", if (recordedAttenuating) "1" else "0")
+        }
+    }
+
     private val logoWatcher = LogoWatcher(FRAME_WIDTH, FRAME_HEIGHT)
     private val small = ByteArray(SmallFrame.SIZE)
     private var logoFrameAt = NEVER
@@ -112,6 +148,9 @@ class AdVolumeControl {
      */
     fun newStream(marks: AdMarks? = null) {
         attenuating = false
+        // L'enregistrement d'analyse ne vaut que pour une chaîne : il s'arrête avec elle.
+        recorder?.finish()
+        recorder = null
         synchronized(logoWatcher) {
             logoWatcher.reset()
             marks?.logo?.let(logoWatcher::restore)
@@ -135,7 +174,13 @@ class AdVolumeControl {
 
     /** Repères du flux à la position de lecture [positionMs] (temps de la période du lecteur), donnés à la détection. */
     fun cueAt(positionMs: Long) {
-        guard.cue = cues.state(positionMs)
+        val state = cues.state(positionMs)
+        guard.cue = state
+        val recorder = recorder?.takeIf { it.active } ?: return
+        if (state != recordedCue) {
+            recordedCue = state
+            recorder.event(guard.now, "reperes", state.name)
+        }
     }
 
     /** Renforts de la détection, pour les infos de lecture ; `null` si l'option est désactivée. */
@@ -164,12 +209,21 @@ class AdVolumeControl {
         synchronized(logoWatcher) {
             pictureAt = nowMillis
             val guard = guard
+            val recorder = recorder?.takeIf { it.active }
             // Changements de plan : toutes les images. Logo : une par seconde suffit.
-            if (SmallFrame.reduce(gray, FRAME_WIDTH, FRAME_HEIGHT, small)) guard.frame(small)
+            if (SmallFrame.reduce(gray, FRAME_WIDTH, FRAME_HEIGHT, small)) {
+                guard.frame(small)
+                recorder?.small(small, guard.now)
+            }
             if (logoFrameAt == NEVER || nowMillis - logoFrameAt >= LOGO_PERIOD_MILLIS) {
                 logoFrameAt = nowMillis
+                recorder?.logoFrame(gray, FRAME_WIDTH, FRAME_HEIGHT, guard.now)
                 logo = logoWatcher.frame(gray)
                 guard.logo = logo
+                if (recorder != null && logo != recordedLogo) {
+                    recordedLogo = logo
+                    recorder.event(guard.now, "logo", logo.name)
+                }
             }
         }
     }
@@ -208,6 +262,9 @@ class AdVolumeAudioProcessor(private val control: AdVolumeControl) : BaseAudioPr
     private var guard: AdVolumeGuard? = null
     private var gain = 1.0
 
+    /** Reste (millièmes d'échantillon × fréquence) des durées en millisecondes données à la détection. */
+    private var carry = 0L
+
     /** Son de la tranche en cours ramené en mono, pour les empreintes. */
     private var mono = FloatArray(0)
 
@@ -222,6 +279,7 @@ class AdVolumeAudioProcessor(private val control: AdVolumeControl) : BaseAudioPr
             // Nouveau flux dans le même lecteur : mesure remise à zéro.
             this.guard = guard
             gain = 1.0
+            carry = 0
         }
         val output = replaceOutputBuffer(size)
         if (!control.enabled) {
@@ -240,7 +298,8 @@ class AdVolumeAudioProcessor(private val control: AdVolumeControl) : BaseAudioPr
         var target = gain
         var offset = 0
         val watch = control.printWatch?.takeIf { it.guard === guard }
-        if (watch != null && mono.size < slice / channels + 1) mono = FloatArray(slice / channels + 1)
+        val recorder = control.recorder?.takeIf { it.active }
+        if ((watch != null || recorder != null) && mono.size < slice / channels + 1) mono = FloatArray(slice / channels + 1)
         while (offset < samples) {
             val count = min(slice, samples - offset)
             var energy = 0.0
@@ -248,21 +307,27 @@ class AdVolumeAudioProcessor(private val control: AdVolumeControl) : BaseAudioPr
                 val sample = inputBuffer.getShort(start + 2 * i) / 32_768.0
                 energy += sample * sample
             }
-            target = guard.process(energy / count, (count / channels * 1_000L / sampleRate).coerceAtLeast(1))
-            if (watch != null) {
-                // Empreintes du son (pubs déjà entendues) : moyenne des canaux.
+            // Durée exacte : le reste en millisecondes est reporté (sinon l'horloge prenait 1,5 % de retard).
+            carry += count / channels * 1_000L
+            val duration = carry / sampleRate
+            carry -= duration * sampleRate
+            target = guard.process(energy / count, duration)
+            if (watch != null || recorder != null) {
+                // Empreintes du son (pubs déjà entendues), enregistrement d'analyse : moyenne des canaux.
                 val frames = count / channels
                 for (f in 0 until frames) {
                     var sum = 0
                     for (c in 0 until channels) sum += inputBuffer.getShort(start + 2 * (offset + f * channels + c)).toInt()
                     mono[f] = sum / (32_768f * channels)
                 }
-                watch.feed(mono, frames, sampleRate, guard.now)
+                watch?.feed(mono, frames, sampleRate, guard.now)
+                recorder?.sound(energy / count, duration, mono, frames, sampleRate, guard.now)
             }
             offset += count
         }
         control.attenuating = guard.attenuating
         control.heard()
+        if (recorder != null) control.recordDecision()
         // Passage progressif de l'ancien gain au nouveau sur le bloc : pas de claquement.
         for (i in 0 until samples) {
             val g = gain + (target - gain) * (i + 1) / samples
