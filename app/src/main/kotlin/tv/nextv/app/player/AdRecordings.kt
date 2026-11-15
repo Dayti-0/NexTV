@@ -73,24 +73,53 @@ class AdRecordings(
     @Volatile
     var selected: String? = null
 
-    /** Mémoire de l'appareil, puis les clés USB branchées. */
-    fun locations(): List<Location> = listOf(Location(null, null, internal)) + removable()
+    /**
+     * Emplacements vus à la dernière lecture ([locations]) et place libre de chaque clé prête : de quoi commencer un
+     * enregistrement sans toucher aux clés sur le fil principal (une clé USB peut faire attendre plusieurs secondes).
+     */
+    @Volatile
+    private var known: List<Location> = listOf(Location(null, null, internal))
 
-    /** Emplacement choisi, s'il est disponible (une clé USB choisie mais débranchée : `null`). */
-    fun target(): Location? = locations().firstOrNull { it.key == selected }
+    @Volatile
+    private var knownFree: Map<String?, Long> = emptyMap()
+
+    /**
+     * Mémoire de l'appareil, puis les clés USB branchées. Lit les clés (création du dossier, fichier d'essai) : jamais sur
+     * le fil principal.
+     */
+    fun locations(): List<Location> {
+        val all = listOf(Location(null, null, internal)) + removable()
+        knownFree = all.filter { it.key != null && it.access == Access.READY }.associate { it.key to it.freeBytes }
+        known = all
+        return all
+    }
+
+    /** Emplacements vus à la dernière lecture des clés, sans les relire (utilisable sur le fil principal). */
+    fun knownLocations(): List<Location> = known
+
+    /** Emplacement choisi, s'il était disponible à la dernière lecture des clés (clé choisie mais débranchée : `null`). */
+    fun target(): Location? = known.firstOrNull { it.key == selected }
 
     private fun directories(): List<File> = locations().filter { it.access == Access.READY }.map { it.directory }
 
-    init {
-        // Enregistrement interrompu (application fermée par le système) : ce qui a été écrit est gardé.
+    /** Dossier de l'enregistrement en cours, que la récupération au lancement ([load]) ne doit pas toucher. */
+    @Volatile
+    private var currentPart: File? = null
+
+    /**
+     * Première lecture, hors du fil principal (les clés USB peuvent être lentes) : enregistrements interrompus récupérés
+     * (application fermée par le système : ce qui a été écrit est gardé), puis la liste.
+     */
+    fun load() {
         for (directory in directories()) {
             directory.listFiles { file -> file.isDirectory && file.name.endsWith(PART) }?.forEach { part ->
-                part.renameTo(File(directory, part.name.removeSuffix(PART)))
+                if (part != currentPart) part.renameTo(File(directory, part.name.removeSuffix(PART)))
             }
         }
+        refresh()
     }
 
-    private val mutableFiles = MutableStateFlow(list())
+    private val mutableFiles = MutableStateFlow<List<Recording>>(emptyList())
 
     /** Enregistrements gardés, le plus récent en premier. */
     val files: StateFlow<List<Recording>> = mutableFiles.asStateFlow()
@@ -123,7 +152,8 @@ class AdRecordings(
             location == null -> "usb"
             location.access == Access.NEEDS_PERMISSION -> "autorisation"
             location.access != Access.READY -> "usb_illisible"
-            location.freeBytes <= MIN_FREE_BYTES -> "place"
+            // Place de la clé relevée à la dernière lecture (pas de nouvel accès à la clé ici).
+            (if (location.key == null) location.freeBytes else knownFree[location.key] ?: 0L) <= MIN_FREE_BYTES -> "place"
             else -> null
         }
         if (location == null || refusal != null) return null
@@ -139,6 +169,7 @@ class AdRecordings(
             "appareil" to "${Build.MANUFACTURER} ${Build.MODEL} (Android ${Build.VERSION.RELEASE})",
         )
         val part = File(directory, name + PART)
+        currentPart = part
         val self = arrayOfNulls<AdRecorder>(1)
         val recorder = AdRecorder(part, info) { reason ->
             val done = File(directory, name)

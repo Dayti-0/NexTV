@@ -59,8 +59,16 @@ class AdMusicLibrary(private val internal: File, private val usbFolders: () -> L
         }
     }.sortedBy { it.name.lowercase() }
 
+    /** Morceaux vus à la dernière lecture ([refresh]) : lus sans toucher aux clés USB (lentes) sur le fil principal. */
+    @Volatile
+    var knownTracks: List<File> = emptyList()
+        private set
+
+    /** Relit les morceaux (dossiers des clés USB compris) : hors du fil principal. */
     fun refresh() {
-        mutableCount.value = tracks().size
+        val found = tracks()
+        knownTracks = found
+        mutableCount.value = found.size
     }
 
     /** Morceau envoyé : nom gardé s'il est sûr (pas de dossier, extension de musique), sinon `null`. */

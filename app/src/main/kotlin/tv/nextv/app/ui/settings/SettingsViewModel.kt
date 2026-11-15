@@ -317,20 +317,27 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
     /** Enregistrements pour l'analyse des pubs gardés sur l'appareil. */
     val adRecordings: StateFlow<List<AdRecordings.Recording>> = container.adRecordings.files
 
-    private val mutableAdPlace = MutableStateFlow(adPlace(container.adRecordings.selected))
+    // Premier affichage avec ce qui est déjà connu, sans toucher aux clés USB : sur la box, créer un dossier sur la clé
+    // depuis le fil principal a bloqué l'ouverture des réglages plus de 5 s (ANR). Relu en arrière-plan ([refreshAdPlaces]).
+    private val mutableAdPlace = MutableStateFlow(adPlace(container.adRecordings.selected, fresh = false))
 
     /** Emplacement des enregistrements choisi (et s'il est branché). */
     val adPlace: StateFlow<AdPlace> = mutableAdPlace
 
-    private fun adPlace(key: String?): AdPlace {
-        val location = container.adRecordings.locations().firstOrNull { it.key == key }
+    /**
+     * État de l'emplacement [key]. [fresh] : clés relues (hors du fil principal seulement) ; sinon, la dernière lecture,
+     * sans la place libre d'une clé ni la description des stockages.
+     */
+    private fun adPlace(key: String?, fresh: Boolean = true): AdPlace {
+        val locations = if (fresh) container.adRecordings.locations() else container.adRecordings.knownLocations()
+        val location = locations.firstOrNull { it.key == key }
         return AdPlace(
             usb = key != null,
             label = location?.label,
-            freeBytes = location?.takeIf { it.access == AdRecordings.Access.READY }?.freeBytes,
-            missing = location == null,
+            freeBytes = location?.takeIf { it.access == AdRecordings.Access.READY && (fresh || it.key == null) }?.freeBytes,
+            missing = location == null && fresh,
             access = location?.access ?: AdRecordings.Access.READY,
-            storage = describeStorage(container.appContext),
+            storage = if (fresh) describeStorage(container.appContext) else "",
             recordingMinutes = container.adRecordings.current?.takeIf { it.active }?.let { (it.recordedMillis / 60_000).toInt() },
         )
     }
@@ -400,7 +407,9 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch(Dispatchers.IO) { container.adMusic.deleteUploads() }
     }
 
-    fun deleteAdRecordings() = container.adRecordings.deleteAll()
+    fun deleteAdRecordings() {
+        viewModelScope.launch(Dispatchers.IO) { container.adRecordings.deleteAll() }
+    }
 
     /** Supprime un seul enregistrement (nom de son `.zip`). */
     fun deleteAdRecording(name: String) {

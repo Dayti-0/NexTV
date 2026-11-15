@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.163
+- Correction : avec une clé USB branchée, l’ouverture des Réglages pouvait bloquer l’appli, fermée par le système (« ne répondait plus »). La clé est maintenant lue en arrière-plan, aussi dans le lecteur (enregistrement d’analyse, musique des pubs)
+
 ## 0.2.162
 - Enregistrement d’analyse : il continue quand on change de chaîne par l’accueil, le guide ou l’aperçu (et plus seulement avec haut/bas). Il s’arrête par les options du lecteur, ou par Réglages › Son › « Enregistrements pour l’analyse des pubs », qui le montre en cours
 - Réglages › Son › Enregistrements : chaque enregistrement a son bouton « Supprimer », en plus de « Tout supprimer »

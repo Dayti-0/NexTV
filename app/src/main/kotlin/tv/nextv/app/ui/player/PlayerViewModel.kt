@@ -602,7 +602,8 @@ class PlayerViewModel(
                     label = radio.name
                     tv.nextv.app.player.AdMusicPlayer.Source.Radio(radio)
                 }
-                else -> container.adMusic.tracks().takeIf { it.isNotEmpty() }.let { files ->
+                // Morceaux relevés en arrière-plan : lire une clé USB ici pourrait figer l'image (fil principal).
+                else -> container.adMusic.knownTracks.takeIf { it.isNotEmpty() }.let { files ->
                     label = files?.let { resources.getString(R.string.player_ad_music_own) }
                     files?.let { tv.nextv.app.player.AdMusicPlayer.Source.Tracks(it) }
                 }

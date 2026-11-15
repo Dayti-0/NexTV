@@ -8,6 +8,7 @@ import androidx.room.withTransaction
 import java.io.File
 import java.util.TimeZone
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -199,11 +200,35 @@ class AppContainer(context: Context) {
     val adRecordings by lazy {
         AdRecordings(File(appContext.filesDir, "ad_recordings"), BuildConfig.VERSION_NAME, removable = { removableRecordingPlaces(appContext) }).also { recordings ->
             applicationScope.launch { settings.adRecordingsLocation.collect { recordings.selected = it } }
+            // Clés USB lues en arrière-plan : sur la box, créer un dossier sur la clé a bloqué l'appli plus de 5 s (ANR).
+            applicationScope.launch(Dispatchers.IO) { recordings.load() }
+        }
+    }
+
+    private val readingUsb = AtomicBoolean(false)
+
+    /**
+     * Relit les clés USB en arrière-plan (emplacements des enregistrements, musique des pubs), prêtes quand on lancera un
+     * enregistrement ou qu'une pub commencera. Rien si une lecture est déjà en cours (clé lente).
+     */
+    fun refreshAdPlacesInBackground() {
+        if (!readingUsb.compareAndSet(false, true)) return
+        applicationScope.launch(Dispatchers.IO) {
+            try {
+                adRecordings.locations()
+                adMusic.refresh()
+            } finally {
+                readingUsb.set(false)
+            }
         }
     }
 
     /** Musique jouée pendant les pubs : envoyée depuis le téléphone (Réglages › Son), ou dossier « NixTV/musique » d'une clé USB. */
-    val adMusic by lazy { AdMusicLibrary(File(appContext.filesDir, "ad_music")) { removableMusicFolders(appContext) } }
+    val adMusic by lazy {
+        AdMusicLibrary(File(appContext.filesDir, "ad_music")) { removableMusicFolders(appContext) }.also { music ->
+            applicationScope.launch(Dispatchers.IO) { music.refresh() }
+        }
+    }
 
     /** « Baisser le son des pubs » : pubs déjà entendues (empreintes du son), reconnues sur toutes les chaînes. */
     val adPrints by lazy {

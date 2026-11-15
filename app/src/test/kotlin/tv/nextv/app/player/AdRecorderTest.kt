@@ -185,8 +185,9 @@ class AdRecorderTest {
         assertTrue(usb.listFiles()!!.single().name.startsWith("pubs_TF1_"))
         assertEquals(setOf("info.txt", "levels.bin", "prints.bin", "frames.bin", "events.tsv"), download(recordings, recordings.files.value.single().name).keys)
 
-        // Clé débranchée : rien ne commence, et l'appli dit pourquoi.
+        // Clé débranchée (vue à la relecture des clés, faite en arrière-plan) : rien ne commence, et l'appli dit pourquoi.
         plugged = false
+        recordings.locations()
         assertNull(recordings.start("TF1", control))
         assertEquals("usb", recordings.refusal)
         assertNull(control.recordingMillis)
@@ -236,7 +237,32 @@ class AdRecorderTest {
         java.io.File(directory, "pubs_TF1_2026-11-15_20-00.part").mkdirs()
         java.io.File(directory, "pubs_TF1_2026-11-15_20-00.part/levels.bin").writeBytes(ByteArray(600_000))
         val recordings = AdRecordings(directory, "0.0.0-test")
+        recordings.load()
         assertEquals(listOf("pubs_TF1_2026-11-15_20-00.zip"), recordings.files.value.map { it.name })
+    }
+
+    @Test
+    fun `creating the recordings and starting one never touches the USB drives`() {
+        // Sur la box, créer un dossier sur la clé USB depuis le fil principal a bloqué l'appli plus de 5 s (ANR à
+        // l'ouverture des réglages) : seules les relectures faites en arrière-plan ([AdRecordings.locations]) y touchent.
+        val usb = folder.newFolder("usb")
+        var reads = 0
+        val recordings = AdRecordings(folder.newFolder("internal"), "0.0.0-test", minMillis = 60_000, removable = {
+            reads++
+            listOf(AdRecordings.Location("1234-ABCD", "Clé USB SanDisk", usb))
+        })
+        recordings.selected = "1234-ABCD"
+        assertEquals(listOf<String?>(null), recordings.knownLocations().map { it.key })
+        // Clé pas encore relue : « débranchée », sans l'attendre.
+        assertNull(recordings.start("TF1", control))
+        assertEquals("usb", recordings.refusal)
+        assertEquals(0, reads)
+        // Relue en arrière-plan : l'enregistrement commence ensuite sans la relire.
+        recordings.locations()
+        assertEquals(1, reads)
+        assertNotNull(recordings.start("TF1", control))
+        assertEquals(1, reads)
+        recordings.stop()
     }
 
     @Test
