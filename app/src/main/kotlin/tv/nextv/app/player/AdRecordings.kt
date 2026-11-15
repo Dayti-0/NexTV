@@ -124,7 +124,7 @@ class AdRecordings(
         val stamp = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.FRANCE).format(Date())
         val name = "pubs_${safe(channel)}_$stamp"
         val info = linkedMapOf(
-            "format" to "2",
+            "format" to "3",
             "chaine" to channel,
             "debut" to SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.ROOT).format(Date()),
             "appli" to version,
@@ -135,7 +135,7 @@ class AdRecordings(
             val done = File(directory, name)
             if (!part.renameTo(done)) part.deleteRecursively()
             // Moins d'une minute de son : rien d'utile.
-            if (File(done, "audio.ulaw").length() < MIN_AUDIO_BYTES) done.deleteRecursively()
+            if (File(done, "levels.bin").length() < MIN_LEVELS_BYTES) done.deleteRecursively()
             // Mémoire de l'appareil : les derniers seulement. Sur une clé USB, tout est gardé (jusqu'à ce qu'elle soit pleine).
             if (location.key == null) trim(directory)
             mutableFiles.value = list()
@@ -361,8 +361,8 @@ class AdRecordings(
         const val PART = ".part"
         const val MIN_FREE_BYTES = 400L * 1024 * 1024
 
-        /** Une minute de son enregistré (8 000 octets par seconde). */
-        const val MIN_AUDIO_BYTES = 60L * 8_000
+        /** Une minute de son traité (au moins 50 tranches de 6 octets par seconde). */
+        const val MIN_LEVELS_BYTES = 60L * 50 * 6
         const val PORT = 8090
         const val MUSIC_PATH = "musique/"
         const val MAX_HEADER = 8 * 1024

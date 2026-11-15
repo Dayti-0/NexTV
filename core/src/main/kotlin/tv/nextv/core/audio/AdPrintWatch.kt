@@ -39,6 +39,9 @@ class AdPrintWatch(
     var matches: Int = 0
         private set
 
+    /** Chaque empreinte calculée, avec son instant (horloge du son) : pour l'enregistrement d'analyse. */
+    var onPrint: ((print: Int, loud: Boolean, time: Long) -> Unit)? = null
+
     private var lastMatch: AdPrintLibrary.Match? = null
     private var underLogo = 0
 
@@ -59,7 +62,14 @@ class AdPrintWatch(
         fingerprinter?.feed(samples, count, ::add)
     }
 
+    /** Empreinte déjà calculée (enregistrement rejoué), à l'instant [now] de l'horloge du son. */
+    fun print(print: Int, audible: Boolean, now: Long) {
+        clock = now
+        add(print, audible)
+    }
+
     private fun add(print: Int, audible: Boolean) {
+        onPrint?.invoke(print, audible, clock)
         val at = (total % HISTORY).toInt()
         prints[at] = print
         loud[at] = audible

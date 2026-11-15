@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.161
+- Enregistrement d’analyse : environ 3 fois plus léger (environ 27 Mo par heure au lieu de 90). Il garde ce qui sert à rejouer la détection (empreintes du son au lieu du son, coins de l’image où se trouve le logo, petite vignette toutes les 5 secondes) ; chaque fichier est coupé avant 30 Mo pour pouvoir être envoyé
+
 ## 0.2.160
 - Enregistrement d’analyse : coupé tout seul en fichiers d’une heure (environ 90 Mo chacun), plus faciles à envoyer ; l’enregistrement continue sans interruption
 - Dans la mémoire de l’appareil, les 24 derniers fichiers sont gardés (une nuit entière), au lieu des 4 derniers

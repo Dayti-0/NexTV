@@ -64,6 +64,7 @@ class AdDeviceReplayTool {
             imagesEvery?.let { File("${base.path}_images").mkdirs() }
             val out = StringBuilder("second\tattenuating\tdevice\tlogo\tprint\n")
             var frame = 0
+            var print = 0
             var audioAt = 0
             var second = 0L
             var attenuatedSlices = 0
@@ -77,16 +78,26 @@ class AdDeviceReplayTool {
                 // Images reçues avant cette tranche de son (datées à l'horloge de l'enregistrement).
                 while (frame < recording.frames.size && recording.frames[frame].time <= now) {
                     val f = recording.frames[frame++]
-                    if (f.type == 'S') {
-                        guard.frame(f.bytes)
-                    } else {
-                        val gray = gray(f.bytes) ?: continue
-                        guard.logo = watcher.frame(gray)
-                        if (imagesEvery != null && f.time >= nextImage) {
-                            nextImage = f.time + imagesEvery * 1_000L
-                            File("${base.path}_images", "%05d.jpg".format(f.time / 1_000)).writeBytes(f.bytes)
-                        }
+                    when (f.type) {
+                        // Image réduite reçue par la détection : brute (format 2) ou en JPEG (format 3).
+                        'S' -> guard.frame(f.bytes)
+                        'J' -> decode(f.bytes, SmallFrame.WIDTH, SmallFrame.HEIGHT)?.let(guard::frame)
+                        // Image du logo : entière (format 2), ou ses quatre coins (format 3).
+                        'L' -> gray(f.bytes)?.let { guard.logo = watcher.frame(it) }
+                        'C' -> corners(f.bytes)?.let { guard.logo = watcher.frame(it) }
+                        else -> Unit
                     }
+                    // Images à regarder pour relever les pages de pub : vignettes (format 3) ou images du logo (format 2).
+                    if (imagesEvery != null && (f.type == 'T' || f.type == 'L') && f.time >= nextImage) {
+                        nextImage = f.time + imagesEvery * 1_000L
+                        File("${base.path}_images", "%05d.jpg".format(f.time / 1_000)).writeBytes(f.bytes)
+                    }
+                }
+                // Empreintes du son calculées par l'appareil (format 3), à leur instant.
+                while (watch != null && print < recording.prints.size && recording.prints[print].time <= offset + guard.now) {
+                    val p = recording.prints[print++]
+                    watch?.print(p.print, p.loud, p.time - offset)
+                    if (watch?.recognized == true) recognized = true
                 }
                 guard.process(slice.meanSquare.toDouble(), slice.durationMillis.toLong())
                 val w = watch
@@ -146,11 +157,38 @@ class AdDeviceReplayTool {
 
     private class Frame(val type: Char, val time: Long, val bytes: ByteArray)
 
+    private class Print(val time: Long, val print: Int, val loud: Boolean)
+
+    /** Image en gris d'un JPEG de taille connue. */
+    private fun decode(jpeg: ByteArray, width: Int, height: Int): ByteArray? {
+        val image = ImageIO.read(ByteArrayInputStream(jpeg)) ?: return null
+        if (image.width != width || image.height != height) return null
+        val out = ByteArray(width * height)
+        for (y in 0 until height) for (x in 0 until width) out[y * width + x] = (image.getRGB(x, y) and 0xFF).toByte()
+        return out
+    }
+
+    /** Image 480 × 270 refaite à partir de ses quatre coins (le reste en gris moyen) : ce que lit `LogoWatcher`. */
+    private fun corners(jpeg: ByteArray): ByteArray? {
+        val cw = (WIDTH * 0.275).toInt() + 1
+        val ch = (HEIGHT * 0.24).toInt() + 1
+        val composite = decode(jpeg, cw * 2, ch * 2) ?: return null
+        val out = ByteArray(WIDTH * HEIGHT) { 128.toByte() }
+        for (cy in 0..1) for (cx in 0..1) {
+            val dx = if (cx == 0) 0 else WIDTH - cw
+            val dy = if (cy == 0) 0 else HEIGHT - ch
+            for (y in 0 until ch) System.arraycopy(composite, (cy * ch + y) * cw * 2 + cx * cw, out, (dy + y) * WIDTH + dx, cw)
+        }
+        return out
+    }
+
     /** Enregistrement de l'appareil relu ([AdRecorder] de l'application). */
     private class DeviceRecording(
         val info: Map<String, String>,
         val slices: List<Slice>,
         val audio: FloatArray,
+        /** Empreintes du son calculées par l'appareil (format 3). */
+        val prints: List<Print>,
         /** Fréquences du son reçu au fil de l'enregistrement (instant, fréquence). */
         val soundRates: List<Pair<Long, Int>>,
         val frames: List<Frame>,
@@ -177,10 +215,25 @@ class AdDeviceReplayTool {
                 val read: (String) -> ByteArray? = { name -> entries[name] }
                 val info = read("info.txt")?.decodeToString()?.lines()?.filter { '=' in it }?.associate { it.substringBefore('=') to it.substringAfter('=') }.orEmpty()
                 val slices = ArrayList<Slice>()
+                // Format 3 : carré moyen et durée ; avant : aussi les échantillons de son enregistrés pour la tranche.
+                val withSound = (info["format"]?.toIntOrNull() ?: 1) < 3
                 read("levels.bin")?.let { bytes ->
                     val input = DataInputStream(ByteArrayInputStream(bytes))
                     try {
-                        while (true) slices += Slice(input.readFloat(), input.readShort().toInt(), input.readShort().toInt() and 0xFFFF)
+                        while (true) {
+                            val square = input.readFloat()
+                            val duration = input.readShort().toInt()
+                            slices += Slice(square, duration, if (withSound) input.readShort().toInt() and 0xFFFF else 0)
+                        }
+                    } catch (e: EOFException) {
+                        // Fin.
+                    }
+                }
+                val prints = ArrayList<Print>()
+                read("prints.bin")?.let { bytes ->
+                    val input = DataInputStream(ByteArrayInputStream(bytes))
+                    try {
+                        while (true) prints += Print(input.readInt().toLong(), input.readInt(), input.readByte().toInt() == 1)
                     } catch (e: EOFException) {
                         // Fin.
                     }
@@ -206,7 +259,7 @@ class AdDeviceReplayTool {
                 val soundRates = events.filter { it.second == "frequence" }.mapNotNull { (time, _, value) -> value.toIntOrNull()?.let { time to it } }
                 val audio = read("audio.ulaw")?.let { bytes -> FloatArray(bytes.size) { ulaw(bytes[it]) / 32_768f } } ?: FloatArray(0)
                 val lowering = events.filter { it.second == "baisse" }.map { it.first to (it.third == "1") }
-                return DeviceRecording(info, slices, audio, soundRates, frames.sortedBy { it.time }, lowering, events)
+                return DeviceRecording(info, slices, audio, prints, soundRates, frames.sortedBy { it.time }, lowering, events)
             }
 
             /** Décodage µ-law (G.711). */

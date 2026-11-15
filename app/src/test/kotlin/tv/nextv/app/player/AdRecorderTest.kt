@@ -40,9 +40,13 @@ class AdRecorderTest {
     }
     private var phase = 0
 
+    /** Horloge des images (ms), au rythme du son joué. */
+    private var clock = 0L
+
     private fun play(seconds: Double) {
         repeat((seconds * SAMPLE_RATE / BLOCK).toInt()) { block ->
-            if (block % 47 == 0) control.frame(ByteArray(AdVolumeControl.FRAME_WIDTH * AdVolumeControl.FRAME_HEIGHT) { (it % 200).toByte() })
+            clock += BLOCK * 1_000L / SAMPLE_RATE
+            if (block % 47 == 0) control.frame(ByteArray(AdVolumeControl.FRAME_WIDTH * AdVolumeControl.FRAME_HEIGHT) { (it % 200).toByte() }, clock)
             val input = ByteBuffer.allocateDirect(BLOCK * 4).order(ByteOrder.nativeOrder())
             repeat(BLOCK) {
                 val sample = (8_000 * sin(phase++ * 0.05)).toInt().toShort()
@@ -75,8 +79,10 @@ class AdRecorderTest {
 
     @Test
     fun `a recording keeps the sound, the pictures and the decisions until it is stopped`() {
+        control.prints = AdPrintStore(java.io.File(folder.newFolder("prints"), "library.bin"), kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined), 10_000)
+        control.newStream()
         val recordings = AdRecordings(folder.newFolder("recordings"), "0.0.0-test")
-        assertNotNull(recordings.start("TF1 HD", control))
+        val recorder = recordings.start("TF1 HD", control)!!
         assertNotNull(control.recordingMillis)
         play(70.0)
         // Pas de durée limite : toujours en cours.
@@ -86,28 +92,38 @@ class AdRecorderTest {
         val file = recordings.files.value.single()
         assertTrue(file.name, file.name.startsWith("pubs_TF1-HD_") && file.name.endsWith(".zip"))
         val entries = download(recordings, file.name)
-        assertEquals(setOf("info.txt", "levels.bin", "audio.ulaw", "frames.bin", "events.tsv"), entries.keys)
+        assertEquals(setOf("info.txt", "levels.bin", "prints.bin", "frames.bin", "events.tsv"), entries.keys)
         assertTrue("chaine=TF1 HD" in entries.getValue("info.txt").decodeToString())
-        // Une tranche de 20 ms (et un reste) par bloc de son, 8 octets chacune.
+        // Une tranche de 20 ms (et un reste) par bloc de son, 6 octets chacune.
         val levels = entries.getValue("levels.bin")
-        assertEquals(0, levels.size % 8)
+        assertEquals(0, levels.size % 6)
         var total = 0L
-        var samples = 0
         DataInputStream(levels.inputStream()).use { input ->
-            repeat(levels.size / 8) {
+            repeat(levels.size / 6) {
                 input.readFloat()
                 total += input.readShort()
-                samples += input.readShort()
             }
         }
         assertTrue("durée $total", total in 69_000..71_000)
-        // Son à 8 000 Hz (48 000 / 6), un octet par échantillon.
-        val audio = entries.getValue("audio.ulaw")
-        assertEquals(samples, audio.size)
-        assertTrue("échantillons ${audio.size}", abs(audio.size - 70 * 8_000) < 8_000)
-        assertTrue(entries.getValue("frames.bin").size > 70 * 5_000)
+        // Empreintes du son (62,5 par seconde), 9 octets chacune, à la place du son lui-même.
+        val prints = entries.getValue("prints.bin")
+        assertEquals(0, prints.size % 9)
+        assertTrue("empreintes ${prints.size / 9}", abs(prints.size / 9 - 70 * 62.5) < 300)
+        // Images : petites images (J), coins du logo (C) une par seconde, vignette (T) toutes les 5 s.
+        val types = HashMap<Char, Int>()
+        DataInputStream(entries.getValue("frames.bin").inputStream()).use { input ->
+            while (input.available() > 0) {
+                val type = input.readByte().toInt().toChar()
+                input.readLong()
+                input.skipBytes(input.readInt())
+                types[type] = (types[type] ?: 0) + 1
+            }
+        }
+        assertTrue("$types", (types['C'] ?: 0) in 60..80 && (types['T'] ?: 0) in 12..17 && (types['J'] ?: 0) >= 60)
+        // Taille écrite bien comptée (c'est elle qui fait couper les fichiers avant 30 Mo).
+        val written = entries.filterKeys { it != "info.txt" }.values.sumOf { it.size }.toLong()
+        assertTrue("comptés ${recorder.bytes}, écrits $written", abs(recorder.bytes - written) < 1_000)
         val events = entries.getValue("events.tsv").decodeToString()
-        assertTrue(events, "frequence\t48000" in events)
         assertTrue(events, "chaine\tTF1 HD" in events)
         assertNull(control.recordingMillis)
     }
@@ -167,7 +183,7 @@ class AdRecorderTest {
         waitFor { recordings.files.value.isNotEmpty() }
         assertEquals("Clé USB SanDisk", recordings.files.value.single().location)
         assertTrue(usb.listFiles()!!.single().name.startsWith("pubs_TF1_"))
-        assertEquals(setOf("info.txt", "levels.bin", "audio.ulaw", "frames.bin", "events.tsv"), download(recordings, recordings.files.value.single().name).keys)
+        assertEquals(setOf("info.txt", "levels.bin", "prints.bin", "frames.bin", "events.tsv"), download(recordings, recordings.files.value.single().name).keys)
 
         // Clé débranchée : rien ne commence, et l'appli dit pourquoi.
         plugged = false
@@ -191,7 +207,7 @@ class AdRecorderTest {
     fun `a recording cut short by the system is kept`() {
         val directory = folder.newFolder("recordings")
         java.io.File(directory, "pubs_TF1_2026-11-15_20-00.part").mkdirs()
-        java.io.File(directory, "pubs_TF1_2026-11-15_20-00.part/audio.ulaw").writeBytes(ByteArray(600_000))
+        java.io.File(directory, "pubs_TF1_2026-11-15_20-00.part/levels.bin").writeBytes(ByteArray(600_000))
         val recordings = AdRecordings(directory, "0.0.0-test")
         assertEquals(listOf("pubs_TF1_2026-11-15_20-00.zip"), recordings.files.value.map { it.name })
     }
@@ -232,14 +248,6 @@ class AdRecorderTest {
         assertEquals(1, music.count.value)
         music.deleteUploads()
         assertEquals(0, music.count.value)
-    }
-
-    @Test
-    fun `ulaw keeps quiet sounds and silence`() {
-        assertEquals(0xFF.toByte(), AdRecorder.ulaw(0))
-        // Plus fort : code plus petit (µ-law est inversé), dans l'ordre.
-        val codes = listOf(0, 10, 100, 1_000, 10_000, 32_000).map { AdRecorder.ulaw(it).toInt() and 0x7F }
-        assertEquals(codes.sortedDescending(), codes)
     }
 
     private companion object {

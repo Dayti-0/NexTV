@@ -9,24 +9,27 @@ import java.io.FileOutputStream
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.math.roundToInt
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Enregistrement pour l'analyse des pubs : tout ce que la détection reçoit pendant une lecture, et ce qu'elle décide,
- * pour la rejouer ensuite dans le code (`AdDeviceReplayTool`). Pas la vidéo : le son ramené vers 8 000 Hz (µ-law,
- * 8 Ko/s), les petites images en gris que la détection reçoit, celle du logo (JPEG, une par seconde) et les décisions.
- * Environ 90 Mo par heure ; il dure jusqu'à ce qu'on l'arrête (ou que la place manque), même si l'on change de chaîne.
+ * pour la rejouer ensuite dans le code (`AdDeviceReplayTool`). Ni la vidéo ni le son : les niveaux du son, ses
+ * empreintes ([AudioFingerprinter][tv.nextv.core.audio.AudioFingerprinter]), les petites images en gris que la
+ * détection reçoit, les coins de l'image où se trouve le logo et, toutes les 5 s, une vignette de l'image entière pour
+ * repérer les pubs à l'œil. Environ 25 Mo par heure ; [bytes] dit la taille écrite (les fichiers sont coupés avant
+ * 30 Mo, la limite d'un envoi). Il dure jusqu'à ce qu'on l'arrête (ou que la place manque), même d'une chaîne à l'autre.
  *
  * Fichiers, écrits au fil de l'eau dans [directory] (renommé sans « .part » à la fin, [AdRecordings]) :
- * - `info.txt` : chaîne, date, appareil ;
- * - `levels.bin` : pour chaque tranche de son traitée, carré moyen (float), durée en ms (short), échantillons enregistrés
- *   pour cette tranche (short) ;
- * - `audio.ulaw` : le son (mono, µ-law) ;
- * - `frames.bin` : images reçues, chacune : type (« S » image réduite 96 × 54, « L » image du logo en JPEG), instant
- *   (long), taille (int), octets ;
+ * - `info.txt` : chaîne, date, appareil, format ;
+ * - `levels.bin` : pour chaque tranche de son traitée, carré moyen (float) et durée en ms (short) ;
+ * - `prints.bin` : empreintes du son, chacune : instant (int), empreinte (int), son audible (byte) ;
+ * - `frames.bin` : images, chacune : type, instant (long), taille (int), octets JPEG. Types : « J » image réduite
+ *   96 × 54 reçue par la détection, « C » les quatre coins de l'image du logo (480 × 270 ; coins de 133 × 65, un point
+ *   de plus que ceux que lit `LogoWatcher`) côte à côte, deux par deux,
+ *   « T » vignette 160 × 90 de l'image entière ;
  * - `events.tsv` : instant, quoi, valeur : son baissé ou remis, logo, repères du flux, ce que la détection décide
  *   (« ouverture » / « fermeture » d'une page de pubs avec leur raison, « jonction », « empreinte » : pub reconnue),
- *   « flux » (nouvelle chaîne : la détection repart de zéro), « chaine » (son nom), « frequence » (du son reçu).
+ *   « flux » (nouvelle chaîne : la détection repart de zéro), « chaine » (son nom).
  *
  * Instants : horloge de l'enregistrement en millisecondes, celle de la détection (durée de son traitée) mise bout à bout
  * d'une chaîne à l'autre (la détection repart de zéro à chaque flux, [newStream]).
@@ -46,15 +49,14 @@ class AdRecorder(
     private var broken = false
 
     private lateinit var levels: DataOutputStream
-    private lateinit var audio: BufferedOutputStream
+    private lateinit var prints: DataOutputStream
     private lateinit var frames: DataOutputStream
     private lateinit var events: BufferedOutputStream
 
-    // Son ramené vers 8 000 Hz : moyenne de [factor] échantillons.
-    private var rate = 0
-    private var factor = 1
-    private var sum = 0f
-    private var summed = 0
+    private val written = AtomicLong(0)
+
+    /** Taille écrite jusqu'ici, en octets. */
+    val bytes: Long get() = written.get()
 
     /** Horloge de l'enregistrement au début du flux en cours (la détection repart de zéro à chaque flux). */
     @Volatile
@@ -64,6 +66,7 @@ class AdRecorder(
     @Volatile
     private var last = 0L
     private var spaceCheckedAt = 0L
+    private var thumbnailAt = Long.MIN_VALUE
 
     /** Durée enregistrée, en millisecondes. */
     @Volatile
@@ -82,7 +85,7 @@ class AdRecorder(
             directory.mkdirs()
             File(directory, "info.txt").writeText(info.entries.joinToString("") { (key, value) -> "$key=$value\n" })
             levels = DataOutputStream(BufferedOutputStream(FileOutputStream(File(directory, "levels.bin"))))
-            audio = BufferedOutputStream(FileOutputStream(File(directory, "audio.ulaw")))
+            prints = DataOutputStream(BufferedOutputStream(FileOutputStream(File(directory, "prints.bin"))))
             frames = DataOutputStream(BufferedOutputStream(FileOutputStream(File(directory, "frames.bin"))))
             events = BufferedOutputStream(FileOutputStream(File(directory, "events.tsv")))
         }
@@ -98,44 +101,20 @@ class AdRecorder(
         if (finished.get()) return
         base = last
         event(0, "flux", name.orEmpty())
-        rate = 0
     }
 
-    /**
-     * Tranche de son traitée par la détection : son carré moyen, sa durée, et le son lui-même ([mono], [count]
-     * échantillons à [sampleRate] Hz). [now] : horloge de la détection après la tranche.
-     */
-    fun sound(meanSquare: Double, durationMillis: Long, mono: FloatArray, count: Int, sampleRate: Int, now: Long) {
+    /** Tranche de son traitée par la détection : son carré moyen et sa durée. [now] : horloge de la détection après elle. */
+    fun sound(meanSquare: Double, durationMillis: Long, now: Long) {
         if (finished.get()) return
         val time = at(now)
-        if (sampleRate != rate) {
-            // Fréquence du son reçu : celle du son enregistré s'en déduit (divisée par [factor]).
-            event(now, "frequence", sampleRate.toString())
-            rate = sampleRate
-            factor = (sampleRate / TARGET_RATE.toDouble()).roundToInt().coerceAtLeast(1)
-            sum = 0f
-            summed = 0
-        }
-        val out = ByteArray(count / factor + 1)
-        var n = 0
-        for (i in 0 until count) {
-            sum += mono[i]
-            if (++summed == factor) {
-                out[n++] = ulaw((sum / factor * 32_767).roundToInt())
-                sum = 0f
-                summed = 0
-            }
-        }
         recordedMillis = time
         val square = meanSquare.toFloat()
-        val samples = n
         val checkSpace = time - spaceCheckedAt >= SPACE_CHECK_MILLIS
         if (checkSpace) spaceCheckedAt = time
         post {
             levels.writeFloat(square)
             levels.writeShort(durationMillis.toInt())
-            levels.writeShort(samples)
-            audio.write(out, 0, samples)
+            written.addAndGet(6)
             // Place sur l'appareil : l'enregistrement s'arrête avant de la remplir.
             if (checkSpace && directory.usableSpace < MIN_FREE_BYTES) {
                 stopReason = "place"
@@ -144,41 +123,81 @@ class AdRecorder(
         }
     }
 
+    /** Empreinte du son calculée par la détection, à l'instant [now] de la détection. */
+    fun print(print: Int, loud: Boolean, now: Long) {
+        if (finished.get()) return
+        val time = at(now)
+        post {
+            prints.writeInt(time.toInt())
+            prints.writeInt(print)
+            prints.writeByte(if (loud) 1 else 0)
+            written.addAndGet(9)
+        }
+    }
+
     /** Image réduite (96 × 54) reçue par la détection à l'instant [now] (horloge de la détection). */
     fun small(small: ByteArray, now: Long) {
         if (finished.get()) return
         val copy = small.copyOf()
         val time = at(now)
-        post { frame('S', time, copy) }
+        post { frame('J', time, jpeg(copy, SMALL_WIDTH, SMALL_HEIGHT, SMALL_QUALITY)) }
     }
 
-    /** Image de l'écran (gris, [width] × [height]) lue pour le logo à l'instant [now] : gardée en JPEG. */
+    /**
+     * Image de l'écran (gris, [width] × [height]) lue pour le logo à l'instant [now] : ses quatre coins (là où la
+     * détection cherche le logo) et, toutes les 5 s, une vignette de l'image entière.
+     */
     fun logoFrame(gray: ByteArray, width: Int, height: Int, now: Long) {
         if (finished.get()) return
         val copy = gray.copyOf()
         val time = at(now)
+        val thumbnail = thumbnailAt == Long.MIN_VALUE || time - thumbnailAt >= THUMBNAIL_MILLIS
+        if (thumbnail) thumbnailAt = time
         post {
-            val bitmap = bitmap?.takeIf { it.width == width && it.height == height }
-                ?: Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { bitmap = it }
-            val pixels = IntArray(width * height) { i ->
-                val v = copy[i].toInt() and 0xFF
-                (0xFF shl 24) or (v shl 16) or (v shl 8) or v
+            // Un point de plus vers l'intérieur : la détection du logo y lit le voisin de chaque point du coin.
+            val cw = (width * CORNER_WIDTH).toInt() + 1
+            val ch = (height * CORNER_HEIGHT).toInt() + 1
+            val corners = ByteArray(cw * 2 * ch * 2)
+            for (cy in 0..1) for (cx in 0..1) {
+                val sx = if (cx == 0) 0 else width - cw
+                val sy = if (cy == 0) 0 else height - ch
+                for (y in 0 until ch) System.arraycopy(copy, (sy + y) * width + sx, corners, (cy * ch + y) * cw * 2 + cx * cw, cw)
             }
-            bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
-            val jpeg = ByteArrayOutputStream()
-            bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, jpeg)
-            frame('L', time, jpeg.toByteArray())
+            frame('C', time, jpeg(corners, cw * 2, ch * 2, CORNER_QUALITY))
+            if (thumbnail) {
+                val small = ByteArray(THUMB_WIDTH * THUMB_HEIGHT)
+                for (y in 0 until THUMB_HEIGHT) for (x in 0 until THUMB_WIDTH) {
+                    small[y * THUMB_WIDTH + x] = copy[(y * height / THUMB_HEIGHT) * width + x * width / THUMB_WIDTH]
+                }
+                frame('T', time, jpeg(small, THUMB_WIDTH, THUMB_HEIGHT, THUMB_QUALITY))
+            }
         }
     }
 
-    private var bitmap: Bitmap? = null
+    private val bitmaps = HashMap<Long, Bitmap>()
+
+    /** Image en gris compressée en JPEG (sur le fil d'écriture). */
+    private fun jpeg(gray: ByteArray, width: Int, height: Int, quality: Int): ByteArray {
+        val bitmap = bitmaps.getOrPut(width.toLong() shl 32 or height.toLong()) { Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888) }
+        val pixels = IntArray(width * height) { i ->
+            val v = gray[i].toInt() and 0xFF
+            (0xFF shl 24) or (v shl 16) or (v shl 8) or v
+        }
+        bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
+        val out = ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.JPEG, quality, out)
+        return out.toByteArray()
+    }
 
     /** Ce que la détection décide ou voit (son baissé, logo, repères du flux…), à l'instant [now] de la détection. */
     fun event(now: Long, what: String, value: String) {
         if (finished.get()) return
         val time = at(now)
         val line = "$time\t$what\t${value.replace('\t', ' ').replace('\n', ' ')}\n".toByteArray()
-        post { events.write(line) }
+        post {
+            events.write(line)
+            written.addAndGet(line.size.toLong())
+        }
     }
 
     private fun frame(type: Char, time: Long, bytes: ByteArray) {
@@ -186,6 +205,7 @@ class AdRecorder(
         frames.writeLong(time)
         frames.writeInt(bytes.size)
         frames.write(bytes)
+        written.addAndGet(13L + bytes.size)
     }
 
     /** Travail confié au fil d'écriture ; une erreur arrête l'enregistrement, jamais l'application. */
@@ -213,13 +233,13 @@ class AdRecorder(
             writer.execute {
                 try {
                     levels.close()
-                    audio.close()
+                    prints.close()
                     frames.close()
                     events.close()
                 } catch (e: Exception) {
                     // Fichiers jamais ouverts (disque plein dès le début).
                 }
-                bitmap?.recycle()
+                bitmaps.values.forEach(Bitmap::recycle)
                 onFinished(stopReason)
             }
         } catch (e: RejectedExecutionException) {
@@ -229,27 +249,22 @@ class AdRecorder(
     }
 
     companion object {
-        const val TARGET_RATE = 8_000
-        private const val JPEG_QUALITY = 70
-
         /** Place laissée libre sur l'appareil : en dessous, l'enregistrement s'arrête. */
         const val MIN_FREE_BYTES = 200L * 1024 * 1024
         private const val SPACE_CHECK_MILLIS = 30_000L
 
-        /** Codage µ-law (G.711) d'un échantillon 16 bits. */
-        fun ulaw(sample: Int): Byte {
-            var value = sample.coerceIn(-32_635, 32_635)
-            val sign = if (value < 0) 0x80 else 0
-            if (value < 0) value = -value
-            value += 0x84
-            var exponent = 7
-            var mask = 0x4000
-            while (exponent > 0 && value and mask == 0) {
-                exponent--
-                mask = mask shr 1
-            }
-            val mantissa = (value shr (exponent + 3)) and 0x0F
-            return ((sign or (exponent shl 4) or mantissa).inv() and 0xFF).toByte()
-        }
+        /** Coins de l'image où la détection cherche le logo (comme `LogoWatcher`). */
+        const val CORNER_WIDTH = 0.275
+        const val CORNER_HEIGHT = 0.24
+        private const val CORNER_QUALITY = 70
+
+        private const val SMALL_WIDTH = 96
+        private const val SMALL_HEIGHT = 54
+        private const val SMALL_QUALITY = 90
+
+        private const val THUMB_WIDTH = 160
+        private const val THUMB_HEIGHT = 90
+        private const val THUMB_QUALITY = 60
+        private const val THUMBNAIL_MILLIS = 5_000L
     }
 }

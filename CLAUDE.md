@@ -197,8 +197,11 @@ Commandes :
   sans renfort 81 % des secondes de pub baissées (délai moyen 21 s), avec les repères 100 %. Les baisses « à tort »
   restantes, vues sur les images, étaient des bandes-annonces de la chaîne entre deux programmes (hors repères).
 - Enregistrement d'analyse fait sur l'appareil (0.2.154) : options du lecteur › « Enregistrer pour l'analyse des pubs »
-  (`AdRecordings` / `AdRecorder`, sans limite de durée jusqu'à l'arrêt, ~90 Mo/h, un dossier par enregistrement servi
-  en `.zip` fabriqué à la volée : `levels.bin`, `audio.ulaw` ~8 kHz, `frames.bin` petites images et logo en JPEG,
+  (`AdRecordings` / `AdRecorder`, sans limite de durée jusqu'à l'arrêt, un dossier par enregistrement servi en `.zip`
+  fabriqué à la volée ; format 3 (0.2.161, ~27 Mo/h, fichiers coupés à 27 Mo : l'utilisateur ne peut envoyer que
+  30 Mo) : `levels.bin` (carré moyen, durée), `prints.bin` (empreintes du son au lieu du son), `frames.bin` en JPEG
+  (« J » petites images, « C » les 4 coins du logo de 133 × 65 — un point de plus que `LogoWatcher`, sinon faux bord
+  appris comme logo —, « T » vignette 160 × 90 toutes les 5 s pour relever les pubs à l'œil),
   `events.tsv` avec « ouverture » / « fermeture » et leur raison, « jonction », « empreinte », « flux » (changement de
   chaîne : détection repartie de zéro, horloge mise bout à bout), « chaine »), récupéré par l'utilisateur sur son
   téléphone via Réglages › Son (petit serveur web local, adresse avec un code). Emplacement au choix (0.2.157) :
@@ -208,8 +211,8 @@ Commandes :
   réglage `ad_recordings_location` = identifiant du volume). Essai « Enregistrement automatique » (0.2.158,
   `PlayerViewModel.toggleAutoRecording`) : zappe dans la liste d'origine toutes les 30 min (pas pendant une baisse, au
   plus +10 min ; 1 min si la chaîne est en erreur), écran gardé allumé ; ouvert depuis « Toutes les chaînes », il suit
-  `AUTO_TNT_NUMBERS` (grandes chaînes à pub, `TntChannels`, `autoNext`). Fichiers coupés toutes les heures
-  (`splitAdRecording`, 0.2.160). Le rejouer : `AdDeviceReplayTool` (`AD_DEVICE`,
+  `AUTO_TNT_NUMBERS` (grandes chaînes à pub, `TntChannels`, `autoNext`). Fichiers coupés à 27 Mo ou 2 h
+  (`splitAdRecording`). Le rejouer : `AdDeviceReplayTool` (`AD_DEVICE`,
   `AD_PRINTS`, `AD_IMAGES=10` écrit une image par 10 s pour relever les pages de pub à l'œil dans `<nom>.truth.tsv`).
   C'est la seule façon de mesurer TF1, M6 et France Télévisions (pas de flux lisible d'ici, même avec un compte).
 - Musique pendant les pubs (0.2.159, réglage « Pendant les pubs » `AdSound` : baisser / radio / ma musique) :

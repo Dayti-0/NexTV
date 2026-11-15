@@ -286,8 +286,8 @@ class PlayerViewModel(
                 updateAdMusic(adMuted)
                 val adWatch = if (vlc == null) engine.adVolume.watch() else null
                 val adDetails = if (vlc == null) engine.adDetails() else null
-                // Enregistrement d'analyse coupé toutes les heures : un fichier par heure, plus facile à envoyer.
-                if ((engine.adRecordingMillis ?: 0) >= AD_RECORDING_SPLIT_MILLIS) splitAdRecording()
+                // Enregistrement d'analyse coupé avant 30 Mo (la limite d'un envoi), ou au bout de deux heures.
+                if (engine.adRecordingBytes >= AD_RECORDING_SPLIT_BYTES || (engine.adRecordingMillis ?: 0) >= AD_RECORDING_SPLIT_MILLIS) splitAdRecording()
                 val adRecording = engine.adRecordingMillis?.let { (it / 60_000).toInt() }
                 // Enregistrement d'analyse : la chaîne regardée y est notée à chaque changement.
                 if (adRecording != null && state.value.channelName != adRecordedChannel) {
@@ -1385,8 +1385,9 @@ class PlayerViewModel(
         /** Enregistrement automatique ouvert depuis « Toutes les chaînes » : grandes chaînes à pub de la TNT (numéros). */
         val AUTO_TNT_NUMBERS = listOf(1, 2, 3, 6, 9, 10, 11, 20, 22, 23)
 
-        /** Enregistrement d'analyse coupé en fichiers de cette durée (plus faciles à envoyer). */
-        const val AD_RECORDING_SPLIT_MILLIS = 60 * 60_000L
+        /** Enregistrement d'analyse coupé en fichiers de moins de 30 Mo (envoi), et au plus de cette durée. */
+        const val AD_RECORDING_SPLIT_BYTES = 27L * 1024 * 1024
+        const val AD_RECORDING_SPLIT_MILLIS = 2 * 60 * 60_000L
 
         /** Chaîne qui ne se lit pas : la suivante après ce délai. */
         const val AUTO_ERROR_MILLIS = 60_000L

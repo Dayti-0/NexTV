@@ -193,7 +193,10 @@ class AdVolumeControl {
             }
             printWatch = prints?.let { store ->
                 store.load()
-                AdPrintWatch(store.library, fresh, learner = store::learn, forget = store::forget)
+                AdPrintWatch(store.library, fresh, learner = store::learn, forget = store::forget).also { watch ->
+                    // Empreintes gardées par l'enregistrement d'analyse (à la place du son).
+                    watch.onPrint = { print, loud, time -> recorder?.takeIf { it.active }?.print(print, loud, time) }
+                }
             }
             guard = fresh
         }
@@ -326,7 +329,7 @@ class AdVolumeAudioProcessor(private val control: AdVolumeControl) : BaseAudioPr
         var offset = 0
         val watch = control.printWatch?.takeIf { it.guard === guard }
         val recorder = control.recorder?.takeIf { it.active }
-        if ((watch != null || recorder != null) && mono.size < slice / channels + 1) mono = FloatArray(slice / channels + 1)
+        if (watch != null && mono.size < slice / channels + 1) mono = FloatArray(slice / channels + 1)
         while (offset < samples) {
             val count = min(slice, samples - offset)
             var energy = 0.0
@@ -339,16 +342,16 @@ class AdVolumeAudioProcessor(private val control: AdVolumeControl) : BaseAudioPr
             val duration = carry / sampleRate
             carry -= duration * sampleRate
             target = guard.process(energy / count, duration)
-            if (watch != null || recorder != null) {
-                // Empreintes du son (pubs déjà entendues), enregistrement d'analyse : moyenne des canaux.
+            recorder?.sound(energy / count, duration, guard.now)
+            if (watch != null) {
+                // Empreintes du son (pubs déjà entendues) : moyenne des canaux.
                 val frames = count / channels
                 for (f in 0 until frames) {
                     var sum = 0
                     for (c in 0 until channels) sum += inputBuffer.getShort(start + 2 * (offset + f * channels + c)).toInt()
                     mono[f] = sum / (32_768f * channels)
                 }
-                watch?.feed(mono, frames, sampleRate, guard.now)
-                recorder?.sound(energy / count, duration, mono, frames, sampleRate, guard.now)
+                watch.feed(mono, frames, sampleRate, guard.now)
             }
             offset += count
         }

@@ -688,6 +688,9 @@ internal class PlayerEngine(
     /** Durée de l'enregistrement d'analyse en cours (ms) ; `null` sans enregistrement. */
     val adRecordingMillis: Long? get() = adVolume.recordingMillis
 
+    /** Taille du fichier d'enregistrement d'analyse en cours (octets) ; 0 sans enregistrement. */
+    val adRecordingBytes: Long get() = adVolume.recorder?.takeIf { it.active }?.bytes ?: 0L
+
     /** Pourquoi le dernier enregistrement d'analyse s'est arrêté tout seul (« place », « erreur » : clé retirée), `null` sinon. */
     val adRecordingStopReason: String? get() = container.adRecordings.current?.stopReason
 
