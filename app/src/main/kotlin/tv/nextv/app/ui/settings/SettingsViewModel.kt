@@ -1,5 +1,7 @@
 package tv.nextv.app.ui.settings
 
+import tv.nextv.app.player.AdRadios
+import tv.nextv.app.data.settings.AdSound
 import tv.nextv.app.player.allFilesAccessIntent
 import tv.nextv.app.player.describeStorage
 import kotlinx.coroutines.flow.first
@@ -339,6 +341,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             container.adRecordings.selected = key
             mutableAdPlace.value = withContext(Dispatchers.IO) {
                 container.adRecordings.refresh()
+                container.adMusic.refresh()
                 adPlace(key)
             }
         }
@@ -357,7 +360,35 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     /** Partage des enregistrements sur le réseau local, tant que le résultat n'est pas fermé ; `null` sans réseau. */
-    fun shareAdRecordings(): AdRecordings.Share? = container.adRecordings.share()
+    fun shareAdRecordings(): AdRecordings.Share? = container.adRecordings.share(music = container.adMusic)
+
+    /** Pendant les pubs : mode, radio choisie, morceaux sur l'appareil. */
+    val adSound: StateFlow<AdSoundUi> = combine(settings.adSound, settings.adRadio, container.adMusic.count) { mode, radio, tracks ->
+        AdSoundUi(mode, AdRadios.of(radio).name, tracks)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AdSoundUi())
+
+    /** Son baissé, puis une radio, puis la musique de l'appareil. */
+    fun cycleAdSound() {
+        viewModelScope.launch {
+            val modes = listOf(AdSound.LOWER, AdSound.RADIO, AdSound.MUSIC)
+            val next = modes[(modes.indexOf(settings.adSound.first()).coerceAtLeast(0) + 1) % modes.size]
+            settings.setAdSound(next)
+            withContext(Dispatchers.IO) { container.adMusic.refresh() }
+        }
+    }
+
+    /** Radio suivante de la liste. */
+    fun cycleAdRadio() {
+        viewModelScope.launch {
+            val current = AdRadios.all.indexOf(AdRadios.of(settings.adRadio.first()))
+            settings.setAdRadio(AdRadios.all[(current + 1) % AdRadios.all.size].key)
+        }
+    }
+
+    /** Supprime la musique envoyée depuis le téléphone. */
+    fun deleteAdMusic() {
+        viewModelScope.launch(Dispatchers.IO) { container.adMusic.deleteUploads() }
+    }
 
     fun deleteAdRecordings() = container.adRecordings.deleteAll()
 
@@ -522,3 +553,9 @@ data class AdPlace(
 
 /** Écran du système qui accorde l'accès aux clés USB (« Accès à tous les fichiers »), s'il existe. */
 fun SettingsViewModel.allFilesAccess(context: android.content.Context): android.content.Intent? = allFilesAccessIntent(context)
+
+/**
+ * Pendant les pubs (Réglages › Son) : son baissé, radio ou musique de l'appareil.
+ * @property radio nom de la radio choisie ; @property tracks morceaux de musique sur l'appareil.
+ */
+data class AdSoundUi(val mode: String = AdSound.LOWER, val radio: String = AdRadios.all.first().name, val tracks: Int = 0)

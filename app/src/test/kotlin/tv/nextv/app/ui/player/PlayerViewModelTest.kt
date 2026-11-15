@@ -715,6 +715,25 @@ class PlayerViewModelTest {
         store.clear()
     }
 
+    /** Radio à la place des pubs : l'écran s'ouvre, « ce n'est pas une pub » et la fermeture ne plantent pas. */
+    @Test
+    fun radioInsteadOfAdsOpensAndClosesCleanly() {
+        runBlocking {
+            container.settings.setLowerAdVolume(true)
+            container.settings.setAdSound(tv.nextv.app.data.settings.AdSound.RADIO)
+        }
+        val (live, _) = playlist()
+        val (viewModel, store) = open(live)
+        viewModel.onStart()
+        idle()
+        assertEquals("TF1", viewModel.state.value.channelName)
+        viewModel.dismissAdBreak()
+        idle()
+        assertTrue(!viewModel.state.value.adMuted)
+        assertNull(viewModel.state.value.adMusic)
+        store.clear()
+    }
+
     @Test
     fun theRemoteKeysOfAMovieNeverCrash() {
         val (_, movie) = playlist()

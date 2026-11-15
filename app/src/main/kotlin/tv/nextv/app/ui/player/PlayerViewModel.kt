@@ -1,5 +1,7 @@
 package tv.nextv.app.ui.player
 
+import tv.nextv.app.data.settings.AdSound
+import tv.nextv.app.player.AdRadios
 import android.content.Context
 import android.net.wifi.WifiManager
 import androidx.annotation.OptIn
@@ -239,11 +241,19 @@ class PlayerViewModel(
     /** Chaîne notée en dernier dans l'enregistrement d'analyse. */
     private var adRecordedChannel = ""
 
+    /** Musique pendant les pubs (réglage « Pendant les pubs ») : radio ou morceaux de l'appareil, à la place du son baissé. */
+    private val adMusic = tv.nextv.app.player.AdMusicPlayer(context.applicationContext)
+    private var adSoundMode = AdSound.LOWER
+    private var adRadioKey: String? = null
+
     /** Enregistrement automatique (essais) : change de chaîne tout seul, toute la nuit s'il le faut. */
     private var autoRecording: kotlinx.coroutines.Job? = null
 
     init {
         // Attention : rien de ce qui est déclaré plus bas dans la classe n'est encore prêt ici.
+        // Pendant les pubs : son baissé, radio ou musique de l'appareil (réglages, suivis pendant la lecture).
+        viewModelScope.launch { container.settings.adSound.collect { adSoundMode = it } }
+        viewModelScope.launch { container.settings.adRadio.collect { adRadioKey = it } }
         // Lecteur ouvert : les actualisations automatiques de la playlist et du guide attendent sa fermeture.
         container.playerOpened()
         // Chaîne ouverte depuis l'accueil : aucune catégorie choisie dans le menu des chaînes pour l'instant.
@@ -270,6 +280,7 @@ class PlayerViewModel(
                 resume.checkUpNext()
                 if (vlc == null) engine.updateAdCues()
                 val adMuted = engine.adVolume.enabled && engine.adVolume.attenuating
+                updateAdMusic(adMuted)
                 val adWatch = if (vlc == null) engine.adVolume.watch() else null
                 val adDetails = if (vlc == null) engine.adDetails() else null
                 val adRecording = engine.adRecordingMillis?.let { (it / 60_000).toInt() }
@@ -529,6 +540,44 @@ class PlayerViewModel(
         autoRecording?.cancel()
         autoRecording = null
         mutableState.update { it.copy(autoRecordingChannels = null) }
+    }
+
+    /**
+     * Musique des pubs : elle monte quand la page de pubs commence (son de la chaîne coupé), s'efface quand le programme
+     * reprend. Rien en pause, ni avec le moteur VLC (la détection n'y tourne pas).
+     */
+    private fun updateAdMusic(adMuted: Boolean) {
+        val wanted = adMuted && adSoundMode != AdSound.LOWER && !state.value.paused && vlc == null
+        if (wanted && !adMusic.playing) {
+            val label: String?
+            val source = when (adSoundMode) {
+                AdSound.RADIO -> AdRadios.of(adRadioKey).let { radio ->
+                    label = radio.name
+                    tv.nextv.app.player.AdMusicPlayer.Source.Radio(radio)
+                }
+                else -> container.adMusic.tracks().takeIf { it.isNotEmpty() }.let { files ->
+                    label = files?.let { resources.getString(R.string.player_ad_music_own) }
+                    files?.let { tv.nextv.app.player.AdMusicPlayer.Source.Tracks(it) }
+                }
+            }
+            if (source != null) {
+                adMusic.start(source)
+                mutableState.update { it.copy(adMusic = label) }
+            }
+        } else if (!wanted && adMusic.playing) {
+            adMusic.stop()
+            mutableState.update { it.copy(adMusic = null) }
+        }
+        // Son de la chaîne coupé (et non baissé) seulement quand la musique joue vraiment.
+        engine.adVolume.muteAds = adMusic.playing && !adMusic.failed
+    }
+
+    /** Options › « Ce n'est pas une pub » : le son de la chaîne revient tout de suite, la musique s'arrête. */
+    fun dismissAdBreak() {
+        engine.adVolume.dismissBreak()
+        if (adMusic.playing) adMusic.stop()
+        engine.adVolume.muteAds = false
+        mutableState.update { it.copy(adMuted = false, adMusic = null) }
     }
 
     fun setLowerAdVolume(enabled: Boolean) {
@@ -1275,6 +1324,7 @@ class PlayerViewModel(
     }
 
     override fun onCleared() {
+        adMusic.release()
         container.playerClosed()
         resume.saveBeforeClose()
         releaseVlc()

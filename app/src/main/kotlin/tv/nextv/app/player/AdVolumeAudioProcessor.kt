@@ -90,6 +90,19 @@ class AdVolumeControl {
     var printWatch: AdPrintWatch? = null
         private set
 
+    /**
+     * Musique pendant les pubs (radio ou morceaux de l'appareil) : le son de la chaîne est alors coupé, plus seulement
+     * baissé, pendant la page de pubs.
+     */
+    @Volatile
+    var muteAds: Boolean = false
+
+    /** « Ce n'est pas une pub » : le son revient, et pas de nouvelle page de pubs pendant quelques minutes. */
+    fun dismissBreak() {
+        guard.dismiss()
+        attenuating = guard.attenuating
+    }
+
     /** Enregistrement pour l'analyse des pubs en cours ([AdRecordings]) : reçoit le son, les images et les décisions. */
     @Volatile
     var recorder: AdRecorder? = null
@@ -339,6 +352,8 @@ class AdVolumeAudioProcessor(private val control: AdVolumeControl) : BaseAudioPr
             }
             offset += count
         }
+        // Musique pendant les pubs : le son de la chaîne s'efface complètement (même fondu que la baisse).
+        if (control.muteAds) target = ((target - MIN_GAIN) / (1 - MIN_GAIN)).coerceIn(0.0, 1.0)
         control.attenuating = guard.attenuating
         control.heard()
         if (recorder != null) control.recordDecision()
@@ -357,5 +372,10 @@ class AdVolumeAudioProcessor(private val control: AdVolumeControl) : BaseAudioPr
         guard = null
         gain = 1.0
         control.attenuating = false
+    }
+
+    private companion object {
+        /** Gain le plus bas de la détection (−24 dB) : ramené à zéro quand la musique remplace la pub. */
+        val MIN_GAIN = Math.pow(10.0, -24.0 / 20)
     }
 }

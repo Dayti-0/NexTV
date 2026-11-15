@@ -206,6 +206,35 @@ class AdRecorderTest {
     }
 
     @Test
+    fun `music is sent from the phone to the device`() {
+        val recordings = AdRecordings(folder.newFolder("recordings"), "0.0.0-test")
+        val music = AdMusicLibrary(folder.newFolder("music"))
+        recordings.share(host = "127.0.0.1", music = music)!!.use { share ->
+            assertTrue(URL(share.address).openStream().use { it.readBytes().decodeToString() }.contains("Envoyer vers la télé"))
+            fun put(name: String, bytes: ByteArray): Int {
+                val connection = URL(share.address + "musique/" + java.net.URLEncoder.encode(name, "UTF-8").replace("+", "%20")).openConnection() as HttpURLConnection
+                connection.requestMethod = "PUT"
+                connection.doOutput = true
+                connection.setFixedLengthStreamingMode(bytes.size)
+                connection.outputStream.use { it.write(bytes) }
+                return connection.responseCode
+            }
+            val song = ByteArray(300_000) { (it % 251).toByte() }
+            assertEquals(200, put("Mon morceau prefere.mp3", song))
+            // Pas un morceau de musique, ou un chemin : refusé.
+            assertEquals(400, put("photo.jpg", ByteArray(10)))
+            assertEquals(400, put("../../evil.mp3", ByteArray(0)))
+            assertEquals(1, share.received)
+        }
+        val tracks = music.tracks()
+        assertEquals(listOf("Mon morceau prefere.mp3"), tracks.map { it.name })
+        assertEquals(300_000L, tracks.single().length())
+        assertEquals(1, music.count.value)
+        music.deleteUploads()
+        assertEquals(0, music.count.value)
+    }
+
+    @Test
     fun `ulaw keeps quiet sounds and silence`() {
         assertEquals(0xFF.toByte(), AdRecorder.ulaw(0))
         // Plus fort : code plus petit (µ-law est inversé), dans l'ordre.

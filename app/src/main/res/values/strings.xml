@@ -323,6 +323,9 @@
     <string name="player_last_channel">Dernière chaîne regardée</string>
     <string name="player_lower_ads">Baisser le son des pubs</string>
     <string name="player_ad_muted">Pub : son baissé</string>
+    <string name="player_ad_music_playing">Pub : %1$s à la place</string>
+    <string name="player_ad_music_own">votre musique</string>
+    <string name="player_not_an_ad">Ce n’est pas une pub : remettre le son</string>
     <string name="player_replay">Replay</string>
     <string name="player_replay_unavailable">Ce programme n’est pas disponible en replay.</string>
     <string name="player_backup_server">Serveur principal injoignable : lecture par un serveur de secours</string>
@@ -379,6 +382,16 @@
     <string name="player_ad_recording_no_access">Enregistrement impossible : l’appli n’a pas le droit d’écrire sur la clé USB (Réglages › Son › Autoriser l’accès à la clé USB)</string>
     <string name="player_ad_recording_usb_unwritable">Enregistrement impossible : la clé USB n’accepte pas l’écriture (Réglages › Son)</string>
     <string name="player_ad_recording_write_error">Enregistrement d’analyse arrêté : écriture impossible (clé USB retirée ?)</string>
+    <string name="settings_ad_sound">Pendant les pubs</string>
+    <string name="settings_ad_sound_lower">Baisser le son</string>
+    <string name="settings_ad_sound_radio">Mettre la radio à la place : %1$s</string>
+    <string name="settings_ad_sound_music">Mettre ma musique à la place (%1$d morceau(x))</string>
+    <string name="settings_ad_sound_help">OK passe au choix suivant. Avec la radio ou votre musique, le son de la chaîne est coupé pendant la pub et la musique monte en fondu, puis s’efface au retour du programme. Si la pub est mal repérée : options du lecteur › « Ce n’est pas une pub ».</string>
+    <string name="settings_ad_radio">Radio</string>
+    <string name="settings_ad_music">Ma musique</string>
+    <string name="settings_ad_music_value">%1$d morceau(x) : en ajouter depuis le téléphone</string>
+    <string name="settings_ad_music_help">Sur un téléphone ou un ordinateur relié au même réseau (Wi-Fi de la maison), ouvrez cette adresse dans le navigateur, choisissez vos morceaux (MP3, M4A…) puis « Envoyer vers la télé ». Sur une clé USB, un dossier « NixTV/musique » est lu aussi. L’adresse marche tant que cette fenêtre est ouverte.</string>
+    <string name="settings_ad_music_count">%1$d morceau(x) sur l’appareil</string>
     <string name="settings_ad_recordings_place">Emplacement des enregistrements</string>
     <string name="settings_ad_recordings_internal">Mémoire de l’appareil</string>
     <string name="settings_ad_recordings_free">%1$s · %2$s Go libres</string>

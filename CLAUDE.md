@@ -210,6 +210,12 @@ Commandes :
   plus +10 min ; 1 min si la chaîne est en erreur), écran gardé allumé. Le rejouer : `AdDeviceReplayTool` (`AD_DEVICE`,
   `AD_PRINTS`, `AD_IMAGES=10` écrit une image par 10 s pour relever les pages de pub à l'œil dans `<nom>.truth.tsv`).
   C'est la seule façon de mesurer TF1, M6 et France Télévisions (pas de flux lisible d'ici, même avec un compte).
+- Musique pendant les pubs (0.2.159, réglage « Pendant les pubs » `AdSound` : baisser / radio / ma musique) :
+  `player/AdMusic.kt` (`AdRadios` Radio France sans pub, `AdMusicLibrary` dossier `files/ad_music` rempli depuis le
+  téléphone par `PUT …/musique/<nom>` sur le serveur local d'`AdRecordings.Share`, plus `NixTV/musique` des clés USB,
+  `AdMusicPlayer` second ExoPlayer sans focus audio, fondus) ; branché par `PlayerViewModel.updateAdMusic` (boucle de
+  0,5 s) ; `AdVolumeControl.muteAds` coupe la chaîne au lieu de −24 dB. « Ce n'est pas une pub » :
+  `AdVolumeGuard.dismiss` (3 min sans nouvelle page, les repères du flux décident toujours).
 
 ## Essais sur de vrais flux
 

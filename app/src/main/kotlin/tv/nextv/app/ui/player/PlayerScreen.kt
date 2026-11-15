@@ -578,6 +578,7 @@ fun PlayerScreen(
             lowerAdVolume = state.lowerAdVolume,
             onLowerAdVolume = viewModel::setLowerAdVolume,
             adRecordingMinutes = state.adRecordingMinutes,
+            onNotAnAd = viewModel::dismissAdBreak.takeIf { state.adMuted },
             autoRecordingChannels = state.autoRecordingChannels,
             onAutoRecording = viewModel::toggleAutoRecording.takeIf { state.lowerAdVolume && state.isLive && vlc == null },
             onAdRecording = viewModel::toggleAdRecording.takeIf { state.lowerAdVolume && state.isLive && vlc == null },
@@ -609,7 +610,10 @@ fun PlayerScreen(
             exit = fadeOut(),
             modifier = Modifier.align(Alignment.TopStart).padding(24.dp),
         ) {
-            StatusPill(stringResource(R.string.player_ad_muted), NexTvColors.Warning)
+            StatusPill(
+                state.adMusic?.let { stringResource(R.string.player_ad_music_playing, it) } ?: stringResource(R.string.player_ad_muted),
+                NexTvColors.Warning,
+            )
         }
 
         // Image sans son : dit clairement pourquoi, en haut à droite, quelques secondes puis avec le bandeau.
@@ -710,6 +714,8 @@ fun PlayerOptionsPanel(
     onLowerAdVolume: (Boolean) -> Unit = {},
     /** Enregistrement pour l'analyse des pubs en cours : minutes enregistrées ; `null` sans enregistrement. */
     adRecordingMinutes: Int? = null,
+    /** Page de pubs détectée en ce moment : « Ce n'est pas une pub » remet le son ; `null` : pas de page de pubs. */
+    onNotAnAd: (() -> Unit)? = null,
     /** Enregistrement automatique en cours : chaînes parcourues ; `null` sinon. */
     autoRecordingChannels: Int? = null,
     /** Commence ou arrête l'enregistrement automatique (essais) ; `null` : pas proposé. */
@@ -843,6 +849,8 @@ fun PlayerOptionsPanel(
                 OptionsSection(stringResource(R.string.player_more))
                 if (isLive) OptionRow(stringResource(R.string.player_last_channel), selected = false, onClick = onPreviousChannel)
                 if (isLive) OptionRow(stringResource(R.string.player_lower_ads), selected = lowerAdVolume) { onLowerAdVolume(!lowerAdVolume) }
+                // Détection trompée (son baissé ou musique sur le programme) : le son revient tout de suite.
+                onNotAnAd?.let { OptionRow(stringResource(R.string.player_not_an_ad), selected = false, onClick = it) }
                 // Enregistrement pour l'analyse des pubs (son, petites images, décisions), récupéré depuis Réglages.
                 onAdRecording?.let { toggle ->
                     OptionRow(

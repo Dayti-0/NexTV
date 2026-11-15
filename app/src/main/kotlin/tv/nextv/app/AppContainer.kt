@@ -51,6 +51,8 @@ import tv.nextv.app.data.update.AppUpdater
 import tv.nextv.app.player.AdMarksStore
 import tv.nextv.app.player.AdPrintStore
 import tv.nextv.app.player.AdRecordings
+import tv.nextv.app.player.AdMusicLibrary
+import tv.nextv.app.player.removableMusicFolders
 import tv.nextv.app.player.PlayerFactory
 import tv.nextv.app.player.PreviewHandoffSlot
 import tv.nextv.app.player.TIMESHIFT_FILE
@@ -199,6 +201,9 @@ class AppContainer(context: Context) {
             applicationScope.launch { settings.adRecordingsLocation.collect { recordings.selected = it } }
         }
     }
+
+    /** Musique jouée pendant les pubs : envoyée depuis le téléphone (Réglages › Son), ou dossier « NixTV/musique » d'une clé USB. */
+    val adMusic by lazy { AdMusicLibrary(File(appContext.filesDir, "ad_music")) { removableMusicFolders(appContext) } }
 
     /** « Baisser le son des pubs » : pubs déjà entendues (empreintes du son), reconnues sur toutes les chaînes. */
     val adPrints by lazy {

@@ -180,7 +180,7 @@ class AdRecordings(
      * web, à une adresse qui contient un code tiré au hasard (les autres appareils du réseau ne la devinent pas).
      * `null` sans réseau local.
      */
-    fun share(host: String? = localAddress()): Share? {
+    fun share(host: String? = localAddress(), music: AdMusicLibrary? = null): Share? {
         if (host == null) return null
         val socket = try {
             ServerSocket().apply {
@@ -195,16 +195,25 @@ class AdRecordings(
             return null
         }
         val code = (1..6).map { CODE_LETTERS[Random.nextInt(CODE_LETTERS.length)] }.joinToString("")
-        return Share(this, socket, code, "http://$host:${socket.localPort}/$code/")
+        return Share(this, socket, code, "http://$host:${socket.localPort}/$code/", music)
     }
 
-    /** Partage en cours ([address] à ouvrir sur le téléphone) ; [close] l'arrête. */
+    /**
+     * Partage en cours ([address] à ouvrir sur le téléphone) ; [close] l'arrête. Avec [music], la page permet aussi
+     * d'envoyer des morceaux de musique du téléphone vers l'appareil (musique jouée pendant les pubs).
+     */
     class Share internal constructor(
         private val recordings: AdRecordings,
         private val socket: ServerSocket,
         private val code: String,
         val address: String,
+        private val music: AdMusicLibrary? = null,
     ) : AutoCloseable {
+
+        /** Morceaux reçus depuis l'ouverture du partage. */
+        @Volatile
+        var received: Int = 0
+            private set
 
         init {
             Thread({ serve() }, "ad-recordings-share").apply { isDaemon = true }.start()
@@ -225,11 +234,49 @@ class AdRecordings(
             client.use {
                 try {
                     client.soTimeout = 15_000
-                    val request = client.getInputStream().bufferedReader().readLine() ?: return
+                    val input = client.getInputStream()
+                    // Requête lue à la main (une ligne par en-tête) : le corps d'un envoi suit, octet pour octet.
+                    val request = line(input) ?: return
+                    val headers = HashMap<String, String>()
+                    while (true) {
+                        val header = line(input) ?: return
+                        if (header.isEmpty()) break
+                        headers[header.substringBefore(':').trim().lowercase()] = header.substringAfter(':', "").trim()
+                    }
+                    val method = request.substringBefore(' ')
                     val path = request.split(' ').getOrNull(1).orEmpty()
                     val out = client.getOutputStream()
                     val prefix = "/$code/"
                     when {
+                        method == "PUT" && path.startsWith(prefix + MUSIC_PATH) && music != null -> {
+                            val name = java.net.URLDecoder.decode(path.removePrefix(prefix + MUSIC_PATH), "UTF-8")
+                            val length = headers["content-length"]?.toLongOrNull() ?: -1L
+                            val target = music.target(name)
+                            if (target == null || !music.hasRoom(length)) {
+                                out.write("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
+                            } else {
+                                // Reçu dans un fichier à part, renommé une fois complet (envoi coupé : rien de gardé).
+                                val partial = java.io.File(target.parentFile, ".${target.name}.part")
+                                var left = length
+                                partial.outputStream().use { file ->
+                                    val buffer = ByteArray(64 * 1024)
+                                    while (left > 0) {
+                                        val read = input.read(buffer, 0, minOf(buffer.size.toLong(), left).toInt())
+                                        if (read < 0) break
+                                        file.write(buffer, 0, read)
+                                        left -= read
+                                    }
+                                }
+                                if (left == 0L && partial.renameTo(target)) {
+                                    received++
+                                    music.refresh()
+                                    out.write("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
+                                } else {
+                                    partial.delete()
+                                    out.write("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
+                                }
+                            }
+                        }
                         path == prefix || path == prefix.dropLast(1) -> {
                             val body = page().toByteArray()
                             out.write("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n".toByteArray())
@@ -265,14 +312,36 @@ class AdRecordings(
             }
         }
 
+        /** Ligne d'en-tête HTTP (jusqu'au retour à la ligne), lue octet par octet ; `null` en fin de flux. */
+        private fun line(input: java.io.InputStream): String? {
+            val bytes = java.io.ByteArrayOutputStream()
+            while (true) {
+                val b = input.read()
+                if (b < 0) return if (bytes.size() == 0) null else bytes.toString("UTF-8")
+                if (b == '\n'.code) return bytes.toString("UTF-8").trimEnd('\r')
+                bytes.write(b)
+                if (bytes.size() > MAX_HEADER) return null
+            }
+        }
+
         private fun page(): String {
             val rows = recordings.files.value.joinToString("") { file ->
                 val link = URLEncoder.encode(file.name, "UTF-8")
                 "<li><a href=\"$link\">${file.name}</a> (${String.format(Locale.FRANCE, "%.1f", file.bytes / 1_000_000.0)} Mo)</li>"
             }
+            val musicPart = music?.let { library ->
+                val tracks = library.tracks()
+                "<h1>Musique pendant les pubs</h1><p>${tracks.size} morceau(x) sur l’appareil.</p>" +
+                    "<p><input type=\"file\" id=\"files\" multiple accept=\"audio/*\"> <button onclick=\"send()\">Envoyer vers la télé</button></p>" +
+                    "<p id=\"state\"></p>" +
+                    "<script>async function send(){const f=document.getElementById('files').files;const s=document.getElementById('state');" +
+                    "let ok=0;for(let i=0;i<f.length;i++){s.textContent='Envoi '+(i+1)+' sur '+f.length+' : '+f[i].name;" +
+                    "try{const r=await fetch('$MUSIC_PATH'+encodeURIComponent(f[i].name),{method:'PUT',body:f[i]});if(r.ok)ok++;}catch(e){}}" +
+                    "s.textContent=ok+' morceau(x) envoyé(s) sur '+f.length+'.';}</script>"
+            }.orEmpty()
             return "<!doctype html><html lang=\"fr\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">" +
-                "<title>NixTV : enregistrements</title><style>body{font-family:sans-serif;margin:24px;font-size:18px}li{margin:14px 0}</style></head>" +
-                "<body><h1>Enregistrements pour l’analyse des pubs</h1>" +
+                "<title>NixTV</title><style>body{font-family:sans-serif;margin:24px;font-size:18px}li{margin:14px 0}button,input{font-size:18px}</style></head>" +
+                "<body>" + musicPart + "<h1>Enregistrements pour l’analyse des pubs</h1>" +
                 (if (rows.isEmpty()) "<p>Aucun enregistrement.</p>" else "<p>Touchez un fichier pour le télécharger.</p><ul>$rows</ul>") +
                 "</body></html>"
         }
@@ -294,6 +363,8 @@ class AdRecordings(
         /** Une minute de son enregistré (8 000 octets par seconde). */
         const val MIN_AUDIO_BYTES = 60L * 8_000
         const val PORT = 8090
+        const val MUSIC_PATH = "musique/"
+        const val MAX_HEADER = 8 * 1024
         const val CODE_LETTERS = "abcdefghjkmnpqrstuvwxyz23456789"
 
         fun safe(text: String): String =

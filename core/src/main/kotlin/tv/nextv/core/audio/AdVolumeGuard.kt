@@ -126,6 +126,9 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
      */
     var onEvent: ((time: Long, what: String, detail: String) -> Unit)? = null
 
+    /** Page de pubs annulée à la main (« ce n'est pas une pub ») : aucune nouvelle avant cet instant. */
+    private var dismissedUntil = NEVER
+
     /** Dernière pub reconnue notée ([onEvent]) : une seule note toutes les quelques secondes. */
     private var printNotedAt = NEVER
 
@@ -244,12 +247,25 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
         if (!confirmed && !sustained && !attenuating) return true
         lastEvidence = elapsed
         lastJunction = elapsed
-        if (!attenuating) {
+        if (!attenuating && !dismissed()) {
             trace?.invoke("pub reconnue à $elapsed ms (${if (confirmed) "sûre" else "à l'essai"})")
             open(Opening.PRINT)
         }
         return true
     }
+
+    /**
+     * « Ce n'est pas une pub » (options du lecteur) : le son revient tout de suite, et la détection ne rouvre pas de
+     * page de pubs pendant [DISMISS_MILLIS] (les repères du flux, eux, décident toujours).
+     */
+    @Synchronized
+    fun dismiss() {
+        dismissedUntil = elapsed + DISMISS_MILLIS
+        chain.clear()
+        if (attenuating && cue == CueState.NONE) close(learn = false, end = elapsed, confirmed = false, reason = "annule a la main")
+    }
+
+    private fun dismissed() = dismissedUntil != NEVER && elapsed < dismissedUntil
 
     private fun notePrint(detail: String) {
         if (printNotedAt != NEVER && elapsed - printNotedAt < PRINT_NOTE_MILLIS) return
@@ -347,7 +363,7 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
         }
         trace?.invoke("jonction à ${junction.time} ms : $kind, suite de ${chain.size}, logo $logo")
         onEvent?.invoke(junction.time, "jonction", "$kind, ${chain.size} de suite")
-        if (!attenuating && cue == CueState.NONE) {
+        if (!attenuating && cue == CueState.NONE && !dismissed()) {
             val by = opens(junction, repeated != null)
             if (by != Opening.NONE) open(by)
         }
@@ -553,6 +569,9 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
         const val SPOT_STEP_MILLIS = 5_000L
         const val SPOT_EARLY_MILLIS = 700L
         const val SPOT_LATE_MILLIS = 1_800L
+
+        /** Après « ce n'est pas une pub » : pas de nouvelle page de pubs pendant ce temps. */
+        const val DISMISS_MILLIS = 3 * 60_000L
 
         /** Pub reconnue notée au plus toutes les 5 secondes dans l'enregistrement d'analyse. */
         const val PRINT_NOTE_MILLIS = 5_000L

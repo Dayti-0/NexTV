@@ -251,6 +251,20 @@ class SettingsRepository(
     /** Son baissé pendant les publicités (repérées à leur niveau sonore). */
     val lowerAdVolume: Flow<Boolean> = preferences.map { it[LOWER_AD_VOLUME] ?: false }.distinctUntilChanged()
 
+    /** Pendant les pubs : son baissé (`lower`), une radio (`radio`) ou la musique gardée sur l'appareil (`music`). */
+    val adSound: Flow<String> = preferences.map { it[AD_SOUND] ?: AdSound.LOWER }.distinctUntilChanged()
+
+    suspend fun setAdSound(mode: String) {
+        edit { it[AD_SOUND] = mode }
+    }
+
+    /** Radio jouée pendant les pubs (clé de `AdRadios`). */
+    val adRadio: Flow<String?> = preferences.map { it[AD_RADIO] }.distinctUntilChanged()
+
+    suspend fun setAdRadio(key: String) {
+        edit { it[AD_RADIO] = key }
+    }
+
     suspend fun setLowerAdVolume(enabled: Boolean) {
         edit { it[LOWER_AD_VOLUME] = enabled }
     }
@@ -600,6 +614,8 @@ class SettingsRepository(
         val START_ON_LAST_CHANNEL = booleanKey("start_on_last_channel")
         val FAVORITE_TEAMS = stringKey("favorite_teams")
         val LOWER_AD_VOLUME = booleanKey("lower_ad_volume")
+        val AD_SOUND = stringKey("ad_sound")
+        val AD_RADIO = stringKey("ad_radio")
         val THEME_STYLE = stringKey("theme_style")
         val PREVIOUS_THEME_STYLE = stringKey("previous_theme_style")
         val HOME_LAYOUT = stringKey("home_layout")
@@ -653,4 +669,11 @@ data class GridColumns(
         val PER_ROW = 2..5
         const val DEFAULT_PER_ROW = 4
     }
+}
+
+/** Pendant les pubs ([SettingsRepository.adSound]) : son baissé, une radio, ou la musique gardée sur l'appareil. */
+object AdSound {
+    const val LOWER = "lower"
+    const val RADIO = "radio"
+    const val MUSIC = "music"
 }

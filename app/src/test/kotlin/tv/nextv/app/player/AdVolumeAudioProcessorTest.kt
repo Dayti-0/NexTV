@@ -208,6 +208,41 @@ class AdVolumeAudioProcessorTest {
     }
 
     @Test
+    fun `with music instead of the ads, the channel is silent, and not an ad brings the sound back`() {
+        picture = scene()
+        play(10.0)
+        control.muteAds = true
+        control.cues.splice(out = true, atMs = 0, durationMs = 60_000)
+        control.cueAt(now)
+        // Son de la chaîne coupé (et non baissé) pendant la pub.
+        assertEquals(0, play(3.0))
+        assertTrue(control.attenuating)
+        // Les repères du flux décident : « ce n'est pas une pub » n'y change rien.
+        control.dismissBreak()
+        play(1.0)
+        assertTrue(control.attenuating)
+
+        // Sans repères : une page de pubs détectée par la détection seule, annulée à la main.
+        control.newStream()
+        control.muteAds = false
+        picture = scene()
+        play(60.0)
+        nextSpot()
+        play(20.0)
+        nextSpot()
+        play(5.0)
+        assertTrue(control.attenuating)
+        control.dismissBreak()
+        assertFalse(control.attenuating)
+        assertFullVolume(play(2.0))
+        // Pas de nouvelle page de pubs juste après, même sur d'autres jonctions.
+        repeat(3) {
+            nextSpot()
+            assertFullVolume(play(15.0))
+        }
+    }
+
+    @Test
     fun `an ad already heard on another channel is recognized within seconds`() {
         val store = AdPrintStore(File.createTempFile("prints", ".bin").also { it.delete() }, CoroutineScope(Dispatchers.Unconfined), 100_000)
         val spot = voice(seed = 3, seconds = 12.0)

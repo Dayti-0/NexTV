@@ -1,5 +1,6 @@
 package tv.nextv.app.ui.settings
 
+import tv.nextv.app.data.settings.AdSound
 import tv.nextv.app.player.AdRecordings
 import androidx.compose.runtime.DisposableEffect
 import tv.nextv.app.ui.components.FadingBottom
@@ -135,6 +136,7 @@ fun SettingsScreen(
     val account by viewModel.account.collectAsStateWithLifecycle()
     val adRecordings by viewModel.adRecordings.collectAsStateWithLifecycle()
     val adPlace by viewModel.adPlace.collectAsStateWithLifecycle()
+    val adSound by viewModel.adSound.collectAsStateWithLifecycle()
     // Clé USB branchée ou retirée, autorisation accordée : emplacements relus à chaque retour sur les réglages.
     val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle) {
@@ -262,6 +264,10 @@ fun SettingsScreen(
         adRecordings = adRecordings,
         adPlace = adPlace,
         onCycleAdPlace = viewModel::cycleAdPlace,
+        adSound = adSound,
+        onCycleAdSound = viewModel::cycleAdSound,
+        onCycleAdRadio = viewModel::cycleAdRadio,
+        onDeleteAdMusic = viewModel::deleteAdMusic,
         onAllowUsb = {
             val opened = viewModel.allFilesAccess(context)?.let { intent -> runCatching { context.startActivity(intent) }.isSuccess } ?: false
             if (!opened) scope.launch { snackbar.showSnackbar(resources.getString(R.string.settings_ad_recordings_allow_manual)) }
@@ -322,6 +328,11 @@ fun SettingsContent(
     adRecordings: List<AdRecordings.Recording> = emptyList(),
     adPlace: AdPlace = AdPlace(),
     onCycleAdPlace: () -> Unit = {},
+    /** Pendant les pubs : son baissé, radio ou musique de l'appareil. */
+    adSound: AdSoundUi = AdSoundUi(),
+    onCycleAdSound: () -> Unit = {},
+    onCycleAdRadio: () -> Unit = {},
+    onDeleteAdMusic: () -> Unit = {},
     onAllowUsb: () -> Unit = {},
     onShareAdRecordings: () -> AdRecordings.Share? = { null },
     onDeleteAdRecordings: () -> Unit = {},
@@ -499,6 +510,33 @@ fun SettingsContent(
                         checked = state.lowerAdVolume,
                         onChange = onLowerAdVolume,
                     )
+                    // Pendant les pubs : son baissé, une radio sans pub, ou la musique envoyée depuis le téléphone.
+                    if (state.lowerAdVolume) {
+                        ValueRow(
+                            title = stringResource(R.string.settings_ad_sound),
+                            value = when (adSound.mode) {
+                                AdSound.RADIO -> stringResource(R.string.settings_ad_sound_radio, adSound.radio)
+                                AdSound.MUSIC -> stringResource(R.string.settings_ad_sound_music, adSound.tracks)
+                                else -> stringResource(R.string.settings_ad_sound_lower)
+                            },
+                            onClick = onCycleAdSound,
+                        )
+                        when (adSound.mode) {
+                            AdSound.RADIO -> ValueRow(stringResource(R.string.settings_ad_radio), adSound.radio, onClick = onCycleAdRadio)
+                            AdSound.MUSIC -> {
+                                var addingMusic by remember { mutableStateOf(false) }
+                                ValueRow(
+                                    stringResource(R.string.settings_ad_music),
+                                    stringResource(R.string.settings_ad_music_value, adSound.tracks),
+                                    onClick = { addingMusic = true },
+                                )
+                                if (addingMusic) {
+                                    AdRecordingsDialog(adRecordings, onShareAdRecordings, onDeleteAdMusic, onDismiss = { addingMusic = false }, musicTracks = adSound.tracks)
+                                }
+                            }
+                        }
+                        InfoText(stringResource(R.string.settings_ad_sound_help))
+                    }
                     // Enregistrements pour l'analyse des pubs : récupérés sur un téléphone du même réseau.
                     if (state.lowerAdVolume || adRecordings.isNotEmpty()) {
                         var sharing by remember { mutableStateOf(false) }
@@ -1048,6 +1086,8 @@ private fun AdRecordingsDialog(
     onShare: () -> AdRecordings.Share?,
     onDelete: () -> Unit,
     onDismiss: () -> Unit,
+    /** Variante « Ma musique » : envoyer des morceaux depuis le téléphone (même adresse). */
+    musicTracks: Int? = null,
 ) {
     var address by remember { mutableStateOf<String?>(null) }
     var noNetwork by remember { mutableStateOf(false) }
@@ -1066,14 +1106,21 @@ private fun AdRecordingsDialog(
             modifier = Modifier.widthIn(max = 620.dp).ignoreHeldOk(),
         ) {
             Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(stringResource(R.string.settings_ad_recordings), style = MaterialTheme.typography.titleLarge)
+                Text(
+                    stringResource(if (musicTracks != null) R.string.settings_ad_music else R.string.settings_ad_recordings),
+                    style = MaterialTheme.typography.titleLarge,
+                )
                 if (noNetwork) {
                     Text(stringResource(R.string.settings_ad_recordings_no_network), style = MaterialTheme.typography.bodyMedium)
                 } else {
-                    Text(stringResource(R.string.settings_ad_recordings_help), style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        stringResource(if (musicTracks != null) R.string.settings_ad_music_help else R.string.settings_ad_recordings_help),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
                     Text(address.orEmpty(), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
                 }
-                recordings.forEach { file ->
+                musicTracks?.let { Text(stringResource(R.string.settings_ad_music_count, it), style = MaterialTheme.typography.bodyMedium) }
+                if (musicTracks == null) recordings.forEach { file ->
                     Text(
                         "${file.name}  ·  ${megabytes(file.bytes)} Mo",
                         style = MaterialTheme.typography.bodySmall,

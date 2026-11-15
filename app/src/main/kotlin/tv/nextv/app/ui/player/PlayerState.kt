@@ -102,6 +102,8 @@ data class PlayerUiState(
     val lowerAdVolume: Boolean = false,
     /** Pub détectée : son baissé. */
     val adMuted: Boolean = false,
+    /** Musique jouée à la place de la pub (nom de la radio, « votre musique ») ; `null` : son seulement baissé. */
+    val adMusic: String? = null,
     /** Ce que « baisser le son des pubs » observe du flux (infos de lecture) ; `null` : option désactivée ou film. */
     val adWatch: AdWatch? = null,
     /** Renforts de la détection des pubs (repères du flux, pubs déjà apprises) : infos de lecture. */

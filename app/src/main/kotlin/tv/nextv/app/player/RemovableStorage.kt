@@ -73,6 +73,19 @@ fun removableRecordingPlaces(context: Context): List<AdRecordings.Location> {
     return places
 }
 
+/** Dossiers « NixTV/musique » des clés USB branchées, quand l'appli peut les lire (musique jouée pendant les pubs). */
+fun removableMusicFolders(context: Context): List<File> {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return emptyList()
+    val storage = context.getSystemService(Context.STORAGE_SERVICE) as? StorageManager ?: return emptyList()
+    return try {
+        storage.storageVolumes.filter { it.isRemovable && it.state == Environment.MEDIA_MOUNTED }
+            .mapNotNull { rootOf(it)?.let { root -> File(root, "NixTV/musique") } }
+            .filter { it.isDirectory && it.canRead() }
+    } catch (e: RuntimeException) {
+        emptyList()
+    }
+}
+
 /** Écran des réglages du système pour accorder « Accès à tous les fichiers » à l'application (Android 11 et plus). */
 fun allFilesAccessIntent(context: Context): Intent? {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
