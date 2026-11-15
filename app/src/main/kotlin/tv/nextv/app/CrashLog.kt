@@ -175,6 +175,23 @@ class CrashLog(
         }
     }
 
+    /**
+     * Relevé régulier pendant que l'application est à l'écran (toutes les [TICK_MILLIS]) : après une fermeture par
+     * le système, la mémoire notée date de quelques secondes avant elle, et non du dernier changement d'écran. Avec
+     * [withProcess], aussi la mémoire réelle (lecture plus lente, sur le fil de la session).
+     */
+    fun tick(withProcess: Boolean) {
+        if (!visible) return
+        if (!withProcess) {
+            saveSession()
+            return
+        }
+        io.execute {
+            process = runCatching { processMemory() }.getOrNull() ?: process
+            saveSession()
+        }
+    }
+
     /** Vidéo lue (« 1920 × 1080 H.264, décodeur matériel ») ; `null` : plus de lecture. */
     fun playback(description: String?) {
         if (description == playback) return
@@ -227,6 +244,9 @@ class CrashLog(
 
     companion object {
         const val MAX_LINES = 40
+
+        /** Intervalle des relevés réguliers ([tick]). */
+        const val TICK_MILLIS = 15_000L
 
         private const val SESSION_FILE = "session.txt"
         private const val HOME_ROUTE = "home"

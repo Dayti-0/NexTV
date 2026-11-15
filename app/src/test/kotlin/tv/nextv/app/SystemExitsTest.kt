@@ -156,6 +156,14 @@ class SystemExitsTest {
         assertTrue(entry.details, "Mémoire signalée critique, 2 s avant" in entry.details)
         assertTrue(entry.details, "Mémoire réelle de l’appli : 412 Mo : Java 40, natif 60, graphique 180" in entry.details)
         assertTrue(entry.details, "Vidéo : 1920 × 1080 H.264, décodeur matériel OMX.X.AVC" in entry.details)
+        assertTrue(entry.details, "presque pas" !in entry.details)
+    }
+
+    @Test
+    fun aTinyAppPointsAtTheRestOfTheDevice() {
+        val log = log()
+        SystemExits.checkSession(context, log, session().copy(screen = "startup?reload={reload}", process = "22 Mo : Java 2, natif 1, graphique 0"))
+        assertTrue(log.last()!!.details, "c’est le reste de l’appareil qui manquait de mémoire" in log.last()!!.details)
     }
 
     @Test

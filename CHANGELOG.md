@@ -4,6 +4,10 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.151
+- « Dernier incident » (Réglages) : la mémoire est relevée toutes les 15 secondes tant que l’application est affichée (sa mémoire réelle toutes les minutes). Après une fermeture par le système, la carte dit donc où en était la mémoire juste avant, et non au dernier changement d’écran
+- Quand NixTV n’utilisait presque pas de mémoire au moment de la fermeture, la carte le dit : c’est le reste de l’appareil qui en manquait (système, autres applications restées ouvertes)
+
 ## 0.2.150
 - Petits appareils (Fire TV d’environ 1 Go de mémoire) : le lecteur garde moins de flux d’avance (direct et films) et moins d’images en mémoire, pour que le système ne ferme plus l’application en pleine lecture faute de mémoire
 - Quand l’appareil signale qu’il manque de mémoire pendant une lecture, l’application rend aussitôt les images de l’accueil gardées en mémoire et ne garde que quelques secondes de flux d’avance pendant trois minutes

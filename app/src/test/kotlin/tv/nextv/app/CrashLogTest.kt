@@ -179,6 +179,30 @@ class CrashLogTest {
     }
 
     @Test
+    fun regularReadingsKeepTheSessionUpToDate() {
+        var memory = "appli 40 / 256 Mo"
+        val log = CrashLog(
+            file = folder.root.resolve("crash.txt"), version = "0.2.151", clock = { now }, memory = { memory },
+            processMemory = { "300 Mo : graphique 200" }, io = direct, redact = Redactor()::redact,
+        )
+        // Pas à l'écran : rien.
+        log.tick(withProcess = true)
+        assertNull(log.takePreviousSession())
+        log.foreground(boot = 3)
+        log.screen("player/{channelId}")
+        now += 15_000
+        memory = "appli 180 / 256 Mo"
+        log.tick(withProcess = false)
+        var session = log().takePreviousSession()!!
+        assertEquals("appli 180 / 256 Mo", session.memory)
+        assertEquals(now, session.atMillis)
+        assertNull(session.process)
+        log.tick(withProcess = true)
+        session = log().takePreviousSession()!!
+        assertEquals("300 Mo : graphique 200", session.process)
+    }
+
+    @Test
     fun theSessionSaysWhichVideoWasPlaying() {
         val log = log()
         log.foreground(boot = 7)

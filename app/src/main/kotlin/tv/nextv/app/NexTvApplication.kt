@@ -3,6 +3,8 @@ package tv.nextv.app
 import android.app.Activity
 import android.app.Application
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import okio.Path.Companion.toOkioPath
 import coil3.request.allowRgb565
 import coil3.request.crossfade
@@ -49,13 +51,29 @@ class NexTvApplication : Application(), SingletonImageLoader.Factory {
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             private var started = 0
 
+            private val handler = Handler(Looper.getMainLooper())
+            private var ticks = 0
+
+            // Relevé de la mémoire toutes les 15 s (la mémoire réelle toutes les minutes) tant que l'application est
+            // à l'écran : la Fire TV la fermait sans que le dernier relevé dise ce qui s'était passé juste avant.
+            private val tick = object : Runnable {
+                override fun run() {
+                    crashLog.tick(withProcess = ++ticks % PROCESS_EVERY_TICKS == 0)
+                    handler.postDelayed(this, CrashLog.TICK_MILLIS)
+                }
+            }
+
             override fun onActivityStarted(activity: Activity) {
-                if (started++ == 0) crashLog.foreground(boot)
+                if (started++ == 0) {
+                    crashLog.foreground(boot)
+                    handler.postDelayed(tick, CrashLog.TICK_MILLIS)
+                }
             }
 
             override fun onActivityStopped(activity: Activity) {
                 if (--started <= 0) {
                     started = 0
+                    handler.removeCallbacks(tick)
                     crashLog.background()
                 }
             }
@@ -132,3 +150,6 @@ private const val IMAGE_DISK_CACHE_BYTES = 256L * 1024 * 1024
 
 /** Mémoire allouée à l'appli en dessous de laquelle l'appareil est traité comme modeste. */
 private const val LOW_MEMORY_CLASS_MB = 128
+
+/** Mémoire réelle relevée un relevé régulier sur quatre (toutes les minutes). */
+private const val PROCESS_EVERY_TICKS = 4

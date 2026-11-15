@@ -106,6 +106,8 @@ Commandes :
   signal « basse » / « critique » pendant une lecture (`NexTvApplication.freeMemoryForPlayback`) : cache d'images
   vidé et 16 Mo de flux d'avance au plus pendant 3 min (`MemoryPressure`, `LiveLoadControl`). Fermeture par le
   système le 15/11/2026 sur la Fire TV de la Sony, en direct (appli 39 Mo, natif 49 Mo, 272 Mo libres, critique).
+  Puis en 0.2.150, sur l'écran de démarrage : appli 22 Mo seulement (PSS), appareil 337 Mo libres sur 900, critique
+  1 s avant : la Fire TV manquait de mémoire hors de NixTV. Relevés réguliers depuis 0.2.151 (`CrashLog.tick`).
 - Journal « Dernier incident » : `CrashLog.kt` (trace réduite sans perdre la cause, erreurs de fond) et
   `SystemExits.kt` (fermetures par le système : raison, écran affiché, mémoire). C'est lui qu'il faut demander en
   photo pour tout plantage.

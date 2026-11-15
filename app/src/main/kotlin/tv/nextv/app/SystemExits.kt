@@ -165,12 +165,23 @@ object SystemExits {
         session?.memory?.let { "Dernier relevé de mémoire : $it" },
         session?.pressure?.let { "Mémoire signalée $it" },
         session?.process?.let { "Mémoire réelle de l’appli : $it" },
+        session?.process?.let(::smallAppNote),
         session?.playback?.let { "Vidéo : $it" },
     )
+
+    /**
+     * L'application n'occupait presque rien ([SMALL_APP_MB] au plus) : c'est le reste de l'appareil qui manquait de
+     * mémoire (Fire TV d'environ 1 Go : système, autres applications restées ouvertes).
+     */
+    private fun smallAppNote(process: String): String? {
+        val total = process.substringBefore(" Mo").trim().toLongOrNull() ?: return null
+        return if (total <= SMALL_APP_MB) "NixTV n’en utilisait presque pas : c’est le reste de l’appareil qui manquait de mémoire" else null
+    }
 
     private const val MB = 1024L * 1024
     private const val KB = 1024L
     private const val SIGKILL = 9
+    private const val SMALL_APP_MB = 80L
     private const val EXITS_READ = 5
     private const val ANR_LINES = 24
     private const val SEEN_FILE = "exit_seen.txt"
