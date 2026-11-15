@@ -119,6 +119,16 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
      */
     var onBreak: ((start: Long, end: Long, confirmed: Boolean) -> Unit)? = null
 
+    /**
+     * Ce que la détection voit et décide, pour l'enregistrement d'analyse : instant (horloge du son), quoi
+     * (« ouverture », « fermeture », « jonction », « empreinte »), et le détail (ce qui a ouvert ou fermé la page…).
+     * Appelé depuis [process], [frame] ou [adPrint] : ne doit faire que noter.
+     */
+    var onEvent: ((time: Long, what: String, detail: String) -> Unit)? = null
+
+    /** Dernière pub reconnue notée ([onEvent]) : une seule note toutes les quelques secondes. */
+    private var printNotedAt = NEVER
+
     /** Horloge du son : durée de son reçue, en millisecondes. */
     val now: Long
         @Synchronized get() = elapsed
@@ -205,7 +215,7 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
             if (!inBreak) {
                 // Logo parti pendant la page annoncée et revenu avec le programme : il suit les coupures.
                 if (awayInBreak && showsProgramme()) logoFollowsBreaks = true
-                close(learn = opening == Opening.CUE, end = elapsed, confirmed = true)
+                close(learn = opening == Opening.CUE, end = elapsed, confirmed = true, reason = "reperes du flux")
             }
         }
     }
@@ -218,17 +228,19 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
      */
     @Synchronized
     fun adPrint(confirmed: Boolean, sustained: Boolean): Boolean {
+        val kind = if (confirmed) "sure" else "a l'essai"
         when (cue) {
             CueState.BREAK -> return true
-            CueState.PROGRAMME -> return false
+            CueState.PROGRAMME -> return false.also { notePrint("$kind, ignoree (reperes du flux : programme)") }
             CueState.NONE -> Unit
         }
         // Sous le logo : seulement une pub sûre, reconnue deux fois de suite (une chanson de pub dans une émission…).
         if (showsProgramme()) {
-            if (!(confirmed && sustained)) return false
+            if (!(confirmed && sustained)) return false.also { notePrint("$kind, ignoree (logo a l'image)") }
             // Pub sûre sous le logo : la chaîne le garde pendant ses pubs, il ne dit plus rien jusqu'à son départ.
             logoStays = true
         }
+        notePrint(kind)
         if (!confirmed && !sustained && !attenuating) return true
         lastEvidence = elapsed
         lastJunction = elapsed
@@ -239,16 +251,24 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
         return true
     }
 
+    private fun notePrint(detail: String) {
+        if (printNotedAt != NEVER && elapsed - printNotedAt < PRINT_NOTE_MILLIS) return
+        printNotedAt = elapsed
+        onEvent?.invoke(elapsed, "empreinte", detail)
+    }
+
     private fun open(by: Opening) {
         attenuating = true
         opening = by
         breakStart = elapsed
         lastEvidence = elapsed
         trace?.invoke("son baissé à $elapsed ms")
+        onEvent?.invoke(elapsed, "ouverture", by.label + " (logo ${logo.name.lowercase()}, ${chain.size} jonction(s) de suite)")
     }
 
     /** Fin de la page de pubs ; son son est appris s'il est sûr d'en être ([learn]). */
-    private fun close(learn: Boolean, end: Long, confirmed: Boolean) {
+    private fun close(learn: Boolean, end: Long, confirmed: Boolean, reason: String) {
+        onEvent?.invoke(elapsed, "fermeture", reason + (if (learn) ", son appris (${if (confirmed) "sur" else "a l'essai"})" else ""))
         attenuating = false
         awayInBreak = false
         val start = breakStart
@@ -319,7 +339,14 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
         // Le même carton à deux jonctions de suite : celui que la chaîne met entre ses spots.
         val repeated = junction.card?.takeIf { card -> drawn(card) && chain.any { it !== junction && it.card?.let { other -> SmallFrame.sameSignature(other, card) } == true } }
         if (repeated != null) separator = repeated
-        trace?.invoke("jonction à ${junction.time} ms : ${if (junction.blind) "sans image" else if (junction.card != null) "carton" else "coupe"}, suite de ${chain.size}, logo $logo")
+        val kind = when {
+            junction.blind -> "sans image"
+            junction.card != null && (repeated != null || separator?.let { SmallFrame.sameSignature(it, junction.card!!) } == true) -> "carton de la chaine"
+            junction.card != null -> "carton"
+            else -> "coupe"
+        }
+        trace?.invoke("jonction à ${junction.time} ms : $kind, suite de ${chain.size}, logo $logo")
+        onEvent?.invoke(junction.time, "jonction", "$kind, ${chain.size} de suite")
         if (!attenuating && cue == CueState.NONE) {
             val by = opens(junction, repeated != null)
             if (by != Opening.NONE) open(by)
@@ -364,6 +391,7 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
         // Logo vu sur ce flux et absent : la page de pubs continue, même sans silence entre deux spots.
         val away = logo == LogoState.HIDDEN && logoSeen && !logoMissing
         var logoBack = false
+        var reason = "logo revenu"
         val over = when {
             // Le logo est revenu : le programme a repris. Parti pendant la page et revenu à sa fin, il suit les coupures.
             showsProgramme() -> {
@@ -372,6 +400,7 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
                 true
             }
             elapsed - lastJunction > (if (away) HOLD_LOGO_HIDDEN_MILLIS else if (pictures()) HOLD_MILLIS else HOLD_BLIND_MILLIS) -> {
+                reason = if (away) "logo toujours absent, plus de jonction" else "plus de jonction"
                 // Plus de jonction depuis longtemps et toujours pas de logo : il ne revient pas avec ce programme.
                 if (away) logoMissing = true
                 true
@@ -381,7 +410,7 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
         if (!over) return
         // Page ouverte par un indice sûr (logo, carton, pub connue) et refermée par le retour du logo : son son est
         // appris, à l'essai, jusqu'à la dernière preuve de pub (la suite peut déjà être le programme).
-        close(learn = logoBack && opening != Opening.SPOTS, end = lastEvidence, confirmed = false)
+        close(learn = logoBack && opening != Opening.SPOTS, end = lastEvidence, confirmed = false, reason = reason)
     }
 
     /** Écart entre deux jonctions qui tient à des spots : durées de 5 en 5 secondes, plus le silence qui les sépare. */
@@ -402,7 +431,14 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
     private class Junction(val time: Long, var card: ByteArray?, val blind: Boolean, val underLogo: Boolean)
 
     /** Ce qui a ouvert la page de pubs en cours. */
-    private enum class Opening { NONE, CUE, CARD, LOGO, PRINT, SPOTS }
+    private enum class Opening(val label: String) {
+        NONE(""),
+        CUE("reperes du flux"),
+        CARD("carton de la chaine"),
+        LOGO("logo parti"),
+        PRINT("pub deja entendue"),
+        SPOTS("jonctions espacees comme des spots"),
+    }
 
     /** Les dernières images réduites reçues, avec l'instant de leur arrivée. */
     private class SceneMemory {
@@ -517,6 +553,9 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
         const val SPOT_STEP_MILLIS = 5_000L
         const val SPOT_EARLY_MILLIS = 700L
         const val SPOT_LATE_MILLIS = 1_800L
+
+        /** Pub reconnue notée au plus toutes les 5 secondes dans l'enregistrement d'analyse. */
+        const val PRINT_NOTE_MILLIS = 5_000L
 
         const val FALL_MILLIS = 500.0
         const val RISE_MILLIS = 1_000.0

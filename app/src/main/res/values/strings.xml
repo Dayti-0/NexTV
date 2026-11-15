@@ -366,8 +366,11 @@
     <string name="player_info_ads_logo_visible">logo de la chaîne à l’image : programme</string>
     <string name="player_info_ads_logo_hidden">logo de la chaîne absent de l’image</string>
     <string name="player_info_ads_lowered">page de pub : son baissé</string>
-    <string name="player_ad_recording_start">Enregistrer pour l’analyse des pubs (1 h)</string>
-    <string name="player_ad_recording_stop">Arrêter l’enregistrement d’analyse (%1$d min sur 60)</string>
+    <string name="player_ad_recording_start">Enregistrer pour l’analyse des pubs</string>
+    <string name="player_ad_recording_stop">Arrêter l’enregistrement d’analyse (%1$s)</string>
+    <string name="player_ad_recording_minutes">%1$d min</string>
+    <string name="player_ad_recording_hours">%1$d h %2$02d</string>
+    <string name="player_ad_recording_full">Enregistrement d’analyse arrêté : plus assez de place sur l’appareil. À récupérer dans Réglages › Son</string>
     <string name="player_ad_recording_stopped">Enregistrement d’analyse terminé : à récupérer dans Réglages › Son</string>
     <string name="player_ad_recording_failed">Enregistrement impossible : plus assez de place sur l’appareil</string>
     <string name="settings_ad_recordings">Enregistrements pour l’analyse des pubs</string>

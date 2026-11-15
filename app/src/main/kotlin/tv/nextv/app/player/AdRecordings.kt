@@ -14,17 +14,27 @@ import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import kotlin.random.Random
 
 /**
- * Enregistrements pour l'analyse des pubs ([AdRecorder]) : lancés depuis les options du lecteur, gardés sur l'appareil
- * (les [MAX_FILES] derniers), puis récupérés sur un téléphone ou un ordinateur du même réseau par une adresse que
- * Réglages affiche ([share]).
+ * Enregistrements pour l'analyse des pubs ([AdRecorder]) : lancés et arrêtés depuis les options du lecteur, gardés sur
+ * l'appareil (les [MAX_FILES] derniers, un dossier chacun), puis récupérés sur un téléphone ou un ordinateur du même
+ * réseau par une adresse que Réglages affiche ([share]) : chaque dossier y est donné en `.zip`, fabriqué à la volée
+ * (aucune copie sur l'appareil, même pour des heures d'enregistrement).
  */
 class AdRecordings(private val directory: File, private val version: String) {
 
-    /** Enregistrement terminé, gardé sur l'appareil. */
+    /** Enregistrement terminé, gardé sur l'appareil ([name] : celui du `.zip` téléchargé). */
     data class Recording(val name: String, val bytes: Long)
+
+    init {
+        // Enregistrement interrompu (application fermée par le système) : ce qui a été écrit est gardé.
+        directory.listFiles { file -> file.isDirectory && file.name.endsWith(PART) }?.forEach { part ->
+            part.renameTo(File(directory, part.name.removeSuffix(PART)))
+        }
+    }
 
     private val mutableFiles = MutableStateFlow(list())
 
@@ -36,58 +46,67 @@ class AdRecordings(private val directory: File, private val version: String) {
     var current: AdRecorder? = null
         private set
 
-    /** Il reste assez de place sur l'appareil pour un enregistrement d’une heure (90 Mo environ). */
+    /** Il reste assez de place sur l'appareil pour commencer (environ 90 Mo par heure enregistrée). */
     fun hasRoom(): Boolean = (directory.parentFile ?: directory).usableSpace > MIN_FREE_BYTES
 
     /**
-     * Commence un enregistrement de la chaîne [channel], branché sur [control] (son, images et décisions de la détection
-     * des pubs). L'enregistrement en cours, s'il y en a un, est d'abord arrêté.
+     * Commence un enregistrement, à partir de la chaîne [channel], branché sur [control] (son, images et décisions de la
+     * détection des pubs). Il dure jusqu'à [stop], même si l'on change de chaîne. L'enregistrement en cours, s'il y en
+     * a un, est d'abord arrêté.
+     * @param onStopped appelé quand l'enregistrement s'arrête, avec la raison s'il s'est arrêté tout seul (place).
      */
-    fun start(channel: String, control: AdVolumeControl): AdRecorder? {
+    fun start(channel: String, control: AdVolumeControl, onStopped: (reason: String?) -> Unit = {}): AdRecorder? {
         stop()
         if (!hasRoom()) return null
         val stamp = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.FRANCE).format(Date())
         val name = "pubs_${safe(channel)}_$stamp"
         val info = linkedMapOf(
-            "format" to "1",
+            "format" to "2",
             "chaine" to channel,
             "debut" to SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.ROOT).format(Date()),
             "appli" to version,
             "appareil" to "${Build.MANUFACTURER} ${Build.MODEL} (Android ${Build.VERSION.RELEASE})",
-            "son_enregistre" to "8000 Hz environ, mono, µ-law (fréquence exacte : fréquence du son / arrondi(fréquence / 8000))",
         )
-        val recorder = AdRecorder(File(directory, name), info, MAX_MILLIS) { zip ->
-            if (zip != null) trim()
+        val part = File(directory, name + PART)
+        val recorder = AdRecorder(part, info) { reason ->
+            val done = File(directory, name)
+            if (!part.renameTo(done)) part.deleteRecursively()
+            // Moins d'une minute de son : rien d'utile.
+            if (File(done, "audio.ulaw").length() < MIN_AUDIO_BYTES) done.deleteRecursively()
+            trim()
             mutableFiles.value = list()
+            onStopped(reason)
         }
         current = recorder
-        control.record(recorder)
+        control.record(recorder, channel)
         return recorder
     }
 
-    /** Arrête l'enregistrement en cours (le fichier est prêt quelques secondes après). */
+    /** Arrête l'enregistrement en cours (il apparaît dans la liste une seconde après). */
     fun stop() {
         current?.finish()
         current = null
     }
 
-    /** Supprime tous les enregistrements gardés. */
+    /** Supprime tous les enregistrements gardés (pas celui en cours). */
     fun deleteAll() {
-        directory.listFiles { file -> file.name.endsWith(".zip") }?.forEach { it.delete() }
+        directory.listFiles { file -> file.isDirectory && !file.name.endsWith(PART) }?.forEach { it.deleteRecursively() }
         mutableFiles.value = list()
     }
 
-    fun file(name: String): File? = File(directory, name).takeIf { it.isFile && it.name.endsWith(".zip") && it.parentFile == directory }
+    /** Dossier de l'enregistrement téléchargé sous le nom [zipName]. */
+    fun folder(zipName: String): File? =
+        File(directory, zipName.removeSuffix(".zip")).takeIf { it.isDirectory && it.parentFile == directory && !it.name.endsWith(PART) }
 
     private fun list(): List<Recording> =
-        directory.listFiles { file -> file.isFile && file.name.endsWith(".zip") }
+        directory.listFiles { file -> file.isDirectory && !file.name.endsWith(PART) }
             ?.sortedByDescending { it.lastModified() }
-            ?.map { Recording(it.name, it.length()) }
+            ?.map { folder -> Recording(folder.name + ".zip", folder.listFiles()?.sumOf { it.length() } ?: 0L) }
             .orEmpty()
 
     private fun trim() {
-        val zips = directory.listFiles { file -> file.name.endsWith(".zip") } ?: return
-        zips.sortedByDescending { it.lastModified() }.drop(MAX_FILES).forEach { it.delete() }
+        val folders = directory.listFiles { file -> file.isDirectory && !file.name.endsWith(PART) } ?: return
+        folders.sortedByDescending { it.lastModified() }.drop(MAX_FILES).forEach { it.deleteRecursively() }
     }
 
     /**
@@ -151,15 +170,24 @@ class AdRecordings(private val directory: File, private val version: String) {
                             out.write(body)
                         }
                         path.startsWith(prefix) -> {
-                            val file = recordings.file(java.net.URLDecoder.decode(path.removePrefix(prefix), "UTF-8"))
-                            if (file == null) {
+                            val name = java.net.URLDecoder.decode(path.removePrefix(prefix), "UTF-8")
+                            val folder = recordings.folder(name)
+                            if (folder == null) {
                                 out.write("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
                             } else {
+                                // Zip fabriqué à la volée (taille inconnue d'avance : la connexion se ferme à la fin).
                                 out.write(
-                                    ("HTTP/1.1 200 OK\r\nContent-Type: application/zip\r\nContent-Length: ${file.length()}\r\n" +
-                                        "Content-Disposition: attachment; filename=\"${file.name}\"\r\nConnection: close\r\n\r\n").toByteArray(),
+                                    ("HTTP/1.1 200 OK\r\nContent-Type: application/zip\r\n" +
+                                        "Content-Disposition: attachment; filename=\"${folder.name}.zip\"\r\nConnection: close\r\n\r\n").toByteArray(),
                                 )
-                                file.inputStream().use { input -> input.copyTo(out) }
+                                val zip = ZipOutputStream(out.buffered())
+                                folder.listFiles()?.sortedBy { it.name }?.forEach { file ->
+                                    zip.putNextEntry(ZipEntry(file.name))
+                                    file.inputStream().use { input -> input.copyTo(zip) }
+                                    zip.closeEntry()
+                                }
+                                zip.finish()
+                                zip.flush()
                             }
                         }
                         else -> out.write("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
@@ -194,8 +222,11 @@ class AdRecordings(private val directory: File, private val version: String) {
 
     private companion object {
         const val MAX_FILES = 4
-        const val MAX_MILLIS = 60 * 60_000L
+        const val PART = ".part"
         const val MIN_FREE_BYTES = 400L * 1024 * 1024
+
+        /** Une minute de son enregistré (8 000 octets par seconde). */
+        const val MIN_AUDIO_BYTES = 60L * 8_000
         const val PORT = 8090
         const val CODE_LETTERS = "abcdefghjkmnpqrstuvwxyz23456789"
 

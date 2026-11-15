@@ -840,7 +840,14 @@ fun PlayerOptionsPanel(
                 onAdRecording?.let { toggle ->
                     OptionRow(
                         if (adRecordingMinutes != null) {
-                            stringResource(R.string.player_ad_recording_stop, adRecordingMinutes)
+                            stringResource(
+                                R.string.player_ad_recording_stop,
+                                if (adRecordingMinutes < 60) {
+                                    stringResource(R.string.player_ad_recording_minutes, adRecordingMinutes)
+                                } else {
+                                    stringResource(R.string.player_ad_recording_hours, adRecordingMinutes / 60, adRecordingMinutes % 60)
+                                },
+                            )
                         } else {
                             stringResource(R.string.player_ad_recording_start)
                         },

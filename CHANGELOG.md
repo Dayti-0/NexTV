@@ -4,6 +4,11 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.156
+- « Enregistrer pour l’analyse des pubs » : l’enregistrement dure jusqu’à ce qu’on l’arrête (plusieurs heures possibles, environ 90 Mo par heure), et continue quand on change de chaîne. Il s’arrête tout seul seulement si la place manque sur l’appareil
+- L’enregistrement note aussi ce qui a fait baisser ou remonter le son à chaque page de pubs (logo parti ou revenu, carton de la chaîne, pub déjà entendue, repères du flux), pour repérer les erreurs de la détection
+- Un enregistrement interrompu (application fermée par le système) est gardé jusqu’à ce moment
+
 ## 0.2.155
 - « Enregistrer pour l’analyse des pubs » (options du lecteur) : une heure au lieu de 20 minutes (environ 90 Mo), pour avoir plusieurs pages de pub dans un même enregistrement
 

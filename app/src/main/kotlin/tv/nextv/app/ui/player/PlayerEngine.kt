@@ -669,8 +669,9 @@ internal class PlayerEngine(
     fun adDetails(): AdDetails? = adVolume.details()
 
     /**
-     * Enregistrement pour l'analyse des pubs de la chaîne en cours (une heure au plus) : le commence, ou l'arrête s'il
-     * est en cours. `false` s'il n'a pas pu commencer (option des pubs désactivée, plus assez de place).
+     * Enregistrement pour l'analyse des pubs, à partir de la chaîne en cours : le commence, ou l'arrête s'il est en
+     * cours. Il dure jusqu'à ce qu'on l'arrête (ou que la place manque), même d'une chaîne à l'autre. `false` s'il n'a
+     * pas pu commencer (option des pubs désactivée, plus assez de place).
      */
     fun toggleAdRecording(channel: String): Boolean {
         if (adVolume.recordingMillis != null) {
@@ -684,6 +685,12 @@ internal class PlayerEngine(
 
     /** Durée de l'enregistrement d'analyse en cours (ms) ; `null` sans enregistrement. */
     val adRecordingMillis: Long? get() = adVolume.recordingMillis
+
+    /** Pourquoi le dernier enregistrement d'analyse s'est arrêté tout seul (« place »), `null` sinon. */
+    val adRecordingStopReason: String? get() = container.adRecordings.current?.stopReason
+
+    /** Chaîne en cours, notée dans l'enregistrement d'analyse. */
+    fun noteAdRecordingChannel(name: String) = adVolume.noteChannel(name)
 
     /** Repères connus du direct en cours, avec ce que la détection vient d'en apprendre. */
     private fun learnedAdMarks(): AdMarks {

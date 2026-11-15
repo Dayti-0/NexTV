@@ -99,12 +99,23 @@ class AdVolumeControl {
     private var recordedAttenuating = false
     private var recordedCue: CueState? = null
 
-    /** Branche un enregistrement pour l'analyse ; il s'arrête avec le flux ([newStream]). */
-    fun record(recorder: AdRecorder) {
+    /** Branche un enregistrement pour l'analyse ; il continue d'un flux à l'autre ([newStream]) jusqu'à [stopRecording]. */
+    fun record(recorder: AdRecorder, channel: String? = null) {
         this.recorder?.finish()
         recordedLogo = null
         recordedCue = null
+        recordedAttenuating = false
         this.recorder = recorder
+        guard.onEvent = eventSink
+        channel?.let { recorder.event(guard.now, "chaine", it) }
+    }
+
+    /** Ce que la détection voit et décide (ce qui ouvre ou ferme une page de pubs…), pour l'enregistrement d'analyse. */
+    private val eventSink: (Long, String, String) -> Unit = { time, what, detail -> recorder?.takeIf { it.active }?.event(time, what, detail) }
+
+    /** Chaîne en cours, notée dans l'enregistrement d'analyse (après un changement de chaîne). */
+    fun noteChannel(name: String) {
+        recorder?.takeIf { it.active }?.event(guard.now, "chaine", name)
     }
 
     /** Arrête l'enregistrement d'analyse en cours (lecteur fermé). */
@@ -148,9 +159,11 @@ class AdVolumeControl {
      */
     fun newStream(marks: AdMarks? = null) {
         attenuating = false
-        // L'enregistrement d'analyse ne vaut que pour une chaîne : il s'arrête avec elle.
-        recorder?.finish()
-        recorder = null
+        // L'enregistrement d'analyse continue à la suite : la détection repart de zéro, il le note.
+        recorder?.takeIf { it.active }?.newStream()
+        recordedLogo = null
+        recordedCue = null
+        recordedAttenuating = false
         synchronized(logoWatcher) {
             logoWatcher.reset()
             marks?.logo?.let(logoWatcher::restore)
@@ -160,6 +173,7 @@ class AdVolumeControl {
             soundAt = NEVER
             cues = AdCues()
             val fresh = AdVolumeGuard().also {
+                it.onEvent = eventSink
                 it.separator = marks?.separator
                 it.logoFollowsBreaks = marks?.logoFollowsBreaks == true
                 it.logo = logo

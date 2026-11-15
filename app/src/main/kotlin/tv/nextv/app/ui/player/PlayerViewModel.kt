@@ -235,6 +235,9 @@ class PlayerViewModel(
     /** Passages de la surveillance depuis la dernière sauvegarde de ce que « baisser le son des pubs » a appris. */
     private var adMarksChecks = 0
 
+    /** Chaîne notée en dernier dans l'enregistrement d'analyse. */
+    private var adRecordedChannel = ""
+
     init {
         // Attention : rien de ce qui est déclaré plus bas dans la classe n'est encore prêt ici.
         // Lecteur ouvert : les actualisations automatiques de la playlist et du guide attendent sa fermeture.
@@ -266,15 +269,25 @@ class PlayerViewModel(
                 val adWatch = if (vlc == null) engine.adVolume.watch() else null
                 val adDetails = if (vlc == null) engine.adDetails() else null
                 val adRecording = engine.adRecordingMillis?.let { (it / 60_000).toInt() }
+                // Enregistrement d'analyse : la chaîne regardée y est notée à chaque changement.
+                if (adRecording != null && state.value.channelName != adRecordedChannel) {
+                    adRecordedChannel = state.value.channelName
+                    engine.noteAdRecordingChannel(adRecordedChannel)
+                }
                 if (state.value.adMuted != adMuted || state.value.adWatch != adWatch || state.value.adDetails != adDetails ||
                     state.value.adRecordingMinutes != adRecording
                 ) {
-                    // Enregistrement d'analyse fini tout seul (une heure, ou chaîne changée) : dit dans le bandeau.
+                    // Enregistrement d'analyse arrêté tout seul (plus de place sur l'appareil) : dit dans le bandeau.
                     val ended = state.value.adRecordingMinutes != null && adRecording == null
+                    val notice = when {
+                        !ended -> null
+                        engine.adRecordingStopReason == "place" -> resources.getString(R.string.player_ad_recording_full)
+                        else -> resources.getString(R.string.player_ad_recording_stopped)
+                    }
                     mutableState.update {
                         it.copy(
                             adMuted = adMuted, adWatch = adWatch, adDetails = adDetails, adRecordingMinutes = adRecording,
-                            qualityNotice = if (ended) resources.getString(R.string.player_ad_recording_stopped) else it.qualityNotice,
+                            qualityNotice = notice ?: it.qualityNotice,
                         )
                     }
                 }
@@ -448,8 +461,9 @@ class PlayerViewModel(
     /** Images rapprochées demandées (un silence est en cours) au lieu d'une par seconde. */
     val adFramesWanted: Boolean get() = engine.adVolume.wantsFrames
 
-    /** Options › « Enregistrer pour l'analyse des pubs » : commence ou arrête l'enregistrement de la chaîne en cours. */
+    /** Options › « Enregistrer pour l'analyse des pubs » : commence ou arrête l'enregistrement (à partir de la chaîne en cours). */
     fun toggleAdRecording() {
+        adRecordedChannel = state.value.channelName
         val recording = state.value.adRecordingMinutes != null
         val started = engine.toggleAdRecording(state.value.channelName.ifBlank { "chaine" })
         mutableState.update {
