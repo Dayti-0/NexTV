@@ -4,6 +4,10 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.149
+- Menu des chaînes du lecteur : le programme en cours ne disparaît plus de la liste quand le précédent se termine (après minuit, plusieurs chaînes restaient sans programme alors que le volet de droite l’affichait). Les favoris et le volet de droite suivent aussi le changement de programme
+- Options du lecteur : la qualité tient sur une seule ligne. Chaque appui sur OK passe au mode suivant (Meilleure qualité, HD maximum, Économie, puis les versions de la chaîne : FHD, HD…), appliqué 2 secondes après le dernier appui
+
 ## 0.2.148
 - Lecteur, touche Menu › Options : nouvelle partie « Qualité de la chaîne », qui propose les versions de la chaîne (4K, FHD, HD, SD) et « Automatique ». Une qualité choisie reste pour cette chaîne jusqu’à la fermeture de l’application : la chaîne s’ouvre dans cette qualité et n’en change plus d’elle-même
 - Les messages du bandeau comme « Connexion lente : passage en HD » disparaissent au bout de 8 secondes (ils restaient affichés jusqu’à la chaîne suivante)

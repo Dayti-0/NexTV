@@ -488,6 +488,21 @@ class PlayerViewModel(
         }
     }
 
+    /**
+     * Qualité choisie sur la ligne « Qualité » des options : une version de la chaîne ([key], gardée pour elle), ou
+     * une qualité visée pour toutes les chaînes (la version gardée est alors abandonnée).
+     */
+    fun chooseQuality(target: QualityTarget, key: String?) {
+        when {
+            key != null -> lockQuality(key)
+            state.value.lockedQuality != null -> viewModelScope.launch {
+                container.settings.setQualityTarget(target)
+                lockQuality(null)
+            }
+            else -> setQualityTarget(target)
+        }
+    }
+
     /** Chaîne regardée juste avant celle-ci (touche « chaîne précédente », ⏪). */
     fun previousChannel() {
         val current = session.listed ?: return

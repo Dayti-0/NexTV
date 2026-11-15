@@ -62,6 +62,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -577,13 +578,9 @@ fun PlayerScreen(
             onLowerAdVolume = viewModel::setLowerAdVolume,
             qualityTarget = qualityTarget,
             playingQuality = state.quality,
-            onQualityTarget = viewModel::setQualityTarget,
+            onQuality = viewModel::chooseQuality,
             qualityVersions = state.qualityVersions,
             lockedQuality = state.lockedQuality,
-            onLockQuality = {
-                optionsVisible = false
-                viewModel.lockQuality(it)
-            },
             soundVersions = state.soundVersions,
             soundVersion = state.soundVersion,
             onSoundVersion = {
@@ -715,12 +712,12 @@ fun PlayerOptionsPanel(
     vlcActive: Boolean = false,
     qualityTarget: QualityTarget = QualityTarget.BEST,
     playingQuality: String? = null,
-    onQualityTarget: ((QualityTarget) -> Unit)? = null,
+    /** Qualité choisie : qualité visée (toutes les chaînes), ou version de la chaîne (non nulle) à garder. */
+    onQuality: ((QualityTarget, String?) -> Unit)? = null,
     /** Qualités de la chaîne (noms de StreamQuality, "" : sans mention), vide : une seule version. */
     qualityVersions: List<String> = emptyList(),
     /** Qualité choisie à la main pour la chaîne, `null` : automatique. */
     lockedQuality: String? = null,
-    onLockQuality: ((String?) -> Unit)? = null,
     /** Versions du son de la chaîne (chaînes rassemblées : normal, Dolby Digital, double audio), vide : une seule. */
     soundVersions: List<Int> = emptyList(),
     soundVersion: Int = 0,
@@ -820,30 +817,14 @@ fun PlayerOptionsPanel(
                     ) { onAspect(mode) }
                 }
 
-                // Qualité précise pour cette chaîne (ses versions SD, HD, FHD, 4K), gardée jusqu'à la fermeture de
-                // l'application ; « Automatique » rend la main à la qualité automatique.
-                val showVersions = isLive && onLockQuality != null && qualityVersions.size > 1
-                if (showVersions && onLockQuality != null) {
+                // Qualité : une seule ligne, chaque appui passe au mode suivant (meilleure, HD maximum, économie, puis
+                // les versions de la chaîne) ; appliquée 2 s après le dernier appui.
+                if (isLive && onQuality != null) {
                     OptionsSection(
-                        playingQuality?.let { stringResource(R.string.player_channel_quality_playing, it) }
-                            ?: stringResource(R.string.player_channel_quality),
+                        playingQuality?.let { stringResource(R.string.player_quality_playing, it) }
+                            ?: stringResource(R.string.player_quality),
                     )
-                    OptionRow(stringResource(R.string.player_channel_quality_auto), selected = lockedQuality == null) { onLockQuality(null) }
-                    qualityVersions.forEach { key ->
-                        OptionRow(qualityVersionLabel(key), selected = key == lockedQuality) { onLockQuality(key) }
-                    }
-                    OptionsNote(stringResource(R.string.player_channel_quality_help))
-                }
-
-                // Qualité visée (réglage commun à toutes les chaînes) : appliquée tout de suite à la chaîne en cours.
-                if (isLive && onQualityTarget != null) {
-                    OptionsSection(
-                        playingQuality?.takeUnless { showVersions }?.let { stringResource(R.string.player_quality_target_playing, it) }
-                            ?: stringResource(R.string.settings_quality_target),
-                    )
-                    QualityTarget.entries.forEach { target ->
-                        OptionRow(qualityTargetLabel(target), selected = target == qualityTarget) { onQualityTarget(target) }
-                    }
+                    QualityCycleRow(qualityTarget, lockedQuality, qualityVersions.takeIf { it.size > 1 }.orEmpty(), onQuality)
                 }
 
                 OptionsSection(stringResource(R.string.player_more))
@@ -881,6 +862,39 @@ private fun OptionsSection(title: String) {
         color = NexTvColors.Primary,
         modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 2.dp),
     )
+}
+
+/**
+ * Ligne de la qualité : OK passe au mode suivant, appliqué [QUALITY_APPLY_DELAY_MILLIS] après le dernier appui
+ * (on peut faire défiler sans relancer la chaîne à chaque fois), ou à la fermeture des options.
+ */
+@Composable
+private fun QualityCycleRow(
+    target: QualityTarget,
+    locked: String?,
+    versions: List<String>,
+    onQuality: (QualityTarget, String?) -> Unit,
+) {
+    // Modes : qualités visées, puis versions de la chaîne (null : pas de version).
+    val modes: List<Pair<QualityTarget, String?>> = QualityTarget.entries.map { it to null } + versions.map { target to it }
+    val applied = modes.indexOfFirst { (t, key) -> if (locked != null) key == locked else key == null && t == target }.coerceAtLeast(0)
+    var pending by remember { mutableStateOf<Int?>(null) }
+    val apply by rememberUpdatedState { index: Int -> modes.getOrNull(index)?.let { (t, key) -> onQuality(t, key) } }
+    LaunchedEffect(pending) {
+        val index = pending ?: return@LaunchedEffect
+        delay(QUALITY_APPLY_DELAY_MILLIS)
+        pending = null
+        if (index != applied) apply(index)
+    }
+    DisposableEffect(Unit) {
+        onDispose { pending?.takeIf { it != applied }?.let { apply(it) } }
+    }
+    val shown = pending ?: applied
+    val (t, key) = modes[shown]
+    OptionRow(
+        if (key != null) qualityVersionLabel(key) else qualityTargetLabel(t),
+        selected = pending == null,
+    ) { pending = (shown + 1) % modes.size }
 }
 
 @Composable
@@ -1169,6 +1183,22 @@ fun ChannelMenu(
             runCatching { panelFocus.requestFocus() }
         }
         focusPlaced = true
+    }
+    // Programmes en cours de la liste : lus dans la base avec l'heure de son chargement. Une fois l'un d'eux
+    // terminé (minuit…), la ligne restait sans programme : la liste est relue dès qu'un programme affiché
+    // est fini (aussi à l'ouverture, liste chargée plus tôt), et de temps en temps pour ceux qui commencent.
+    LaunchedEffect(menu.open, focusPlaced, favoritesMode) {
+        if (!menu.open || !focusPlaced || favoritesMode) return@LaunchedEffect
+        var lastRefresh = System.currentTimeMillis()
+        while (true) {
+            val clock = System.currentTimeMillis()
+            val ended = channels.itemSnapshotList.items.any { item -> item.row.nowStop?.let { it <= clock } == true }
+            if (ended || clock - lastRefresh >= MENU_REFRESH_MILLIS) {
+                channels.refresh()
+                lastRefresh = clock
+            }
+            delay(MENU_PROGRAMME_CHECK_MILLIS)
+        }
     }
     // Chaîne sélectionnée retirée par le rechargement de la liste : le focus revient dans le menu.
     LaunchedEffect(menu.open, focusPlaced, panelFocused) {
@@ -1737,6 +1767,13 @@ fun ResumePromptCard(prompt: ResumePrompt, onAnswer: (Boolean) -> Unit, modifier
 /** Attente maximale de la liste d'une catégorie avant de placer le focus. */
 private const val LIST_WAIT_MILLIS = 3_000L
 private const val FOCUS_RECOVERY_MILLIS = 150L
+
+/** Options : délai avant d'appliquer la qualité choisie (plusieurs appuis de suite sans relancer la chaîne). */
+private const val QUALITY_APPLY_DELAY_MILLIS = 2_000L
+
+/** Menu des chaînes : vérification des programmes finis, et relecture complète de la liste. */
+private const val MENU_PROGRAMME_CHECK_MILLIS = 15_000L
+private const val MENU_REFRESH_MILLIS = 5 * 60_000L
 
 /**
  * Cale l'élément [index] tout à gauche de la rangée (après sa marge), sans animation : la catégorie choisie

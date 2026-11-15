@@ -58,6 +58,7 @@ class PlayerOptionsTest {
     @Test
     fun `quality target is chosen from the options`() {
         var target by mutableStateOf(QualityTarget.BEST)
+        var locked by mutableStateOf<String?>(null)
         compose.setContent {
             NexTvTheme(ThemeStyle.NIGHT) {
                 PlayerOptionsPanel(
@@ -74,22 +75,40 @@ class PlayerOptionsTest {
                     onDismiss = {},
                     qualityTarget = target,
                     playingQuality = "FHD",
-                    onQualityTarget = { target = it },
+                    onQuality = { t, key -> target = t; locked = key },
+                    qualityVersions = listOf("FHD", "HD"),
+                    lockedQuality = locked,
                 )
             }
         }
         compose.mainClock.advanceTimeBy(500)
         compose.waitForIdle()
-        compose.onNodeWithText("Qualité visée · FHD en cours").assertExists()
-        // Format de l'image a le focus ; on descend jusqu'à « Économie ».
-        repeat(10) { if (!focusedText().startsWith("Économie")) press(Key.DirectionDown) }
-        assertEquals("Économie", focusedText())
+        compose.onNodeWithText("Qualité · FHD en cours").assertExists()
+        // Format de l'image a le focus ; on descend jusqu'à la ligne de la qualité.
+        repeat(10) { if (!focusedText().startsWith("Meilleure qualité")) press(Key.DirectionDown) }
+        assertEquals("Meilleure qualité", focusedText())
+        // Deux appuis de suite : rien n'est appliqué avant 2 s sans appui.
         press(Key.DirectionCenter)
-        assertEquals(QualityTarget.ECO, target)
-        press(Key.DirectionUp)
         assertEquals("HD maximum", focusedText())
         press(Key.DirectionCenter)
-        assertEquals(QualityTarget.HD, target)
+        assertEquals("Économie", focusedText())
+        compose.mainClock.advanceTimeBy(1_500)
+        assertEquals(QualityTarget.BEST, target)
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
+        assertEquals(QualityTarget.ECO, target)
+        // Puis les versions de la chaîne, et retour au début.
+        press(Key.DirectionCenter)
+        assertEquals("FHD", focusedText())
+        compose.mainClock.advanceTimeBy(2_500)
+        compose.waitForIdle()
+        assertEquals("FHD", locked)
+        press(Key.DirectionCenter)
+        press(Key.DirectionCenter)
+        assertEquals("Meilleure qualité", focusedText())
+        compose.mainClock.advanceTimeBy(2_500)
+        compose.waitForIdle()
+        assertEquals(null to QualityTarget.BEST, locked to target)
     }
 
     /** Chaîne rassemblée : ses versions du son se choisissent dans les options, la première prend le focus. */

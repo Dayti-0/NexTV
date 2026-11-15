@@ -310,11 +310,8 @@
     <string name="player_subtitles_off">Désactivés</string>
     <string name="player_no_subtitles">Aucun sous-titre</string>
     <string name="player_aspect">Format de l’image</string>
-    <string name="player_channel_quality">Qualité de la chaîne</string>
-    <string name="player_channel_quality_playing">Qualité de la chaîne · %1$s en cours</string>
-    <string name="player_channel_quality_auto">Automatique</string>
-    <string name="player_channel_quality_help">Une qualité choisie reste pour cette chaîne jusqu’à la fermeture de l’application.</string>
-    <string name="player_quality_target_playing">Qualité visée · %1$s en cours</string>
+    <string name="player_quality">Qualité</string>
+    <string name="player_quality_playing">Qualité · %1$s en cours</string>
     <string name="player_sound_version">Version du son</string>
     <string name="player_sound_normal">Son normal</string>
     <string name="player_sound_dolby">Dolby Digital</string>

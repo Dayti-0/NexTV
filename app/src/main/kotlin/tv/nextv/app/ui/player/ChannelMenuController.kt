@@ -18,10 +18,11 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import tv.nextv.app.AppContainer
@@ -56,14 +57,23 @@ internal class ChannelMenuController(
 
     /** Programme de la chaîne sélectionnée dans le menu (volet de droite), lu après un court arrêt dessus. */
     val menuProgramme: StateFlow<MenuProgramme?> = menuFocus
-        .mapLatest { row ->
-            if (row == null) return@mapLatest null
+        .transformLatest { row ->
+            if (row == null) {
+                emit(null)
+                return@transformLatest
+            }
             delay(MENU_PROGRAMME_DELAY_MILLIS)
-            val now = System.currentTimeMillis()
-            val upcoming = container.programmeDao.upcoming(row.id, now, limit = 2)
-                .map { GuideProgramme(it.title, it.startMillis, it.stopMillis, it.subtitle, it.description, it.category, it.year, it.imageUrl) }
-            val current = upcoming.firstOrNull()?.takeIf { it.startMillis <= now }
-            MenuProgramme(row, current, upcoming.firstOrNull { it != current })
+            // Relu à la fin du programme affiché (ou au début du suivant) tant que la chaîne reste sélectionnée.
+            while (true) {
+                val now = System.currentTimeMillis()
+                val upcoming = container.programmeDao.upcoming(row.id, now, limit = 2)
+                    .map { GuideProgramme(it.title, it.startMillis, it.stopMillis, it.subtitle, it.description, it.category, it.year, it.imageUrl) }
+                val current = upcoming.firstOrNull()?.takeIf { it.startMillis <= now }
+                val next = upcoming.firstOrNull { it != current }
+                emit(MenuProgramme(row, current, next))
+                val change = current?.stopMillis ?: next?.startMillis ?: (now + MENU_PROGRAMME_RECHECK_MILLIS)
+                delay((change - now).coerceIn(1_000L, MENU_PROGRAMME_RECHECK_MILLIS))
+            }
         }
         .stateIn(scope, SharingStarted.WhileSubscribed(5_000), null)
 
@@ -90,9 +100,20 @@ internal class ChannelMenuController(
         }
         .cachedIn(scope)
 
-    val favorites: StateFlow<List<ChannelListRow>> = sourceId.flatMapLatest { id ->
-        if (id == null) flowOf(emptyList()) else container.channelDao.observeFavoriteChannels(id, System.currentTimeMillis())
-    }.stateIn(scope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    /** Heure relue régulièrement : programmes en cours des favoris (sinon figés à leur premier chargement). */
+    private val clock: Flow<Long> = flow {
+        while (true) {
+            emit(System.currentTimeMillis())
+            delay(FAVORITES_CLOCK_MILLIS)
+        }
+    }
+
+    val favorites: StateFlow<List<ChannelListRow>> = combine(sourceId, clock) { id, now -> id to now }
+        .flatMapLatest { (id, now) ->
+            if (id == null) flowOf(emptyList()) else container.channelDao.observeFavoriteChannels(id, now)
+        }
+        .distinctUntilChanged()
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** Chaîne sélectionnée dans le menu : son programme s'affiche à côté. */
     fun focus(row: ChannelListRow) {
@@ -162,5 +183,10 @@ internal class ChannelMenuController(
     private companion object {
         /** Défilement rapide dans le menu des chaînes : le programme n'est lu qu'à l'arrêt sur une chaîne. */
         const val MENU_PROGRAMME_DELAY_MILLIS = 150L
+
+        /** Volet du programme : relu au plus tard après ce délai (programmes ajoutés par une actualisation). */
+        const val MENU_PROGRAMME_RECHECK_MILLIS = 5 * 60_000L
+
+        const val FAVORITES_CLOCK_MILLIS = 30_000L
     }
 }
