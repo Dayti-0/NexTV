@@ -1,5 +1,6 @@
 package tv.nextv.app.ui.settings
 
+import androidx.compose.material.icons.filled.Close
 import tv.nextv.app.data.settings.AdSound
 import tv.nextv.app.player.AdRecordings
 import androidx.compose.runtime.DisposableEffect
@@ -264,6 +265,8 @@ fun SettingsScreen(
         adRecordings = adRecordings,
         adPlace = adPlace,
         onCycleAdPlace = viewModel::cycleAdPlace,
+        onStopAdRecording = viewModel::stopAdRecording,
+        onDeleteAdRecording = viewModel::deleteAdRecording,
         adSound = adSound,
         onCycleAdSound = viewModel::cycleAdSound,
         onCycleAdRadio = viewModel::cycleAdRadio,
@@ -328,6 +331,8 @@ fun SettingsContent(
     adRecordings: List<AdRecordings.Recording> = emptyList(),
     adPlace: AdPlace = AdPlace(),
     onCycleAdPlace: () -> Unit = {},
+    onStopAdRecording: () -> Unit = {},
+    onDeleteAdRecording: (String) -> Unit = {},
     /** Pendant les pubs : son baissé, radio ou musique de l'appareil. */
     adSound: AdSoundUi = AdSoundUi(),
     onCycleAdSound: () -> Unit = {},
@@ -542,16 +547,20 @@ fun SettingsContent(
                         var sharing by remember { mutableStateOf(false) }
                         ValueRow(
                             title = stringResource(R.string.settings_ad_recordings),
-                            value = if (adRecordings.isEmpty()) {
-                                stringResource(R.string.settings_ad_recordings_none)
-                            } else {
-                                stringResource(R.string.settings_ad_recordings_count, adRecordings.size, megabytes(adRecordings.sumOf { it.bytes }))
+                            value = when {
+                                adPlace.recordingMinutes != null -> stringResource(R.string.settings_ad_recordings_running, adPlace.recordingMinutes)
+                                adRecordings.isEmpty() -> stringResource(R.string.settings_ad_recordings_none)
+                                else -> stringResource(R.string.settings_ad_recordings_count, adRecordings.size, megabytes(adRecordings.sumOf { it.bytes }))
                             },
                             onClick = { sharing = true },
-                            enabled = adRecordings.isNotEmpty(),
+                            enabled = adRecordings.isNotEmpty() || adPlace.recordingMinutes != null,
                         )
                         if (sharing) {
-                            AdRecordingsDialog(adRecordings, onShareAdRecordings, onDeleteAdRecordings, onDismiss = { sharing = false })
+                            AdRecordingsDialog(
+                                adRecordings, onShareAdRecordings, onDeleteAdRecordings, onDismiss = { sharing = false },
+                                recordingMinutes = adPlace.recordingMinutes, onStopRecording = onStopAdRecording,
+                                onDeleteOne = onDeleteAdRecording,
+                            )
                         }
                         // Où vont les enregistrements : mémoire de l'appareil ou clé USB branchée (OK : la suivante).
                         val placeName = if (adPlace.usb) adPlace.label.orEmpty() else stringResource(R.string.settings_ad_recordings_internal)
@@ -1088,6 +1097,11 @@ private fun AdRecordingsDialog(
     onDismiss: () -> Unit,
     /** Variante « Ma musique » : envoyer des morceaux depuis le téléphone (même adresse). */
     musicTracks: Int? = null,
+    /** Enregistrement en cours (minutes), qu'on peut arrêter d'ici ; `null` sans enregistrement. */
+    recordingMinutes: Int? = null,
+    onStopRecording: () -> Unit = {},
+    /** Supprime un seul enregistrement (nom du `.zip`). */
+    onDeleteOne: (String) -> Unit = {},
 ) {
     var address by remember { mutableStateOf<String?>(null) }
     var noNetwork by remember { mutableStateOf(false) }
@@ -1120,12 +1134,25 @@ private fun AdRecordingsDialog(
                     Text(address.orEmpty(), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
                 }
                 musicTracks?.let { Text(stringResource(R.string.settings_ad_music_count, it), style = MaterialTheme.typography.bodyMedium) }
-                if (musicTracks == null) recordings.forEach { file ->
-                    Text(
-                        "${file.name}  ·  ${megabytes(file.bytes)} Mo",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                // Enregistrement qui continue hors du lecteur : arrêté ici, il rejoint la liste une seconde après.
+                if (musicTracks == null && recordingMinutes != null) {
+                    PillButton(stringResource(R.string.settings_ad_recordings_stop, recordingMinutes), onStopRecording, icon = Icons.Filled.Close)
+                }
+                // Chaque enregistrement, avec son bouton pour le supprimer seul (liste qui défile s'il y en a beaucoup).
+                if (musicTracks == null && recordings.isNotEmpty()) {
+                    Column(Modifier.heightIn(max = 260.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        recordings.forEach { file ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    "${file.name.removeSuffix(".zip")}  ·  ${megabytes(file.bytes)} Mo" + (file.location?.let { "  ·  $it" } ?: ""),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                PillButton(stringResource(R.string.settings_ad_recordings_delete_one), { onDeleteOne(file.name) }, icon = Icons.Filled.Delete, style = PillStyle.Ghost)
+                            }
+                        }
+                    }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     PillButton(stringResource(R.string.settings_ad_recordings_close), onDismiss, modifier = Modifier.focusRequester(firstFocus), style = PillStyle.Primary)

@@ -197,7 +197,7 @@ class AppContainer(context: Context) {
 
     /** Enregistrements pour l'analyse des pubs (options du lecteur), récupérés depuis Réglages par le réseau local. */
     val adRecordings by lazy {
-        AdRecordings(File(appContext.filesDir, "ad_recordings"), BuildConfig.VERSION_NAME) { removableRecordingPlaces(appContext) }.also { recordings ->
+        AdRecordings(File(appContext.filesDir, "ad_recordings"), BuildConfig.VERSION_NAME, removable = { removableRecordingPlaces(appContext) }).also { recordings ->
             applicationScope.launch { settings.adRecordingsLocation.collect { recordings.selected = it } }
         }
     }

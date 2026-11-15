@@ -19,6 +19,12 @@ import java.util.zip.ZipOutputStream
 import kotlin.random.Random
 
 /**
+ * Durée en dessous de laquelle un enregistrement d'analyse n'est pas gardé : le soir, une page de pubs revient toutes les
+ * 15 à 20 minutes ; plus court, il risque de n'en contenir aucune avec le programme autour.
+ */
+const val AD_RECORDING_MIN_MILLIS = 15 * 60_000L
+
+/**
  * Enregistrements pour l'analyse des pubs ([AdRecorder]) : lancés et arrêtés depuis les options du lecteur, gardés
  * dans la mémoire de l'appareil (les [MAX_FILES] derniers) ou sur une clé USB ([Location], réglage
  * « Emplacement des enregistrements »), un dossier chacun, puis récupérés sur un téléphone ou un ordinateur du même
@@ -32,6 +38,8 @@ class AdRecordings(
     private val internal: File,
     private val version: String,
     private val removable: () -> List<Location> = { emptyList() },
+    /** Enregistrement plus court : pas assez de pages de pub pour servir, il n'est pas gardé. */
+    private val minMillis: Long = AD_RECORDING_MIN_MILLIS,
 ) {
 
     /** Enregistrement terminé ([name] : celui du `.zip` téléchargé), et l'emplacement où il est gardé. */
@@ -131,16 +139,18 @@ class AdRecordings(
             "appareil" to "${Build.MANUFACTURER} ${Build.MODEL} (Android ${Build.VERSION.RELEASE})",
         )
         val part = File(directory, name + PART)
+        val self = arrayOfNulls<AdRecorder>(1)
         val recorder = AdRecorder(part, info) { reason ->
             val done = File(directory, name)
             if (!part.renameTo(done)) part.deleteRecursively()
-            // Moins d'une minute de son : rien d'utile.
-            if (File(done, "levels.bin").length() < MIN_LEVELS_BYTES) done.deleteRecursively()
+            // Trop court pour contenir assez de pages de pub : pas gardé.
+            if ((self[0]?.recordedMillis ?: 0L) < minMillis) done.deleteRecursively()
             // Mémoire de l'appareil : les derniers seulement. Sur une clé USB, tout est gardé (jusqu'à ce qu'elle soit pleine).
             if (location.key == null) trim(directory)
             mutableFiles.value = list()
             onStopped(reason)
         }
+        self[0] = recorder
         current = recorder
         control.record(recorder, channel)
         return recorder
@@ -150,6 +160,12 @@ class AdRecordings(
     fun stop() {
         current?.finish()
         current = null
+    }
+
+    /** Supprime un enregistrement gardé (nom de son `.zip`). */
+    fun delete(zipName: String) {
+        folder(zipName)?.deleteRecursively()
+        mutableFiles.value = list()
     }
 
     /** Supprime tous les enregistrements gardés, à tous les emplacements branchés (pas celui en cours). */
@@ -361,8 +377,7 @@ class AdRecordings(
         const val PART = ".part"
         const val MIN_FREE_BYTES = 400L * 1024 * 1024
 
-        /** Une minute de son traité (au moins 50 tranches de 6 octets par seconde). */
-        const val MIN_LEVELS_BYTES = 60L * 50 * 6
+
         const val PORT = 8090
         const val MUSIC_PATH = "musique/"
         const val MAX_HEADER = 8 * 1024

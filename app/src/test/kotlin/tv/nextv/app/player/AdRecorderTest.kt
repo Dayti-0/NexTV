@@ -81,7 +81,7 @@ class AdRecorderTest {
     fun `a recording keeps the sound, the pictures and the decisions until it is stopped`() {
         control.prints = AdPrintStore(java.io.File(folder.newFolder("prints"), "library.bin"), kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined), 10_000)
         control.newStream()
-        val recordings = AdRecordings(folder.newFolder("recordings"), "0.0.0-test")
+        val recordings = AdRecordings(folder.newFolder("recordings"), "0.0.0-test", minMillis = 60_000)
         val recorder = recordings.start("TF1 HD", control)!!
         assertNotNull(control.recordingMillis)
         play(70.0)
@@ -130,7 +130,7 @@ class AdRecorderTest {
 
     @Test
     fun `the recording says what opened and closed each break`() {
-        val recordings = AdRecordings(folder.newFolder("recordings"), "0.0.0-test")
+        val recordings = AdRecordings(folder.newFolder("recordings"), "0.0.0-test", minMillis = 60_000)
         recordings.start("W9", control)
         play(10.0)
         // Page de pub annoncée par le flux, puis sa fin.
@@ -151,7 +151,7 @@ class AdRecorderTest {
 
     @Test
     fun `changing channel keeps recording, marked, with the clock running on`() {
-        val recordings = AdRecordings(folder.newFolder("recordings"), "0.0.0-test")
+        val recordings = AdRecordings(folder.newFolder("recordings"), "0.0.0-test", minMillis = 60_000)
         recordings.start("M6", control)
         play(40.0)
         control.newStream()
@@ -172,9 +172,9 @@ class AdRecorderTest {
     fun `recordings go to the chosen USB drive, and say so when it is unplugged`() {
         val usb = folder.newFolder("usb")
         var plugged = true
-        val recordings = AdRecordings(folder.newFolder("internal"), "0.0.0-test") {
+        val recordings = AdRecordings(folder.newFolder("internal"), "0.0.0-test", minMillis = 60_000, removable = {
             if (plugged) listOf(AdRecordings.Location("1234-ABCD", "Clé USB SanDisk", usb)) else emptyList()
-        }
+        })
         assertEquals(listOf(null, "1234-ABCD"), recordings.locations().map { it.key })
         recordings.selected = "1234-ABCD"
         assertNotNull(recordings.start("TF1", control))
@@ -193,8 +193,35 @@ class AdRecorderTest {
     }
 
     @Test
+    fun `one recording can be deleted on its own, and a too short one is not kept`() {
+        val recordings = AdRecordings(folder.newFolder("recordings"), "0.0.0-test", minMillis = 60_000)
+        recordings.start("TF1", control)
+        play(62.0)
+        recordings.stop()
+        waitFor { recordings.files.value.size == 1 }
+        val first = recordings.files.value.single().name
+        Thread.sleep(1_100)
+        control.newStream()
+        recordings.start("M6", control)
+        play(62.0)
+        recordings.stop()
+        waitFor { recordings.files.value.size == 2 }
+        // Arrêté avant le minimum : pas gardé.
+        control.newStream()
+        val short = recordings.start("W9", control)!!
+        play(30.0)
+        recordings.stop()
+        waitFor { !short.active }
+        Thread.sleep(300)
+        assertEquals(2, recordings.files.value.size)
+        recordings.delete(first)
+        assertEquals(1, recordings.files.value.size)
+        assertTrue(recordings.files.value.single().name.startsWith("pubs_M6_"))
+    }
+
+    @Test
     fun `less than a minute is not kept`() {
-        val recordings = AdRecordings(folder.newFolder("recordings"), "0.0.0-test")
+        val recordings = AdRecordings(folder.newFolder("recordings"), "0.0.0-test", minMillis = 60_000)
         val recorder = recordings.start("M6", control)!!
         play(5.0)
         recordings.stop()
@@ -214,7 +241,7 @@ class AdRecorderTest {
 
     @Test
     fun `without the code, the phone gets nothing`() {
-        val recordings = AdRecordings(folder.newFolder("recordings"), "0.0.0-test")
+        val recordings = AdRecordings(folder.newFolder("recordings"), "0.0.0-test", minMillis = 60_000)
         recordings.share(host = "127.0.0.1")!!.use { share ->
             val wrong = URL(share.address.substringBeforeLast('/').substringBeforeLast('/') + "/autre/x.zip").openConnection() as HttpURLConnection
             assertEquals(404, wrong.responseCode)
@@ -223,7 +250,7 @@ class AdRecorderTest {
 
     @Test
     fun `music is sent from the phone to the device`() {
-        val recordings = AdRecordings(folder.newFolder("recordings"), "0.0.0-test")
+        val recordings = AdRecordings(folder.newFolder("recordings"), "0.0.0-test", minMillis = 60_000)
         val music = AdMusicLibrary(folder.newFolder("music"))
         recordings.share(host = "127.0.0.1", music = music)!!.use { share ->
             assertTrue(URL(share.address).openStream().use { it.readBytes().decodeToString() }.contains("Envoyer vers la télé"))

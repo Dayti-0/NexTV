@@ -331,6 +331,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             missing = location == null,
             access = location?.access ?: AdRecordings.Access.READY,
             storage = describeStorage(container.appContext),
+            recordingMinutes = container.adRecordings.current?.takeIf { it.active }?.let { (it.recordedMillis / 60_000).toInt() },
         )
     }
 
@@ -344,6 +345,15 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
                 container.adMusic.refresh()
                 adPlace(key)
             }
+        }
+    }
+
+    /** Arrête l'enregistrement d'analyse en cours (il continue même lecteur fermé) ; la liste est relue ensuite. */
+    fun stopAdRecording() {
+        container.adRecordings.stop()
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(1_500)
+            refreshAdPlaces()
         }
     }
 
@@ -391,6 +401,11 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     fun deleteAdRecordings() = container.adRecordings.deleteAll()
+
+    /** Supprime un seul enregistrement (nom de son `.zip`). */
+    fun deleteAdRecording(name: String) {
+        viewModelScope.launch(Dispatchers.IO) { container.adRecordings.delete(name) }
+    }
 
     fun checkUpdate() = container.updater.check()
 
@@ -549,6 +564,8 @@ data class AdPlace(
     val access: AdRecordings.Access = AdRecordings.Access.READY,
     /** Stockages annoncés par le système (pour la photo quand une clé n'est pas proposée). */
     val storage: String = "",
+    /** Enregistrement d'analyse en cours (minutes), même lecteur fermé ; `null` sans enregistrement. */
+    val recordingMinutes: Int? = null,
 )
 
 /** Écran du système qui accorde l'accès aux clés USB (« Accès à tous les fichiers »), s'il existe. */

@@ -486,11 +486,14 @@ class PlayerViewModel(
     fun toggleAdRecording() {
         adRecordedChannel = state.value.channelName
         val recording = state.value.adRecordingMinutes != null
+        // Arrêté trop tôt : pas gardé (pas assez de pages de pub pour servir), et l'appli le dit.
+        val tooShort = recording && (engine.adRecordingMillis ?: 0L) < tv.nextv.app.player.AD_RECORDING_MIN_MILLIS
         val started = engine.toggleAdRecording(state.value.channelName.ifBlank { "chaine" })
         mutableState.update {
             it.copy(
                 adRecordingMinutes = if (recording || !started) null else 0,
                 qualityNotice = when {
+                    recording && tooShort -> resources.getString(R.string.player_ad_recording_too_short)
                     recording -> resources.getString(R.string.player_ad_recording_stopped)
                     !started && engine.adRecordingRefusal == "usb" -> resources.getString(R.string.player_ad_recording_no_usb)
                     !started && engine.adRecordingRefusal == "autorisation" -> resources.getString(R.string.player_ad_recording_no_access)

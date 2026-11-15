@@ -411,7 +411,11 @@ internal class PlayerEngine(
         // Le traitement « baisser le son des pubs » reste branché sur ce lecteur : coupé dans l'aperçu ; cet écran en
         // prend un nouveau pour un éventuel lecteur suivant.
         saveAdMarks()
-        val control = adVolume.also { it.enabled = false }
+        val control = adVolume.also {
+            it.enabled = false
+            // L'enregistrement d'analyse ne suit pas l'aperçu : il reprendra avec le prochain lecteur plein écran.
+            it.detachRecording()
+        }
         adVolume = AdVolumeControl()
         adMarksKey = null
         adMarks = null
@@ -512,6 +516,7 @@ internal class PlayerEngine(
         }
         generation++
         // « Baisser le son des pubs » : le traitement du son de ce lecteur, réglé comme en plein écran.
+        adVolume.detachRecording()
         adVolume = handoff.adVolume
         startAdWatch()
         receivedRate.reset()
@@ -609,9 +614,10 @@ internal class PlayerEngine(
         }
         adVolume.enabled = enabled
         adVolume.prints = if (enabled) container.adPrints else null
-        // Enregistrements d'analyse : leur emplacement (réglages) est lu dès maintenant, prêt quand on en lancera un.
-        if (enabled) container.adRecordings
         adVolume.newStream(adMarks)
+        // Enregistrement d'analyse en cours (lancé sur une autre chaîne, peut-être dans un autre lecteur) : il continue
+        // sur celle-ci. Son emplacement (réglages) est aussi lu dès maintenant, prêt quand on en lancera un.
+        if (enabled) container.adRecordings.current?.let(adVolume::attach)
     }
 
     /** Position de lecture dans la « période » du lecteur (celle des repères de pub), en millisecondes. */
@@ -739,7 +745,9 @@ internal class PlayerEngine(
     fun release() {
         releasePendingHandoff()
         saveAdMarks()
-        adVolume.stopRecording()
+        // Lecteur fermé (retour à l'accueil, autre chaîne choisie ailleurs) : l'enregistrement d'analyse continue, il
+        // reprendra avec la prochaine chaîne ouverte ; il s'arrête par les options du lecteur ou par Réglages › Son.
+        adVolume.detachRecording()
         exoPlayer?.let {
             it.removeListener(listener)
             it.removeAnalyticsListener(analytics)

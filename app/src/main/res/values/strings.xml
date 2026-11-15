@@ -409,6 +409,10 @@
     <string name="settings_ad_recordings_count">%1$d enregistrement(s), %2$s Mo : les récupérer sur un téléphone</string>
     <string name="settings_ad_recordings_help">Sur un téléphone ou un ordinateur relié au même réseau (Wi-Fi de la maison), ouvrez cette adresse dans le navigateur, puis touchez un fichier pour le télécharger. L’adresse marche tant que cette fenêtre est ouverte.</string>
     <string name="settings_ad_recordings_no_network">Pas de réseau local trouvé : l’appareil doit être relié au Wi-Fi ou au câble de la maison.</string>
+    <string name="settings_ad_recordings_running">Enregistrement en cours (%1$d min) : il continue d’une chaîne à l’autre ; OK pour l’arrêter</string>
+    <string name="settings_ad_recordings_stop">Arrêter l’enregistrement en cours (%1$d min)</string>
+    <string name="player_ad_recording_too_short">Enregistrement d’analyse arrêté avant 15 minutes : trop court pour servir, il n’est pas gardé</string>
+    <string name="settings_ad_recordings_delete_one">Supprimer</string>
     <string name="settings_ad_recordings_delete">Tout supprimer</string>
     <string name="settings_ad_recordings_close">Fermer</string>
     <string name="player_info_ad_cues">Repères de pub</string>

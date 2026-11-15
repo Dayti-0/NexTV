@@ -716,6 +716,54 @@ class PlayerViewModelTest {
         store.clear()
     }
 
+    /**
+     * Enregistrement d'analyse : lecteur fermé (retour à l'accueil) puis une autre chaîne ouverte, il continue sur
+     * celle-ci au lieu de s'arrêter.
+     */
+    @Test
+    fun analysisRecordingGoesOnWhenAnotherChannelIsOpenedFromHome() {
+        runBlocking { container.settings.setLowerAdVolume(true) }
+        val sourceId = runBlocking {
+            val id = container.sourceRepository.add(SourceInput(name = "Rec", location = SourceLocation.Remote("http://127.0.0.1:9/rec.m3u")))
+            container.playlistStore.replaceChannels(
+                id,
+                listOf("TF1", "M6").mapIndexed { index, name ->
+                    Channel(position = index, name = name, stream = StreamDescriptor("http://127.0.0.1:9/live/r$index.ts"), groupTitle = "TNT", title = name)
+                },
+            )
+            id
+        }
+        fun idOf(key: String) = runBlocking { checkNotNull(container.channelDao.primaryIdByKey(sourceId, key)) }
+        val (first, firstStore) = open(idOf("live:tf1"))
+        first.onStart()
+        idle()
+        first.toggleAdRecording()
+        idle()
+        assertNotNull(first.state.value.adRecordingMinutes)
+        val recorder = checkNotNull(container.adRecordings.current)
+        // Retour à l'accueil : le lecteur se ferme, l'enregistrement continue.
+        firstStore.clear()
+        idle()
+        assertTrue(recorder.active)
+        val (second, secondStore) = open(idOf("live:m6"))
+        second.onStart()
+        idle()
+        assertEquals("M6", second.state.value.channelName)
+        assertSame(recorder, second.let { container.adRecordings.current })
+        // Repris par ce lecteur : les options le montrent, et on peut l'arrêter d'ici.
+        val deadline = System.nanoTime() + 5_000_000_000L
+        while (second.state.value.adRecordingMinutes == null && System.nanoTime() < deadline) {
+            shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(1))
+            Thread.sleep(20)
+        }
+        assertNotNull(second.state.value.adRecordingMinutes)
+        second.toggleAdRecording()
+        idle()
+        assertTrue(!recorder.active)
+        assertNull(second.state.value.adRecordingMinutes)
+        secondStore.clear()
+    }
+
     /** Radio à la place des pubs : l'écran s'ouvre, « ce n'est pas une pub » et la fermeture ne plantent pas. */
     @Test
     fun radioInsteadOfAdsOpensAndClosesCleanly() {

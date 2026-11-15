@@ -137,6 +137,25 @@ class AdVolumeControl {
         recorder = null
     }
 
+    /**
+     * Reprend un enregistrement d'analyse commencé ailleurs (lecteur fermé puis une autre chaîne ouverte depuis
+     * l'accueil, le guide, l'aperçu…) : il continue à la suite, la détection de ce lecteur repartant de zéro.
+     */
+    fun attach(recorder: AdRecorder) {
+        if (this.recorder === recorder || !recorder.active) return
+        recordedLogo = null
+        recordedCue = null
+        recordedAttenuating = false
+        this.recorder = recorder
+        guard.onEvent = eventSink
+        recorder.newStream()
+    }
+
+    /** Lecteur fermé ou rendu à l'aperçu : l'enregistrement d'analyse continue, sans lui (repris par [attach]). */
+    fun detachRecording() {
+        recorder = null
+    }
+
     /** Durée de l'enregistrement d'analyse en cours (ms) ; `null` sans enregistrement. */
     val recordingMillis: Long? get() = recorder?.takeIf { it.active }?.recordedMillis
 
