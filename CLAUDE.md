@@ -207,7 +207,9 @@ Commandes :
   fichiers » `MANAGE_EXTERNAL_STORAGE`, `allFilesAccessIntent` ; `describeStorage` liste les volumes vus pour la photo ;
   réglage `ad_recordings_location` = identifiant du volume). Essai « Enregistrement automatique » (0.2.158,
   `PlayerViewModel.toggleAutoRecording`) : zappe dans la liste d'origine toutes les 30 min (pas pendant une baisse, au
-  plus +10 min ; 1 min si la chaîne est en erreur), écran gardé allumé. Le rejouer : `AdDeviceReplayTool` (`AD_DEVICE`,
+  plus +10 min ; 1 min si la chaîne est en erreur), écran gardé allumé ; ouvert depuis « Toutes les chaînes », il suit
+  `AUTO_TNT_NUMBERS` (grandes chaînes à pub, `TntChannels`, `autoNext`). Fichiers coupés toutes les heures
+  (`splitAdRecording`, 0.2.160). Le rejouer : `AdDeviceReplayTool` (`AD_DEVICE`,
   `AD_PRINTS`, `AD_IMAGES=10` écrit une image par 10 s pour relever les pages de pub à l'œil dans `<nom>.truth.tsv`).
   C'est la seule façon de mesurer TF1, M6 et France Télévisions (pas de flux lisible d'ici, même avec un compte).
 - Musique pendant les pubs (0.2.159, réglage « Pendant les pubs » `AdSound` : baisser / radio / ma musique) :

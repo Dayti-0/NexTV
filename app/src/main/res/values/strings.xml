@@ -403,7 +403,7 @@
     <string name="settings_ad_recordings_allow_help">Ouvre les réglages du système : activez « Accès à tous les fichiers » (ou « Gérer tous les fichiers ») pour NixTV, puis revenez</string>
     <string name="settings_ad_recordings_allow_manual">Réglages de l’appareil › Applis › NixTV › Autorisations : activez l’accès à tous les fichiers</string>
     <string name="settings_ad_recordings_storage">Stockages vus par l’appli : %1$s</string>
-    <string name="settings_ad_recordings_place_help">OK passe à l’emplacement suivant : la mémoire de l’appareil, puis chaque clé USB branchée. Sur une clé USB, tous les enregistrements sont gardés (environ 90 Mo par heure) ; dans la mémoire de l’appareil, les 4 derniers.</string>
+    <string name="settings_ad_recordings_place_help">OK passe à l’emplacement suivant : la mémoire de l’appareil, puis chaque clé USB branchée. Sur une clé USB, tous les enregistrements sont gardés (environ 90 Mo par heure) ; dans la mémoire de l’appareil, les 24 derniers (un fichier par heure).</string>
     <string name="settings_ad_recordings">Enregistrements pour l’analyse des pubs</string>
     <string name="settings_ad_recordings_none">Aucun : à lancer depuis les options du lecteur, sur une chaîne en direct</string>
     <string name="settings_ad_recordings_count">%1$d enregistrement(s), %2$s Mo : les récupérer sur un téléphone</string>

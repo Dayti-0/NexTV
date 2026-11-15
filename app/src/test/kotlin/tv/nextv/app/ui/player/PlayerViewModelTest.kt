@@ -682,7 +682,7 @@ class PlayerViewModelTest {
             val id = container.sourceRepository.add(SourceInput(name = "Auto", location = SourceLocation.Remote("http://127.0.0.1:9/auto.m3u")))
             container.playlistStore.replaceChannels(
                 id,
-                listOf("TF1", "France 2", "M6").mapIndexed { index, name ->
+                listOf("TF1", "Canal+", "France 2", "M6").mapIndexed { index, name ->
                     Channel(position = index, name = name, stream = StreamDescriptor("http://127.0.0.1:9/live/$index.ts"), groupTitle = "TNT", title = name)
                 },
             )
@@ -704,6 +704,7 @@ class PlayerViewModelTest {
             Thread.sleep(5)
         }
         awaitOtherChannel(viewModel, "TF1")
+        // Ouverte depuis « Toutes les chaînes » : la grande chaîne à pub de la TNT suivante, pas Canal+ (suivante de la liste).
         assertEquals("France 2", viewModel.state.value.channelName)
         assertTrue((viewModel.state.value.autoRecordingChannels ?: 0) >= 2)
         // L'enregistrement continue d'une chaîne à l'autre ; arrêter l'automatique arrête aussi l'enregistrement.

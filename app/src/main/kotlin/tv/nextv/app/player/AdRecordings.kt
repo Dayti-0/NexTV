@@ -120,7 +120,8 @@ class AdRecordings(
         }
         if (location == null || refusal != null) return null
         val directory = location.directory
-        val stamp = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.FRANCE).format(Date())
+        // À la seconde près : un fichier coupé au bout d'une heure et le suivant ne portent jamais le même nom.
+        val stamp = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.FRANCE).format(Date())
         val name = "pubs_${safe(channel)}_$stamp"
         val info = linkedMapOf(
             "format" to "2",
@@ -356,7 +357,7 @@ class AdRecordings(
     }
 
     private companion object {
-        const val MAX_FILES = 4
+        const val MAX_FILES = 24
         const val PART = ".part"
         const val MIN_FREE_BYTES = 400L * 1024 * 1024
 

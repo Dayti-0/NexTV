@@ -246,6 +246,9 @@ class PlayerViewModel(
     private var adSoundMode = AdSound.LOWER
     private var adRadioKey: String? = null
 
+    /** Enregistrement d'analyse en train d'être coupé (fichier suivant) : l'automatique continue. */
+    private var adRecordingSplitting = false
+
     /** Enregistrement automatique (essais) : change de chaîne tout seul, toute la nuit s'il le faut. */
     private var autoRecording: kotlinx.coroutines.Job? = null
 
@@ -283,6 +286,8 @@ class PlayerViewModel(
                 updateAdMusic(adMuted)
                 val adWatch = if (vlc == null) engine.adVolume.watch() else null
                 val adDetails = if (vlc == null) engine.adDetails() else null
+                // Enregistrement d'analyse coupé toutes les heures : un fichier par heure, plus facile à envoyer.
+                if ((engine.adRecordingMillis ?: 0) >= AD_RECORDING_SPLIT_MILLIS) splitAdRecording()
                 val adRecording = engine.adRecordingMillis?.let { (it / 60_000).toInt() }
                 // Enregistrement d'analyse : la chaîne regardée y est notée à chaque changement.
                 if (adRecording != null && state.value.channelName != adRecordedChannel) {
@@ -497,6 +502,15 @@ class PlayerViewModel(
         }
     }
 
+    /** Fin d'une heure d'enregistrement d'analyse : ce fichier se ferme, le suivant commence aussitôt. */
+    private fun splitAdRecording() {
+        adRecordingSplitting = true
+        engine.toggleAdRecording(state.value.channelName.ifBlank { "chaine" })
+        engine.toggleAdRecording(state.value.channelName.ifBlank { "chaine" })
+        adRecordedChannel = state.value.channelName
+        adRecordingSplitting = false
+    }
+
     /**
      * Options › « Enregistrement automatique » (pour les essais) : enregistre pour l'analyse des pubs et passe tout seul à
      * la chaîne suivante de la liste d'où la chaîne a été ouverte (favoris, catégorie…) toutes les [AUTO_STAY_MILLIS] —
@@ -518,14 +532,14 @@ class PlayerViewModel(
             while (true) {
                 delay(AUTO_CHECK_MILLIS)
                 // Enregistrement arrêté (à la main, place pleine, clé retirée) : l'automatique aussi.
-                if (engine.adRecordingMillis == null) break
+                if (engine.adRecordingMillis == null && !adRecordingSplitting) break
                 val now = SystemClock.elapsedRealtime()
                 val stayed = now - since
                 errorSince = if (state.value.error != null) errorSince.takeIf { it > 0 } ?: now else 0L
                 val failing = errorSince > 0 && now - errorSince >= AUTO_ERROR_MILLIS
                 val inBreak = engine.adVolume.attenuating
                 if (failing || (stayed >= AUTO_STAY_MILLIS && !inBreak) || stayed >= AUTO_STAY_MILLIS + AUTO_EXTRA_MILLIS) {
-                    zap(+1)
+                    autoNext()
                     since = now
                     errorSince = 0L
                     mutableState.update { it.copy(autoRecordingChannels = (it.autoRecordingChannels ?: 0) + 1) }
@@ -533,6 +547,36 @@ class PlayerViewModel(
             }
             autoRecording = null
             mutableState.update { it.copy(autoRecordingChannels = null) }
+        }
+    }
+
+    /**
+     * Chaîne suivante de l'enregistrement automatique : celle des favoris ou de la catégorie d'où la chaîne a été
+     * ouverte ; ouverte d'ailleurs (« Toutes les chaînes »…), la suivante des grandes chaînes à pub de la TNT
+     * ([AUTO_TNT_NUMBERS]) présentes dans la playlist, plutôt que des centaines de chaînes dans l'ordre.
+     */
+    private fun autoNext() {
+        if (fromFavorites || zapGroup != null) {
+            zap(+1)
+            return
+        }
+        val current = session.listed ?: return
+        viewModelScope.launch {
+            val dao = container.channelDao
+            val byNumber = dao.lineupRows(current.sourceId).sortedBy { it.position }
+                .mapNotNull { row -> tv.nextv.core.epg.TntChannels.number(row.title)?.let { it to row.itemKey } }
+                .filter { (number, _) -> number in AUTO_TNT_NUMBERS }
+                .distinctBy { it.first }
+                .toMap()
+            val numbers = AUTO_TNT_NUMBERS.filter { it in byNumber }
+            if (numbers.isEmpty()) {
+                zap(+1)
+                return@launch
+            }
+            val here = tv.nextv.core.epg.TntChannels.number(current.title)
+            val next = numbers.firstOrNull { here != null && it > here } ?: numbers.first()
+            val id = byNumber[next]?.let { dao.primaryIdByKey(current.sourceId, it) }
+            if (id != null && id != current.id) load(id) else zap(+1)
         }
     }
 
@@ -1337,6 +1381,12 @@ class PlayerViewModel(
         /** Enregistrement automatique : temps passé sur chaque chaîne, prolongé pendant une page de pubs. */
         const val AUTO_STAY_MILLIS = 30 * 60_000L
         const val AUTO_EXTRA_MILLIS = 10 * 60_000L
+
+        /** Enregistrement automatique ouvert depuis « Toutes les chaînes » : grandes chaînes à pub de la TNT (numéros). */
+        val AUTO_TNT_NUMBERS = listOf(1, 2, 3, 6, 9, 10, 11, 20, 22, 23)
+
+        /** Enregistrement d'analyse coupé en fichiers de cette durée (plus faciles à envoyer). */
+        const val AD_RECORDING_SPLIT_MILLIS = 60 * 60_000L
 
         /** Chaîne qui ne se lit pas : la suivante après ce délai. */
         const val AUTO_ERROR_MILLIS = 60_000L

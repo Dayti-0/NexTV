@@ -4,6 +4,11 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.160
+- Enregistrement d’analyse : coupé tout seul en fichiers d’une heure (environ 90 Mo chacun), plus faciles à envoyer ; l’enregistrement continue sans interruption
+- Dans la mémoire de l’appareil, les 24 derniers fichiers sont gardés (une nuit entière), au lieu des 4 derniers
+- Enregistrement automatique : lancé depuis une chaîne ouverte par « Toutes les chaînes », il passe d’une grande chaîne à pub de la TNT à l’autre (TF1, France 2, France 3, M6, W9, TMC, TFX, TF1 Séries Films, 6ter, RMC Story), au lieu de toutes les chaînes dans l’ordre. Depuis les favoris ou une catégorie, il reste dans cette liste
+
 ## 0.2.159
 - Réglages › Son › « Pendant les pubs » : au lieu de baisser le son, l’application peut mettre une radio sans pub (FIP, FIP Rock, FIP Jazz, France Musique… au choix) ou votre musique. Le son de la chaîne est coupé pendant la pub, la musique monte en fondu puis s’efface au retour du programme ; le bandeau affiche « Pub : FIP à la place »
 - « Ma musique » : envoyez vos morceaux depuis le téléphone, par l’adresse affichée dans les réglages (même Wi-Fi), ou mettez-les dans un dossier « NixTV/musique » sur une clé USB
