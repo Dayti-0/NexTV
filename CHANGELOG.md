@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.152
+- Fire TV (et autres appareils avant Android 12) : l’aperçu vidéo du volet de droite affiche de nouveau l’image. Le son passait mais l’image restait invisible, cachée par le fondu du bas du volet, retiré sur ces appareils
+
 ## 0.2.151
 - « Dernier incident » (Réglages) : la mémoire est relevée toutes les 15 secondes tant que l’application est affichée (sa mémoire réelle toutes les minutes). Après une fermeture par le système, la carte dit donc où en était la mémoire juste avant, et non au dernier changement d’écran
 - Quand NixTV n’utilisait presque pas de mémoire au moment de la fermeture, la carte le dit : c’est le reste de l’appareil qui en manquait (système, autres applications restées ouvertes)

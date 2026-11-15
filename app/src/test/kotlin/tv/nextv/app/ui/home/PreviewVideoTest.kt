@@ -68,6 +68,17 @@ class PreviewVideoTest {
     }
 
     @Test
+    fun thePaneFadeIsOffWhereItWouldHideTheVideo() {
+        // Fire TV (Android 7 à 9) : le fondu du volet cachait l'image de l'aperçu (le son passait).
+        assertEquals(false, paneFadeKeepsVideo(sdk = 25))
+        assertEquals(false, paneFadeKeepsVideo(sdk = 28))
+        assertEquals(false, paneFadeKeepsVideo(sdk = 30))
+        // Android 12 et plus (box Raspberry Pi) : la vidéo passe à travers le fondu, il reste.
+        assertEquals(true, paneFadeKeepsVideo(sdk = 31))
+        assertEquals(true, paneFadeKeepsVideo(sdk = 35))
+    }
+
+    @Test
     fun soundWithoutImageRestartsAtTheLiveEdge() {
         val player = SilentVideoPlayer()
         compose.setContent { PreviewVideo(player, Modifier.size(320.dp, 180.dp)) }

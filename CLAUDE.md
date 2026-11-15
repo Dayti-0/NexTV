@@ -69,6 +69,10 @@ Commandes :
 - Ne jamais donner une autre surface au décodeur d'un lecteur en cours (`setVideoSurfaceView` d'une autre vue) : sur
   la box Raspberry Pi l'image reste noire alors que Media3 croit l'afficher, et sur plusieurs Fire TV Media3 rouvre
   le décodeur, qui attend la prochaine image complète (jusqu'à 20 s). D'où les couches vidéo (`VideoLayer`).
+- Avant Android 12 (Fire TV), une vidéo d'aperçu (`PreviewVideo`, SurfaceView affichée sous la fenêtre à travers un
+  « trou ») ne doit pas être dans un élément dessiné à part (`graphicsLayer` en `Offscreen`, comme `bottomFade` /
+  `edgeFade`) : l'image reste cachée, le son passe. Le volet de droite n'a pas de fondu sur ces appareils
+  (`paneFadeKeepsVideo`, 0.2.152 ; le fondu y était depuis le 6/11/2026).
 - Sur la télé, une sélection perdue (l'élément sélectionné disparaît avant qu'un autre la prenne) est donnée par Android
   au premier élément en haut à gauche : en Streaming, le menu de gauche, qui s'ouvre. Robolectric la remet souvent
   ailleurs : suivre la sélection image par image (`HomeFocusTest.streamingCategoryPickKeepsTheFocusInTheList`).
@@ -107,7 +111,8 @@ Commandes :
   vidé et 16 Mo de flux d'avance au plus pendant 3 min (`MemoryPressure`, `LiveLoadControl`). Fermeture par le
   système le 15/11/2026 sur la Fire TV de la Sony, en direct (appli 39 Mo, natif 49 Mo, 272 Mo libres, critique).
   Puis en 0.2.150, sur l'écran de démarrage : appli 22 Mo seulement (PSS), appareil 337 Mo libres sur 900, critique
-  1 s avant : la Fire TV manquait de mémoire hors de NixTV. Relevés réguliers depuis 0.2.151 (`CrashLog.tick`).
+  1 s avant, au premier lancement juste après l'installation de la mise à jour : la Fire TV manquait de
+  mémoire hors de NixTV. Relevés réguliers depuis 0.2.151 (`CrashLog.tick`).
 - Journal « Dernier incident » : `CrashLog.kt` (trace réduite sans perdre la cause, erreurs de fond) et
   `SystemExits.kt` (fermetures par le système : raison, écran affiché, mémoire). C'est lui qu'il faut demander en
   photo pour tout plantage.

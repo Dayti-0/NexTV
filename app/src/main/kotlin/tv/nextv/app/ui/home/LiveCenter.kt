@@ -1,5 +1,7 @@
 package tv.nextv.app.ui.home
 
+import android.os.Build
+
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -379,12 +381,19 @@ private fun ScrollingPane(
             .onKeyEvent { event -> event.type == KeyEventType.KeyDown && scrollPane(scroll, event.key, step) { scope.launch { it() } } }
             .focusable(enabled = scroll.maxValue > 0)
             .padding(horizontal = 20.dp, vertical = 14.dp)
-            .bottomFade({ scroll.canScrollForward })
+            .then(if (paneFadeKeepsVideo()) Modifier.bottomFade({ scroll.canScrollForward }) else Modifier)
             .verticalScroll(scroll),
         verticalArrangement = Arrangement.spacedBy(10.dp),
         content = content,
     )
 }
+
+/**
+ * Le fondu du bas du volet laisse voir la vidéo de l'aperçu qu'il contient. Il dessine le volet à part avant de le
+ * poser à l'écran ; avant Android 12, la vidéo (affichée sous la fenêtre, à travers un « trou » du volet) restait alors
+ * cachée : sur la Fire TV, le son de l'aperçu passait, l'image jamais. Sur ces appareils, le volet n'a pas de fondu.
+ */
+internal fun paneFadeKeepsVideo(sdk: Int = Build.VERSION.SDK_INT): Boolean = sdk >= Build.VERSION_CODES.S
 
 /**
  * Touche ☰ (menu) de la télécommande : volet de droite de l'élément choisi, sans en changer (dans la
