@@ -6,6 +6,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.RawQuery
+import androidx.room.Transaction
 import androidx.room.Update
 import androidx.room.Upsert
 import androidx.sqlite.db.SimpleSQLiteQuery
@@ -25,18 +26,26 @@ import tv.nextv.core.model.ContentKind
 /*
  * Filtres des réglages, rangés avec les catégories masquées (sans nouvelle table) :
  * - [HIDDEN_ITEM] : chaîne masquée avec toutes ses versions (France 3 des autres régions), par sa clé ;
- * - [HIDDEN_UHD] : versions 4K masquées (rang de qualité 5, voir StreamQuality.UHD).
+ * - [HIDDEN_UHD] : versions 4K masquées (rang de qualité 5, voir StreamQuality.UHD) ;
+ * - [HIDDEN_FOREIGN] : chaînes des autres pays masquées (réglage « Chaînes françaises seulement », colonne `french`).
  */
 internal const val HIDDEN_ITEM = "LIVE_ITEM"
 internal const val HIDDEN_UHD = "LIVE_UHD"
+internal const val HIDDEN_FOREIGN = "LIVE_FOREIGN"
+
+/** Chaînes des autres pays masquées dans les réglages. */
+private const val FOREIGN_HIDDEN = "EXISTS (SELECT 1 FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = '$HIDDEN_FOREIGN')"
 
 /** 4K masquée dans les réglages. */
 private const val UHD_HIDDEN = "EXISTS (SELECT 1 FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = '$HIDDEN_UHD')"
 
-/** `c` : ni chaîne masquée par les réglages, ni version 4K masquée. */
+/**
+ * `c` : ni chaîne masquée par les réglages, ni version 4K masquée, ni chaîne d'un autre pays masquée. La section Foot
+ * garde toutes les chaînes (elle place seulement celles-ci en dernier).
+ */
 private const val VISIBLE_VERSION =
     "c.itemKey NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = '$HIDDEN_ITEM') " +
-        "AND NOT (c.qualityRank = 5 AND $UHD_HIDDEN)"
+        "AND NOT (c.qualityRank = 5 AND $UHD_HIDDEN) AND NOT (c.french = 0 AND $FOREIGN_HIDDEN)"
 
 /** Catégories de chaînes masquées (sous-requête). */
 private const val HIDDEN_LIVE_GROUPS = "(SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'LIVE')"
@@ -389,6 +398,17 @@ data class FootballProgrammeRow(
 )
 
 /** Chaîne visible associée au guide (section Foot). */
+/** Chaîne en direct enregistrée, telle que ChannelLineup.arrange la range (voir ChannelDao.rearrange). */
+data class LineupRow(
+    val position: Int,
+    val name: String,
+    val title: String,
+    val baseTitle: String?,
+    val groupTitle: String?,
+    val variantKey: String,
+    val itemKey: String,
+)
+
 data class EpgChannelRow(val epgChannelId: String?, val id: Long, val name: String, val title: String, val logoUrl: String?)
 
 /** Chaîne qui peut être une chaîne « événement » (section Foot) ; [hasGuide] : elle a des programmes dans le guide. */
@@ -535,7 +555,7 @@ interface ChannelDao {
                 ) AS hidden,
                 MIN(c.listOrder) AS groupOrder
             FROM channels c
-            WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND $BEST_IN_GROUP
+            WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND $BEST_IN_GROUP AND NOT (c.french = 0 AND $FOREIGN_HIDDEN)
             GROUP BY c.listGroup
             UNION ALL
             SELECT h.title AS title,
@@ -841,6 +861,31 @@ interface ChannelDao {
         """,
     )
     suspend fun franceTroisCandidates(sourceId: Long): List<ItemNameRow>
+
+    /** Chaînes en direct d'une playlist, pour les ranger de nouveau sans la relire ([rearrange]). */
+    @Query("SELECT position, name, title, baseTitle, groupTitle, variantKey, itemKey FROM channels WHERE sourceId = :sourceId AND kind = 'LIVE'")
+    suspend fun lineupRows(sourceId: Long): List<LineupRow>
+
+    @Query(
+        "UPDATE channels SET lineup = :lineup, theme = :theme, niceTitle = :niceTitle, french = :french " +
+            "WHERE sourceId = :sourceId AND kind = 'LIVE' AND position = :position",
+    )
+    suspend fun setArrangement(sourceId: Long, position: Int, lineup: Int, theme: String?, niceTitle: String?, french: Boolean)
+
+    /**
+     * Rang, catégorie par thème, nom propre et nationalité des chaînes en direct déjà enregistrées, recalculés par
+     * [arrange] (nouvelles règles de ChannelLineup) sans relire la playlist. Lecture et écritures dans une même
+     * transaction : une actualisation de la playlist en même temps ne se mélange pas avec elles. Les colonnes en vigueur
+     * (ordre, catégorie, nom) suivent ensuite par [applyGrouping].
+     */
+    @Transaction
+    suspend fun rearrange(sourceId: Long, arrange: (List<LineupRow>) -> Map<Int, tv.nextv.core.catalog.ChannelLineup.Arrangement>) {
+        val rows = lineupRows(sourceId)
+        if (rows.isEmpty()) return
+        for ((position, arrangement) in arrange(rows)) {
+            setArrangement(sourceId, position, arrangement.lineup, arrangement.theme, arrangement.name, arrangement.french)
+        }
+    }
 
     /** Clés des séparateurs de la playlist (« ▀▄ FR ▀▄ CINEMA ▄▀ ») : masqués quand les chaînes sont rassemblées. */
     @Query("SELECT DISTINCT itemKey FROM channels WHERE sourceId = :sourceId AND kind = 'LIVE' AND itemKey LIKE 'live:${LiveVariants.SEPARATOR_PREFIX}%'")

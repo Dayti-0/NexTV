@@ -133,7 +133,14 @@ Commandes :
   `ChannelDao.applyGrouping` les bascule au changement du réglage. Une catégorie masquée l'est sous son nom de playlist
   (`groupTitle`) comme sous son thème (`listGroup`). `ChannelFilters` masque séparateurs et autres éditions de France 3.
   Version du son (options du lecteur) : `channelStart` (`AutoQualityController.kt`) ne garde que les versions du son
-  choisi pour la chaîne (`SettingsRepository.channelSound`).
+  choisi pour la chaîne (`SettingsRepository.channelSound`). Qualité choisie à la main (options › « Qualité de la
+  chaîne ») : `AppContainer.lockedQualities`, en mémoire seulement (jusqu'à la fermeture), lue par `channelStart`
+  (qualité automatique coupée).
+- Rangement recalculé sans relire la playlist : `ChannelFilters.rearrange` (au lancement quand `ChannelLineup.VERSION`
+  dépasse le `lineupVersion` des réglages). Toute nouvelle règle de `ChannelLineup` : augmenter `ChannelLineup.VERSION`.
+- « Chaînes françaises seulement » (réglage) : colonne `french` (section autre que `OTHER` dans `ChannelLineup`), masquée
+  par `VISIBLE_VERSION` quand `hidden_groups` contient `LIVE_FOREIGN`. La section Foot (`epgChannels`,
+  `eventChannelCandidates`) garde toutes les chaînes, masquées en dernier.
 - Retour du lecteur à l'accueil : la chaîne regardée (`AppContainer.lastLiveChannel`) et la catégorie où elle a été
   choisie dans le menu des chaînes (`lastLiveCategory`) ; `HomeViewModel.followWatchedChannel` passe l'accueil à une
   catégorie qui la contient (seulement lecteur ouvert, `playbackOpen` : jamais sous les yeux) et note sa place dans

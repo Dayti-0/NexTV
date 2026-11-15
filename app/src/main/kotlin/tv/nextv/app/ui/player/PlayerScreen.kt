@@ -131,6 +131,7 @@ import tv.nextv.app.ui.settings.qualityTargetLabel
 import tv.nextv.app.ui.theme.NexTvColors
 import tv.nextv.app.ui.theme.NexTvIcons
 import tv.nextv.core.catalog.QualityParser
+import tv.nextv.core.model.StreamQuality
 import tv.nextv.core.stream.QualityTarget
 import java.text.DateFormat
 import java.text.NumberFormat
@@ -577,6 +578,12 @@ fun PlayerScreen(
             qualityTarget = qualityTarget,
             playingQuality = state.quality,
             onQualityTarget = viewModel::setQualityTarget,
+            qualityVersions = state.qualityVersions,
+            lockedQuality = state.lockedQuality,
+            onLockQuality = {
+                optionsVisible = false
+                viewModel.lockQuality(it)
+            },
             soundVersions = state.soundVersions,
             soundVersion = state.soundVersion,
             onSoundVersion = {
@@ -709,6 +716,11 @@ fun PlayerOptionsPanel(
     qualityTarget: QualityTarget = QualityTarget.BEST,
     playingQuality: String? = null,
     onQualityTarget: ((QualityTarget) -> Unit)? = null,
+    /** Qualités de la chaîne (noms de StreamQuality, "" : sans mention), vide : une seule version. */
+    qualityVersions: List<String> = emptyList(),
+    /** Qualité choisie à la main pour la chaîne, `null` : automatique. */
+    lockedQuality: String? = null,
+    onLockQuality: ((String?) -> Unit)? = null,
     /** Versions du son de la chaîne (chaînes rassemblées : normal, Dolby Digital, double audio), vide : une seule. */
     soundVersions: List<Int> = emptyList(),
     soundVersion: Int = 0,
@@ -808,10 +820,25 @@ fun PlayerOptionsPanel(
                     ) { onAspect(mode) }
                 }
 
+                // Qualité précise pour cette chaîne (ses versions SD, HD, FHD, 4K), gardée jusqu'à la fermeture de
+                // l'application ; « Automatique » rend la main à la qualité automatique.
+                val showVersions = isLive && onLockQuality != null && qualityVersions.size > 1
+                if (showVersions && onLockQuality != null) {
+                    OptionsSection(
+                        playingQuality?.let { stringResource(R.string.player_channel_quality_playing, it) }
+                            ?: stringResource(R.string.player_channel_quality),
+                    )
+                    OptionRow(stringResource(R.string.player_channel_quality_auto), selected = lockedQuality == null) { onLockQuality(null) }
+                    qualityVersions.forEach { key ->
+                        OptionRow(qualityVersionLabel(key), selected = key == lockedQuality) { onLockQuality(key) }
+                    }
+                    OptionsNote(stringResource(R.string.player_channel_quality_help))
+                }
+
                 // Qualité visée (réglage commun à toutes les chaînes) : appliquée tout de suite à la chaîne en cours.
                 if (isLive && onQualityTarget != null) {
                     OptionsSection(
-                        playingQuality?.let { stringResource(R.string.player_quality_target_playing, it) }
+                        playingQuality?.takeUnless { showVersions }?.let { stringResource(R.string.player_quality_target_playing, it) }
                             ?: stringResource(R.string.settings_quality_target),
                     )
                     QualityTarget.entries.forEach { target ->
@@ -830,6 +857,11 @@ fun PlayerOptionsPanel(
         }
     }
 }
+
+/** Nom d'une qualité de la chaîne dans les options (« FHD », « 4K » ; version sans mention : « qualité standard »). */
+@Composable
+private fun qualityVersionLabel(key: String): String =
+    StreamQuality.entries.firstOrNull { it.name == key }?.label ?: stringResource(R.string.player_quality_unknown)
 
 /** Nom d'une version du son (son annoncé par le nom de la chaîne, voir QualityParser). */
 @Composable

@@ -275,6 +275,24 @@ class SettingsRepository(
     }
 
     /**
+     * « Chaînes françaises seulement » (coupé d'office) : les chaînes des autres pays sont masquées de toutes les listes
+     * (accueil, catégories, guide, zapping, recherche). La section Foot les garde : un match diffusé seulement sur l'une
+     * d'elles y reste affiché, et se lance.
+     */
+    val frenchOnly: Flow<Boolean> = preferences.map { it[FRENCH_ONLY] ?: false }.distinctUntilChanged()
+
+    suspend fun setFrenchOnly(enabled: Boolean) {
+        edit { it[FRENCH_ONLY] = enabled }
+    }
+
+    /** Version des règles de rangement des chaînes déjà appliquée aux chaînes enregistrées ([tv.nextv.core.catalog.ChannelLineup.VERSION]). */
+    val lineupVersion: Flow<Int> = preferences.map { it[LINEUP_VERSION] ?: 0 }.distinctUntilChanged()
+
+    suspend fun setLineupVersion(version: Int) {
+        edit { it[LINEUP_VERSION] = version }
+    }
+
+    /**
      * Région de France 3 gardée dans les listes (« Alpes », clé de [tv.nextv.core.catalog.FranceRegions]) ;
      * les autres éditions régionales sont masquées. `null` : toutes affichées (seulement France 3 si les chaînes
      * sont rassemblées).
@@ -588,13 +606,15 @@ class SettingsRepository(
         val HIDE_UHD = booleanKey("hide_uhd")
         val FRANCE3_REGION = stringKey("france3_region")
         val MERGE_CHANNELS = booleanKey("merge_channels")
+        val FRENCH_ONLY = booleanKey("french_only")
+        val LINEUP_VERSION = intKey("lineup_version")
         val AUDIO_PASSTHROUGH = booleanKey("audio_passthrough")
 
         /** Réglages de la version 0.2.10 retirés depuis (rappels, code parental). */
         val OBSOLETE = setOf("reminders", "parental_pin")
 
         /** Secrets chiffrés pour cet appareil, playlist active (numéro local), réglages retirés. */
-        val NOT_PORTABLE = setOf(PROXY_CREDENTIALS, TMDB_KEY, FOOTBALL_KEY, ACTIVE_PLAYLIST, EPG_IMPORT_VERSION, CATALOG_IMPORT_VERSION).map { it.name }.toSet() + OBSOLETE
+        val NOT_PORTABLE = setOf(PROXY_CREDENTIALS, TMDB_KEY, FOOTBALL_KEY, ACTIVE_PLAYLIST, EPG_IMPORT_VERSION, CATALOG_IMPORT_VERSION, LINEUP_VERSION).map { it.name }.toSet() + OBSOLETE
         val NOT_PORTABLE_PREFIXES = listOf(DECODER_PREFIX, RECENT_PREFIX, QUALITY_PREFIX, SOUND_PREFIX)
         const val DECODER_PREFIX = "decoder_"
         const val RECENT_PREFIX = "recent_channels_"

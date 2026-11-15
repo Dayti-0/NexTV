@@ -268,6 +268,7 @@ class DaoQueriesTest {
             execSQL("ALTER TABLE `channels` DROP COLUMN `listGroup`")
             execSQL("ALTER TABLE `channels` DROP COLUMN `niceTitle`")
             execSQL("ALTER TABLE `channels` DROP COLUMN `baseTitle`")
+            execSQL("ALTER TABLE `channels` DROP COLUMN `french`")
             version = 6
         }
         old.close()
@@ -275,6 +276,7 @@ class DaoQueriesTest {
             .addMigrations(
                 NexTvDatabase.MIGRATION_6_7, NexTvDatabase.MIGRATION_7_8, NexTvDatabase.MIGRATION_8_9, NexTvDatabase.MIGRATION_9_10,
                 NexTvDatabase.MIGRATION_10_11, NexTvDatabase.MIGRATION_11_12, NexTvDatabase.MIGRATION_12_13,
+                NexTvDatabase.MIGRATION_13_14,
             )
             .allowMainThreadQueries()
             .build()

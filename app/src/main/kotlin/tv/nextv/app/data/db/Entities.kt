@@ -119,6 +119,11 @@ data class ChannelEntity(
     val niceTitle: String? = null,
     /** Nom de la chaîne tel que la playlist l'écrit, sans mention de qualité ([title] quand elles ne sont pas rassemblées). */
     val baseTitle: String? = title,
+    /**
+     * Chaîne française (voir ChannelLineup ; faux : autre pays ou séparateur de la playlist), masquée par le réglage
+     * « Chaînes françaises seulement » (schéma 14). Toujours vrai pour les films et les épisodes.
+     */
+    val french: Boolean = true,
 )
 
 /**

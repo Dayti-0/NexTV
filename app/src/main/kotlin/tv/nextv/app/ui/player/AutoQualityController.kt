@@ -53,6 +53,14 @@ internal class AutoQualityController(
     var soundVersions: List<Int> = emptyList()
         private set
 
+    /** Qualités proposées par la chaîne en cours (voir [qualityKey]), la meilleure d'abord ; vide : une seule version. */
+    var qualityVersions: List<String> = emptyList()
+        private set
+
+    /** Qualité choisie à la main pour la chaîne en cours (options du lecteur), `null` : qualité automatique. */
+    var lockedQuality: String? = null
+        private set
+
     /** Version de départ choisie pour la chaîne en cours (`null` : une seule version). */
     val currentChannelId: Long? get() = switcher?.current?.channelId
 
@@ -67,7 +75,10 @@ internal class AutoQualityController(
         val options = start.options
         skipRemembered = false
         soundVersions = start.sounds
+        lockedQuality = start.lockedQuality
         this.options = if (options.size > 1) options else emptyList()
+        qualityVersions = this.options.sortedByDescending { StreamQuality.rankOf(it.quality) }.map { qualityKey(it.quality) }.distinct()
+            .takeIf { it.size > 1 }.orEmpty()
         val startId = start.startId
         switcher = if (options.size > 1) {
             QualitySwitcher(
@@ -89,6 +100,27 @@ internal class AutoQualityController(
         switcher = null
         options = emptyList()
         soundVersions = emptyList()
+        qualityVersions = emptyList()
+        lockedQuality = null
+    }
+
+    /**
+     * Qualité choisie à la main pour la chaîne en cours ([key], `null` : automatique), gardée jusqu'à la fermeture de
+     * l'application. Vrai si la chaîne doit être rouverte : la version en cours ([playing]) n'est pas celle demandée, ou
+     * la qualité automatique revient. Sinon la version en cours reste, sans plus jamais changer de qualité.
+     */
+    fun lock(primary: ChannelEntity, key: String?, playing: ChannelEntity?): Boolean {
+        val lockKey = container.lockedQualityKey(primary.sourceId, primary.itemKey)
+        if (key == null) container.lockedQualities.remove(lockKey) else container.lockedQualities[lockKey] = key
+        val wasLocked = lockedQuality != null
+        lockedQuality = key
+        if (key == null) return wasLocked
+        val sameVersion = playing != null && qualityKey(StreamQuality.entries.firstOrNull { it.name == playing.quality }) == key
+        if (!sameVersion) return true
+        // Même version : plus de qualité automatique pour elle.
+        switcher = null
+        workingQualityJob?.cancel()
+        return false
     }
 
     /**
@@ -108,7 +140,7 @@ internal class AutoQualityController(
     fun rememberWhenStable(variant: ChannelEntity) {
         workingQualityJob?.cancel()
         val quality = variant.quality
-        if (switcher == null || quality == null || variant.kind != ContentKind.LIVE.name || variant.variantKey.isEmpty()) return
+        if (switcher == null || lockedQuality != null || quality == null || variant.kind != ContentKind.LIVE.name || variant.variantKey.isEmpty()) return
         workingQualityJob = scope.launch {
             delay(WORKING_QUALITY_MILLIS)
             if (session.playing?.id == variant.id && state.value.error == null) {
@@ -189,7 +221,12 @@ internal class ChannelStart(
     val autoQuality: Boolean,
     val qualityTarget: QualityTarget,
     val sounds: List<Int> = emptyList(),
+    /** Qualité choisie à la main pour la chaîne (voir AppContainer.lockedQualities), `null` : automatique. */
+    val lockedQuality: String? = null,
 )
+
+/** Nom d'une qualité de version dans les choix du lecteur : celui de StreamQuality, "" pour une version sans mention. */
+internal fun qualityKey(quality: StreamQuality?): String = quality?.name.orEmpty()
 
 /**
  * Version par laquelle ouvrir la chaîne [requested] (sa meilleure version : [primary]) : la dernière qualité qui a
@@ -218,6 +255,17 @@ internal suspend fun channelStart(
     val chosenSound = if (sounds.isEmpty()) null else settings.channelSound(primary.sourceId, primary.itemKey)?.takeIf { it in sounds }
     val options = usable.filter { chosenSound == null || it.audio == chosenSound }
         .map { QualityOption(it.id, StreamQuality.entries.firstOrNull { q -> q.name == it.quality }) }
+    // Qualité choisie à la main dans les options du lecteur (jusqu'à la fermeture de l'application) : cette version,
+    // sans qualité automatique ni qualité visée.
+    val qualityTarget = settings.qualityTarget.first()
+    if (options.size > 1) {
+        val locked = container.lockedQualities[container.lockedQualityKey(primary.sourceId, primary.itemKey)]
+        val lockedOptions = locked?.let { key -> options.filter { qualityKey(it.quality) == key } }.orEmpty()
+        if (locked != null && lockedOptions.isNotEmpty()) {
+            val startId = lockedOptions.firstOrNull { it.channelId == requested.id }?.channelId ?: lockedOptions.first().channelId
+            return ChannelStart(options, startId, autoQuality = false, qualityTarget, sounds, lockedQuality = locked)
+        }
+    }
     // Chaîne ouverte sur sa meilleure version : départ par la qualité qui a fonctionné la dernière fois.
     val remembered = if (autoQuality && requested.isPrimary && options.size > 1 && useRemembered) {
         settings.workingQuality(primary.sourceId, primary.variantKey)?.let { name -> StreamQuality.entries.firstOrNull { it.name == name } }
@@ -231,7 +279,6 @@ internal suspend fun channelStart(
     val preferredId = rememberedStart
         ?: if (options.any { it.channelId == requested.id }) requested.id else options.firstOrNull()?.channelId ?: requested.id
     // Qualité visée (réglages) : au plus HD, ou SD pour économiser la connexion.
-    val qualityTarget = settings.qualityTarget.first()
     val startId = if (options.size > 1) qualityTarget.start(options, preferredId) else preferredId
     return ChannelStart(options, startId, autoQuality, qualityTarget, sounds)
 }

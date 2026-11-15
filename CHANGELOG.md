@@ -4,6 +4,12 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.148
+- Lecteur, touche Menu › Options : nouvelle partie « Qualité de la chaîne », qui propose les versions de la chaîne (4K, FHD, HD, SD) et « Automatique ». Une qualité choisie reste pour cette chaîne jusqu’à la fermeture de l’application : la chaîne s’ouvre dans cette qualité et n’en change plus d’elle-même
+- Les messages du bandeau comme « Connexion lente : passage en HD » disparaissent au bout de 8 secondes (ils restaient affichés jusqu’à la chaîne suivante)
+- Nouveau réglage « Chaînes françaises seulement » (Réglages, avec « Rassembler les chaînes ») : il masque les chaînes et les catégories des autres pays (belges, suisses, arabes, anglaises…) dans l’accueil, le guide, le zapping et la recherche. La section Foot les garde : un match diffusé seulement sur une chaîne étrangère y reste affiché, et se lance
+- « Rassembler les chaînes » : les catégories du fournisseur (« FR TV SD », « FR TV HD », « FR TV FULL HD »…) sont remplacées par les catégories par thème dès le lancement de cette version, sans attendre que la playlist soit relue (cette relecture, longue sur une grosse playlist, peut tarder ou être interrompue par une lecture)
+
 ## 0.2.147
 - « Baisser le son des pubs » entièrement refait, à partir de vrais enregistrements de huit chaînes (RMC Story, RMC Découverte, RMC Life, L’Équipe, BFM 2, Euronews, TV Monaco, Fréquence Novelas). Une pub n’est plus reconnue au seul silence entre deux pubs, mais au silence pendant lequel l’image change de plan ou montre le carton de la chaîne : la pause d’un invité dans une émission ne compte plus
 - Le son ne baisse plus en plein programme. Sur les mêmes enregistrements, l’ancienne détection baissait le son à tort pendant 18 minutes sur 5 h 20 de programme (émission de plateau de L’Équipe, BFM 2, Euronews, une telenovela) ; la nouvelle, moins d’une minute en tout, à la reprise du programme

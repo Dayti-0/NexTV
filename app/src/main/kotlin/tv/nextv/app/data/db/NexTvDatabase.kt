@@ -141,6 +141,16 @@ abstract class NexTvDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Nationalité des chaînes (réglage « Chaînes françaises seulement ») : toutes françaises en attendant qu'elle soit
+         * calculée au lancement (ChannelLineup.VERSION), sans relire la playlist.
+         */
+        val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE channels ADD COLUMN french INTEGER NOT NULL DEFAULT 1")
+            }
+        }
+
         internal const val MEASURED_QUALITY_SQL = "CREATE TABLE IF NOT EXISTS `measured_quality` (`sourceId` INTEGER NOT NULL, " +
             "`streamUrl` TEXT NOT NULL, `quality` TEXT NOT NULL, `fromPlayback` INTEGER NOT NULL, `measuredAt` INTEGER NOT NULL, " +
             "PRIMARY KEY(`sourceId`, `streamUrl`), FOREIGN KEY(`sourceId`) REFERENCES `sources`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )"
@@ -163,7 +173,7 @@ abstract class NexTvDatabase : RoomDatabase() {
          * refuse de démarrer (et le test des migrations échoue) au lieu d'effacer en silence playlists, favoris et
          * identifiants.
          */
-        const val VERSION = 13
+        const val VERSION = 14
 
         /** Première version dont les données sont conservées (la 1, version de test, est rechargée depuis la playlist). */
         const val FIRST_MIGRATED_VERSION = 2
@@ -172,7 +182,7 @@ abstract class NexTvDatabase : RoomDatabase() {
         val MIGRATIONS: List<Migration> =
             listOf(
                 MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10,
-                MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13,
+                MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14,
             )
 
         fun create(context: Context): NexTvDatabase =

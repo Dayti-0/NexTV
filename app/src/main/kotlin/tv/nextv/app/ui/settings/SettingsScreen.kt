@@ -257,6 +257,7 @@ fun SettingsScreen(
         onAudioPassthrough = viewModel::setAudioPassthrough,
         onFrance3Region = viewModel::setFrance3Region,
         onMergeChannels = viewModel::setMergeChannels,
+        onFrenchOnly = viewModel::setFrenchOnly,
         update = update,
         onQuickSetup = onQuickSetup,
         onCheckUpdate = viewModel::checkUpdate,
@@ -306,6 +307,7 @@ fun SettingsContent(
     onAudioPassthrough: (Boolean) -> Unit = {},
     onFrance3Region: (String?) -> Unit = {},
     onMergeChannels: (Boolean) -> Unit = {},
+    onFrenchOnly: (Boolean) -> Unit = {},
     update: UpdateState = UpdateState.Idle,
     onCheckUpdate: () -> Unit = {},
     onInstallUpdate: (AppRelease) -> Unit = {},
@@ -417,6 +419,12 @@ fun SettingsContent(
                         description = stringResource(R.string.settings_merge_channels_help),
                         checked = state.mergeChannels,
                         onChange = onMergeChannels,
+                    )
+                    ToggleRow(
+                        title = stringResource(R.string.settings_french_only),
+                        description = stringResource(R.string.settings_french_only_help),
+                        checked = state.frenchOnly,
+                        onChange = onFrenchOnly,
                     )
                     ToggleRow(
                         title = stringResource(R.string.settings_start_last_channel),

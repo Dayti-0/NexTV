@@ -78,6 +78,25 @@ class ChannelLineupTest {
             .forEach { assertEquals(it, Section.OTHER, ChannelLineup.placementOf(it).section) }
     }
 
+    /** Réglage « Chaînes françaises seulement » : les chaînes des autres pays, même rangées dans une catégorie « FR ». */
+    @Test
+    fun foreignChannelsAreNotFrench() {
+        val channels = load(
+            "FR TV HD (France)" to "|FR| TF1 HD",
+            "FR TV FULL HD|4K (France)" to "|INT| NHK WORLD JAPAN FHD",
+            "PLUTO TV (FRANCE)" to "|FR| PLUTO TV FILMS",
+            "Sport" to "beIN Sports 1",
+            "BELGES (FR-SPORTS-FLAMAND)" to "|BE| LA UNE HD",
+            "SUISSES (SWITZERLAND)" to "|CH| RTS Un HD",
+            "SUISSES (SWITZERLAND)" to "|FR| MYSPORTS 1 HD",
+            "ARABES" to "|AR| MBC 1 HD",
+        )
+        assertEquals(
+            listOf(true, false, true, true, false, false, true, false),
+            channels.sortedBy { it.position }.map { it.french },
+        )
+    }
+
     /** Playlist rangée comme celle d'un fournisseur courant (vrais noms), lue par le vrai chargeur. */
     private fun load(vararg entries: Pair<String, String>): List<Channel> {
         val text = buildString {

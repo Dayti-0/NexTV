@@ -66,6 +66,8 @@ data class EpisodeInfo(
  * @property theme catégorie par thème de la chaîne quand les chaînes sont rassemblées (« Cinéma »), `null` : celle de
  *   la playlist.
  * @property niceTitle nom propre de la chaîne quand les chaînes sont rassemblées (« Ciné+ Frisson »), `null` : [title].
+ * @property french chaîne française (voir ChannelLineup : faux pour les autres pays et les séparateurs de la playlist),
+ *   pour le réglage « Chaînes françaises seulement ».
  */
 data class Channel(
     val position: Int,
@@ -87,6 +89,7 @@ data class Channel(
     val lineup: Int? = null,
     val theme: String? = null,
     val niceTitle: String? = null,
+    val french: Boolean = true,
 )
 
 /** Programme d'un guide EPG, horaires en millisecondes epoch UTC. */

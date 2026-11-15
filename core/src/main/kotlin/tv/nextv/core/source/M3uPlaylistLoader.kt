@@ -161,7 +161,7 @@ class M3uPlaylistLoader(
             grouped
         } else {
             grouped.map { channel ->
-                arrangements[channel.position]?.let { channel.copy(lineup = it.lineup, theme = it.theme, niceTitle = it.name) } ?: channel
+                arrangements[channel.position]?.let { channel.copy(lineup = it.lineup, theme = it.theme, niceTitle = it.name, french = it.french) } ?: channel
             }
         }
         return LoadedPlaylist(arranged, playlist.epgUrls, warnings)

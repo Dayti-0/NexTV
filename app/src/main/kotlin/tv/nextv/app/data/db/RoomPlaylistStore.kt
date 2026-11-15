@@ -328,6 +328,7 @@ class RoomPlaylistStore(
                 listGroup = if (live && merge) channel.theme ?: channel.groupTitle else channel.groupTitle,
                 niceTitle = if (live) channel.niceTitle else null,
                 baseTitle = channel.title,
+                french = !live || channel.french,
             )
         }
 

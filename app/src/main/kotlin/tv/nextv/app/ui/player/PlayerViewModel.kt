@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
@@ -274,6 +275,15 @@ class PlayerViewModel(
                 quality.check(dropped)
             }
         }
+        // Message du bandeau (« Connexion lente : passage en HD », serveur de secours…) : effacé au bout de quelques
+        // secondes (il restait affiché jusqu'à la chaîne suivante).
+        viewModelScope.launch {
+            mutableState.map { it.qualityNotice }.distinctUntilChanged().collectLatest { notice ->
+                if (notice == null) return@collectLatest
+                delay(QUALITY_NOTICE_MILLIS)
+                mutableState.update { if (it.qualityNotice == notice) it.copy(qualityNotice = null) else it }
+            }
+        }
         // Son illisible par le lecteur de l'appli (ou introuvable dans un film) : le moteur VLC prend la suite.
         viewModelScope.launch {
             mutableState.map { it.audioProblem to it.isLive }.distinctUntilChanged().collect { (problem, live) ->
@@ -461,6 +471,23 @@ class PlayerViewModel(
         }
     }
 
+    /**
+     * Qualité choisie dans les options pour cette chaîne ([key] : nom de StreamQuality, "" version sans mention ;
+     * `null` : automatique) : gardée jusqu'à la fermeture de l'application, la chaîne ne change plus de qualité d'elle-même.
+     * Elle repart tout de suite sur la version choisie (retour au direct après une pause ou un différé) ; pendant un
+     * replay, à la prochaine ouverture de la chaîne.
+     */
+    fun lockQuality(key: String?) {
+        viewModelScope.launch {
+            val primary = session.channel ?: return@launch
+            if (primary.kind != ContentKind.LIVE.name || primary.variantKey.isEmpty()) return@launch
+            val reopen = quality.lock(primary, key, session.playing)
+            mutableState.update { it.copy(lockedQuality = key) }
+            if (delayed.replay != null || !reopen) return@launch
+            load(channelId)
+        }
+    }
+
     /** Chaîne regardée juste avant celle-ci (touche « chaîne précédente », ⏪). */
     fun previousChannel() {
         val current = session.listed ?: return
@@ -581,7 +608,7 @@ class PlayerViewModel(
         if (replayed != null && isLive) {
             // Programme encore en cours : « Depuis le début », avec le bandeau du direct. Pas de qualité automatique.
             quality.reset()
-            mutableState.update { it.copy(soundVersions = emptyList()) }
+            mutableState.update { it.copy(soundVersions = emptyList(), qualityVersions = emptyList(), lockedQuality = null) }
             delayed.playReplay(requested, primary, replayed)
             return
         }
@@ -606,6 +633,8 @@ class PlayerViewModel(
                 error = null,
                 qualityNotice = null,
                 soundVersions = quality.soundVersions,
+                qualityVersions = quality.qualityVersions,
+                lockedQuality = quality.lockedQuality,
                 buffering = true,
                 channelVersion = it.channelVersion + 1,
             )
@@ -1197,6 +1226,9 @@ class PlayerViewModel(
         /** Même période que la section Foot : la réponse de football-data.org est partagée. */
         private const val FOOTBALL_WINDOW_MILLIS = 8 * 24 * 60 * 60_000L
         private const val QUALITY_CHECK_MILLIS = 500L
+
+        /** Durée d'affichage d'un message de qualité dans le bandeau. */
+        internal const val QUALITY_NOTICE_MILLIS = 8_000L
 
         /** Une sauvegarde par minute (surveillance deux fois par seconde). */
         private const val AD_MARKS_SAVE_CHECKS = 120

@@ -248,6 +248,67 @@ class PlayerViewModelTest {
     }
 
     /**
+     * Qualité choisie dans les options (« SD ») : la chaîne repart tout de suite dans cette version, sans qualité
+     * automatique, et s'y rouvre (plein écran comme aperçu) jusqu'à la fermeture de l'application. « Automatique » rend
+     * la main à la qualité automatique.
+     */
+    @Test
+    fun aQualityChosenInTheOptionsIsKeptForTheChannel() {
+        java.net.ServerSocket(0).use { server ->
+            val sourceId = runBlocking { container.sourceRepository.add(SourceInput(name = "Test", location = SourceLocation.Remote("http://127.0.0.1:9/list.m3u"))) }
+            fun live(name: String, n: Int): Channel {
+                val parsed = tv.nextv.core.catalog.QualityParser.parse(name)
+                return Channel(
+                    position = n, name = name, stream = StreamDescriptor("http://127.0.0.1:${server.localPort}/live/$n.ts"), kind = ContentKind.LIVE,
+                    title = parsed.baseName, variantKey = tv.nextv.core.catalog.LiveVariants.key(parsed.variantKey), quality = parsed.quality,
+                )
+            }
+            val names = listOf("FR| W9 FHD", "FR| W9 HD", "FR| W9 SD")
+            runBlocking {
+                container.settings.setAutoQuality(true)
+                container.settings.setQualityTarget(tv.nextv.core.stream.QualityTarget.BEST)
+                container.playlistStore.replaceChannels(sourceId, tv.nextv.core.catalog.LiveVariants.unify(names.mapIndexed { n, name -> live(name, n) }))
+            }
+            val key = tv.nextv.core.catalog.LiveVariants.key(tv.nextv.core.catalog.QualityParser.parse(names.first()).variantKey)
+            val versions = runBlocking { container.channelDao.variants(sourceId, key) }
+            val fhd = checkNotNull(runBlocking { container.channelDao.get(versions.first { it.quality == "FHD" }.id) })
+            val sd = versions.first { it.quality == "SD" }.id
+
+            val (viewModel, store) = open(fhd.id)
+            viewModel.onStart()
+            idle()
+            assertEquals(listOf("FHD", "HD", "SD"), viewModel.state.value.qualityVersions)
+            assertNull(viewModel.state.value.lockedQuality)
+            assertEquals("FHD", viewModel.state.value.quality)
+
+            viewModel.lockQuality("SD")
+            val deadline = System.nanoTime() + 8_000_000_000L
+            do idle() while (viewModel.state.value.quality != "SD" && System.nanoTime() < deadline)
+            assertEquals("SD", viewModel.state.value.quality)
+            assertEquals("SD", viewModel.state.value.lockedQuality)
+            // Prochaine ouverture : directement en SD, sans qualité automatique.
+            val start = runBlocking { channelStart(container, fhd, fhd, isLive = true) }
+            assertEquals(sd, start.startId)
+            assertEquals(false, start.autoQuality)
+            assertEquals("SD", start.lockedQuality)
+            store.clear()
+
+            val (again, againStore) = open(fhd.id)
+            again.onStart()
+            idle()
+            assertEquals("SD", again.state.value.quality)
+            assertEquals("SD", again.state.value.lockedQuality)
+            again.lockQuality(null)
+            val back = System.nanoTime() + 8_000_000_000L
+            do idle() while (again.state.value.quality != "FHD" && System.nanoTime() < back)
+            assertEquals("FHD", again.state.value.quality)
+            assertNull(again.state.value.lockedQuality)
+            assertEquals(fhd.id, runBlocking { channelStart(container, fhd, fhd, isLive = true) }.startId)
+            againStore.clear()
+        }
+    }
+
+    /**
      * Dernière qualité qui a fonctionné (ici SD, les versions FHD et HD en panne) : la chaîne repart d'elle juste après,
      * mais plus quelques heures plus tard : de la meilleure version. Elle repartait de SD, puis remontait peu à peu.
      */

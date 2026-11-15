@@ -105,6 +105,7 @@ data class SettingsUiState(
     val france3Region: String? = null,
     /** « Rassembler les chaînes » : une ligne par chaîne, listes rangées comme sur une télé. */
     val mergeChannels: Boolean = true,
+    val frenchOnly: Boolean = false,
     /** Éditions régionales de France 3 de la playlist active. */
     val france3Regions: List<FranceRegions.Region> = emptyList(),
 )
@@ -213,14 +214,21 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         val trailerDelaySeconds: Int,
         val previewHandoff: Boolean,
         val mergeChannels: Boolean,
+        val frenchOnly: Boolean,
     )
 
-    private data class Toggles(val hideUhd: Boolean, val audioPassthrough: Boolean, val trailerAutoplay: Boolean, val mergeChannels: Boolean)
+    private data class Toggles(
+        val hideUhd: Boolean,
+        val audioPassthrough: Boolean,
+        val trailerAutoplay: Boolean,
+        val mergeChannels: Boolean,
+        val frenchOnly: Boolean,
+    )
 
     /** Réglages ajoutés depuis : son de l'aperçu, fréquence de mise à jour, dernier plantage, filtres des chaînes. */
     private val extras = combine(
         combine(settings.previewVolume, settings.playlistRefresh, lastCrash, ::Triple),
-        combine(settings.hideUhd, settings.audioPassthrough, settings.trailerAutoplay, settings.mergeChannels, ::Toggles),
+        combine(settings.hideUhd, settings.audioPassthrough, settings.trailerAutoplay, settings.mergeChannels, settings.frenchOnly, ::Toggles),
         combine(settings.france3Region, france3Regions, settings.trailerSound, settings.trailerDelaySeconds, settings.previewHandoff) { region, regions, sound, delay, handoff ->
             listOf(region, regions, sound, delay, handoff)
         },
@@ -229,6 +237,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         Extras(
             volume, refresh, crash, toggles.hideUhd, toggles.audioPassthrough, more[0] as String?, more[1] as List<FranceRegions.Region>,
             toggles.trailerAutoplay, more[2] as Boolean, more[3] as Int, more[4] as Boolean, toggles.mergeChannels,
+            toggles.frenchOnly,
         )
     }
 
@@ -273,6 +282,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             france3Region = extra.france3Region,
             france3Regions = extra.france3Regions,
             mergeChannels = extra.mergeChannels,
+            frenchOnly = extra.frenchOnly,
             trailerAutoplay = extra.trailerAutoplay,
             trailerSound = extra.trailerSound,
             trailerDelaySeconds = extra.trailerDelaySeconds,
@@ -330,6 +340,10 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     fun setMergeChannels(enabled: Boolean) {
         viewModelScope.launch { settings.setMergeChannels(enabled) }
+    }
+
+    fun setFrenchOnly(enabled: Boolean) {
+        viewModelScope.launch { settings.setFrenchOnly(enabled) }
     }
 
     fun setAutoQuality(enabled: Boolean) {

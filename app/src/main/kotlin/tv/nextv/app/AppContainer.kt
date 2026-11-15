@@ -54,6 +54,7 @@ import tv.nextv.app.player.PreviewHandoffSlot
 import tv.nextv.app.player.TIMESHIFT_FILE
 import tv.nextv.app.ui.home.Category
 import tv.nextv.app.ui.home.WatchedPlace
+import tv.nextv.core.catalog.ChannelLineup
 import tv.nextv.core.epg.EpgImporter
 import tv.nextv.core.epg.EpgLoader
 import tv.nextv.core.epg.HttpEpgFeedProvider
@@ -208,6 +209,15 @@ class AppContainer(context: Context) {
      */
     val lastLivePlace = MutableStateFlow<WatchedPlace?>(null)
 
+    /**
+     * Qualité choisie à la main pour une chaîne dans les options du lecteur (nom de StreamQuality, "" : version sans
+     * mention de qualité), par chaîne ([lockedQualityKey]). Gardée en mémoire seulement : jusqu'à la fermeture de
+     * l'application, la chaîne s'ouvre dans cette qualité, sans qualité automatique.
+     */
+    val lockedQualities = ConcurrentHashMap<String, String>()
+
+    fun lockedQualityKey(sourceId: Long, itemKey: String) = "$sourceId|$itemKey"
+
     /** Clé TMDB : celle saisie dans les réglages, sinon celle fournie à la compilation (secret CI). */
     private val tmdbKey: StateFlow<String?> = settings.tmdbApiKey
         .stateIn(applicationScope, SharingStarted.Eagerly, null)
@@ -345,16 +355,25 @@ class AppContainer(context: Context) {
             safely("Noms des playlists") { sourceRepository.cleanStoredNames() }
         }
 
-        // Filtres des réglages (4K masquée, région de France 3, chaînes rassemblées) : à chaque changement, et après
-        // chaque mise à jour d'une playlist (nouvelles chaînes).
+        // Filtres des réglages (4K masquée, région de France 3, chaînes rassemblées, chaînes françaises seulement) : à
+        // chaque changement, et après chaque mise à jour d'une playlist (nouvelles chaînes).
         applicationScope.launch {
             combine(
                 settings.hideUhd,
                 settings.france3Region,
                 settings.mergeChannels,
+                settings.frenchOnly,
                 sourceRepository.sources.map { sources -> sources.map { it.id to it.status?.lastSuccessAtMillis } }.distinctUntilChanged(),
-            ) { hideUhd, region, merge, sources -> ChannelFilters.Settings(hideUhd, region, merge) to sources }
+            ) { hideUhd, region, merge, frenchOnly, sources -> ChannelFilters.Settings(hideUhd, region, merge, frenchOnly) to sources }
                 .collectLatest { (filters, sources) ->
+                    // Nouvelles règles de rangement (catégories par thème, chaînes françaises) : appliquées tout de suite aux
+                    // chaînes enregistrées, sans attendre la relecture de la playlist.
+                    safely("Rangement des chaînes") {
+                        if (settings.lineupVersion.first() < ChannelLineup.VERSION && sources.isNotEmpty()) {
+                            sources.forEach { (id, _) -> channelFilters.rearrange(id) }
+                            settings.setLineupVersion(ChannelLineup.VERSION)
+                        }
+                    }
                     // Une écriture impossible (stockage plein) n'arrête pas la surveillance : nouvel essai au changement suivant.
                     safely("Filtres des chaînes") { sources.forEach { (id, _) -> channelFilters.apply(id, filters) } }
                 }

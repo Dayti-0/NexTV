@@ -57,6 +57,13 @@ data class PlayerUiState(
     val soundVersions: List<Int> = emptyList(),
     /** Son de la version en cours de lecture (voir [soundVersions]). */
     val soundVersion: Int = 0,
+    /**
+     * Qualités proposées par la chaîne (noms de StreamQuality, "" : version sans mention de qualité), la meilleure
+     * d'abord ; vide quand elle n'a qu'une version. Choix « Qualité de la chaîne » des options.
+     */
+    val qualityVersions: List<String> = emptyList(),
+    /** Qualité choisie à la main pour la chaîne jusqu'à la fermeture de l'application (voir [qualityVersions]), `null` : automatique. */
+    val lockedQuality: String? = null,
     /** Débit réellement mesuré sur les téléchargements du flux, en Mbit/s (absent avant la première mesure). */
     val bandwidthMbps: Double? = null,
     /**
