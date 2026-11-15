@@ -80,6 +80,11 @@ class AdRecorder(
 
     val active: Boolean get() = !finished.get()
 
+    /** Départs de la détection à zéro notés (changements de chaîne) : pour les tests. */
+    @Volatile
+    internal var streamChanges = 0
+        private set
+
     init {
         post {
             directory.mkdirs()
@@ -99,6 +104,7 @@ class AdRecorder(
      */
     fun newStream(name: String? = null) {
         if (finished.get()) return
+        streamChanges++
         base = last
         event(0, "flux", name.orEmpty())
     }

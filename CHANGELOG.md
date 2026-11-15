@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.164
+- « Baisser le son des pubs » et enregistrement d’analyse : un changement de qualité (ou de serveur) sur la même chaîne ne remet plus tout à zéro comme un changement de chaîne. Une page de pub en cours reste détectée (son toujours baissé), le logo appris est gardé, et l’enregistrement continue sans coupure
+
 ## 0.2.163
 - Correction : avec une clé USB branchée, l’ouverture des Réglages pouvait bloquer l’appli, fermée par le système (« ne répondait plus »). La clé est maintenant lue en arrière-plan, aussi dans le lecteur (enregistrement d’analyse, musique des pubs)
 

@@ -996,6 +996,8 @@ class PlayerViewModel(
         mutableState.update { it.copy(buffering = true) }
         val fromPreview = engine.play(
             playbackRequest, forceHls, session.startPositionMs, record = live, film = !state.value.isLive, replay = delayed.replay != null,
+            // Chaîne choisie (toutes versions confondues) : un changement de qualité ne remet pas à zéro la détection des pubs.
+            channelKey = session.listed?.let { it.variantKey.ifEmpty { it.itemKey } },
         )
         // Chaîne ouverte depuis l'aperçu : flux repris, ou rouvert (et pourquoi), affiché dans les infos de lecture.
         val previewStart = fromPreview ?: container.previewHandoff.takeMiss(channelId)?.let { miss ->

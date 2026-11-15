@@ -218,7 +218,9 @@ Commandes :
   `AUTO_TNT_NUMBERS` (grandes chaînes à pub, `TntChannels`, `autoNext`). Fichiers coupés à 27 Mo ou 2 h
   (`splitAdRecording`). L'enregistrement survit à la fermeture du lecteur (0.2.162 : `PlayerEngine.release` le
   détache, `startAdWatch` le rattache au lecteur suivant via `AdVolumeControl.attach`) ; arrêt aussi dans Réglages ;
-  moins de 15 min (`AD_RECORDING_MIN_MILLIS`) : pas gardé. Le rejouer : `AdDeviceReplayTool` (`AD_DEVICE`,
+  moins de 15 min (`AD_RECORDING_MIN_MILLIS`) : pas gardé. Autre qualité de la même chaîne (0.2.163, `channelKey` de
+  `PlayerEngine.play` = `variantKey` de la chaîne choisie) : `AdVolumeControl.continueStream` garde la détection (page
+  en cours, logo, horloge) et l'enregistrement ; seuls les repères du flux sont relus. Le rejouer : `AdDeviceReplayTool` (`AD_DEVICE`,
   `AD_PRINTS`, `AD_IMAGES=10` écrit une image par 10 s pour relever les pages de pub à l'œil dans `<nom>.truth.tsv`).
   C'est la seule façon de mesurer TF1, M6 et France Télévisions (pas de flux lisible d'ici, même avec un compte).
 - Musique pendant les pubs (0.2.159, réglage « Pendant les pubs » `AdSound` : baisser / radio / ma musique) :

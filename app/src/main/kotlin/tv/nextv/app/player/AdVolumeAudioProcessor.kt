@@ -141,14 +141,15 @@ class AdVolumeControl {
      * Reprend un enregistrement d'analyse commencé ailleurs (lecteur fermé puis une autre chaîne ouverte depuis
      * l'accueil, le guide, l'aperçu…) : il continue à la suite, la détection de ce lecteur repartant de zéro.
      */
-    fun attach(recorder: AdRecorder) {
+    fun attach(recorder: AdRecorder, sameStream: Boolean = false) {
         if (this.recorder === recorder || !recorder.active) return
         recordedLogo = null
         recordedCue = null
         recordedAttenuating = false
         this.recorder = recorder
         guard.onEvent = eventSink
-        recorder.newStream()
+        // Même détection qui continue (autre qualité de la chaîne) : son horloge aussi, pas de nouveau départ.
+        if (!sameStream) recorder.newStream()
     }
 
     /** Lecteur fermé ou rendu à l'aperçu : l'enregistrement d'analyse continue, sans lui (repris par [attach]). */
@@ -219,6 +220,18 @@ class AdVolumeControl {
             }
             guard = fresh
         }
+    }
+
+    /**
+     * Même chaîne dans une autre version (qualité, serveur de secours) : la détection garde tout ce qu'elle sait — page
+     * de pubs en cours, son baissé, logo, horloge — et l'enregistrement d'analyse continue tel quel. Seuls les repères
+     * du flux (propres à chaque flux) sont oubliés.
+     */
+    fun continueStream() {
+        cues = AdCues()
+        guard.cue = CueState.NONE
+        recordedCue = null
+        recorder?.takeIf { it.active }?.event(guard.now, "version", "autre qualite de la meme chaine")
     }
 
     /** Repères du flux à la position de lecture [positionMs] (temps de la période du lecteur), donnés à la détection. */

@@ -168,6 +168,12 @@ internal class PlayerEngine(
     /** Autre chaîne demandée : ses repères sont à relire. */
     private var adMarksToLoad = false
 
+    /** Chaîne du direct en cours (toutes versions), pour reconnaître un simple changement de qualité. */
+    private var adChannelKey: String? = null
+
+    /** Détection des pubs à garder telle quelle pour le flux qui s'ouvre (même chaîne, autre version). */
+    private var adContinuing: AdVolumeControl? = null
+
     private val bandwidthMeter: DefaultBandwidthMeter = container.playerFactory.newBandwidthMeter()
     private var preferredDecoders: Map<String, String> = emptyMap()
 
@@ -323,14 +329,29 @@ internal class PlayerEngine(
         film: Boolean = false,
         /** Replay d'une chaîne : lu comme un film, mais avec les pubs de la chaîne. */
         replay: Boolean = false,
+        /**
+         * Chaîne lue (la même pour toutes ses versions) : une autre qualité ou un serveur de secours de la même chaîne
+         * garde la détection des pubs en cours (page de pubs, logo appris) et l'enregistrement d'analyse.
+         */
+        channelKey: String? = null,
     ): PreviewStart? {
         this.film = film
         saveAdMarks()
+        val sameChannel = !film && !replay && channelKey != null && channelKey == adChannelKey && adVolume.enabled
+        adChannelKey = channelKey.takeIf { !film && !replay }
         adBreaks = !film || replay
         // Repères gardés pour le direct seulement : l'adresse d'un replay change à chaque programme.
         adMarksKey = request.stream.url.takeIf { !film }
-        adMarks = null
-        adMarksToLoad = true
+        if (sameChannel) {
+            // Autre version de la même chaîne : ce qu'elle a appris est gardé (et le sera aussi sous cette adresse).
+            adMarks = learnedAdMarks()
+            adMarksToLoad = false
+            adContinuing = adVolume
+        } else {
+            adMarks = null
+            adMarksToLoad = true
+            adContinuing = null
+        }
         // Direct continu (MPEG-TS…) : les dernières secondes sont gardées en mémoire pour revenir en arrière.
         // Le direct précédent cède l'anneau avant que le nouveau n'y écrive.
         liveRecording?.retire()
@@ -605,6 +626,16 @@ internal class PlayerEngine(
      */
     private fun startAdWatch() {
         val enabled = adVolumeEnabled && adBreaks
+        val continuing = adContinuing
+        adContinuing = null
+        if (continuing != null && continuing === adVolume && enabled) {
+            // Même chaîne, autre qualité : la détection continue (page de pubs en cours, logo, son baissé), seuls les
+            // repères du flux sont à relire ; l'enregistrement d'analyse continue sans coupure.
+            adVolume.prints = container.adPrints
+            container.adRecordings.current?.let { adVolume.attach(it, sameStream = true) }
+            adVolume.continueStream()
+            return
+        }
         if (adMarksToLoad) {
             adMarksToLoad = false
             adMarks = if (enabled) adMarksKey?.let(container.adMarks::load) else null

@@ -309,6 +309,52 @@ class PlayerViewModelTest {
     }
 
     /**
+     * Autre qualité de la même chaîne pendant un enregistrement d'analyse : la détection des pubs et l'enregistrement
+     * continuent tels quels, sans repartir de zéro comme pour une autre chaîne.
+     */
+    @Test
+    fun anotherQualityOfTheSameChannelKeepsTheAdDetectionAndTheRecording() {
+        java.net.ServerSocket(0).use { server ->
+            runBlocking { container.settings.setLowerAdVolume(true) }
+            val sourceId = runBlocking { container.sourceRepository.add(SourceInput(name = "Test", location = SourceLocation.Remote("http://127.0.0.1:9/list.m3u"))) }
+            fun live(name: String, n: Int): Channel {
+                val parsed = tv.nextv.core.catalog.QualityParser.parse(name)
+                return Channel(
+                    position = n, name = name, stream = StreamDescriptor("http://127.0.0.1:${server.localPort}/live/$n.ts"), kind = ContentKind.LIVE,
+                    title = parsed.baseName, variantKey = tv.nextv.core.catalog.LiveVariants.key(parsed.variantKey), quality = parsed.quality,
+                )
+            }
+            val names = listOf("FR| W9 FHD", "FR| W9 HD", "FR| W9 SD")
+            runBlocking {
+                container.settings.setQualityTarget(tv.nextv.core.stream.QualityTarget.BEST)
+                container.playlistStore.replaceChannels(sourceId, tv.nextv.core.catalog.LiveVariants.unify(names.mapIndexed { n, name -> live(name, n) }))
+            }
+            val key = tv.nextv.core.catalog.LiveVariants.key(tv.nextv.core.catalog.QualityParser.parse(names.first()).variantKey)
+            val fhd = runBlocking { container.channelDao.variants(sourceId, key) }.first { it.quality == "FHD" }.id
+            val (viewModel, store) = open(fhd)
+            viewModel.onStart()
+            idle()
+            viewModel.toggleAdRecording()
+            idle()
+            val recorder = checkNotNull(container.adRecordings.current)
+            assertEquals(0, recorder.streamChanges)
+            viewModel.lockQuality("SD")
+            val deadline = System.nanoTime() + 8_000_000_000L
+            do idle() while (viewModel.state.value.quality != "SD" && System.nanoTime() < deadline)
+            assertEquals("SD", viewModel.state.value.quality)
+            shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(2))
+            idle()
+            assertTrue(recorder.active)
+            assertSame(recorder, container.adRecordings.current)
+            assertNotNull(viewModel.state.value.adRecordingMinutes)
+            // Pas de nouveau départ de la détection : c'est la même chaîne.
+            assertEquals(0, recorder.streamChanges)
+            viewModel.toggleAdRecording()
+            store.clear()
+        }
+    }
+
+    /**
      * Dernière qualité qui a fonctionné (ici SD, les versions FHD et HD en panne) : la chaîne repart d'elle juste après,
      * mais plus quelques heures plus tard : de la meilleure version. Elle repartait de SD, puis remontait peu à peu.
      */

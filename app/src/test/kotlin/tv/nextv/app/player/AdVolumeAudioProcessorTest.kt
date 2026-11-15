@@ -6,6 +6,7 @@ import androidx.media3.common.audio.AudioProcessor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -240,6 +241,30 @@ class AdVolumeAudioProcessorTest {
             nextSpot()
             assertFullVolume(play(15.0))
         }
+    }
+
+    @Test
+    fun `another quality of the same channel keeps the break, the sound lowered and the recording`() {
+        val recordings = AdRecordings(java.io.File.createTempFile("rec", "").also { it.delete(); it.mkdirs() }, "0.0.0-test", minMillis = 1_000)
+        picture = scene()
+        play(60.0)
+        val recorder = recordings.start("TF1", control)!!
+        nextSpot()
+        play(20.0)
+        nextSpot()
+        val lowered = play(5.0)
+        assertTrue(control.attenuating)
+        assertTrue(lowered < AMPLITUDE / 10)
+        val guard = control.guard
+        val before = recorder.recordedMillis
+        // Autre qualité de la même chaîne : rien ne repart de zéro (contrairement à une autre chaîne).
+        control.continueStream()
+        assertSame(guard, control.guard)
+        assertTrue(control.attenuating)
+        assertTrue("son toujours baissé", play(2.0) < AMPLITUDE / 10)
+        assertTrue(recorder.active)
+        assertTrue("horloge ${recorder.recordedMillis} après $before", recorder.recordedMillis in before + 1_500..before + 2_500)
+        recordings.stop()
     }
 
     @Test
