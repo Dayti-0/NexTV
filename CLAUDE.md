@@ -201,7 +201,9 @@ Commandes :
   en `.zip` fabriqué à la volée : `levels.bin`, `audio.ulaw` ~8 kHz, `frames.bin` petites images et logo en JPEG,
   `events.tsv` avec « ouverture » / « fermeture » et leur raison, « jonction », « empreinte », « flux » (changement de
   chaîne : détection repartie de zéro, horloge mise bout à bout), « chaine »), récupéré par l'utilisateur sur son
-  téléphone via Réglages › Son (petit serveur web local, adresse avec un code). Le rejouer : `AdDeviceReplayTool` (`AD_DEVICE`,
+  téléphone via Réglages › Son (petit serveur web local, adresse avec un code). Emplacement au choix (0.2.157) :
+  mémoire de l'appareil ou clé USB (`removableRecordingPlaces` : dossier de l'appli sur chaque volume amovible,
+  `getExternalFilesDirs`, sans autorisation ; réglage `ad_recordings_location` = identifiant du volume). Le rejouer : `AdDeviceReplayTool` (`AD_DEVICE`,
   `AD_PRINTS`, `AD_IMAGES=10` écrit une image par 10 s pour relever les pages de pub à l'œil dans `<nom>.truth.tsv`).
   C'est la seule façon de mesurer TF1, M6 et France Télévisions (pas de flux lisible d'ici, même avec un compte).
 

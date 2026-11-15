@@ -134,6 +134,9 @@ fun SettingsScreen(
     val update by viewModel.update.collectAsStateWithLifecycle()
     val account by viewModel.account.collectAsStateWithLifecycle()
     val adRecordings by viewModel.adRecordings.collectAsStateWithLifecycle()
+    val adPlace by viewModel.adPlace.collectAsStateWithLifecycle()
+    // Clé USB branchée ou retirée depuis la dernière visite : emplacements relus à chaque ouverture des réglages.
+    LaunchedEffect(Unit) { viewModel.refreshAdPlaces() }
     val context = LocalContext.current
     val resources = context.resources
     val snackbar = remember { SnackbarHostState() }
@@ -250,6 +253,8 @@ fun SettingsScreen(
         onStartOnLastChannel = viewModel::setStartOnLastChannel,
         onLowerAdVolume = viewModel::setLowerAdVolume,
         adRecordings = adRecordings,
+        adPlace = adPlace,
+        onCycleAdPlace = viewModel::cycleAdPlace,
         onShareAdRecordings = viewModel::shareAdRecordings,
         onDeleteAdRecordings = viewModel::deleteAdRecordings,
         onAppearance = onAppearance,
@@ -304,6 +309,8 @@ fun SettingsContent(
     onLowerAdVolume: (Boolean) -> Unit = {},
     /** Enregistrements pour l'analyse des pubs gardés sur l'appareil. */
     adRecordings: List<AdRecordings.Recording> = emptyList(),
+    adPlace: AdPlace = AdPlace(),
+    onCycleAdPlace: () -> Unit = {},
     onShareAdRecordings: () -> AdRecordings.Share? = { null },
     onDeleteAdRecordings: () -> Unit = {},
     onAppearance: () -> Unit = {},
@@ -496,6 +503,18 @@ fun SettingsContent(
                         if (sharing) {
                             AdRecordingsDialog(adRecordings, onShareAdRecordings, onDeleteAdRecordings, onDismiss = { sharing = false })
                         }
+                        // Où vont les enregistrements : mémoire de l'appareil ou clé USB branchée (OK : la suivante).
+                        val placeName = if (adPlace.usb) adPlace.label.orEmpty() else stringResource(R.string.settings_ad_recordings_internal)
+                        ValueRow(
+                            title = stringResource(R.string.settings_ad_recordings_place),
+                            value = when {
+                                adPlace.missing -> stringResource(R.string.settings_ad_recordings_missing)
+                                adPlace.freeBytes != null -> stringResource(R.string.settings_ad_recordings_free, placeName, gigabytes(adPlace.freeBytes))
+                                else -> placeName
+                            },
+                            onClick = onCycleAdPlace,
+                        )
+                        InfoText(stringResource(R.string.settings_ad_recordings_place_help))
                     }
                     ToggleRow(
                         title = stringResource(R.string.settings_audio_passthrough),
@@ -881,6 +900,8 @@ private fun ReadableBlock(content: @Composable () -> Unit) {
 }
 
 private fun megabytes(bytes: Long): String = String.format(Locale.FRANCE, "%.1f", bytes / 1_000_000.0)
+
+private fun gigabytes(bytes: Long): String = String.format(Locale.FRANCE, "%.1f", bytes / 1_000_000_000.0)
 
 @Composable
 private fun previewVolumeLabel(volume: PreviewVolume): String = stringResource(

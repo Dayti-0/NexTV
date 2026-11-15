@@ -153,6 +153,30 @@ class AdRecorderTest {
     }
 
     @Test
+    fun `recordings go to the chosen USB drive, and say so when it is unplugged`() {
+        val usb = folder.newFolder("usb")
+        var plugged = true
+        val recordings = AdRecordings(folder.newFolder("internal"), "0.0.0-test") {
+            if (plugged) listOf(AdRecordings.Location("1234-ABCD", "Clé USB SanDisk", usb)) else emptyList()
+        }
+        assertEquals(listOf(null, "1234-ABCD"), recordings.locations().map { it.key })
+        recordings.selected = "1234-ABCD"
+        assertNotNull(recordings.start("TF1", control))
+        play(62.0)
+        recordings.stop()
+        waitFor { recordings.files.value.isNotEmpty() }
+        assertEquals("Clé USB SanDisk", recordings.files.value.single().location)
+        assertTrue(usb.listFiles()!!.single().name.startsWith("pubs_TF1_"))
+        assertEquals(setOf("info.txt", "levels.bin", "audio.ulaw", "frames.bin", "events.tsv"), download(recordings, recordings.files.value.single().name).keys)
+
+        // Clé débranchée : rien ne commence, et l'appli dit pourquoi.
+        plugged = false
+        assertNull(recordings.start("TF1", control))
+        assertEquals("usb", recordings.refusal)
+        assertNull(control.recordingMillis)
+    }
+
+    @Test
     fun `less than a minute is not kept`() {
         val recordings = AdRecordings(folder.newFolder("recordings"), "0.0.0-test")
         val recorder = recordings.start("M6", control)!!

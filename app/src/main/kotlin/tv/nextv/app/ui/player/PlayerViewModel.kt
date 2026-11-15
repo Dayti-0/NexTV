@@ -282,6 +282,7 @@ class PlayerViewModel(
                     val notice = when {
                         !ended -> null
                         engine.adRecordingStopReason == "place" -> resources.getString(R.string.player_ad_recording_full)
+                        engine.adRecordingStopReason == "erreur" -> resources.getString(R.string.player_ad_recording_write_error)
                         else -> resources.getString(R.string.player_ad_recording_stopped)
                     }
                     mutableState.update {
@@ -471,6 +472,7 @@ class PlayerViewModel(
                 adRecordingMinutes = if (recording || !started) null else 0,
                 qualityNotice = when {
                     recording -> resources.getString(R.string.player_ad_recording_stopped)
+                    !started && engine.adRecordingRefusal == "usb" -> resources.getString(R.string.player_ad_recording_no_usb)
                     !started -> resources.getString(R.string.player_ad_recording_failed)
                     else -> it.qualityNotice
                 },

@@ -373,6 +373,13 @@
     <string name="player_ad_recording_full">Enregistrement d’analyse arrêté : plus assez de place sur l’appareil. À récupérer dans Réglages › Son</string>
     <string name="player_ad_recording_stopped">Enregistrement d’analyse terminé : à récupérer dans Réglages › Son</string>
     <string name="player_ad_recording_failed">Enregistrement impossible : plus assez de place sur l’appareil</string>
+    <string name="player_ad_recording_no_usb">Enregistrement impossible : la clé USB choisie n’est pas branchée (Réglages › Son)</string>
+    <string name="player_ad_recording_write_error">Enregistrement d’analyse arrêté : écriture impossible (clé USB retirée ?)</string>
+    <string name="settings_ad_recordings_place">Emplacement des enregistrements</string>
+    <string name="settings_ad_recordings_internal">Mémoire de l’appareil</string>
+    <string name="settings_ad_recordings_free">%1$s · %2$s Go libres</string>
+    <string name="settings_ad_recordings_missing">Clé USB débranchée : branchez-la, ou choisissez un autre emplacement</string>
+    <string name="settings_ad_recordings_place_help">OK passe à l’emplacement suivant : la mémoire de l’appareil, puis chaque clé USB branchée. Sur une clé USB, tous les enregistrements sont gardés (environ 90 Mo par heure) ; dans la mémoire de l’appareil, les 4 derniers.</string>
     <string name="settings_ad_recordings">Enregistrements pour l’analyse des pubs</string>
     <string name="settings_ad_recordings_none">Aucun : à lancer depuis les options du lecteur, sur une chaîne en direct</string>
     <string name="settings_ad_recordings_count">%1$d enregistrement(s), %2$s Mo : les récupérer sur un téléphone</string>

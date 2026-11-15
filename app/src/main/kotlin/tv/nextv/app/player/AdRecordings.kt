@@ -19,20 +19,52 @@ import java.util.zip.ZipOutputStream
 import kotlin.random.Random
 
 /**
- * Enregistrements pour l'analyse des pubs ([AdRecorder]) : lancés et arrêtés depuis les options du lecteur, gardés sur
- * l'appareil (les [MAX_FILES] derniers, un dossier chacun), puis récupérés sur un téléphone ou un ordinateur du même
+ * Enregistrements pour l'analyse des pubs ([AdRecorder]) : lancés et arrêtés depuis les options du lecteur, gardés
+ * dans la mémoire de l'appareil (les [MAX_FILES] derniers) ou sur une clé USB ([Location], réglage
+ * « Emplacement des enregistrements »), un dossier chacun, puis récupérés sur un téléphone ou un ordinateur du même
  * réseau par une adresse que Réglages affiche ([share]) : chaque dossier y est donné en `.zip`, fabriqué à la volée
- * (aucune copie sur l'appareil, même pour des heures d'enregistrement).
+ * (aucune copie, même pour des heures d'enregistrement).
+ *
+ * @param internal dossier dans la mémoire de l'appareil.
+ * @param removable emplacements amovibles branchés en ce moment (clés USB, cartes), relus à chaque appel.
  */
-class AdRecordings(private val directory: File, private val version: String) {
+class AdRecordings(
+    private val internal: File,
+    private val version: String,
+    private val removable: () -> List<Location> = { emptyList() },
+) {
 
-    /** Enregistrement terminé, gardé sur l'appareil ([name] : celui du `.zip` téléchargé). */
-    data class Recording(val name: String, val bytes: Long)
+    /** Enregistrement terminé ([name] : celui du `.zip` téléchargé), et l'emplacement où il est gardé. */
+    data class Recording(val name: String, val bytes: Long, val location: String? = null)
+
+    /**
+     * Emplacement possible des enregistrements.
+     * @property key identifiant gardé dans les réglages ; `null` : la mémoire de l'appareil.
+     * @property label nom donné par le système (« Clé USB SanDisk ») ; `null` : la mémoire de l'appareil.
+     * @property directory dossier des enregistrements à cet emplacement.
+     */
+    data class Location(val key: String?, val label: String?, val directory: File) {
+        val freeBytes: Long get() = (directory.parentFile ?: directory).usableSpace
+    }
+
+    /** Emplacement choisi dans les réglages (`null` : mémoire de l'appareil), tenu à jour par l'application. */
+    @Volatile
+    var selected: String? = null
+
+    /** Mémoire de l'appareil, puis les clés USB branchées. */
+    fun locations(): List<Location> = listOf(Location(null, null, internal)) + removable()
+
+    /** Emplacement choisi, s'il est disponible (une clé USB choisie mais débranchée : `null`). */
+    fun target(): Location? = locations().firstOrNull { it.key == selected }
+
+    private fun directories(): List<File> = locations().map { it.directory }
 
     init {
         // Enregistrement interrompu (application fermée par le système) : ce qui a été écrit est gardé.
-        directory.listFiles { file -> file.isDirectory && file.name.endsWith(PART) }?.forEach { part ->
-            part.renameTo(File(directory, part.name.removeSuffix(PART)))
+        for (directory in directories()) {
+            directory.listFiles { file -> file.isDirectory && file.name.endsWith(PART) }?.forEach { part ->
+                part.renameTo(File(directory, part.name.removeSuffix(PART)))
+            }
         }
     }
 
@@ -41,23 +73,37 @@ class AdRecordings(private val directory: File, private val version: String) {
     /** Enregistrements gardés, le plus récent en premier. */
     val files: StateFlow<List<Recording>> = mutableFiles.asStateFlow()
 
+    /** Relit les enregistrements (clé USB branchée ou retirée depuis). */
+    fun refresh() {
+        mutableFiles.value = list()
+    }
+
     /** Enregistrement en cours (un seul à la fois). */
     @Volatile
     var current: AdRecorder? = null
         private set
 
-    /** Il reste assez de place sur l'appareil pour commencer (environ 90 Mo par heure enregistrée). */
-    fun hasRoom(): Boolean = (directory.parentFile ?: directory).usableSpace > MIN_FREE_BYTES
+    /** Pourquoi le dernier enregistrement n'a pas pu commencer : « usb » (clé débranchée) ou « place ». */
+    @Volatile
+    var refusal: String? = null
+        private set
 
     /**
      * Commence un enregistrement, à partir de la chaîne [channel], branché sur [control] (son, images et décisions de la
-     * détection des pubs). Il dure jusqu'à [stop], même si l'on change de chaîne. L'enregistrement en cours, s'il y en
-     * a un, est d'abord arrêté.
+     * détection des pubs), à l'emplacement choisi. Il dure jusqu'à [stop], même si l'on change de chaîne.
+     * L'enregistrement en cours, s'il y en a un, est d'abord arrêté. `null` s'il ne peut pas commencer ([refusal]).
      * @param onStopped appelé quand l'enregistrement s'arrête, avec la raison s'il s'est arrêté tout seul (place).
      */
     fun start(channel: String, control: AdVolumeControl, onStopped: (reason: String?) -> Unit = {}): AdRecorder? {
         stop()
-        if (!hasRoom()) return null
+        val location = target()
+        refusal = when {
+            location == null -> "usb"
+            location.freeBytes <= MIN_FREE_BYTES -> "place"
+            else -> null
+        }
+        if (location == null || refusal != null) return null
+        val directory = location.directory
         val stamp = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.FRANCE).format(Date())
         val name = "pubs_${safe(channel)}_$stamp"
         val info = linkedMapOf(
@@ -73,7 +119,8 @@ class AdRecordings(private val directory: File, private val version: String) {
             if (!part.renameTo(done)) part.deleteRecursively()
             // Moins d'une minute de son : rien d'utile.
             if (File(done, "audio.ulaw").length() < MIN_AUDIO_BYTES) done.deleteRecursively()
-            trim()
+            // Mémoire de l'appareil : les derniers seulement. Sur une clé USB, tout est gardé (jusqu'à ce qu'elle soit pleine).
+            if (location.key == null) trim(directory)
             mutableFiles.value = list()
             onStopped(reason)
         }
@@ -88,23 +135,26 @@ class AdRecordings(private val directory: File, private val version: String) {
         current = null
     }
 
-    /** Supprime tous les enregistrements gardés (pas celui en cours). */
+    /** Supprime tous les enregistrements gardés, à tous les emplacements branchés (pas celui en cours). */
     fun deleteAll() {
-        directory.listFiles { file -> file.isDirectory && !file.name.endsWith(PART) }?.forEach { it.deleteRecursively() }
+        for (directory in directories()) {
+            directory.listFiles { file -> file.isDirectory && !file.name.endsWith(PART) }?.forEach { it.deleteRecursively() }
+        }
         mutableFiles.value = list()
     }
 
-    /** Dossier de l'enregistrement téléchargé sous le nom [zipName]. */
-    fun folder(zipName: String): File? =
+    /** Dossier de l'enregistrement téléchargé sous le nom [zipName], quel que soit son emplacement. */
+    fun folder(zipName: String): File? = directories().firstNotNullOfOrNull { directory ->
         File(directory, zipName.removeSuffix(".zip")).takeIf { it.isDirectory && it.parentFile == directory && !it.name.endsWith(PART) }
+    }
 
-    private fun list(): List<Recording> =
-        directory.listFiles { file -> file.isDirectory && !file.name.endsWith(PART) }
-            ?.sortedByDescending { it.lastModified() }
-            ?.map { folder -> Recording(folder.name + ".zip", folder.listFiles()?.sumOf { it.length() } ?: 0L) }
-            .orEmpty()
+    private fun list(): List<Recording> = locations().flatMap { location ->
+        location.directory.listFiles { file -> file.isDirectory && !file.name.endsWith(PART) }.orEmpty().map { folder ->
+            folder to Recording(folder.name + ".zip", folder.listFiles()?.sumOf { it.length() } ?: 0L, location.label)
+        }
+    }.sortedByDescending { it.first.lastModified() }.map { it.second }
 
-    private fun trim() {
+    private fun trim(directory: File) {
         val folders = directory.listFiles { file -> file.isDirectory && !file.name.endsWith(PART) } ?: return
         folders.sortedByDescending { it.lastModified() }.drop(MAX_FILES).forEach { it.deleteRecursively() }
     }

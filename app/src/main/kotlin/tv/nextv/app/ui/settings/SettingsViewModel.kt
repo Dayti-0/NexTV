@@ -1,5 +1,7 @@
 package tv.nextv.app.ui.settings
 
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import tv.nextv.app.player.AdRecordings
 import android.content.Intent
 import androidx.lifecycle.ViewModel
@@ -311,6 +313,40 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
     /** Enregistrements pour l'analyse des pubs gardés sur l'appareil. */
     val adRecordings: StateFlow<List<AdRecordings.Recording>> = container.adRecordings.files
 
+    private val mutableAdPlace = MutableStateFlow(adPlace(container.adRecordings.selected))
+
+    /** Emplacement des enregistrements choisi (et s'il est branché). */
+    val adPlace: StateFlow<AdPlace> = mutableAdPlace
+
+    private fun adPlace(key: String?): AdPlace {
+        val location = container.adRecordings.locations().firstOrNull { it.key == key }
+        return AdPlace(usb = key != null, label = location?.label, freeBytes = location?.freeBytes, missing = location == null)
+    }
+
+    /** Relit les emplacements (clé USB branchée ou retirée) et les enregistrements. */
+    fun refreshAdPlaces() {
+        viewModelScope.launch {
+            val key = settings.adRecordingsLocation.first()
+            container.adRecordings.selected = key
+            mutableAdPlace.value = withContext(Dispatchers.IO) {
+                container.adRecordings.refresh()
+                adPlace(key)
+            }
+        }
+    }
+
+    /** Emplacement suivant : mémoire de l'appareil, puis chaque clé USB branchée. */
+    fun cycleAdPlace() {
+        viewModelScope.launch {
+            val locations = withContext(Dispatchers.IO) { container.adRecordings.locations() }
+            val index = locations.indexOfFirst { it.key == container.adRecordings.selected }
+            val next = locations[(index + 1) % locations.size]
+            container.adRecordings.selected = next.key
+            settings.setAdRecordingsLocation(next.key)
+            mutableAdPlace.value = withContext(Dispatchers.IO) { adPlace(next.key) }
+        }
+    }
+
     /** Partage des enregistrements sur le réseau local, tant que le résultat n'est pas fermé ; `null` sans réseau. */
     fun shareAdRecordings(): AdRecordings.Share? = container.adRecordings.share()
 
@@ -457,3 +493,11 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch { settings.setTmdbApiKey(null) }
     }
 }
+
+/**
+ * Emplacement des enregistrements pour l'analyse des pubs (Réglages › Son).
+ * @property usb une clé USB est choisie (sinon la mémoire de l'appareil).
+ * @property label nom de la clé donné par le système.
+ * @property missing la clé choisie n'est pas branchée.
+ */
+data class AdPlace(val usb: Boolean = false, val label: String? = null, val freeBytes: Long? = null, val missing: Boolean = false)

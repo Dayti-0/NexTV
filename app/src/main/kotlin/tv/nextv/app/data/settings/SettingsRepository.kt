@@ -302,6 +302,13 @@ class SettingsRepository(
         .map { prefs -> prefs[FRANCE3_REGION]?.let(tv.nextv.core.catalog.FranceRegions::keyOf) }
         .distinctUntilChanged()
 
+    /** Emplacement des enregistrements pour l'analyse des pubs : clé USB choisie (son identifiant) ; `null` : mémoire de l'appareil. */
+    val adRecordingsLocation: Flow<String?> = preferences.map { it[AD_RECORDINGS_LOCATION] }.distinctUntilChanged()
+
+    suspend fun setAdRecordingsLocation(key: String?) {
+        edit { prefs -> if (key != null) prefs[AD_RECORDINGS_LOCATION] = key else prefs.remove(AD_RECORDINGS_LOCATION) }
+    }
+
     suspend fun setFrance3Region(region: String?) {
         edit { prefs -> if (region != null) prefs[FRANCE3_REGION] = region else prefs.remove(FRANCE3_REGION) }
     }
@@ -605,6 +612,7 @@ class SettingsRepository(
         val LIVE_CENTER_MOSAIC = booleanKey("live_center_mosaic")
         val HIDE_UHD = booleanKey("hide_uhd")
         val FRANCE3_REGION = stringKey("france3_region")
+        val AD_RECORDINGS_LOCATION = stringKey("ad_recordings_location")
         val MERGE_CHANNELS = booleanKey("merge_channels")
         val FRENCH_ONLY = booleanKey("french_only")
         val LINEUP_VERSION = intKey("lineup_version")

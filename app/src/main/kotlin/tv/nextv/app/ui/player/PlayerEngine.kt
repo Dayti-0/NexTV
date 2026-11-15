@@ -609,6 +609,8 @@ internal class PlayerEngine(
         }
         adVolume.enabled = enabled
         adVolume.prints = if (enabled) container.adPrints else null
+        // Enregistrements d'analyse : leur emplacement (réglages) est lu dès maintenant, prêt quand on en lancera un.
+        if (enabled) container.adRecordings
         adVolume.newStream(adMarks)
     }
 
@@ -686,8 +688,11 @@ internal class PlayerEngine(
     /** Durée de l'enregistrement d'analyse en cours (ms) ; `null` sans enregistrement. */
     val adRecordingMillis: Long? get() = adVolume.recordingMillis
 
-    /** Pourquoi le dernier enregistrement d'analyse s'est arrêté tout seul (« place »), `null` sinon. */
+    /** Pourquoi le dernier enregistrement d'analyse s'est arrêté tout seul (« place », « erreur » : clé retirée), `null` sinon. */
     val adRecordingStopReason: String? get() = container.adRecordings.current?.stopReason
+
+    /** Pourquoi le dernier enregistrement d'analyse n'a pas pu commencer (« usb » : clé débranchée, « place »). */
+    val adRecordingRefusal: String? get() = container.adRecordings.refusal
 
     /** Chaîne en cours, notée dans l'enregistrement d'analyse. */
     fun noteAdRecordingChannel(name: String) = adVolume.noteChannel(name)
