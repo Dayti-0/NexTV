@@ -17,12 +17,15 @@ import java.util.concurrent.Executors
  * s'il est encore là au lancement suivant, l'application a été fermée pendant qu'on s'en servait.
  *
  * @param memory relevé de la mémoire (« 120 / 384 Mo »), ajouté au fichier de session à chaque écriture.
+ * @param processMemory mémoire réelle de l'application, en détail (graphique, natif…) : plus longue à lire, relevée
+ * seulement quand le système signale un manque de mémoire, hors du fil principal.
  */
 class CrashLog(
     private val file: File,
     private val version: String = BuildConfig.VERSION_NAME,
     private val clock: () -> Long = System::currentTimeMillis,
     private val memory: () -> String? = { null },
+    private val processMemory: () -> String? = { null },
     private val io: ExecutorService = Executors.newSingleThreadExecutor { task -> Thread(task, "nextv-session").apply { isDaemon = true } },
     private val redact: (String) -> String,
 ) {
@@ -52,6 +55,10 @@ class CrashLog(
         val memory: String?,
         /** Dernier signal de mémoire basse du système (« critique, il y a 4 s »), s'il y en a eu. */
         val pressure: String?,
+        /** Mémoire réelle de l'application au dernier signal de mémoire basse (graphique, natif, Java…). */
+        val process: String? = null,
+        /** Vidéo en cours de lecture (taille, format, décodeur), s'il y en avait une. */
+        val playback: String? = null,
     )
 
     private val sessionFile = File(file.parentFile, SESSION_FILE)
@@ -70,6 +77,12 @@ class CrashLog(
 
     @Volatile
     private var pressure: Pair<String, Long>? = null
+
+    @Volatile
+    private var process: String? = null
+
+    @Volatile
+    private var playback: String? = null
 
     /** Enregistre les plantages, puis laisse le système fermer l'application comme d'habitude. */
     fun install() {
@@ -155,6 +168,18 @@ class CrashLog(
     fun memoryPressure(level: String) {
         pressure = level to clock()
         saveSession()
+        // Le détail de la mémoire de l'application ensuite : sa lecture prend du temps (fil de la session).
+        io.execute {
+            process = runCatching { processMemory() }.getOrNull() ?: process
+            saveSession()
+        }
+    }
+
+    /** Vidéo lue (« 1920 × 1080 H.264, décodeur matériel ») ; `null` : plus de lecture. */
+    fun playback(description: String?) {
+        if (description == playback) return
+        playback = description
+        saveSession()
     }
 
     private fun saveSession() {
@@ -168,6 +193,8 @@ class CrashLog(
             place?.let { append("screen=").append(it).append('\n') }
             runCatching { memory() }.getOrNull()?.let { append("memory=").append(it).append('\n') }
             pressure?.let { (level, at) -> append("pressure=").append(level).append(", ").append((now - at) / 1_000).append(" s avant").append('\n') }
+            process?.let { append("process=").append(it).append('\n') }
+            playback?.let { append("playback=").append(it).append('\n') }
         }
         io.execute {
             // Écran quitté entre-temps : le fichier ne doit pas réapparaître.
@@ -193,6 +220,8 @@ class CrashLog(
             screen = values["screen"],
             memory = values["memory"],
             pressure = values["pressure"],
+            process = values["process"],
+            playback = values["playback"],
         )
     }.getOrNull()
 

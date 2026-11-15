@@ -58,6 +58,23 @@ class PlayerFactoryTest {
     }
 
     @Test
+    fun aOneGigabyteDeviceKeepsLessAhead() {
+        val context = RuntimeEnvironment.getApplication()
+        val manager = context.getSystemService(android.app.ActivityManager::class.java)
+        fun total(megabytes: Long) = org.robolectric.Shadows.shadowOf(manager).setMemoryInfo(
+            android.app.ActivityManager.MemoryInfo().apply { totalMem = megabytes * 1024 * 1024; availMem = totalMem / 4 },
+        )
+        // Fire TV d'entrée de gamme (environ 1 Go) : 32 Mo d'avance pour un film, au lieu d'un cinquième de 256 Mo.
+        total(megabytes = 950)
+        assertEquals(true, smallMemoryDevice(context))
+        assertEquals(32 * 1024 * 1024, filmBufferBytes(context))
+        factory.create().release()
+        // Appareil de 2 Go : comme avant.
+        total(megabytes = 2_000)
+        assertEquals(false, smallMemoryDevice(context))
+    }
+
+    @Test
     fun eachStreamUsesItsOwnNetworkSource() {
         // Premier flux : User-Agent et en-tête de sa playlist, identifiants présentés au défi du serveur.
         server.enqueue(MockResponse.Builder().code(401).addHeader("WWW-Authenticate", "Basic realm=\"iptv\"").build())

@@ -33,6 +33,7 @@ class CrashLogTest {
         version = version,
         clock = { now },
         memory = { memory },
+        processMemory = { "412 Mo : graphique 180" },
         io = direct,
         redact = Redactor()::redact,
     )
@@ -170,9 +171,23 @@ class CrashLogTest {
         assertEquals("home (guide)", session.screen)
         assertEquals("appli 120 / 384 Mo", session.memory)
         assertEquals("critique, 0 s avant", session.pressure)
+        assertEquals("412 Mo : graphique 180", session.process)
+        assertNull(session.playback)
         assertEquals(now, session.atMillis)
         // Lue une seule fois.
         assertNull(log().takePreviousSession())
+    }
+
+    @Test
+    fun theSessionSaysWhichVideoWasPlaying() {
+        val log = log()
+        log.foreground(boot = 7)
+        log.screen("player/{channelId}")
+        log.playback("1920 × 1080 H.264, décodeur matériel OMX.X.AVC")
+        assertEquals("1920 × 1080 H.264, décodeur matériel OMX.X.AVC", log().takePreviousSession()!!.playback)
+        log.playback(null)
+        log.screen("home")
+        assertNull(log().takePreviousSession()!!.playback)
     }
 
     @Test

@@ -4,6 +4,11 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.150
+- Petits appareils (Fire TV d’environ 1 Go de mémoire) : le lecteur garde moins de flux d’avance (direct et films) et moins d’images en mémoire, pour que le système ne ferme plus l’application en pleine lecture faute de mémoire
+- Quand l’appareil signale qu’il manque de mémoire pendant une lecture, l’application rend aussitôt les images de l’accueil gardées en mémoire et ne garde que quelques secondes de flux d’avance pendant trois minutes
+- « Dernier incident » (Réglages) : après une fermeture par le système, la carte dit aussi la mémoire réelle de l’application (images, décodeur, Java…), la mémoire totale de l’appareil, et la vidéo qui passait (taille, format, décodeur)
+
 ## 0.2.149
 - Menu des chaînes du lecteur : le programme en cours ne disparaît plus de la liste quand le précédent se termine (après minuit, plusieurs chaînes restaient sans programme alors que le volet de droite l’affichait). Les favoris et le volet de droite suivent aussi le changement de programme
 - Options du lecteur : la qualité tient sur une seule ligne. Chaque appui sur OK passe au mode suivant (Meilleure qualité, HD maximum, Économie, puis les versions de la chaîne : FHD, HD…), appliqué 2 secondes après le dernier appui

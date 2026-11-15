@@ -647,6 +647,7 @@ internal class PlayerEngine(
         exoPlayerConfig = null
         forgetLive()
         mutablePlayer.value = null
+        container.crashLog?.playback(null)
     }
 
     /** Aperçu montré à l'ouverture mais pas repris (chaîne introuvable, écran quitté avant la lecture) : fermé. */
@@ -698,6 +699,8 @@ internal class PlayerEngine(
             }
             state.copy(info = resolved)
         }
+        // Noté pour « Dernier incident » : la vidéo lue si le système ferme l'application.
+        container.crashLog?.playback(videoDescription(state.value.info))
     }
 
     /**
@@ -874,3 +877,23 @@ private const val LIVE_TAIL_BYTES = 32 * 1024 * 1024
 
 /** Mémoire maximale de l'application (avec `largeHeap`) en dessous de laquelle l'appareil est traité comme petit. */
 private const val SMALL_HEAP_MB = 256
+
+/** Vidéo lue, en une ligne (« 1920 × 1080 H.264, décodeur matériel OMX.MTK.VIDEO.DECODER.AVC ») ; `null` : rien encore. */
+internal fun videoDescription(info: PlaybackInfo): String? {
+    val format = when (val mime = info.videoMimeType) {
+        null -> null
+        "video/avc" -> "H.264"
+        "video/hevc" -> "H.265"
+        else -> mime.substringAfter('/')
+    }
+    val size = if (info.width != null && info.height != null) "${info.width} × ${info.height}" else null
+    val decoder = info.videoDecoder?.let { name ->
+        when (info.hardwareDecoder) {
+            true -> "décodeur matériel $name"
+            false -> "décodeur logiciel $name"
+            null -> "décodeur $name"
+        }
+    }
+    val picture = listOfNotNull(size, format).joinToString(" ").ifEmpty { null }
+    return listOfNotNull(picture, decoder).joinToString(", ").ifEmpty { null }
+}

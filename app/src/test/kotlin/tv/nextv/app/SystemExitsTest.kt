@@ -142,7 +142,9 @@ class SystemExitsTest {
     // --- Avant Android 11 : seule la session restée ouverte renseigne ------------------------------
 
     private fun session(boot: Int = 12, version: String = BuildConfig.VERSION_NAME) =
-        CrashLog.Session(atMillis = now, version = version, boot = boot, screen = "home (guide)", memory = "appli 150 / 384 Mo", pressure = "critique, 2 s avant")
+        CrashLog.Session(atMillis = now, version = version, boot = boot, screen = "home (guide)", memory = "appli 150 / 384 Mo", pressure = "critique, 2 s avant",
+            process = "412 Mo : Java 40, natif 60, graphique 180", playback = "1920 × 1080 H.264, décodeur matériel OMX.X.AVC",
+        )
 
     @Test
     fun anOpenSessionOnTheSameBootIsAnIncident() {
@@ -152,6 +154,24 @@ class SystemExitsTest {
         assertEquals(CrashLog.Kind.SYSTEM, entry.kind)
         assertTrue(entry.details, "Écran affiché : home (guide)" in entry.details)
         assertTrue(entry.details, "Mémoire signalée critique, 2 s avant" in entry.details)
+        assertTrue(entry.details, "Mémoire réelle de l’appli : 412 Mo : Java 40, natif 60, graphique 180" in entry.details)
+        assertTrue(entry.details, "Vidéo : 1920 × 1080 H.264, décodeur matériel OMX.X.AVC" in entry.details)
+    }
+
+    @Test
+    fun processMemoryShowsWhereTheMemoryGoes() {
+        val stats = mapOf(
+            "summary.total-pss" to "421888",
+            "summary.java-heap" to "40960",
+            "summary.native-heap" to "61440",
+            "summary.graphics" to "184320",
+            "summary.code" to "30720",
+        )
+        assertEquals("412 Mo : Java 40, natif 60, graphique 180, code 30", SystemExits.processMemory(stats))
+        assertNull(SystemExits.processMemory(emptyMap()))
+        // Sur l'appareil (Robolectric) : rien qui plante, quoi que rende le système.
+        SystemExits.processMemory()
+        assertTrue(SystemExits.memory(context)!!.contains("Mo libres sur"))
     }
 
     @Test

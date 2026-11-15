@@ -15,6 +15,8 @@ import coil3.SingletonImageLoader
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import okhttp3.Call
 import okhttp3.Request
+import tv.nextv.app.player.MemoryPressure
+import tv.nextv.app.player.smallMemoryDevice
 import tv.nextv.app.ui.home.TrailerMemory
 import tv.nextv.core.log.Redactor
 import tv.nextv.core.net.RequestPurpose
@@ -30,6 +32,7 @@ class NexTvApplication : Application(), SingletonImageLoader.Factory {
         CrashLog(
             file = File(filesDir, CRASH_FILE),
             memory = { SystemExits.memory(this) },
+            processMemory = SystemExits::processMemory,
             redact = { text -> if (::container.isInitialized) container.redactor.redact(text) else Redactor().redact(text) },
         )
     }
@@ -72,6 +75,25 @@ class NexTvApplication : Application(), SingletonImageLoader.Factory {
         // attendent ; c'est elle qui faisait fermer l'application par le système sur la Fire TV.
         @Suppress("DEPRECATION")
         if (level == TRIM_MEMORY_RUNNING_CRITICAL) TrailerMemory.pause()
+        @Suppress("DEPRECATION")
+        if (level == TRIM_MEMORY_RUNNING_LOW || level == TRIM_MEMORY_RUNNING_CRITICAL) freeMemoryForPlayback()
+    }
+
+    override fun onLowMemory() {
+        super.onLowMemory()
+        freeMemoryForPlayback()
+    }
+
+    /**
+     * Mémoire presque épuisée pendant une lecture (télé Sony : application fermée par le système en plein direct,
+     * juste après le signal « critique ») : les images de l'accueil gardées en mémoire, invisibles pendant la lecture,
+     * sont rendues (le cache n'en rendait que la moitié ; elles se relisent sur le disque au retour), et les lecteurs
+     * gardent moins de flux d'avance pendant quelques minutes ([MemoryPressure]).
+     */
+    private fun freeMemoryForPlayback() {
+        MemoryPressure.signal()
+        if (!::container.isInitialized || !container.playbackOpen.value) return
+        runCatching { SingletonImageLoader.get(this).memoryCache?.clear() }
     }
 
     /** Les logos passent par le même client HTTP (proxy « playlists et logos » compris). */
@@ -80,9 +102,10 @@ class NexTvApplication : Application(), SingletonImageLoader.Factory {
         val callFactory = object : Call.Factory {
             override fun newCall(request: Request): Call = clients.client(RequestPurpose.IMAGE).newCall(request)
         }
-        // Appareil à petite mémoire (box d'entrée de gamme) : cache plus petit, images en 16 bits.
+        // Appareil à petite mémoire (box d'entrée de gamme, Fire TV d'environ 1 Go) : cache plus petit, images en 16 bits.
         val activityManager = getSystemService(ActivityManager::class.java)
-        val lowMemory = activityManager?.isLowRamDevice == true || (activityManager?.memoryClass ?: 256) <= LOW_MEMORY_CLASS_MB
+        val lowMemory = activityManager?.isLowRamDevice == true || (activityManager?.memoryClass ?: 256) <= LOW_MEMORY_CLASS_MB ||
+            smallMemoryDevice(this)
         return ImageLoader.Builder(context)
             .components { add(OkHttpNetworkFetcherFactory(callFactory = { callFactory })) }
             // Affiches et visuels apparaissent en fondu (court : la fluidité passe avant l'effet).

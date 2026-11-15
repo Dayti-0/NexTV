@@ -26,14 +26,43 @@ object SystemExits {
     fun bootCount(context: Context): Int =
         runCatching { Settings.Global.getInt(context.contentResolver, Settings.Global.BOOT_COUNT) }.getOrDefault(0)
 
-    /** Mémoire de l'application et de l'appareil, en une ligne (« appli 142 / 384 Mo, natif 96 Mo, appareil 310 Mo libres »). */
+    /**
+     * Mémoire de l'application et de l'appareil, en une ligne (« appli 142 / 384 Mo, natif 96 Mo, appareil 310 Mo
+     * libres sur 1 900, seuil 216 » : sous ce seuil, le système ferme des applications).
+     */
     fun memory(context: Context): String? = runCatching {
         val runtime = Runtime.getRuntime()
         val used = (runtime.totalMemory() - runtime.freeMemory()) / MB
         val device = ActivityManager.MemoryInfo().also { context.getSystemService(ActivityManager::class.java)?.getMemoryInfo(it) }
         "appli $used / ${runtime.maxMemory() / MB} Mo, natif ${Debug.getNativeHeapAllocatedSize() / MB} Mo, " +
-            "appareil ${device.availMem / MB} Mo libres" + if (device.lowMemory) " (mémoire basse)" else ""
+            "appareil ${device.availMem / MB} Mo libres sur ${device.totalMem / MB}, seuil ${device.threshold / MB}" +
+            if (device.lowMemory) " (mémoire basse)" else ""
     }.getOrNull()
+
+    /**
+     * Mémoire réelle de l'application (PSS) et sa répartition, en une ligne : « 412 Mo : Java 40, natif 60,
+     * graphique 180, code 30, autre 102 ». Le relevé de [memory] ne voit ni les images envoyées à la carte graphique
+     * (affiches, couches vidéo) ni la mémoire des décodeurs. Lecture lente (dizaines de ms) : hors du fil principal.
+     */
+    fun processMemory(): String? = runCatching {
+        val info = Debug.MemoryInfo().also { Debug.getMemoryInfo(it) }
+        processMemory(info.memoryStats)
+    }.getOrNull()
+
+    /** @param stats relevé du système, en Ko (`summary.total-pss`, `summary.graphics`…). */
+    internal fun processMemory(stats: Map<String, String>): String? {
+        fun mb(key: String): Long? = stats[key]?.toLongOrNull()?.let { it / KB }
+        val total = mb("summary.total-pss")?.takeIf { it > 0 } ?: return null
+        val parts = listOf(
+            "Java" to "summary.java-heap",
+            "natif" to "summary.native-heap",
+            "graphique" to "summary.graphics",
+            "code" to "summary.code",
+            "autre" to "summary.private-other",
+            "système" to "summary.system",
+        ).mapNotNull { (name, key) -> mb(key)?.let { "$name $it" } }
+        return "$total Mo" + if (parts.isEmpty()) "" else " : " + parts.joinToString(", ")
+    }
 
     /** Niveau d'un signal de mémoire du système (`onTrimMemory`) ; `null` : sans intérêt (application en arrière-plan). */
     @Suppress("DEPRECATION")
@@ -135,6 +164,8 @@ object SystemExits {
         session?.screen?.let { "Écran affiché : $it" },
         session?.memory?.let { "Dernier relevé de mémoire : $it" },
         session?.pressure?.let { "Mémoire signalée $it" },
+        session?.process?.let { "Mémoire réelle de l’appli : $it" },
+        session?.playback?.let { "Vidéo : $it" },
     )
 
     private const val MB = 1024L * 1024

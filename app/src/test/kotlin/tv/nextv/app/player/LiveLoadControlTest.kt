@@ -76,6 +76,29 @@ class LiveLoadControlTest {
     }
 
     @Test
+    fun lowSystemMemoryKeepsOnlyAFewSecondsAhead() {
+        val control = prepared(preview = false)
+        val allocator = control.allocator
+        val taken = List(PRESSURE_BUFFER_BYTES / allocator.individualAllocationLength + 1) { allocator.allocate() }
+        try {
+            assertTrue(control.shouldContinueLoading(parameters(20.0)))
+            // Mémoire signalée critique : plus de 16 Mo d'avance, la lecture du flux s'arrête.
+            MemoryPressure.signal()
+            assertFalse(control.shouldContinueLoading(parameters(20.0)))
+            // Rendue : elle reprend.
+            taken.forEach(allocator::release)
+            assertTrue(control.shouldContinueLoading(parameters(20.0)))
+            // Quelques minutes sans nouveau signal : la mémoire tampon habituelle revient.
+            MemoryPressure.signal(now = 10_000L)
+            assertTrue(MemoryPressure.active(now = 10_000L + MemoryPressure.WINDOW_MILLIS - 1))
+            assertFalse(MemoryPressure.active(now = 10_000L + MemoryPressure.WINDOW_MILLIS))
+        } finally {
+            MemoryPressure.reset()
+            control.onReleased(playerId)
+        }
+    }
+
+    @Test
     fun aPreviewStreamFallingAgainAndAgainStopsRetrying() {
         val taps = StreamTaps().apply { preview = true }
         // Deux reprises par minute au plus : la troisième efface l'aperçu au lieu de rejouer le début du flux.

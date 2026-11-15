@@ -22,6 +22,8 @@ import androidx.media3.exoplayer.analytics.PlayerId
 import androidx.media3.exoplayer.source.TrackGroupArray
 import androidx.media3.exoplayer.trackselection.ExoTrackSelection
 import androidx.media3.exoplayer.upstream.Allocator
+import androidx.media3.exoplayer.upstream.DefaultAllocator
+import android.os.SystemClock
 import androidx.media3.common.Timeline
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.exoplayer.audio.AudioCapabilities
@@ -141,7 +143,7 @@ class PlayerFactory(
         val builder = ExoPlayer.Builder(context, renderers)
             // Flux donné sans sa source (setMediaItem) : client « flux » quand même (proxy), sans identifiants.
             .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(context, OkHttpDataSource.Factory(clients.client(RequestPurpose.STREAM)))))
-            .setLoadControl(liveBuffer ?: if (preview) liveLoadControl(preview = true) else if (film) filmLoadControl() else loadControl())
+            .setLoadControl(liveBuffer ?: if (preview) liveLoadControl(preview = true) else if (film) LiveLoadControl(filmLoadControl(), preview = false) else loadControl())
         if (bandwidthMeter != null) builder.setBandwidthMeter(bandwidthMeter)
         // L'aperçu de l'accueil ne prend pas le son au système.
         return builder.build().also {
@@ -299,8 +301,9 @@ class PlayerFactory(
             RESUME_BUFFER_MILLIS,
         )
         // Mémoire des petites box (Fire TV) : au plus ~48 Mo de flux d'avance, même en très haut débit
-        // (sinon jusqu'à 130 Mo pour 50 s de 4K, de quoi faire fermer l'application faute de mémoire).
-        .setTargetBufferBytes(MAX_BUFFER_BYTES)
+        // (sinon jusqu'à 130 Mo pour 50 s de 4K, de quoi faire fermer l'application faute de mémoire) ; la moitié
+        // sur un appareil d'environ 1 Go (Fire TV d'entrée de gamme, fermée par le système en plein direct).
+        .setTargetBufferBytes(if (smallMemoryDevice(context)) SMALL_DEVICE_BUFFER_BYTES else MAX_BUFFER_BYTES)
         .build()
 
     /**
@@ -348,6 +351,10 @@ private val MOVIE_AUDIO: AudioAttributes = AudioAttributes.Builder().setUsage(C.
  * s'arrêtait de lire à 8 s d'avance et ne reprenait qu'à 4 s. Certains serveurs coupent un client qui ne lit plus
  * pendant plusieurs secondes ; le flux repartait alors de ses premières secondes, en boucle. Gardée en plein écran
  * après OK sur l'aperçu, elle faisait aussi croire à une connexion lente (passage à une qualité inférieure).
+ *
+ * Système à court de mémoire ([MemoryPressure]) : au plus [PRESSURE_BUFFER_BYTES] de flux d'avance, et la mémoire
+ * libérée est rendue (elle restait sinon réservée au lecteur). Aussi pour un film (sans aperçu), autour de sa
+ * propre mémoire tampon.
  */
 @OptIn(UnstableApi::class)
 class LiveLoadControl internal constructor(private val full: DefaultLoadControl, preview: Boolean) : LoadControl {
@@ -374,8 +381,25 @@ class LiveLoadControl internal constructor(private val full: DefaultLoadControl,
 
     override fun shouldContinueLoading(parameters: LoadControl.Parameters): Boolean {
         val loading = full.shouldContinueLoading(parameters)
-        if (!preview) return loading
-        return loading && parameters.bufferedDurationUs < PREVIEW_MAX_BUFFER_MILLIS * 1000L && full.allocator.totalBytesAllocated < PREVIEW_BUFFER_BYTES
+        val pressure = MemoryPressure.active()
+        if (pressure) releaseSpareMemory()
+        if (preview) {
+            return loading && parameters.bufferedDurationUs < PREVIEW_MAX_BUFFER_MILLIS * 1000L && full.allocator.totalBytesAllocated < PREVIEW_BUFFER_BYTES
+        }
+        return loading && (!pressure || full.allocator.totalBytesAllocated < PRESSURE_BUFFER_BYTES)
+    }
+
+    private var trimmedAt = 0L
+
+    /** Rend au système la mémoire du tampon qui ne sert plus (gardée d'habitude pour la suite du flux). */
+    private fun releaseSpareMemory() {
+        val now = SystemClock.elapsedRealtime()
+        if (now - trimmedAt < TRIM_INTERVAL_MILLIS) return
+        trimmedAt = now
+        (full.allocator as? DefaultAllocator)?.let {
+            it.setTargetBufferSize(PRESSURE_BUFFER_BYTES)
+            it.trim()
+        }
     }
 
     // Aperçu d'un flux très lourd (4K) : sa limite en octets peut tomber avant les secondes demandées pour démarrer.
@@ -401,12 +425,26 @@ fun ExoPlayer.applyTrackPreferences(audioLanguage: String?, subtitleLanguage: St
 
 /**
  * Mémoire qu'un film peut occuper d'avance : un cinquième de celle que le système accorde à l'application, entre
- * [MAX_BUFFER_BYTES] (petites box) et [FILM_MAX_BUFFER_BYTES]. Au-delà, le système ferme l'application.
+ * [MAX_BUFFER_BYTES] (petites box) et [FILM_MAX_BUFFER_BYTES]. Au-delà, le système ferme l'application. Appareil
+ * d'environ 1 Go ([smallMemoryDevice]) : [SMALL_DEVICE_FILM_BUFFER_BYTES], la place accordée à l'application
+ * (256 Mo) y dépassant ce que l'appareil a de libre.
  */
 internal fun filmBufferBytes(context: Context): Int {
     val manager = context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
     if (manager == null || manager.isLowRamDevice) return MAX_BUFFER_BYTES
+    if (smallMemoryDevice(context)) return SMALL_DEVICE_FILM_BUFFER_BYTES
     return filmBufferBytes(manager.largeMemoryClass)
+}
+
+/**
+ * Appareil à très peu de mémoire (Fire TV d'entrée de gamme, environ 1 Go) : moins de [SMALL_DEVICE_TOTAL_MB] en
+ * tout, ou déclaré comme tel par le système.
+ */
+fun smallMemoryDevice(context: Context): Boolean {
+    val manager = context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager ?: return false
+    if (manager.isLowRamDevice) return true
+    val info = android.app.ActivityManager.MemoryInfo().also { manager.getMemoryInfo(it) }
+    return info.totalMem in 1 until SMALL_DEVICE_TOTAL_MB * 1024 * 1024
 }
 
 /** @param largeMemoryClass mémoire accordée à l'application, en Mo. */
@@ -419,5 +457,12 @@ private const val FILM_MAX_BUFFER_MILLIS = 5 * 60_000
 private const val FILM_MAX_BUFFER_BYTES = 96 * 1024 * 1024
 private const val RESUME_BUFFER_MILLIS = 3_000
 private const val MAX_BUFFER_BYTES = 48 * 1024 * 1024
+private const val SMALL_DEVICE_BUFFER_BYTES = 24 * 1024 * 1024
+private const val SMALL_DEVICE_FILM_BUFFER_BYTES = 32 * 1024 * 1024
+private const val SMALL_DEVICE_TOTAL_MB = 1_536L
 private const val PREVIEW_MAX_BUFFER_MILLIS = 8_000
 private const val PREVIEW_BUFFER_BYTES = 12 * 1024 * 1024
+
+/** Flux d'avance quand le système manque de mémoire : quelques secondes, même en 4K (environ 5 s à 25 Mbit/s). */
+internal const val PRESSURE_BUFFER_BYTES = 16 * 1024 * 1024
+private const val TRIM_INTERVAL_MILLIS = 1_000L

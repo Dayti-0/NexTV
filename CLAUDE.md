@@ -9,6 +9,8 @@ Application IPTV Android en Kotlin / Jetpack Compose (Media3). Elle s'appelait N
 
 - Il écrit en français, souvent avec des photos de l'écran : une Fire TV, une télé Sony, et une box Raspberry Pi
   sous LineageOS (KonstaKANG, Android 13+) branchée sur le moniteur ASUS (une photo de l'écran ASUS, c'est la box).
+  Sur la télé Sony, c'est une Fire TV de première génération, peu puissante (environ 1 Go de mémoire) qui tourne ;
+  il a aussi une Fire TV 4K, peu puissante elle aussi : les deux servent d'essai en conditions réelles.
   Demander sur quel appareil est prise une autre photo avant d'en tirer une cause propre à un modèle. Répondre en français, simplement, sans jargon.
 - Les tests sur l'appareil sont faits par lui : dire clairement ce qui a été vérifié ici (tests, captures) et ce
   qui reste à voir sur la télé.
@@ -100,6 +102,10 @@ Commandes :
 
 ## Repères dans le code
 
+- Mémoire : `smallMemoryDevice` (`PlayerFactory.kt`, moins de 1,5 Go en tout) réduit tampons et cache d'images ;
+  signal « basse » / « critique » pendant une lecture (`NexTvApplication.freeMemoryForPlayback`) : cache d'images
+  vidé et 16 Mo de flux d'avance au plus pendant 3 min (`MemoryPressure`, `LiveLoadControl`). Fermeture par le
+  système le 15/11/2026 sur la Fire TV de la Sony, en direct (appli 39 Mo, natif 49 Mo, 272 Mo libres, critique).
 - Journal « Dernier incident » : `CrashLog.kt` (trace réduite sans perdre la cause, erreurs de fond) et
   `SystemExits.kt` (fermetures par le système : raison, écran affiché, mémoire). C'est lui qu'il faut demander en
   photo pour tout plantage.
