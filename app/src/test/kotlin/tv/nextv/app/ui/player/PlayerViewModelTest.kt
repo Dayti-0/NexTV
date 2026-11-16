@@ -754,7 +754,7 @@ class PlayerViewModelTest {
             Thread.sleep(5)
         }
         awaitOtherChannel(viewModel, "France 2")
-        // France 2 ne se lit pas : la suivante la moins connue, TF1 (52 min analysées), avant M6 (plus de 3 h).
+        // France 2 ne se lit pas : la suivante la moins connue, TF1 (82 min analysées), avant M6 (plus de 5 h).
         assertEquals("TF1", viewModel.state.value.channelName)
         assertTrue((viewModel.state.value.autoRecordingChannels ?: 0) >= 2)
         // L'enregistrement continue d'une chaîne à l'autre ; arrêter l'automatique arrête aussi l'enregistrement.

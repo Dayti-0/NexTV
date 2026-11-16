@@ -361,11 +361,16 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
     private fun logoLeftForAds(): Boolean {
         if (dismissed() || !logoFollowsBreaks || !logoSeen || logoMissing || logo != LogoState.HIDDEN || !pictures()) return false
         if (logoOnlyFor == logoSince) return false
+        // Ce départ du logo seul s'est déjà trompé il y a peu sur ce flux : seules les jonctions ouvrent la page.
+        if (logoOnlyFailedAt != NEVER && elapsed - logoOnlyFailedAt < LOGO_ONLY_PAUSE_MILLIS) return false
         return elapsed - logoSince in LOGO_ONLY_MILLIS..LOGO_JUST_HIDDEN_MILLIS
     }
 
     /** Départ du logo qui a déjà ouvert une page de pubs à lui seul (une seule fois par départ). */
     private var logoOnlyFor = NEVER
+
+    /** Dernière page ouverte par le seul départ du logo et refermée faute de jonction. */
+    private var logoOnlyFailedAt = NEVER
 
     /** Fin de la dernière page de pubs, si c'est le retour du logo qui l'a fermée. */
     private var closedByLogoAt = NEVER
@@ -443,6 +448,13 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
             programmeBack() -> {
                 if (awayInBreak) logoFollowsBreaks = true
                 logoBack = true
+                true
+            }
+            // Page ouverte par le seul départ du logo, et toujours aucune jonction : le logo s'est caché sur le programme
+            // (météo, générique, logo qui change), pas pour des pubs.
+            opening == Opening.LOGO_ONLY && lastJunction <= breakStart && elapsed - breakStart > LOGO_ONLY_HOLD_MILLIS -> {
+                reason = "logo parti mais aucune jonction"
+                logoOnlyFailedAt = elapsed
                 true
             }
             elapsed - lastJunction > (if (away) HOLD_LOGO_HIDDEN_MILLIS else if (pictures()) HOLD_MILLIS else HOLD_BLIND_MILLIS) -> {
@@ -569,6 +581,12 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
 
         /** Logo parti depuis ce temps sur une chaîne où il suit les coupures : page de pubs, même sans jonction. */
         const val LOGO_ONLY_MILLIS = 20_000L
+
+        /** Page ouverte par le seul départ du logo : refermée si aucune jonction ne vient dans ce délai. */
+        const val LOGO_ONLY_HOLD_MILLIS = 30_000L
+
+        /** Après une telle erreur, le départ du logo seul n'ouvre plus de page pendant ce temps. */
+        const val LOGO_ONLY_PAUSE_MILLIS = 15 * 60_000L
 
         /** Pareil pour une jonction qui montre un carton (après des bandes-annonces, par exemple). */
         const val LOGO_HIDDEN_CARD_MILLIS = 240_000L

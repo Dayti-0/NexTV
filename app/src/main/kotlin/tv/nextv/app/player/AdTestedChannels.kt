@@ -65,10 +65,10 @@ class AdTestedChannels(private val file: File) {
 
         fun key(title: String): String = TntChannels.number(title)?.let { "tnt$it" } ?: title.trim().lowercase()
 
-        /** Minutes déjà analysées par Claude, par numéro de la TNT (enregistrements des 15 et 16/11/2026). */
+        /** Minutes déjà analysées par Claude, par numéro de la TNT (enregistrements des 15 et 16/11/2026, box et Fire TV). */
         val ANALYZED: Map<String, Int> = mapOf(
-            "tnt1" to 52, "tnt2" to 39, "tnt3" to 30, "tnt6" to 189, "tnt9" to 106, "tnt10" to 98, "tnt11" to 121,
-            "tnt20" to 52, "tnt22" to 31,
+            "tnt1" to 82, "tnt2" to 69, "tnt3" to 60, "tnt6" to 312, "tnt9" to 107, "tnt10" to 98, "tnt11" to 121,
+            "tnt12" to 32, "tnt13" to 30, "tnt14" to 17, "tnt20" to 52, "tnt22" to 31,
             // Directs publics des chaînes RMC, enregistrés et notés avec les repères de pub de leur flux.
             "tnt23" to 151, "tnt24" to 120, "tnt25" to 120,
         )

@@ -145,6 +145,32 @@ class AdVolumeGuardTest {
     }
 
     @Test
+    fun `the logo gone without any spot change is the programme after 30 s, and then only spot changes open a break`() {
+        // France 2, 16/11/2026 à 12 h 52 : logo caché pendant la météo, puis sur « Tout le monde veut prendre sa place » ;
+        // le son restait baissé plus d'une minute sans aucune jonction.
+        guard.logoFollowsBreaks = true
+        guard.logo = LogoState.VISIBLE
+        play(130.0)
+        guard.logo = LogoState.HIDDEN
+        play(21.0)
+        assertTrue("logo parti depuis 20 s : page ouverte", guard.attenuating)
+        play(31.0)
+        assertFalse("aucune jonction en 30 s : le programme", guard.attenuating)
+        // Le logo revient puis repart : son départ seul n'ouvre plus rien pendant un moment.
+        guard.logo = LogoState.VISIBLE
+        play(60.0)
+        guard.logo = LogoState.HIDDEN
+        play(40.0)
+        assertFalse(guard.attenuating)
+        // Une vraie page de pubs, avec ses jonctions, est toujours prise.
+        junction(500)
+        play(20.0)
+        junction(500)
+        play(1.0)
+        assertTrue(guard.attenuating)
+    }
+
+    @Test
     fun `the pauses of a talk show are not ad breaks`() {
         // L'Équipe, « les grands live » : onze silences complets en sept minutes, l'image ne change pas.
         for ((at, millis) in L_EQUIPE_PAUSES) {
