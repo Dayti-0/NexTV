@@ -1,7 +1,6 @@
 package tv.nextv.app.ui.phonesetup
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,19 +27,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.google.zxing.BarcodeFormat
-import com.google.zxing.EncodeHintType
-import com.google.zxing.common.BitMatrix
-import com.google.zxing.qrcode.QRCodeWriter
 import tv.nextv.app.R
 import tv.nextv.app.ui.common.appContainer
 import tv.nextv.app.ui.components.PillButton
+import tv.nextv.app.ui.components.QrCode
 import tv.nextv.app.ui.components.PillStyle
 import tv.nextv.app.ui.components.rememberWindowInfo
 
@@ -101,11 +94,7 @@ fun PhoneSetupContent(address: String?, noNetwork: Boolean, onBack: () -> Unit) 
                 )
             }
             if (address != null) {
-                val matrix = remember(address) { qrMatrix(address) }
-                // Fond blanc et marge : lisible par tous les téléphones, même sur un thème sombre.
-                Box(Modifier.clip(RoundedCornerShape(18.dp)).background(Color.White).padding(16.dp)) {
-                    QrCode(matrix, Modifier.size(300.dp))
-                }
+                QrCode(address, 300.dp)
             }
         }
     }
@@ -120,19 +109,3 @@ private fun Step(number: Int, text: String) {
         Text(text, style = MaterialTheme.typography.bodyLarge)
     }
 }
-
-/** QR code dessiné case par case (noir sur le fond blanc qui l'entoure). */
-@Composable
-private fun QrCode(matrix: BitMatrix, modifier: Modifier) {
-    Canvas(modifier) {
-        val cell = size.width / matrix.width
-        for (y in 0 until matrix.height) {
-            for (x in 0 until matrix.width) {
-                if (matrix[x, y]) drawRect(Color.Black, Offset(x * cell, y * cell), Size(cell + 0.5f, cell + 0.5f))
-            }
-        }
-    }
-}
-
-private fun qrMatrix(text: String): BitMatrix =
-    QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, 0, 0, mapOf(EncodeHintType.MARGIN to 0))

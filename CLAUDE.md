@@ -207,15 +207,18 @@ Commandes :
   (« J » petites images, « C » les 4 coins du logo de 133 × 65 — un point de plus que `LogoWatcher`, sinon faux bord
   appris comme logo —, « T » vignette 160 × 90 toutes les 5 s pour relever les pubs à l'œil),
   `events.tsv` avec « ouverture » / « fermeture » et leur raison, « jonction », « empreinte », « flux » (changement de
-  chaîne : détection repartie de zéro, horloge mise bout à bout), « chaine »), récupéré par l'utilisateur sur son
-  téléphone via Réglages › Son (petit serveur web local, adresse avec un code). Emplacement au choix (0.2.157) :
+  chaîne : détection repartie de zéro, horloge mise bout à bout), « chaine »), envoyé sur filebin (voir plus bas ; le
+  téléchargement par le téléphone a été retiré en 0.2.169, le petit serveur local ne sert plus qu'à la musique). Emplacement au choix (0.2.157) :
   mémoire de l'appareil ou clé USB (`removableRecordingPlaces` : dossier de l'appli sur chaque volume amovible,
   `getExternalFilesDirs`, sans autorisation ; à défaut, Android 11+, dossier `NixTV/` à la racine avec « Accès à tous les
   fichiers » `MANAGE_EXTERNAL_STORAGE`, `allFilesAccessIntent` ; `describeStorage` liste les volumes vus pour la photo ;
   réglage `ad_recordings_location` = identifiant du volume). Essai « Enregistrement automatique » (0.2.158,
   `PlayerViewModel.toggleAutoRecording`) : zappe dans la liste d'origine toutes les 30 min (pas pendant une baisse, au
   plus +10 min ; 1 min si la chaîne est en erreur), écran gardé allumé ; ouvert depuis « Toutes les chaînes », il suit
-  `AUTO_TNT_NUMBERS` (grandes chaînes à pub, `TntChannels`, `autoNext`). Fichiers coupés à 27 Mo ou 2 h
+  `AUTO_TNT_NUMBERS` (chaînes à pub, `TntChannels`). Choix (0.2.169, `pickAutoChannel`) : la chaîne la moins enregistrée
+  (`AdTestedChannels`, fichier `files/ad_tested.tsv`, clé = numéro TNT ; `ANALYZED` = minutes déjà analysées par Claude,
+  à augmenter après chaque analyse), celles en erreur en dernier ; dès le lancement si la chaîne en cours est connue
+  de 10 min de plus (`autoStart`). Fichiers coupés à 27 Mo ou 2 h
   (`splitAdRecording`). L'enregistrement survit à la fermeture du lecteur (0.2.162 : `PlayerEngine.release` le
   détache, `startAdWatch` le rattache au lecteur suivant via `AdVolumeControl.attach`) ; arrêt aussi dans Réglages ;
   moins de 15 min (`AD_RECORDING_MIN_MILLIS`) : pas gardé. Autre qualité de la même chaîne (0.2.163, `channelKey` de
@@ -225,8 +228,10 @@ Commandes :
   C'est la seule façon de mesurer TF1, M6 et France Télévisions (pas de flux lisible d'ici, même avec un compte).
   Envoi automatique (0.2.167, réglage « Envoyer les enregistrements sur filebin », `AdUploads`) : chaque enregistrement
   terminé part en `.zip` sur `https://filebin.net/nixtv-…` (page tirée au hasard, `adUploadBin`), supprimé de l'appareil
-  quand la réponse de filebin confirme la taille (0.2.168), sinon marqué `.envoye` ; l'utilisateur donne l'adresse de la page, la lire avec `Accept: application/json` puis télécharger les fichiers.
-  Zip « stocké » mesuré exactement avant l'envoi (`StoredZip`, aussi pour le serveur local, qui répond à `HEAD`).
+  quand la réponse de filebin confirme la taille (0.2.168), sinon marqué `.envoye` ; l'utilisateur donne l'adresse de la page (Réglages › Son › Enregistrements, avec QR code ; page tirée au premier
+  lancement, envoi toujours actif depuis 0.2.169), la lire avec `Accept: application/json` puis télécharger les fichiers
+  (ne jamais écrire l'adresse d'une page dans le dépôt, public). Zip « stocké » mesuré exactement avant l'envoi
+  (`StoredZip`).
 - Musique pendant les pubs (0.2.159, réglage « Pendant les pubs » `AdSound` : baisser / radio / ma musique) :
   `player/AdMusic.kt` (`AdRadios` Radio France sans pub, `AdMusicLibrary` dossier `files/ad_music` rempli depuis le
   téléphone par `PUT …/musique/<nom>` sur le serveur local d'`AdRecordings.Share`, plus `NixTV/musique` des clés USB,

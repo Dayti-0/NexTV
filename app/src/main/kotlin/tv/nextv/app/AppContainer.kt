@@ -53,6 +53,7 @@ import tv.nextv.app.data.update.AppUpdater
 import tv.nextv.app.player.AdMarksStore
 import tv.nextv.app.player.AdPrintStore
 import tv.nextv.app.player.AdRecordings
+import tv.nextv.app.player.AdTestedChannels
 import tv.nextv.app.player.AdUploads
 import tv.nextv.app.player.AdMusicLibrary
 import tv.nextv.app.player.removableMusicFolders
@@ -198,29 +199,33 @@ class AppContainer(context: Context) {
     /** « Baisser le son des pubs » : logo et carton de chaque chaîne, appris une fois et gardés sur l'appareil. */
     val adMarks = AdMarksStore(File(appContext.filesDir, "ad_marks"), applicationScope)
 
-    /** Enregistrements pour l'analyse des pubs (options du lecteur), récupérés depuis Réglages par le réseau local. */
+    /** Enregistrements pour l'analyse des pubs (options du lecteur), envoyés sur filebin ([adUploads]). */
     val adRecordings: AdRecordings by lazy {
         AdRecordings(File(appContext.filesDir, "ad_recordings"), BuildConfig.VERSION_NAME, removable = { removableRecordingPlaces(appContext) }).also { recordings ->
             applicationScope.launch { settings.adRecordingsLocation.collect { recordings.selected = it } }
             // Clés USB lues en arrière-plan : sur la box, créer un dossier sur la clé a bloqué l'appli plus de 5 s (ANR).
             applicationScope.launch(Dispatchers.IO) { recordings.load() }
-            // Chaque enregistrement terminé part sur filebin, si l'envoi est activé.
+            // Chaque enregistrement terminé part sur filebin.
             recordings.onSaved = { adUploads.sendPending() }
         }
     }
 
-    /** Page filebin où partent les enregistrements d'analyse ; `null` quand l'envoi est coupé (réglage). */
+    /** Temps déjà enregistré pour l'analyse des pubs, par chaîne : l'enregistrement automatique va aux moins connues. */
+    val adTested: AdTestedChannels by lazy { AdTestedChannels(File(appContext.filesDir, "ad_tested.tsv")) }
+
+    /** Page filebin où partent les enregistrements d'analyse ; `null` tant qu'elle n'est pas tirée au hasard. */
     @Volatile
     private var adUploadPage: String? = null
 
-    /** Envoi des enregistrements d'analyse sur filebin.net (Réglages › Son), pour que Claude aille les y chercher. */
+    /** Envoi des enregistrements d'analyse sur filebin.net, pour que Claude aille les y chercher. */
     val adUploads: AdUploads by lazy {
         AdUploads(adRecordings, httpClients.client(RequestPurpose.METADATA), applicationScope, bin = { adUploadPage }).also { uploads ->
             applicationScope.launch {
-                settings.adUpload.combine(settings.adUploadBin) { enabled, bin -> bin?.takeIf { enabled } }.collect { page ->
+                settings.adUploadBin.collect { page ->
                     adUploadPage = page
-                    // Envoi activé (ou appli relancée) : ce qui n'est pas encore parti part maintenant.
-                    if (page != null) uploads.sendPending()
+                    // Page tirée au hasard la première fois ; ensuite (et à chaque lancement) ce qui n'est pas encore
+                    // parti part maintenant.
+                    if (page == null) settings.ensureAdUploadBin(AdUploads::newBin) else uploads.sendPending()
                 }
             }
         }

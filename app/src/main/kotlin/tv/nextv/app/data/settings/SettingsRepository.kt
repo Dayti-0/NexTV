@@ -319,16 +319,12 @@ class SettingsRepository(
     /** Emplacement des enregistrements pour l'analyse des pubs : clé USB choisie (son identifiant) ; `null` : mémoire de l'appareil. */
     val adRecordingsLocation: Flow<String?> = preferences.map { it[AD_RECORDINGS_LOCATION] }.distinctUntilChanged()
 
-    /** Enregistrements d'analyse envoyés tout seuls sur filebin, et la page (« bin ») de cet appareil. */
-    val adUpload: Flow<Boolean> = preferences.map { it[AD_UPLOAD] ?: false }.distinctUntilChanged()
+    /** Page filebin (« bin ») de cet appareil, où partent tout seuls les enregistrements d'analyse. */
     val adUploadBin: Flow<String?> = preferences.map { it[AD_UPLOAD_BIN] }.distinctUntilChanged()
 
-    /** Active l'envoi sur filebin ; la page de l'appareil est tirée au hasard la première fois et gardée ensuite. */
-    suspend fun setAdUpload(enabled: Boolean, newBin: () -> String) {
-        edit { prefs ->
-            prefs[AD_UPLOAD] = enabled
-            if (enabled && prefs[AD_UPLOAD_BIN] == null) prefs[AD_UPLOAD_BIN] = newBin()
-        }
+    /** Tire au hasard la page filebin de l'appareil, la première fois ; elle est gardée ensuite. */
+    suspend fun ensureAdUploadBin(newBin: () -> String) {
+        edit { prefs -> if (prefs[AD_UPLOAD_BIN] == null) prefs[AD_UPLOAD_BIN] = newBin() }
     }
 
     suspend fun setAdRecordingsLocation(key: String?) {
@@ -641,7 +637,6 @@ class SettingsRepository(
         val HIDE_UHD = booleanKey("hide_uhd")
         val FRANCE3_REGION = stringKey("france3_region")
         val AD_RECORDINGS_LOCATION = stringKey("ad_recordings_location")
-        val AD_UPLOAD = booleanKey("ad_upload")
         val AD_UPLOAD_BIN = stringKey("ad_upload_bin")
         val MERGE_CHANNELS = booleanKey("merge_channels")
         val FRENCH_ONLY = booleanKey("french_only")

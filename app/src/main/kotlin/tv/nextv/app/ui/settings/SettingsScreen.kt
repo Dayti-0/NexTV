@@ -99,6 +99,7 @@ import tv.nextv.app.ui.components.FocusSurface
 import tv.nextv.app.ui.components.IconAction
 import tv.nextv.app.ui.components.PillButton
 import tv.nextv.app.ui.components.PillStyle
+import tv.nextv.app.ui.components.QrCode
 import tv.nextv.app.ui.components.ScreenHeader
 import tv.nextv.app.ui.components.ignoreHeldOk
 import tv.nextv.app.ui.components.rememberWindowInfo
@@ -267,7 +268,6 @@ fun SettingsScreen(
         adPlace = adPlace,
         onCycleAdPlace = viewModel::cycleAdPlace,
         adUpload = adUpload,
-        onAdUpload = viewModel::setAdUpload,
         onStopAdRecording = viewModel::stopAdRecording,
         onDeleteAdRecording = viewModel::deleteAdRecording,
         adSound = adSound,
@@ -278,7 +278,7 @@ fun SettingsScreen(
             val opened = viewModel.allFilesAccess(context)?.let { intent -> runCatching { context.startActivity(intent) }.isSuccess } ?: false
             if (!opened) scope.launch { snackbar.showSnackbar(resources.getString(R.string.settings_ad_recordings_allow_manual)) }
         },
-        onShareAdRecordings = viewModel::shareAdRecordings,
+        onShareAdMusic = viewModel::shareAdMusic,
         onDeleteAdRecordings = viewModel::deleteAdRecordings,
         onAppearance = onAppearance,
         onCycleQualityTarget = viewModel::cycleQualityTarget,
@@ -336,7 +336,6 @@ fun SettingsContent(
     onCycleAdPlace: () -> Unit = {},
     /** Envoi des enregistrements sur filebin. */
     adUpload: AdUploadUi = AdUploadUi(),
-    onAdUpload: (Boolean) -> Unit = {},
     onStopAdRecording: () -> Unit = {},
     onDeleteAdRecording: (String) -> Unit = {},
     /** Pendant les pubs : son baissé, radio ou musique de l'appareil. */
@@ -345,7 +344,7 @@ fun SettingsContent(
     onCycleAdRadio: () -> Unit = {},
     onDeleteAdMusic: () -> Unit = {},
     onAllowUsb: () -> Unit = {},
-    onShareAdRecordings: () -> AdRecordings.Share? = { null },
+    onShareAdMusic: () -> AdRecordings.Share? = { null },
     onDeleteAdRecordings: () -> Unit = {},
     onAppearance: () -> Unit = {},
     onCycleQualityTarget: () -> Unit = {},
@@ -542,13 +541,13 @@ fun SettingsContent(
                                     onClick = { addingMusic = true },
                                 )
                                 if (addingMusic) {
-                                    AdRecordingsDialog(adRecordings, onShareAdRecordings, onDeleteAdMusic, onDismiss = { addingMusic = false }, musicTracks = adSound.tracks)
+                                    AdRecordingsDialog(adRecordings, onShareAdMusic, onDeleteAdMusic, onDismiss = { addingMusic = false }, musicTracks = adSound.tracks)
                                 }
                             }
                         }
                         InfoText(stringResource(R.string.settings_ad_sound_help))
                     }
-                    // Enregistrements pour l'analyse des pubs : récupérés sur un téléphone du même réseau.
+                    // Enregistrements pour l'analyse des pubs : envoyés tout seuls sur filebin (adresse et QR code ici).
                     if (state.lowerAdVolume || adRecordings.isNotEmpty()) {
                         var sharing by remember { mutableStateOf(false) }
                         ValueRow(
@@ -559,15 +558,15 @@ fun SettingsContent(
                                 else -> stringResource(R.string.settings_ad_recordings_count, adRecordings.size, megabytes(adRecordings.sumOf { it.bytes }))
                             },
                             onClick = { sharing = true },
-                            enabled = adRecordings.isNotEmpty() || adPlace.recordingMinutes != null,
                         )
                         if (sharing) {
                             AdRecordingsDialog(
-                                adRecordings, onShareAdRecordings, onDeleteAdRecordings, onDismiss = { sharing = false },
+                                adRecordings, { null }, onDeleteAdRecordings, onDismiss = { sharing = false },
                                 recordingMinutes = adPlace.recordingMinutes, onStopRecording = onStopAdRecording,
-                                onDeleteOne = onDeleteAdRecording,
+                                onDeleteOne = onDeleteAdRecording, filebin = adUpload,
                             )
                         }
+                        if (adUpload.bin != null) InfoText(filebinStatus(adUpload))
                         // Où vont les enregistrements : mémoire de l'appareil ou clé USB branchée (OK : la suivante).
                         val placeName = if (adPlace.usb) adPlace.label.orEmpty() else stringResource(R.string.settings_ad_recordings_internal)
                         ValueRow(
@@ -591,24 +590,6 @@ fun SettingsContent(
                             )
                         }
                         InfoText(stringResource(R.string.settings_ad_recordings_place_help))
-                        // Envoi tout seul sur filebin : plus rien à récupérer sur le téléphone, Claude va chercher les fichiers.
-                        ToggleRow(
-                            title = stringResource(R.string.settings_ad_upload),
-                            description = stringResource(R.string.settings_ad_upload_help),
-                            checked = adUpload.enabled,
-                            onChange = onAdUpload,
-                        )
-                        if (adUpload.enabled && adUpload.bin != null) {
-                            val status = adUpload.status
-                            InfoText(
-                                stringResource(R.string.settings_ad_upload_page, "filebin.net/${adUpload.bin}") + "  ·  " +
-                                    when {
-                                        status.sending != null -> stringResource(R.string.settings_ad_upload_sending, status.sent, status.pending)
-                                        status.failed -> stringResource(R.string.settings_ad_upload_failed, status.sent, status.pending)
-                                        else -> stringResource(R.string.settings_ad_upload_done, status.sent, status.pending)
-                                    },
-                            )
-                        }
                         // Stockages annoncés par le système : la photo de cette ligne dit pourquoi une clé n'est pas proposée.
                         if (adPlace.storage.isNotEmpty()) InfoText(stringResource(R.string.settings_ad_recordings_storage, adPlace.storage))
                     }
@@ -1109,12 +1090,26 @@ private fun RegionDialog(
     }
 }
 
+/** Page filebin et état des envois, sur une ligne. */
+@Composable
+private fun filebinStatus(upload: AdUploadUi, withPage: Boolean = true): String {
+    val status = upload.status
+    return (if (withPage) stringResource(R.string.settings_ad_upload_page, "filebin.net/${upload.bin}") + "  ·  " else "") +
+        when {
+            status.sending != null -> stringResource(R.string.settings_ad_upload_sending, status.sent, status.pending)
+            status.failed -> stringResource(R.string.settings_ad_upload_failed, status.sent, status.pending)
+            else -> stringResource(R.string.settings_ad_upload_done, status.sent, status.pending)
+        }
+}
+
 /**
- * Enregistrements pour l'analyse des pubs : l'adresse à ouvrir sur un téléphone du même réseau (petit serveur web de
- * l'appareil, ouvert tant que la fenêtre l'est), et la liste des fichiers.
+ * Enregistrements pour l'analyse des pubs : la page filebin où ils partent tout seuls (adresse et QR code à scanner
+ * avec le téléphone) et la liste de ceux encore sur l'appareil. Variante « Ma musique » ([musicTracks]) : l'adresse à
+ * ouvrir sur un téléphone du même réseau pour envoyer des morceaux (petit serveur web de l'appareil, ouvert tant que la
+ * fenêtre l'est).
  */
 @Composable
-private fun AdRecordingsDialog(
+internal fun AdRecordingsDialog(
     recordings: List<AdRecordings.Recording>,
     onShare: () -> AdRecordings.Share?,
     onDelete: () -> Unit,
@@ -1126,11 +1121,15 @@ private fun AdRecordingsDialog(
     onStopRecording: () -> Unit = {},
     /** Supprime un seul enregistrement (nom du `.zip`). */
     onDeleteOne: (String) -> Unit = {},
+    /** Page filebin des enregistrements. */
+    filebin: AdUploadUi = AdUploadUi(),
 ) {
     var address by remember { mutableStateOf<String?>(null) }
     var noNetwork by remember { mutableStateOf(false) }
     DisposableEffect(Unit) {
-        val share = onShare()
+        // Petit serveur web seulement pour la musique : les enregistrements passent par filebin.
+        val share = if (musicTracks != null) onShare() else null
+        if (musicTracks == null) return@DisposableEffect onDispose {}
         address = share?.address
         noNetwork = share == null
         onDispose { share?.close() }
@@ -1148,13 +1147,22 @@ private fun AdRecordingsDialog(
                     stringResource(if (musicTracks != null) R.string.settings_ad_music else R.string.settings_ad_recordings),
                     style = MaterialTheme.typography.titleLarge,
                 )
-                if (noNetwork) {
+                if (musicTracks == null) {
+                    // Page filebin : QR code à scanner avec le téléphone, et l'adresse en clair.
+                    Row(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                        filebin.url?.let { QrCode(it, 150.dp) }
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(stringResource(R.string.settings_ad_recordings_help), style = MaterialTheme.typography.bodyMedium)
+                            filebin.bin?.let {
+                                Text("filebin.net/$it", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+                                Text(filebinStatus(filebin, withPage = false), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                } else if (noNetwork) {
                     Text(stringResource(R.string.settings_ad_recordings_no_network), style = MaterialTheme.typography.bodyMedium)
                 } else {
-                    Text(
-                        stringResource(if (musicTracks != null) R.string.settings_ad_music_help else R.string.settings_ad_recordings_help),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
+                    Text(stringResource(R.string.settings_ad_music_help), style = MaterialTheme.typography.bodyMedium)
                     Text(address.orEmpty(), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
                 }
                 musicTracks?.let { Text(stringResource(R.string.settings_ad_music_count, it), style = MaterialTheme.typography.bodyMedium) }

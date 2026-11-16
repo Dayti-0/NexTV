@@ -12,6 +12,7 @@ import androidx.paging.PagingData
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -28,6 +29,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import tv.nextv.app.player.AdTestedChannels
 import tv.nextv.app.player.CodecFailure
 import tv.nextv.app.player.HandoffMiss
 import tv.nextv.app.player.VlcPlayback
@@ -252,6 +255,12 @@ class PlayerViewModel(
     /** Enregistrement automatique (essais) : change de chaîne tout seul, toute la nuit s'il le faut. */
     private var autoRecording: kotlinx.coroutines.Job? = null
 
+    /** Chaînes qui ne se lisaient pas pendant l'enregistrement automatique : passées en dernier. */
+    private val autoFailed = HashSet<String>()
+
+    /** Dernier instant compté dans le temps enregistré de la chaîne ([AdTestedChannels]). */
+    private var adTestedAt = 0L
+
     init {
         // Attention : rien de ce qui est déclaré plus bas dans la classe n'est encore prêt ici.
         // Pendant les pubs : son baissé, radio ou musique de l'appareil (réglages, suivis pendant la lecture).
@@ -289,6 +298,14 @@ class PlayerViewModel(
                 // Enregistrement d'analyse coupé avant 30 Mo (la limite d'un envoi), ou au bout de deux heures.
                 if (engine.adRecordingBytes >= AD_RECORDING_SPLIT_BYTES || (engine.adRecordingMillis ?: 0) >= AD_RECORDING_SPLIT_MILLIS) splitAdRecording()
                 val adRecording = engine.adRecordingMillis?.let { (it / 60_000).toInt() }
+                // Temps enregistré sur la chaîne (lue, pas en pause) : l'enregistrement automatique va aux moins connues.
+                val testedNow = SystemClock.elapsedRealtime()
+                val testedName = state.value.channelName
+                if (adRecording != null && adTestedAt > 0 && state.value.error == null && !state.value.paused && testedName.isNotBlank()) {
+                    val credited = (testedNow - adTestedAt).coerceAtMost(AD_TESTED_MAX_STEP_MILLIS)
+                    viewModelScope.launch(Dispatchers.IO) { container.adTested.add(testedName, credited) }
+                }
+                adTestedAt = testedNow
                 // Enregistrement d'analyse : la chaîne regardée y est notée à chaque changement.
                 if (adRecording != null && state.value.channelName != adRecordedChannel) {
                     adRecordedChannel = state.value.channelName
@@ -529,7 +546,10 @@ class PlayerViewModel(
         if (state.value.adRecordingMinutes == null) toggleAdRecording()
         if (state.value.adRecordingMinutes == null) return
         mutableState.update { it.copy(autoRecordingChannels = 1) }
+        autoFailed.clear()
         autoRecording = viewModelScope.launch {
+            // Dès le départ, la chaîne la moins connue de la liste, si celle-ci l'est déjà nettement plus.
+            autoStart()
             var since = SystemClock.elapsedRealtime()
             var errorSince = 0L
             while (true) {
@@ -542,6 +562,8 @@ class PlayerViewModel(
                 val failing = errorSince > 0 && now - errorSince >= AUTO_ERROR_MILLIS
                 val inBreak = engine.adVolume.attenuating
                 if (failing || (stayed >= AUTO_STAY_MILLIS && !inBreak) || stayed >= AUTO_STAY_MILLIS + AUTO_EXTRA_MILLIS) {
+                    session.listed?.let { if (failing) autoFailed += AdTestedChannels.key(it.title) }
+                    withContext(Dispatchers.IO) { container.adTested.save() }
                     autoNext()
                     since = now
                     errorSince = 0L
@@ -553,32 +575,70 @@ class PlayerViewModel(
         }
     }
 
+    /** Chaîne candidate de l'enregistrement automatique : son nom et de quoi l'ouvrir. */
+    private class AutoCandidate(val title: String, val open: suspend () -> Long?)
+
     /**
-     * Chaîne suivante de l'enregistrement automatique : celle des favoris ou de la catégorie d'où la chaîne a été
-     * ouverte ; ouverte d'ailleurs (« Toutes les chaînes »…), la suivante des grandes chaînes à pub de la TNT
+     * Chaînes de l'enregistrement automatique, dans l'ordre de la liste : les favoris ou la catégorie d'où la chaîne a
+     * été ouverte ; ouverte d'ailleurs (« Toutes les chaînes »…), les grandes chaînes à pub de la TNT
      * ([AUTO_TNT_NUMBERS]) présentes dans la playlist, plutôt que des centaines de chaînes dans l'ordre.
      */
-    private fun autoNext() {
-        if (fromFavorites || zapGroup != null) {
-            zap(+1)
-            return
+    private suspend fun autoCandidates(current: ChannelEntity): List<AutoCandidate> {
+        val dao = container.channelDao
+        val now = System.currentTimeMillis()
+        val rows = when {
+            fromFavorites -> dao.observeFavoriteChannels(current.sourceId, now).first()
+            zapGroup != null -> dao.channelRow(current.sourceId, zapGroup.orEmpty(), now, AUTO_GROUP_LIMIT)
+            else -> null
         }
+        if (rows != null) return rows.map { row -> AutoCandidate(row.title) { row.id } }
+        val byNumber = dao.lineupRows(current.sourceId).sortedBy { it.position }
+            .mapNotNull { row -> tv.nextv.core.epg.TntChannels.number(row.title)?.let { it to row } }
+            .filter { (number, _) -> number in AUTO_TNT_NUMBERS }
+            .distinctBy { it.first }
+            .toMap()
+        return AUTO_TNT_NUMBERS.mapNotNull { number ->
+            byNumber[number]?.let { row -> AutoCandidate(row.title) { dao.primaryIdByKey(current.sourceId, row.itemKey) } }
+        }
+    }
+
+    /**
+     * Chaîne où aller : la moins enregistrée jusqu'ici ([AdTestedChannels], avec ce que Claude a déjà analysé), en
+     * passant en dernier celles qui ne se lisaient pas ; à égalité, la première après la chaîne en cours dans la liste.
+     * Jamais la chaîne en cours (ni une autre version d'elle).
+     */
+    private fun pickAutoChannel(candidates: List<AutoCandidate>, currentTitle: String): AutoCandidate? {
+        val here = AdTestedChannels.key(currentTitle)
+        val unique = candidates.distinctBy { AdTestedChannels.key(it.title) }
+        val start = unique.indexOfFirst { AdTestedChannels.key(it.title) == here }
+        val ordered = if (start < 0) unique else unique.drop(start + 1) + unique.take(start)
+        val others = ordered.filter { AdTestedChannels.key(it.title) != here }
+        val readable = others.filter { AdTestedChannels.key(it.title) !in autoFailed }.ifEmpty { others }
+        return readable.minByOrNull { container.adTested.millis(it.title) }
+    }
+
+    /** Départ de l'enregistrement automatique : sur la chaîne la moins connue, si la chaîne en cours l'est nettement plus. */
+    private suspend fun autoStart() {
+        val current = session.listed ?: return
+        val best = withContext(Dispatchers.IO) {
+            val candidates = autoCandidates(current)
+            pickAutoChannel(candidates, current.title)?.takeIf { best ->
+                container.adTested.millis(best.title) + AUTO_START_MARGIN_MILLIS < container.adTested.millis(current.title)
+            }
+        } ?: return
+        val id = best.open() ?: return
+        if (id != current.id) {
+            load(id)
+            mutableState.update { it.copy(autoRecordingChannels = (it.autoRecordingChannels ?: 0) + 1) }
+        }
+    }
+
+    /** Chaîne suivante de l'enregistrement automatique ([pickAutoChannel]) ; à défaut, la suivante de la liste. */
+    private fun autoNext() {
         val current = session.listed ?: return
         viewModelScope.launch {
-            val dao = container.channelDao
-            val byNumber = dao.lineupRows(current.sourceId).sortedBy { it.position }
-                .mapNotNull { row -> tv.nextv.core.epg.TntChannels.number(row.title)?.let { it to row.itemKey } }
-                .filter { (number, _) -> number in AUTO_TNT_NUMBERS }
-                .distinctBy { it.first }
-                .toMap()
-            val numbers = AUTO_TNT_NUMBERS.filter { it in byNumber }
-            if (numbers.isEmpty()) {
-                zap(+1)
-                return@launch
-            }
-            val here = tv.nextv.core.epg.TntChannels.number(current.title)
-            val next = numbers.firstOrNull { here != null && it > here } ?: numbers.first()
-            val id = byNumber[next]?.let { dao.primaryIdByKey(current.sourceId, it) }
+            val next = withContext(Dispatchers.IO) { pickAutoChannel(autoCandidates(current), current.title) }
+            val id = next?.open()
             if (id != null && id != current.id) load(id) else zap(+1)
         }
     }
@@ -1388,8 +1448,20 @@ class PlayerViewModel(
         const val AUTO_STAY_MILLIS = 30 * 60_000L
         const val AUTO_EXTRA_MILLIS = 10 * 60_000L
 
-        /** Enregistrement automatique ouvert depuis « Toutes les chaînes » : grandes chaînes à pub de la TNT (numéros). */
-        val AUTO_TNT_NUMBERS = listOf(1, 2, 3, 6, 9, 10, 11, 20, 22, 23)
+        /**
+         * Enregistrement automatique ouvert depuis « Toutes les chaînes » : chaînes à pub de la TNT (numéros ; ni Arte,
+         * ni LCP, ni franceinfo, sans pub).
+         */
+        val AUTO_TNT_NUMBERS = listOf(1, 2, 3, 6, 9, 10, 11, 12, 13, 14, 15, 17, 18, 19, 20, 21, 22, 23, 24, 25)
+
+        /** Au départ de l'automatique, la chaîne en cours est quittée si une autre est moins connue d'au moins ce temps. */
+        const val AUTO_START_MARGIN_MILLIS = 10 * 60_000L
+
+        /** Chaînes lues d'une catégorie pour l'automatique. */
+        const val AUTO_GROUP_LIMIT = 500
+
+        /** Temps compté au plus d'un coup pour une chaîne (appareil en veille entre deux relevés). */
+        const val AD_TESTED_MAX_STEP_MILLIS = 5_000L
 
         /** Enregistrement d'analyse coupé en fichiers de moins de 30 Mo (envoi), et au plus de cette durée. */
         const val AD_RECORDING_SPLIT_BYTES = 27L * 1024 * 1024

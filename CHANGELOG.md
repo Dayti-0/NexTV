@@ -4,6 +4,10 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.169
+- Enregistrements d’analyse : ils ne passent plus que par filebin (plus de téléchargement depuis le téléphone) ; Réglages › Son › Enregistrements montre l’adresse de la page avec un QR code à scanner
+- Enregistrement automatique plus malin : il va d’abord sur les chaînes à pub les moins enregistrées jusqu’ici (dès le lancement), passe en dernier celles qui ne se lisent pas, et couvre plus de chaînes de la TNT (Gulli, BFMTV, CNews, LCI, CStar, T18, Novo19, L’Équipe, RMC Découverte, RMC Life)
+
 ## 0.2.168
 - Envoi sur filebin : un enregistrement bien reçu par filebin (taille vérifiée) est supprimé de l’appareil, pour libérer la place
 

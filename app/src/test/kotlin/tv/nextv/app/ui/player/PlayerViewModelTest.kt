@@ -742,16 +742,20 @@ class PlayerViewModelTest {
         viewModel.toggleAutoRecording()
         idle()
         assertNotNull(viewModel.state.value.adRecordingMinutes)
-        assertEquals(1, viewModel.state.value.autoRecordingChannels)
+        // Dès le départ, la chaîne à pub la moins connue de la liste : France 2 (TF1 et M6 ont déjà été analysées plus
+        // longtemps), pas Canal+ (sans pub, pas dans les chaînes de l'automatique).
+        awaitOtherChannel(viewModel, "TF1")
+        assertEquals("France 2", viewModel.state.value.channelName)
+        assertEquals(2, viewModel.state.value.autoRecordingChannels)
         // Temps du lecteur avancé par pas de 10 s (au plus 40 min) jusqu'au changement de chaîne.
         var steps = 0
-        while (viewModel.state.value.channelName == "TF1" && steps++ < 240) {
+        while (viewModel.state.value.channelName == "France 2" && steps++ < 240) {
             shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(10))
             Thread.sleep(5)
         }
-        awaitOtherChannel(viewModel, "TF1")
-        // Ouverte depuis « Toutes les chaînes » : la grande chaîne à pub de la TNT suivante, pas Canal+ (suivante de la liste).
-        assertEquals("France 2", viewModel.state.value.channelName)
+        awaitOtherChannel(viewModel, "France 2")
+        // France 2 ne se lit pas : la suivante la moins connue, TF1 (52 min analysées), avant M6 (plus de 3 h).
+        assertEquals("TF1", viewModel.state.value.channelName)
         assertTrue((viewModel.state.value.autoRecordingChannels ?: 0) >= 2)
         // L'enregistrement continue d'une chaîne à l'autre ; arrêter l'automatique arrête aussi l'enregistrement.
         assertNotNull(viewModel.state.value.adRecordingMinutes)

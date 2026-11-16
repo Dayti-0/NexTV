@@ -64,21 +64,15 @@ class AdRecorderTest {
         while (!condition() && System.currentTimeMillis() < until) Thread.sleep(20)
     }
 
-    /** Télécharge l'enregistrement [name] comme le téléphone (zip fabriqué à la volée) ; rend ses fichiers. */
+    /** Zip de l'enregistrement [name] tel qu'il part sur filebin (fabriqué à la volée) ; rend ses fichiers. */
     private fun download(recordings: AdRecordings, name: String): Map<String, ByteArray> {
-        val share = recordings.share(host = "127.0.0.1")!!
-        share.use {
-            val page = URL(share.address).openStream().use { it.readBytes().decodeToString() }
-            assertTrue(page, name in page)
-            val connection = URL(share.address + name).openConnection() as HttpURLConnection
-            assertEquals(200, connection.responseCode)
-            val zip = folder.newFile()
-            connection.inputStream.use { input -> zip.outputStream().use { input.copyTo(it) } }
-            // Taille annoncée d'avance, exacte : le téléphone sait quand le fichier est complet.
-            assertTrue(connection.contentLengthLong > 0)
-            assertEquals(connection.contentLengthLong, zip.length())
-            return ZipFile(zip).use { file -> file.entries().toList().associate { it.name to file.getInputStream(it).readBytes() } }
-        }
+        val stored = StoredZip(checkNotNull(recordings.folder(name)))
+        val zip = folder.newFile()
+        zip.outputStream().use { stored.writeTo(it) }
+        // Taille mesurée d'avance, exacte : annoncée à filebin avant l'envoi.
+        assertTrue(stored.length > 0)
+        assertEquals(stored.length, zip.length())
+        return ZipFile(zip).use { file -> file.entries().toList().associate { it.name to file.getInputStream(it).readBytes() } }
     }
 
     @Test
@@ -326,7 +320,7 @@ class AdRecorderTest {
     @Test
     fun `without the code, the phone gets nothing`() {
         val recordings = AdRecordings(folder.newFolder("recordings"), "0.0.0-test", minMillis = 60_000)
-        recordings.share(host = "127.0.0.1")!!.use { share ->
+        recordings.share(AdMusicLibrary(folder.newFolder("music")), host = "127.0.0.1")!!.use { share ->
             val wrong = URL(share.address.substringBeforeLast('/').substringBeforeLast('/') + "/autre/x.zip").openConnection() as HttpURLConnection
             assertEquals(404, wrong.responseCode)
         }
@@ -336,7 +330,7 @@ class AdRecorderTest {
     fun `music is sent from the phone to the device`() {
         val recordings = AdRecordings(folder.newFolder("recordings"), "0.0.0-test", minMillis = 60_000)
         val music = AdMusicLibrary(folder.newFolder("music"))
-        recordings.share(host = "127.0.0.1", music = music)!!.use { share ->
+        recordings.share(music, host = "127.0.0.1")!!.use { share ->
             assertTrue(URL(share.address).openStream().use { it.readBytes().decodeToString() }.contains("Envoyer vers la télé"))
             fun put(name: String, bytes: ByteArray): Int {
                 val connection = URL(share.address + "musique/" + java.net.URLEncoder.encode(name, "UTF-8").replace("+", "%20")).openConnection() as HttpURLConnection

@@ -10,7 +10,6 @@ import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.net.ServerSocket
 import java.net.Socket
-import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -27,9 +26,8 @@ const val AD_RECORDING_MIN_MILLIS = 15 * 60_000L
 /**
  * Enregistrements pour l'analyse des pubs ([AdRecorder]) : lancés et arrêtés depuis les options du lecteur, gardés
  * dans la mémoire de l'appareil (les [MAX_FILES] derniers) ou sur une clé USB ([Location], réglage
- * « Emplacement des enregistrements »), un dossier chacun, puis récupérés sur un téléphone ou un ordinateur du même
- * réseau par une adresse que Réglages affiche ([share]) : chaque dossier y est donné en `.zip`, fabriqué à la volée
- * (aucune copie, même pour des heures d'enregistrement).
+ * « Emplacement des enregistrements »), un dossier chacun, puis envoyés sur filebin ([AdUploads]) : chaque dossier y
+ * part en `.zip` fabriqué à la volée ([StoredZip], aucune copie, même pour des heures d'enregistrement).
  *
  * @param internal dossier dans la mémoire de l'appareil.
  * @param removable emplacements amovibles branchés en ce moment (clés USB, cartes), relus à chaque appel.
@@ -234,11 +232,12 @@ class AdRecordings(
     }
 
     /**
-     * Partage les enregistrements sur le réseau de la maison tant que le résultat n'est pas fermé : un petit serveur
-     * web, à une adresse qui contient un code tiré au hasard (les autres appareils du réseau ne la devinent pas).
-     * `null` sans réseau local.
+     * Page du réseau de la maison pour envoyer de la musique du téléphone vers l'appareil (musique des pubs), tant que
+     * le résultat n'est pas fermé : un petit serveur web, à une adresse qui contient un code tiré au hasard (les autres
+     * appareils du réseau ne la devinent pas). `null` sans réseau local. Les enregistrements, eux, partent sur filebin
+     * ([AdUploads]).
      */
-    fun share(host: String? = localAddress(), music: AdMusicLibrary? = null): Share? {
+    fun share(music: AdMusicLibrary, host: String? = localAddress()): Share? {
         if (host == null) return null
         val socket = try {
             ServerSocket().apply {
@@ -253,19 +252,18 @@ class AdRecordings(
             return null
         }
         val code = (1..6).map { CODE_LETTERS[Random.nextInt(CODE_LETTERS.length)] }.joinToString("")
-        return Share(this, socket, code, "http://$host:${socket.localPort}/$code/", music)
+        return Share(socket, code, "http://$host:${socket.localPort}/$code/", music)
     }
 
     /**
-     * Partage en cours ([address] à ouvrir sur le téléphone) ; [close] l'arrête. Avec [music], la page permet aussi
-     * d'envoyer des morceaux de musique du téléphone vers l'appareil (musique jouée pendant les pubs).
+     * Page en cours ([address] à ouvrir sur le téléphone) ; [close] l'arrête. Elle permet d'envoyer des morceaux de
+     * musique du téléphone vers l'appareil (musique jouée pendant les pubs).
      */
     class Share internal constructor(
-        private val recordings: AdRecordings,
         private val socket: ServerSocket,
         private val code: String,
         val address: String,
-        private val music: AdMusicLibrary? = null,
+        private val music: AdMusicLibrary,
     ) : AutoCloseable {
 
         /** Morceaux reçus depuis l'ouverture du partage. */
@@ -302,13 +300,11 @@ class AdRecordings(
                         headers[header.substringBefore(':').trim().lowercase()] = header.substringAfter(':', "").trim()
                     }
                     val method = request.substringBefore(' ')
-                    // Téléchargement en deux temps (certains navigateurs demandent d'abord les seuls en-têtes).
-                    val headOnly = method == "HEAD"
                     val path = request.split(' ').getOrNull(1).orEmpty()
                     val out = client.getOutputStream()
                     val prefix = "/$code/"
                     when {
-                        method == "PUT" && path.startsWith(prefix + MUSIC_PATH) && music != null -> {
+                        method == "PUT" && path.startsWith(prefix + MUSIC_PATH) -> {
                             val name = java.net.URLDecoder.decode(path.removePrefix(prefix + MUSIC_PATH), "UTF-8")
                             val length = headers["content-length"]?.toLongOrNull() ?: -1L
                             val target = music.target(name)
@@ -342,23 +338,6 @@ class AdRecordings(
                             out.write("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n".toByteArray())
                             out.write(body)
                         }
-                        path.startsWith(prefix) -> {
-                            val name = java.net.URLDecoder.decode(path.removePrefix(prefix), "UTF-8")
-                            val folder = recordings.folder(name)
-                            if (folder == null) {
-                                out.write("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
-                            } else {
-                                // Zip fabriqué à la volée, sans compression : sa taille exacte est mesurée d'avance (un
-                                // premier passage qui ne fait que compter) et annoncée ; sans elle, ou fausse, les
-                                // téléphones enregistraient un fichier vide.
-                                val zip = StoredZip(folder)
-                                out.write(
-                                    ("HTTP/1.1 200 OK\r\nContent-Type: application/zip\r\nContent-Length: ${zip.length}\r\n" +
-                                        "Content-Disposition: attachment; filename=\"${folder.name}.zip\"\r\nConnection: close\r\n\r\n").toByteArray(),
-                                )
-                                if (!headOnly) zip.writeTo(out)
-                            }
-                        }
                         else -> out.write("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
                     }
                     out.flush()
@@ -381,24 +360,16 @@ class AdRecordings(
         }
 
         private fun page(): String {
-            val rows = recordings.files.value.joinToString("") { file ->
-                val link = URLEncoder.encode(file.name, "UTF-8")
-                "<li><a href=\"$link\">${file.name}</a> (${String.format(Locale.FRANCE, "%.1f", file.bytes / 1_000_000.0)} Mo)</li>"
-            }
-            val musicPart = music?.let { library ->
-                val tracks = library.tracks()
-                "<h1>Musique pendant les pubs</h1><p>${tracks.size} morceau(x) sur l’appareil.</p>" +
-                    "<p><input type=\"file\" id=\"files\" multiple accept=\"audio/*\"> <button onclick=\"send()\">Envoyer vers la télé</button></p>" +
-                    "<p id=\"state\"></p>" +
-                    "<script>async function send(){const f=document.getElementById('files').files;const s=document.getElementById('state');" +
-                    "let ok=0;for(let i=0;i<f.length;i++){s.textContent='Envoi '+(i+1)+' sur '+f.length+' : '+f[i].name;" +
-                    "try{const r=await fetch('$MUSIC_PATH'+encodeURIComponent(f[i].name),{method:'PUT',body:f[i]});if(r.ok)ok++;}catch(e){}}" +
-                    "s.textContent=ok+' morceau(x) envoyé(s) sur '+f.length+'.';}</script>"
-            }.orEmpty()
+            val tracks = music.tracks()
             return "<!doctype html><html lang=\"fr\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">" +
-                "<title>NixTV</title><style>body{font-family:sans-serif;margin:24px;font-size:18px}li{margin:14px 0}button,input{font-size:18px}</style></head>" +
-                "<body>" + musicPart + "<h1>Enregistrements pour l’analyse des pubs</h1>" +
-                (if (rows.isEmpty()) "<p>Aucun enregistrement.</p>" else "<p>Touchez un fichier pour le télécharger.</p><ul>$rows</ul>") +
+                "<title>NixTV</title><style>body{font-family:sans-serif;margin:24px;font-size:18px}button,input{font-size:18px}</style></head>" +
+                "<body><h1>Musique pendant les pubs</h1><p>${tracks.size} morceau(x) sur l’appareil.</p>" +
+                "<p><input type=\"file\" id=\"files\" multiple accept=\"audio/*\"> <button onclick=\"send()\">Envoyer vers la télé</button></p>" +
+                "<p id=\"state\"></p>" +
+                "<script>async function send(){const f=document.getElementById('files').files;const s=document.getElementById('state');" +
+                "let ok=0;for(let i=0;i<f.length;i++){s.textContent='Envoi '+(i+1)+' sur '+f.length+' : '+f[i].name;" +
+                "try{const r=await fetch('$MUSIC_PATH'+encodeURIComponent(f[i].name),{method:'PUT',body:f[i]});if(r.ok)ok++;}catch(e){}}" +
+                "s.textContent=ok+' morceau(x) envoyé(s) sur '+f.length+'.';}</script>" +
                 "</body></html>"
         }
 

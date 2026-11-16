@@ -380,7 +380,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     /** Partage des enregistrements sur le réseau local, tant que le résultat n'est pas fermé ; `null` sans réseau. */
-    fun shareAdRecordings(): AdRecordings.Share? = container.adRecordings.share(music = container.adMusic)
+    fun shareAdMusic(): AdRecordings.Share? = container.adRecordings.share(container.adMusic)
 
     /** Pendant les pubs : mode, radio choisie, morceaux sur l'appareil. */
     val adSound: StateFlow<AdSoundUi> = combine(settings.adSound, settings.adRadio, container.adMusic.count) { mode, radio, tracks ->
@@ -415,13 +415,9 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     /** Envoi des enregistrements sur filebin : activé, page de l'appareil, état des envois. */
-    val adUpload: StateFlow<AdUploadUi> = combine(settings.adUpload, settings.adUploadBin, container.adUploads.status) { enabled, bin, status ->
-        AdUploadUi(enabled, bin, status)
+    val adUpload: StateFlow<AdUploadUi> = combine(settings.adUploadBin, container.adUploads.status) { bin, status ->
+        AdUploadUi(bin, status)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AdUploadUi())
-
-    fun setAdUpload(enabled: Boolean) {
-        viewModelScope.launch { settings.setAdUpload(enabled, AdUploads::newBin) }
-    }
 
     /** Supprime un seul enregistrement (nom de son `.zip`). */
     fun deleteAdRecording(name: String) {
@@ -599,4 +595,7 @@ fun SettingsViewModel.allFilesAccess(context: android.content.Context): android.
 data class AdSoundUi(val mode: String = AdSound.LOWER, val radio: String = AdRadios.all.first().name, val tracks: Int = 0)
 
 /** Envoi des enregistrements d'analyse sur filebin (Réglages › Son). */
-data class AdUploadUi(val enabled: Boolean = false, val bin: String? = null, val status: AdUploads.Status = AdUploads.Status())
+data class AdUploadUi(val bin: String? = null, val status: AdUploads.Status = AdUploads.Status()) {
+    /** Adresse complète de la page filebin (pour le QR code), `null` tant qu'elle n'est pas tirée. */
+    val url: String? get() = bin?.let { "https://filebin.net/$it" }
+}
