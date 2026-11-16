@@ -63,7 +63,12 @@ class AdDeviceReplayTool {
                 keepMarks()
                 offset = at
                 // Chaîne de ce flux : notée par l'appareil juste après (sinon la même qu'avant : flux rouvert).
-                channel = recording.events.firstOrNull { it.second == "chaine" && it.first in at - 1_000..at + 20_000 }?.third ?: channel
+                // Celle notée à partir de cet instant d'abord : un flux changé moins d'une seconde après le précédent ne doit
+                // pas prendre le nom de celui-ci (Gulli appris comme TF1).
+                channel = (
+                    recording.events.firstOrNull { it.second == "chaine" && it.first in at..at + 20_000 }
+                        ?: recording.events.firstOrNull { it.second == "chaine" && it.first in at - 1_000..at }
+                    )?.third ?: channel
                 guard = AdVolumeGuard()
                 watcher = LogoWatcher(WIDTH, HEIGHT)
                 channel?.let(marks::get)?.let { known ->

@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.172
+- Enregistrement automatique : CNews, LCI, T18 et Novo19 (analysés le 16 novembre au soir) passent après les chaînes encore jamais enregistrées
+
 ## 0.2.171
 - « Baisser le son des pubs » : le son ne reste plus baissé plus d’une minute sur la météo ou une émission quand le logo de la chaîne disparaît sans pub (vu sur France 2) : sans changement de pub en 30 secondes, il remonte
 - Enregistrement automatique : les chaînes analysées le 16 novembre (TF1, France 2, France 3, M6, Gulli, BFMTV, CNews) passent après les autres

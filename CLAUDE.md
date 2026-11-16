@@ -253,6 +253,13 @@ Commandes :
   (`LOGO_ONLY_PAUSE_MILLIS`) ; rejeu sur 20 h : programme à tort 1010 → 676 s, pubs baissées 79 → 78 %. Analyse :
   commande `/analyse` (`.claude/skills/analyse`, outils `tools/ad_fetch.py`, `ad_sheets.py`, `ad_errors.py`, vérités dans
   `tools/ad_truth/`).
+- Soir du 16/11/2026 (box : CNews, LCI, T18, Novo19 ; Fire TV : M6, RMC Sport / Eurosport ; 3 h, appli 0.2.169) : appareil
+  92 % des secondes de pub baissées, 105 s de programme à tort (80 s sur LCI, « logo parti » : corrigé par 0.2.171). Rejeu des
+  11 fichiers encore sur filebin avec le code 0.2.171 : 85 % baissées, programme à tort 411 → 105 s. Le rejeu ne sait pas ce
+  que l'appareil a appris les jours d'avant (logo de TF1 qui suit les coupures) : il ouvre plus tard que lui sur TF1.
+  `AdDeviceReplayTool` prenait le nom de la chaîne précédente pour un flux changé moins d'une seconde après le début du
+  fichier (Gulli appris comme TF1 : 283 s à tort qui n'existaient pas) : corrigé. Reste : une page de CNews refermée en
+  pleine pub après 80 s sans jonction (« logo toujours absent »), puis rouverte 45 s plus tard.
 
 ## Essais sur de vrais flux
 
