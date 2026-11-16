@@ -67,6 +67,7 @@ class AdRecorder(
     private var last = 0L
     private var spaceCheckedAt = 0L
     private var thumbnailAt = Long.MIN_VALUE
+    private var eventsFlushedAt = 0L
 
     /** Durée enregistrée, en millisecondes. */
     @Volatile
@@ -200,9 +201,13 @@ class AdRecorder(
         if (finished.get()) return
         val time = at(now)
         val line = "$time\t$what\t${value.replace('\t', ' ').replace('\n', ' ')}\n".toByteArray()
+        val flush = time - eventsFlushedAt >= EVENTS_FLUSH_MILLIS
+        if (flush) eventsFlushedAt = time
         post {
             events.write(line)
             written.addAndGet(line.size.toLong())
+            // Écrit sur le disque régulièrement : une appli fermée d'un coup (mise à jour, système) garde ses décisions.
+            if (flush) events.flush()
         }
     }
 
@@ -272,5 +277,6 @@ class AdRecorder(
         private const val THUMB_HEIGHT = 90
         private const val THUMB_QUALITY = 60
         private const val THUMBNAIL_MILLIS = 5_000L
+        private const val EVENTS_FLUSH_MILLIS = 30_000L
     }
 }
