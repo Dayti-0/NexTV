@@ -247,6 +247,12 @@ Commandes :
   parti depuis 20 s sur une chaîne où il suit les coupures = page de pubs sans jonction (`LOGO_ONLY_MILLIS`, bandes-annonces
   enchaînées sans silence sur TF1). Restent difficiles : les pubs juste après un changement de chaîne, les bandes-annonces
   de fin de page, et le début d'un dessin animé de 6ter pris pour une pub (logo de la chaîne remplacé).
+- Journée du 16/11/2026 (box en automatique 0.2.166 → 0.2.169, Fire TV sur M6 ; 6 h) : appareil 83 % des secondes de pub
+  baissées (fichiers avec décisions), programme à tort surtout sur France 2 (météo, jeu) par « logo parti depuis 20 s » :
+  0.2.171 referme une telle page sans jonction en 30 s (`LOGO_ONLY_HOLD_MILLIS`) et ne la rouvre plus ainsi 15 min
+  (`LOGO_ONLY_PAUSE_MILLIS`) ; rejeu sur 20 h : programme à tort 1010 → 676 s, pubs baissées 79 → 78 %. Analyse :
+  commande `/analyse` (`.claude/skills/analyse`, outils `tools/ad_fetch.py`, `ad_sheets.py`, `ad_errors.py`, vérités dans
+  `tools/ad_truth/`).
 
 ## Essais sur de vrais flux
 
