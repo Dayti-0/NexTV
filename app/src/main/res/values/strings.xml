@@ -393,7 +393,7 @@
     <string name="settings_ad_music_help">Sur un téléphone ou un ordinateur relié au même réseau (Wi-Fi de la maison), ouvrez cette adresse dans le navigateur, choisissez vos morceaux (MP3, M4A…) puis « Envoyer vers la télé ». Sur une clé USB, un dossier « NixTV/musique » est lu aussi. L’adresse marche tant que cette fenêtre est ouverte.</string>
     <string name="settings_ad_music_count">%1$d morceau(x) sur l’appareil</string>
     <string name="settings_ad_upload">Envoyer les enregistrements sur filebin</string>
-    <string name="settings_ad_upload_help">Chaque enregistrement terminé part tout seul sur une page filebin propre à cet appareil (plus rien à récupérer sur le téléphone) : donnez son adresse à Claude. La page est visible par qui connaît son adresse ; les fichiers y restent une semaine.</string>
+    <string name="settings_ad_upload_help">Chaque enregistrement terminé part tout seul sur une page filebin propre à cet appareil (plus rien à récupérer sur le téléphone) : donnez son adresse à Claude. Une fois bien reçu par filebin, il est supprimé de l’appareil. La page est visible par qui connaît son adresse ; les fichiers y restent une semaine.</string>
     <string name="settings_ad_upload_page">Page : %1$s</string>
     <string name="settings_ad_upload_sending">envoi en cours (%1$d envoyé(s), %2$d en attente)</string>
     <string name="settings_ad_upload_failed">dernier envoi raté, nouvel essai plus tard (%1$d envoyé(s), %2$d en attente)</string>

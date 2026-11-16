@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.168
+- Envoi sur filebin : un enregistrement bien reçu par filebin (taille vérifiée) est supprimé de l’appareil, pour libérer la place
+
 ## 0.2.167
 - Enregistrements d’analyse : nouveau réglage « Envoyer les enregistrements sur filebin » (Réglages › Son) : chaque enregistrement terminé part tout seul sur une page filebin propre à l’appareil, plus rien à récupérer sur le téléphone
 - Téléchargement depuis le téléphone : la taille annoncée est maintenant mesurée exactement (le fichier ne doit plus arriver vide, à 0 Ko)

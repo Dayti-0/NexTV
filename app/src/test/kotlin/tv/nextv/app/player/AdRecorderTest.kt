@@ -6,6 +6,7 @@ import androidx.media3.common.audio.AudioProcessor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -245,18 +246,30 @@ class AdRecorderTest {
             assertEquals(1, uploads.status.value.pending)
             server.takeRequest()
 
+            // Le premier envoyé est confirmé par filebin avec sa taille (supprimé de l'appareil), le second sans
+            // (gardé, marqué envoyé).
+            val tf1 = java.io.File(directory, "pubs_TF1_2026-11-16_20-00-00")
+            val tf1Length = StoredZip(tf1).length
+            server.enqueue(
+                mockwebserver3.MockResponse.Builder().code(201)
+                    .body("{\"bin\": {\"bytes\": 1}, \"file\": {\"filename\": \"x.zip\", \"bytes\": $tf1Length}}").build(),
+            )
             server.enqueue(mockwebserver3.MockResponse.Builder().code(201).build())
-            server.enqueue(mockwebserver3.MockResponse.Builder().code(201).build())
-            recording("pubs_M6_2026-11-16_21-00-00")
+            val m6 = recording("pubs_M6_2026-11-16_21-00-00")
+            m6.setLastModified(tf1.lastModified() + 60_000)
             uploads.sendAll()
             val first = server.takeRequest()
             val second = server.takeRequest()
             assertEquals("POST", first.method)
-            assertEquals(setOf("/nixtv-essai/pubs_TF1_2026-11-16_20-00-00.zip", "/nixtv-essai/pubs_M6_2026-11-16_21-00-00.zip"), setOf(first.url.encodedPath, second.url.encodedPath))
+            assertEquals("/nixtv-essai/pubs_TF1_2026-11-16_20-00-00.zip", first.url.encodedPath)
+            assertEquals("/nixtv-essai/pubs_M6_2026-11-16_21-00-00.zip", second.url.encodedPath)
             // Zip complet et lisible, sans la marque d'envoi.
             val zip = folder.newFile()
             zip.writeBytes(checkNotNull(first.body).toByteArray())
+            assertEquals(tf1Length, zip.length())
             ZipFile(zip).use { file -> assertEquals(setOf("frames.bin", "info.txt"), file.entries().toList().map { it.name }.toSet()) }
+            assertFalse(tf1.exists())
+            assertTrue(java.io.File(m6, AdUploads.SENT).exists())
             assertEquals(2, uploads.status.value.sent)
             assertEquals(0, uploads.status.value.pending)
             // Déjà envoyés : rien de plus.
