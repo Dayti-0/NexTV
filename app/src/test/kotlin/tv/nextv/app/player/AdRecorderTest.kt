@@ -224,6 +224,48 @@ class AdRecorderTest {
     }
 
     @Test
+    fun `finished recordings are sent to filebin once, and again after a failure`() {
+        val directory = folder.newFolder("recordings")
+        fun recording(name: String) = java.io.File(directory, name).apply {
+            mkdirs()
+            java.io.File(this, "info.txt").writeText("format=3\nchaine=TF1\n")
+            java.io.File(this, "frames.bin").writeBytes(ByteArray(200_000) { (it % 7).toByte() })
+        }
+        recording("pubs_TF1_2026-11-16_20-00-00")
+        val recordings = AdRecordings(directory, "0.0.0-test")
+        mockwebserver3.MockWebServer().apply { start() }.use { server ->
+            // Premier envoi raté (serveur en panne), puis réussi.
+            server.enqueue(mockwebserver3.MockResponse.Builder().code(500).build())
+            val uploads = AdUploads(
+                recordings, okhttp3.OkHttpClient(), kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined),
+                bin = { "nixtv-essai" }, base = server.url("/").toString().trimEnd('/'),
+            )
+            uploads.sendAll()
+            assertTrue(uploads.status.value.failed)
+            assertEquals(1, uploads.status.value.pending)
+            server.takeRequest()
+
+            server.enqueue(mockwebserver3.MockResponse.Builder().code(201).build())
+            server.enqueue(mockwebserver3.MockResponse.Builder().code(201).build())
+            recording("pubs_M6_2026-11-16_21-00-00")
+            uploads.sendAll()
+            val first = server.takeRequest()
+            val second = server.takeRequest()
+            assertEquals("POST", first.method)
+            assertEquals(setOf("/nixtv-essai/pubs_TF1_2026-11-16_20-00-00.zip", "/nixtv-essai/pubs_M6_2026-11-16_21-00-00.zip"), setOf(first.url.encodedPath, second.url.encodedPath))
+            // Zip complet et lisible, sans la marque d'envoi.
+            val zip = folder.newFile()
+            zip.writeBytes(checkNotNull(first.body).toByteArray())
+            ZipFile(zip).use { file -> assertEquals(setOf("frames.bin", "info.txt"), file.entries().toList().map { it.name }.toSet()) }
+            assertEquals(2, uploads.status.value.sent)
+            assertEquals(0, uploads.status.value.pending)
+            // Déjà envoyés : rien de plus.
+            uploads.sendAll()
+            assertEquals(3, server.requestCount)
+        }
+    }
+
+    @Test
     fun `less than a minute is not kept`() {
         val recordings = AdRecordings(folder.newFolder("recordings"), "0.0.0-test", minMillis = 60_000)
         val recorder = recordings.start("M6", control)!!

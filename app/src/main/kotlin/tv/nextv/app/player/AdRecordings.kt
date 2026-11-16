@@ -179,6 +179,7 @@ class AdRecordings(
             // Mémoire de l'appareil : les derniers seulement. Sur une clé USB, tout est gardé (jusqu'à ce qu'elle soit pleine).
             if (location.key == null) trim(directory)
             mutableFiles.value = list()
+            if (done.isDirectory) onSaved?.invoke(done)
             onStopped(reason)
         }
         self[0] = recorder
@@ -192,6 +193,15 @@ class AdRecordings(
         current?.finish()
         current = null
     }
+
+    /** Enregistrement terminé et gardé (dossier) : appelé sur le fil d'écriture, pour l'envoyer ailleurs (filebin). */
+    @Volatile
+    var onSaved: ((File) -> Unit)? = null
+
+    /** Dossiers des enregistrements gardés, à tous les emplacements branchés (accès aux clés : jamais sur le fil principal). */
+    fun folders(): List<File> = directories().flatMap { directory ->
+        directory.listFiles { file -> file.isDirectory && !file.name.endsWith(PART) }.orEmpty().toList()
+    }.sortedBy { it.lastModified() }
 
     /** Supprime un enregistrement gardé (nom de son `.zip`). */
     fun delete(zipName: String) {
@@ -292,6 +302,8 @@ class AdRecordings(
                         headers[header.substringBefore(':').trim().lowercase()] = header.substringAfter(':', "").trim()
                     }
                     val method = request.substringBefore(' ')
+                    // Téléchargement en deux temps (certains navigateurs demandent d'abord les seuls en-têtes).
+                    val headOnly = method == "HEAD"
                     val path = request.split(' ').getOrNull(1).orEmpty()
                     val out = client.getOutputStream()
                     val prefix = "/$code/"
@@ -336,15 +348,15 @@ class AdRecordings(
                             if (folder == null) {
                                 out.write("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
                             } else {
-                                // Zip fabriqué à la volée, sans compression : sa taille exacte est connue d'avance et
-                                // annoncée (les téléphones enregistraient parfois un fichier vide sans elle).
-                                val files = folder.listFiles()?.filter { it.isFile }?.sortedBy { it.name }.orEmpty()
-                                val crcs = files.map(::crcOf)
+                                // Zip fabriqué à la volée, sans compression : sa taille exacte est mesurée d'avance (un
+                                // premier passage qui ne fait que compter) et annoncée ; sans elle, ou fausse, les
+                                // téléphones enregistraient un fichier vide.
+                                val zip = StoredZip(folder)
                                 out.write(
-                                    ("HTTP/1.1 200 OK\r\nContent-Type: application/zip\r\nContent-Length: ${storedZipLength(files)}\r\n" +
+                                    ("HTTP/1.1 200 OK\r\nContent-Type: application/zip\r\nContent-Length: ${zip.length}\r\n" +
                                         "Content-Disposition: attachment; filename=\"${folder.name}.zip\"\r\nConnection: close\r\n\r\n").toByteArray(),
                                 )
-                                writeStoredZip(files, crcs, out)
+                                if (!headOnly) zip.writeTo(out)
                             }
                         }
                         else -> out.write("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
@@ -399,7 +411,7 @@ class AdRecordings(
         }
     }
 
-    private companion object {
+    internal companion object {
         const val MAX_FILES = 24
         const val PART = ".part"
         const val MIN_FREE_BYTES = 400L * 1024 * 1024
@@ -421,7 +433,7 @@ class AdRecordings(
             return crc.value
         }
 
-        /** Taille exacte du zip sans compression de [files] écrit par [writeStoredZip] (noms en ASCII). */
+        /** Taille calculée du zip sans compression de [files] (noms en ASCII) ; [StoredZip] la mesure, elle. */
         fun storedZipLength(files: List<File>): Long =
             files.sumOf { 30L + it.name.length + it.length() + 46L + it.name.length } + 22L
 
@@ -465,6 +477,31 @@ class AdRecordings(
                 ?.hostAddress
         } catch (e: java.net.SocketException) {
             null
+        }
+    }
+}
+
+/**
+ * Zip sans compression d'un enregistrement (ses fichiers, sauf les marques cachées comme « .envoye ») : sommes de contrôle
+ * lues d'abord, puis taille exacte mesurée par un passage qui ne fait que compter — juste sur tous les appareils, quelle
+ * que soit la façon dont leur système écrit les zips.
+ */
+class StoredZip(folder: File) {
+    private val files = folder.listFiles()?.filter { it.isFile && !it.name.startsWith(".") }?.sortedBy { it.name }.orEmpty()
+    private val crcs = files.map { AdRecordings.crcOf(it) }
+
+    val length: Long = Counting().also { AdRecordings.writeStoredZip(files, crcs, it) }.count
+
+    fun writeTo(out: java.io.OutputStream) = AdRecordings.writeStoredZip(files, crcs, out)
+
+    private class Counting : java.io.OutputStream() {
+        var count = 0L
+        override fun write(b: Int) {
+            count++
+        }
+
+        override fun write(b: ByteArray, off: Int, len: Int) {
+            count += len
         }
     }
 }

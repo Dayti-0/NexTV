@@ -4,6 +4,10 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.167
+- Enregistrements d’analyse : nouveau réglage « Envoyer les enregistrements sur filebin » (Réglages › Son) : chaque enregistrement terminé part tout seul sur une page filebin propre à l’appareil, plus rien à récupérer sur le téléphone
+- Téléchargement depuis le téléphone : la taille annoncée est maintenant mesurée exactement (le fichier ne doit plus arriver vide, à 0 Ko)
+
 ## 0.2.166
 - « Baisser le son des pubs », réglé sur 10 h d’enregistrements de la nuit du 15 au 16 novembre (TF1, M6, W9, TMC, TFX, 6ter…) :
 - Le son ne remonte plus en pleine page de pub quand une pub ressemble quelques secondes au logo de la chaîne : il faut revoir le logo 3 secondes, et s’il repart aussitôt, le son rebaisse

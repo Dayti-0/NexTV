@@ -138,6 +138,7 @@ fun SettingsScreen(
     val adRecordings by viewModel.adRecordings.collectAsStateWithLifecycle()
     val adPlace by viewModel.adPlace.collectAsStateWithLifecycle()
     val adSound by viewModel.adSound.collectAsStateWithLifecycle()
+    val adUpload by viewModel.adUpload.collectAsStateWithLifecycle()
     // Clé USB branchée ou retirée, autorisation accordée : emplacements relus à chaque retour sur les réglages.
     val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle) {
@@ -265,6 +266,8 @@ fun SettingsScreen(
         adRecordings = adRecordings,
         adPlace = adPlace,
         onCycleAdPlace = viewModel::cycleAdPlace,
+        adUpload = adUpload,
+        onAdUpload = viewModel::setAdUpload,
         onStopAdRecording = viewModel::stopAdRecording,
         onDeleteAdRecording = viewModel::deleteAdRecording,
         adSound = adSound,
@@ -331,6 +334,9 @@ fun SettingsContent(
     adRecordings: List<AdRecordings.Recording> = emptyList(),
     adPlace: AdPlace = AdPlace(),
     onCycleAdPlace: () -> Unit = {},
+    /** Envoi des enregistrements sur filebin. */
+    adUpload: AdUploadUi = AdUploadUi(),
+    onAdUpload: (Boolean) -> Unit = {},
     onStopAdRecording: () -> Unit = {},
     onDeleteAdRecording: (String) -> Unit = {},
     /** Pendant les pubs : son baissé, radio ou musique de l'appareil. */
@@ -585,6 +591,24 @@ fun SettingsContent(
                             )
                         }
                         InfoText(stringResource(R.string.settings_ad_recordings_place_help))
+                        // Envoi tout seul sur filebin : plus rien à récupérer sur le téléphone, Claude va chercher les fichiers.
+                        ToggleRow(
+                            title = stringResource(R.string.settings_ad_upload),
+                            description = stringResource(R.string.settings_ad_upload_help),
+                            checked = adUpload.enabled,
+                            onChange = onAdUpload,
+                        )
+                        if (adUpload.enabled && adUpload.bin != null) {
+                            val status = adUpload.status
+                            InfoText(
+                                stringResource(R.string.settings_ad_upload_page, "filebin.net/${adUpload.bin}") + "  ·  " +
+                                    when {
+                                        status.sending != null -> stringResource(R.string.settings_ad_upload_sending, status.sent, status.pending)
+                                        status.failed -> stringResource(R.string.settings_ad_upload_failed, status.sent, status.pending)
+                                        else -> stringResource(R.string.settings_ad_upload_done, status.sent, status.pending)
+                                    },
+                            )
+                        }
                         // Stockages annoncés par le système : la photo de cette ligne dit pourquoi une clé n'est pas proposée.
                         if (adPlace.storage.isNotEmpty()) InfoText(stringResource(R.string.settings_ad_recordings_storage, adPlace.storage))
                     }

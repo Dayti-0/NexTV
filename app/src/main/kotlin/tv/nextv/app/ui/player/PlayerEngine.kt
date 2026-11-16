@@ -649,6 +649,8 @@ internal class PlayerEngine(
         // Enregistrement d'analyse en cours (lancé sur une autre chaîne, peut-être dans un autre lecteur) : il continue
         // sur celle-ci. Son emplacement (réglages) est aussi lu dès maintenant, prêt quand on en lancera un.
         if (enabled) container.adRecordings.current?.let(adVolume::attach)
+        // Envoi sur filebin (s'il est activé) : ce qui n'était pas encore parti part dès la première chaîne ouverte.
+        if (enabled) container.adUploads
         // Clés USB relues en arrière-plan (jamais sur le fil principal) : l'emplacement est prêt si l'on lance un enregistrement.
         if (enabled) container.refreshAdPlacesInBackground()
     }

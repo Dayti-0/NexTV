@@ -1,5 +1,6 @@
 package tv.nextv.app
 
+import tv.nextv.core.net.RequestPurpose
 import android.content.Context
 import tv.nextv.app.data.football.EventTurnStore
 import android.os.Build
@@ -52,6 +53,7 @@ import tv.nextv.app.data.update.AppUpdater
 import tv.nextv.app.player.AdMarksStore
 import tv.nextv.app.player.AdPrintStore
 import tv.nextv.app.player.AdRecordings
+import tv.nextv.app.player.AdUploads
 import tv.nextv.app.player.AdMusicLibrary
 import tv.nextv.app.player.removableMusicFolders
 import tv.nextv.app.player.PlayerFactory
@@ -197,11 +199,30 @@ class AppContainer(context: Context) {
     val adMarks = AdMarksStore(File(appContext.filesDir, "ad_marks"), applicationScope)
 
     /** Enregistrements pour l'analyse des pubs (options du lecteur), récupérés depuis Réglages par le réseau local. */
-    val adRecordings by lazy {
+    val adRecordings: AdRecordings by lazy {
         AdRecordings(File(appContext.filesDir, "ad_recordings"), BuildConfig.VERSION_NAME, removable = { removableRecordingPlaces(appContext) }).also { recordings ->
             applicationScope.launch { settings.adRecordingsLocation.collect { recordings.selected = it } }
             // Clés USB lues en arrière-plan : sur la box, créer un dossier sur la clé a bloqué l'appli plus de 5 s (ANR).
             applicationScope.launch(Dispatchers.IO) { recordings.load() }
+            // Chaque enregistrement terminé part sur filebin, si l'envoi est activé.
+            recordings.onSaved = { adUploads.sendPending() }
+        }
+    }
+
+    /** Page filebin où partent les enregistrements d'analyse ; `null` quand l'envoi est coupé (réglage). */
+    @Volatile
+    private var adUploadPage: String? = null
+
+    /** Envoi des enregistrements d'analyse sur filebin.net (Réglages › Son), pour que Claude aille les y chercher. */
+    val adUploads: AdUploads by lazy {
+        AdUploads(adRecordings, httpClients.client(RequestPurpose.METADATA), applicationScope, bin = { adUploadPage }).also { uploads ->
+            applicationScope.launch {
+                settings.adUpload.combine(settings.adUploadBin) { enabled, bin -> bin?.takeIf { enabled } }.collect { page ->
+                    adUploadPage = page
+                    // Envoi activé (ou appli relancée) : ce qui n'est pas encore parti part maintenant.
+                    if (page != null) uploads.sendPending()
+                }
+            }
         }
     }
 

@@ -1,5 +1,6 @@
 package tv.nextv.app.ui.settings
 
+import tv.nextv.app.player.AdUploads
 import tv.nextv.app.player.AdRadios
 import tv.nextv.app.data.settings.AdSound
 import tv.nextv.app.player.allFilesAccessIntent
@@ -344,6 +345,8 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     /** Relit les emplacements (clé USB branchée ou retirée) et les enregistrements. */
     fun refreshAdPlaces() {
+        // Réglages ouverts : un envoi raté (réseau coupé) est retenté.
+        container.adUploads.sendPending()
         viewModelScope.launch {
             val key = settings.adRecordingsLocation.first()
             container.adRecordings.selected = key
@@ -409,6 +412,15 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     fun deleteAdRecordings() {
         viewModelScope.launch(Dispatchers.IO) { container.adRecordings.deleteAll() }
+    }
+
+    /** Envoi des enregistrements sur filebin : activé, page de l'appareil, état des envois. */
+    val adUpload: StateFlow<AdUploadUi> = combine(settings.adUpload, settings.adUploadBin, container.adUploads.status) { enabled, bin, status ->
+        AdUploadUi(enabled, bin, status)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AdUploadUi())
+
+    fun setAdUpload(enabled: Boolean) {
+        viewModelScope.launch { settings.setAdUpload(enabled, AdUploads::newBin) }
     }
 
     /** Supprime un seul enregistrement (nom de son `.zip`). */
@@ -585,3 +597,6 @@ fun SettingsViewModel.allFilesAccess(context: android.content.Context): android.
  * @property radio nom de la radio choisie ; @property tracks morceaux de musique sur l'appareil.
  */
 data class AdSoundUi(val mode: String = AdSound.LOWER, val radio: String = AdRadios.all.first().name, val tracks: Int = 0)
+
+/** Envoi des enregistrements d'analyse sur filebin (Réglages › Son). */
+data class AdUploadUi(val enabled: Boolean = false, val bin: String? = null, val status: AdUploads.Status = AdUploads.Status())

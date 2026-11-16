@@ -223,6 +223,10 @@ Commandes :
   en cours, logo, horloge) et l'enregistrement ; seuls les repères du flux sont relus. Le rejouer : `AdDeviceReplayTool` (`AD_DEVICE`,
   `AD_PRINTS`, `AD_IMAGES=10` écrit une image par 10 s pour relever les pages de pub à l'œil dans `<nom>.truth.tsv`).
   C'est la seule façon de mesurer TF1, M6 et France Télévisions (pas de flux lisible d'ici, même avec un compte).
+  Envoi automatique (0.2.167, réglage « Envoyer les enregistrements sur filebin », `AdUploads`) : chaque enregistrement
+  terminé part en `.zip` sur `https://filebin.net/nixtv-…` (page tirée au hasard, `adUploadBin`), marqué `.envoye` une fois
+  envoyé ; l'utilisateur donne l'adresse de la page, la lire avec `Accept: application/json` puis télécharger les fichiers.
+  Zip « stocké » mesuré exactement avant l'envoi (`StoredZip`, aussi pour le serveur local, qui répond à `HEAD`).
 - Musique pendant les pubs (0.2.159, réglage « Pendant les pubs » `AdSound` : baisser / radio / ma musique) :
   `player/AdMusic.kt` (`AdRadios` Radio France sans pub, `AdMusicLibrary` dossier `files/ad_music` rempli depuis le
   téléphone par `PUT …/musique/<nom>` sur le serveur local d'`AdRecordings.Share`, plus `NixTV/musique` des clés USB,
