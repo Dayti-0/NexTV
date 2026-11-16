@@ -34,7 +34,16 @@ class AdDeviceReplayTool {
         val tag = System.getenv("AD_TAG") ?: "current"
         val usePrints = System.getenv("AD_PRINTS") != null
         val imagesEvery = System.getenv("AD_IMAGES")?.toIntOrNull()
-        val library = AdPrintLibrary()
+        // Totaux (ici, sur l'appareil) : pubs baissées, secondes de pub, programme baissé à tort, secondes de programme, délais, pages.
+        val totals = Array(2) { IntArray(6) }
+        // `AD_KNOWN` : un premier passage apprend le logo et le carton de chaque chaîne, connus d'avance au second (comme sur
+        // l'appareil, qui les garde d'un jour à l'autre). La mémoire des pubs, elle, repart de zéro au second passage.
+        val passes = if (System.getenv("AD_KNOWN") != null) 2 else 1
+        val marks = HashMap<String, AdMarks>()
+        var library = AdPrintLibrary()
+        for (pass in 1..passes) {
+        val last = pass == passes
+        library = AdPrintLibrary()
         for (path in paths) {
             val recording = DeviceRecording.load(File(path))
             val base = File(path).let { File(it.parentFile, it.name.removeSuffix(".zip")) }
@@ -44,10 +53,25 @@ class AdDeviceReplayTool {
             var watcher = LogoWatcher(WIDTH, HEIGHT)
             var watch: AdPrintWatch? = null
             var offset = 0L
+            var channel: String? = null
+            fun keepMarks() {
+                val name = channel ?: return
+                val old = marks[name]
+                marks[name] = AdMarks(watcher.export() ?: old?.logo, guard.separator ?: old?.separator, guard.logoFollowsBreaks || old?.logoFollowsBreaks == true)
+            }
             fun fresh(at: Long) {
+                keepMarks()
                 offset = at
+                // Chaîne de ce flux : notée par l'appareil juste après (sinon la même qu'avant : flux rouvert).
+                channel = recording.events.firstOrNull { it.second == "chaine" && it.first in at - 1_000..at + 20_000 }?.third ?: channel
                 guard = AdVolumeGuard()
                 watcher = LogoWatcher(WIDTH, HEIGHT)
+                channel?.let(marks::get)?.let { known ->
+                    known.logo?.let(watcher::restore)
+                    guard.separator = known.separator
+                    guard.logoFollowsBreaks = known.logoFollowsBreaks
+                    guard.logo = watcher.state
+                }
                 val current = guard
                 current.trace = { events.append("[${(offset + current.now) / 1_000} s] ").append(it).append('\n') }
                 watch = if (usePrints) {
@@ -59,14 +83,16 @@ class AdDeviceReplayTool {
                     null
                 }
             }
-            fresh(0)
+            // Fichier commencé en cours de lecture (coupé au bout d'une heure…) : son horloge part de là.
+            val start = recording.events.firstOrNull()?.first ?: 0L
+            fresh(start)
             val streams = recording.events.filter { it.second == "flux" }.map { it.first }.toMutableList()
             imagesEvery?.let { File("${base.path}_images").mkdirs() }
             val out = StringBuilder("second\tattenuating\tdevice\tlogo\tprint\n")
             var frame = 0
             var print = 0
             var audioAt = 0
-            var second = 0L
+            var second = start / 1_000
             var attenuatedSlices = 0
             var slices = 0
             var recognized = false
@@ -120,13 +146,19 @@ class AdDeviceReplayTool {
                     recognized = false
                 }
             }
+            keepMarks()
+            if (!last) continue
             File("${base.path}_timeline_$tag.tsv").writeText(out.toString())
             // Ce que l'appareil a vu et décidé, en minutes:secondes (ce qui a ouvert ou fermé chaque page de pubs…).
             File("${base.path}_appareil.txt").writeText(
                 recording.events.joinToString("") { (time, what, detail) -> "%d:%02d\t%s\t%s\n".format(time / 60_000, time / 1_000 % 60, what, detail) },
             )
             File("${base.path}_events_$tag.txt").writeText(events.toString())
-            val lowered = out.lines().drop(1).filter { it.isNotBlank() }.map { it.split('\t')[1] == "1" }
+            // Seconde (horloge de l'enregistrement) → son baissé ici, et sur l'appareil.
+            val rows = out.lines().drop(1).filter { it.isNotBlank() }.map { it.split('\t') }
+            val lowered = rows.map { it[1] == "1" }
+            val secondsOf = rows.map { it[0].toInt() }
+            val device = rows.map { it[2] == "1" }
             val truth = File("${base.path}.truth.tsv").takeIf { it.exists() }?.readLines()?.mapNotNull { line ->
                 val parts = line.trim().split(Regex("\\s+"))
                 if (parts.size < 2) null else (parts[0].toDoubleOrNull() ?: return@mapNotNull null) to (parts[1].toDoubleOrNull() ?: return@mapNotNull null)
@@ -134,15 +166,28 @@ class AdDeviceReplayTool {
             val summary = if (truth == null) {
                 "${lowered.size} s rejouées, ${lowered.count { it }} s baissées (${recording.info["chaine"]})"
             } else {
-                val inBreak = lowered.indices.map { s -> truth.any { (from, to) -> s + 0.5 in from..to } }
-                val ads = inBreak.count { it }
-                val hit = lowered.indices.count { inBreak[it] && lowered[it] }
-                val wrong = lowered.indices.count { !inBreak[it] && lowered[it] }
-                "pubs baissées $hit/$ads s, programme baissé à tort $wrong/${lowered.size - ads} s (${recording.info["chaine"]})"
+                val inBreak = secondsOf.map { s -> truth.any { (from, to) -> s + 0.5 in from..to } }
+                fun score(low: List<Boolean>): IntArray {
+                    val hit = low.indices.count { inBreak[it] && low[it] }
+                    val wrong = low.indices.count { !inBreak[it] && low[it] }
+                    // Délai de chaque page de pubs : première seconde baissée après son début.
+                    val delays = truth.filter { it.second - it.first >= 20 }.map { (from, to) ->
+                        low.indices.firstOrNull { low[it] && secondsOf[it] >= from && secondsOf[it] <= to }?.let { (secondsOf[it] - from).toInt() } ?: (to - from).toInt()
+                    }
+                    return intArrayOf(hit, inBreak.count { it }, wrong, inBreak.count { !it }, delays.sum(), delays.size)
+                }
+                val here = score(lowered)
+                val there = score(device)
+                totals[0].indices.forEach { totals[0][it] += here[it]; totals[1][it] += there[it] }
+                "ici : pubs baissées ${here[0]}/${here[1]} s, programme à tort ${here[2]} s, délai ${here[4]} s | appareil : ${there[0]}/${there[1]} s, à tort ${there[2]} s, délai ${there[4]} s"
             }
             println("$path : $summary")
         }
+        }
         if (usePrints) println("mémoire des pubs : ${library.size} morceaux, ${library.seconds} s")
+        for ((name, t) in listOf("ICI" to totals[0], "APPAREIL" to totals[1])) {
+            if (t[1] > 0) println("TOTAL $name [$tag] : pubs baissées ${t[0]}/${t[1]} s (${100 * t[0] / t[1]} %), programme baissé à tort ${t[2]}/${t[3]} s, délai moyen ${t[4] / t[5].coerceAtLeast(1)} s sur ${t[5]} pages")
+        }
     }
 
     private fun gray(jpeg: ByteArray): ByteArray? {

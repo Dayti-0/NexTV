@@ -4,6 +4,12 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.166
+- « Baisser le son des pubs », réglé sur 10 h d’enregistrements de la nuit du 15 au 16 novembre (TF1, M6, W9, TMC, TFX, 6ter…) :
+- Le son ne remonte plus en pleine page de pub quand une pub ressemble quelques secondes au logo de la chaîne : il faut revoir le logo 3 secondes, et s’il repart aussitôt, le son rebaisse
+- Une page de pub qui commence par des bandes-annonces enchaînées est prise plus vite : sur une chaîne où le logo part pendant les pubs, 20 secondes sans logo suffisent
+- Outil d’analyse : environ 81 % des secondes de pub baissées sur ces enregistrements (68 % avant), pour 1 minute de programme baissé à tort en plus sur 8 heures
+
 ## 0.2.165
 - Récupération des enregistrements sur le téléphone : la télé annonce maintenant la taille exacte du fichier. Certains téléphones (iPhone) enregistraient un fichier vide
 

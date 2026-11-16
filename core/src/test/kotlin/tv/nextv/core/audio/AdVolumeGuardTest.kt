@@ -86,12 +86,62 @@ class AdVolumeGuardTest {
         assertEquals(-24.0, gainDb(), 0.01)
         // Jusqu'à 65 secondes sans silence entre deux spots (5 min 31 s) : le son est resté bas d'un bout à l'autre.
 
-        // Reprise du programme : le logo revient, le son aussi.
+        // Reprise du programme : le logo revient (et reste 3 s), le son aussi.
         play(6.0)
         guard.logo = LogoState.VISIBLE
-        play(1.5)
+        play(4.5)
         assertFalse(guard.attenuating)
         assertEquals(0.0, gainDb(), 0.01)
+    }
+
+    @Test
+    fun `a logo seen again for a few seconds in the middle of a break does not end it`() {
+        // W9, 16/11/2026 à 8 h 12 : le logo semblait revenir 3 à 11 s sur certaines pubs, et le son remontait.
+        guard.logoFollowsBreaks = true
+        guard.logo = LogoState.VISIBLE
+        play(130.0)
+        guard.logo = LogoState.HIDDEN
+        play(10.0)
+        junction(400, through = card())
+        play(2.0)
+        assertTrue(guard.attenuating)
+        // Deux secondes de « logo » sur une pub : rien ne change.
+        guard.logo = LogoState.VISIBLE
+        play(2.0)
+        assertTrue(guard.attenuating)
+        guard.logo = LogoState.HIDDEN
+        play(15.0)
+        // Plus longtemps : le son remonte… et redescend aussitôt quand le logo repart dans les 20 s.
+        guard.logo = LogoState.VISIBLE
+        play(8.0)
+        assertFalse(guard.attenuating)
+        guard.logo = LogoState.HIDDEN
+        play(1.0)
+        assertTrue("logo reparti aussitôt : la page continue", guard.attenuating)
+        // Vraie reprise du programme : le logo reste.
+        guard.logo = LogoState.VISIBLE
+        play(60.0)
+        assertFalse(guard.attenuating)
+    }
+
+    @Test
+    fun `the logo gone for 20 s opens the break even without a silence between two spots`() {
+        // TF1, 15/11/2026 à 23 h 18 : des bandes-annonces enchaînées sans silence, une minute et demie de pub non baissée.
+        guard.logoFollowsBreaks = true
+        guard.logo = LogoState.VISIBLE
+        play(130.0)
+        guard.logo = LogoState.HIDDEN
+        play(15.0)
+        assertFalse(guard.attenuating)
+        play(6.0)
+        assertTrue(guard.attenuating)
+        // Sur une chaîne dont le logo n'a jamais été vu revenir après une page de pubs : son départ seul ne suffit pas.
+        val unsure = AdVolumeGuard()
+        unsure.logo = LogoState.VISIBLE
+        repeat(130 * 50) { unsure.process(10.0.pow(PROGRAMME / 10), 20) }
+        unsure.logo = LogoState.HIDDEN
+        repeat(60 * 50) { unsure.process(10.0.pow(PROGRAMME / 10), 20) }
+        assertFalse(unsure.attenuating)
     }
 
     @Test
@@ -202,7 +252,7 @@ class AdVolumeGuardTest {
         play(5.0)
         assertTrue(guard.attenuating)
         guard.logo = LogoState.VISIBLE
-        play(2.0)
+        play(3.5)
         assertFalse(guard.attenuating)
         assertTrue(guard.logoFollowsBreaks)
 

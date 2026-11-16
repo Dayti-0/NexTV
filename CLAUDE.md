@@ -229,6 +229,15 @@ Commandes :
   `AdMusicPlayer` second ExoPlayer sans focus audio, fondus) ; branché par `PlayerViewModel.updateAdMusic` (boucle de
   0,5 s) ; `AdVolumeControl.muteAds` coupe la chaîne au lieu de −24 dB. « Ce n'est pas une pub » :
   `AdVolumeGuard.dismiss` (3 min sans nouvelle page, les repères du flux décident toujours).
+- Nuit du 15 au 16/11/2026 enregistrée sur la box (13 fichiers, 10 h 40, 9 chaînes, appli 0.2.162) ; vérité relevée à l'œil
+  sur les vignettes (`<nom>.truth.tsv`, planches faites par un script Python : une vignette toutes les 20 s, bordure
+  rouge quand l'appareil baissait). `AdDeviceReplayTool` avec `AD_KNOWN=1` (premier passage qui apprend logo et carton de
+  chaque chaîne, comme l'appareil) : 68 % → 81 % des secondes de pub baissées, programme à tort 183 → 249 s sur 8 h, avec
+  0.2.166 : logo revu ≥ 3 s pour fermer (`LOGO_BACK_MILLIS`), page rouverte si le logo repart dans les 20 s
+  (`REOPEN_MILLIS`, des pubs « montraient » le logo 3 à 11 s : pages morcelées sur W9, M6, TF1 Séries Films), et logo
+  parti depuis 20 s sur une chaîne où il suit les coupures = page de pubs sans jonction (`LOGO_ONLY_MILLIS`, bandes-annonces
+  enchaînées sans silence sur TF1). Restent difficiles : les pubs juste après un changement de chaîne, les bandes-annonces
+  de fin de page, et le début d'un dessin animé de 6ter pris pour une pub (logo de la chaîne remplacé).
 
 ## Essais sur de vrais flux
 
