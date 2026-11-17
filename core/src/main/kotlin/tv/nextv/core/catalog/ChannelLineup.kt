@@ -9,13 +9,14 @@ import java.text.Normalizer
 /**
  * Ordre « rangé » des chaînes en direct (réglage « Rassembler les chaînes »), comme sur une télé : la TNT dans l'ordre
  * des numéros (l'édition régionale de France 3 juste après France 3), puis Canal+, le cinéma, les séries et le
- * divertissement, le sport, la découverte, la jeunesse, la musique et l'info ; ensuite les chaînes régionales et
- * d'outre-mer, les chaînes « événement » (matchs en direct seulement), les autres chaînes françaises, et enfin les
+ * divertissement, le sport, la découverte, la jeunesse, la musique, l'info et les radios ; ensuite les chaînes
+ * régionales et d'outre-mer, les chaînes « événement » (matchs en direct seulement), les autres chaînes françaises, et enfin les
  * autres pays, dans l'ordre de la playlist.
  *
- * La rubrique d'une chaîne vient, dans l'ordre : de son nom (TNT, Canal+, chaînes connues, chaînes « événement »), de
- * la rubrique de la playlist où elle est rangée (séparateur « ▀▄ FR ▀▄ CINEMA ▄▀ » qui la précède dans sa catégorie),
- * puis du nom de sa catégorie (« FR SPORTS »). Dans une rubrique, les chaînes connues d'abord, dans l'ordre d'un
+ * La rubrique d'une chaîne vient, dans l'ordre : de son nom (radios, TNT, Canal+, chaînes connues, chaînes « événement »,
+ * programmes connus des services gratuits, « cinéma » ou « film » dans le nom), de la rubrique de la playlist où elle
+ * est rangée (séparateur « ▀▄ FR ▀▄ CINEMA ▄▀ » ou « ▀▄ PLUTO TV ▀▄ DOCUMENTAIRE ▄▀▄ » qui la précède dans sa catégorie),
+ * du nom de sa catégorie (« FR SPORTS »), puis des mots de son nom (« MYSPORTS 1 »). Dans une rubrique, les chaînes connues d'abord, dans l'ordre d'un
  * bouquet, puis les autres dans l'ordre de la playlist. Les versions d'une chaîne (même clé) restent ensemble.
  */
 object ChannelLineup {
@@ -23,7 +24,7 @@ object ChannelLineup {
     /**
      * Rubriques, dans l'ordre des listes, et nom de la catégorie qui les montre quand les chaînes sont rassemblées
      * ([title] ; il sert aussi à masquer la catégorie : ne pas le changer). [GENERAL] : autres chaînes françaises
-     * (services gratuits comme Pluto TV, radios, chaînes sans rubrique connue) ; [OTHER] : autres pays et séparateurs,
+     * (chaînes religieuses, chaînes sans rubrique connue) ; [OTHER] : autres pays et séparateurs,
      * qui gardent la catégorie de la playlist.
      */
     enum class Section(val title: String?) {
@@ -36,6 +37,7 @@ object ChannelLineup {
         JEUNESSE("Jeunesse"),
         MUSIQUE("Musique"),
         INFO("Info"),
+        RADIO("Radios"),
         REGIONAL("Régions"),
         OUTREMER("Outre-mer"),
         EVENTS("Matchs en direct"),
@@ -54,7 +56,7 @@ object ChannelLineup {
      * Version des règles de [arrange] : l'augmenter fait recalculer au lancement le rang, la catégorie, le nom et la
      * nationalité des chaînes déjà enregistrées, sans attendre une relecture de la playlist.
      */
-    const val VERSION = 1
+    const val VERSION = 2
 
     /** Place d'une chaîne : sa rubrique, puis son rang dans la rubrique ([UNRANKED] : ordre de la playlist). */
     data class Placement(val section: Section, val rank: Int = UNRANKED) : Comparable<Placement> {
@@ -180,21 +182,28 @@ object ChannelLineup {
             else -> prefix in FRENCH_CODES
         }
         if (!french) return Placement(Section.OTHER)
+        if (isRadio(names)) return Placement(Section.RADIO)
         // Édition régionale de France 3 : juste après France 3 (une seule reste visible, celle des réglages).
         if (names.region != null) return Placement(Section.TNT, FRANCE_3 * TNT_STEP + 1)
         names.tnt?.let { return Placement(Section.TNT, it * TNT_STEP) }
         if (EVENT_WORDS.containsMatchIn(names.folded)) return Placement(Section.EVENTS)
         KNOWN[names.glued]?.let { return it }
+        NAMED_SHOWS[names.glued]?.let { return Placement(it) }
         if (inFamily(channel.variantKey, families)) return Placement(Section.EVENTS)
         if (names.glued.startsWith(CANAL_PLUS) && NOT_METROPOLITAN.none { it in names.glued }) {
             return Placement(Section.CANAL, CANAL_RANKS[names.glued] ?: CANAL_OTHER)
         }
         if (ROUND_THE_CLOCK.containsMatchIn(channel.name)) return Placement(Section.SERIES)
+        // « L'EQUIPE CINEMA », « BOUYGUES CINEMA », « MYTIME MOVIE NETWORK » : du cinéma, même sous « DIVERTISSEMENT ».
+        if (names.words.any { it in CINEMA_WORDS }) return Placement(Section.CINEMA)
         // BFM locales (BFM Marseille, BFM DICI…) : les BFM nationales sont dans la TNT ou parmi les chaînes connues.
         if (names.glued.startsWith("bfm")) return Placement(Section.REGIONAL)
         section?.let { return Placement(it) }
         groupSection(channel.groupTitle)?.let { return Placement(it) }
         if (OVERSEAS.any { it in names.glued }) return Placement(Section.OUTREMER)
+        // Ni rubrique ni catégorie connues : les mots du nom (« MYSPORTS 1 » dans « SUISSES »).
+        groupSection(names.words)?.let { return Placement(it) }
+        if ("sport" in names.glued) return Placement(Section.SPORT)
         return Placement(Section.GENERAL)
     }
 
@@ -208,6 +217,9 @@ object ChannelLineup {
 
         /** Nom complet en minuscules sans accents (mentions « LIVE ONLY », « PPV » comprises). */
         val folded: String = fold(name)
+
+        /** Mots du nom sans pays, mentions de qualité ni parenthèses, en minuscules sans accents. */
+        val words: List<String> = words(BRACKETS.replace(ContentClassifier.cleanTitle(name), " "))
 
         /** Numéro TNT de la chaîne (« FR| FRANCE 2 FHD » → 2), `null` hors de la TNT. */
         val tnt: Int? = TntChannels.numberOfNormalized(glued)
@@ -235,6 +247,10 @@ object ChannelLineup {
         return groups
     }
 
+    /** Radio (« |FR| RFM RADIO », « |FR| SkyRock FM », « |FR| NRJ ») : rubrique Radios, avant tout autre classement. */
+    private fun isRadio(names: Names): Boolean =
+        names.words.any { it in RADIO_WORDS } || names.glued in RADIOS || names.glued.startsWith("hotmixradio")
+
     private fun frenchMarker(groupTitle: String): Boolean = words(groupTitle).any { it in FRENCH_WORDS }
 
     /**
@@ -256,13 +272,15 @@ object ChannelLineup {
         return result
     }
 
-    /** Rubrique annoncée par un séparateur : tous ses mots (hors pays et mots passe-partout) désignent la même rubrique. */
+    /**
+     * Rubrique annoncée par un séparateur : tous ses mots connus (hors pays et mots passe-partout) désignent la même
+     * rubrique (« ▀▄ RAKUTEN ▀▄ CINÉMA (ACTION, DRAME, COMÉDIE) ▄▀▄ » : cinéma ; « ▀▄ BE ▀▄ BE TV ▄▀▄ » : aucune).
+     */
     private fun separatorSection(name: String): Section? {
-        val words = words(name).filter { it !in SECTION_NOISE }
-        if (words.isEmpty()) return null
         var found: Section? = null
-        for (word in words) {
-            val section = SECTION_WORDS[word] ?: return null
+        for (word in words(name)) {
+            if (word in SECTION_NOISE) continue
+            val section = SECTION_WORDS[word] ?: continue
             if (found != null && found != section) return null
             found = section
         }
@@ -272,7 +290,12 @@ object ChannelLineup {
     /** Rubrique désignée par le nom d'une catégorie (« FR SPORTS », « FR | CINEMA », « JEUNESSE »). */
     private fun groupSection(groupTitle: String?): Section? {
         if (groupTitle.isNullOrBlank()) return null
-        val words = words(groupTitle).toSet()
+        return groupSection(words(groupTitle))
+    }
+
+    /** Rubrique désignée par l'un des mots donnés (nom d'une catégorie ou d'une chaîne). */
+    private fun groupSection(words: Collection<String>): Section? {
+        if (words.isEmpty()) return null
         return GROUP_SECTIONS.firstOrNull { (_, keywords) -> keywords.any { it in words } }?.first
     }
 
@@ -387,6 +410,30 @@ object ChannelLineup {
     /** Chaîne qui diffuse un seul programme en boucle (« TURBO 24/24 », « ZONE INTERDITE 24H/24 ») : divertissement. */
     private val ROUND_THE_CLOCK = Regex("""\b24\s*[hH]?\s*/\s*24\b""")
 
+    /** Mots d'un nom de chaîne qui en font une chaîne de cinéma (« L'EQUIPE CINEMA », « MYTIME MOVIE NETWORK »). */
+    private val CINEMA_WORDS = setOf("cinema", "cinemas", "cine", "film", "films", "movie", "movies")
+
+    /** Mots d'un nom de radio (« RFM RADIO », « Vibration FM »). */
+    private val RADIO_WORDS = setOf("radio", "fm")
+
+    /** Radios écrites sans « radio » ni « FM », par nom collé (« |FR| NRJ », « |FR| RTL »). */
+    private val RADIOS = setOf("nrj", "rtl", "rtl2", "rmc", "nostalgie", "skyrock", "cheriefm", "funradio", "franceinter", "mouv")
+
+    /**
+     * Programmes des services gratuits (Pluto TV, Rakuten TV) rangés par la playlist dans une rubrique qui n'est pas la
+     * leur (« LES MARSEILLAIS » ou « ZONE INTERDITE » sous « DOCUMENTAIRE »), par nom collé : leur rubrique.
+     */
+    private val NAMED_SHOWS: Map<String, Section> = buildMap {
+        fun add(section: Section, vararg names: String) = names.forEach { put(it, section) }
+        add(
+            Section.SERIES, "lesanges", "lesmarseillais", "ungarsunefille", "leszamours", "quiveutgagnerdesmillions", "turbo",
+            "zoneinterdite", "teenmom", "catfishtv", "catfish", "ridiculousness", "failarmy", "justepourriregags", "plutotvdating",
+            "plutotvreality", "yaquelaveritequicompte", "yaquelaveritequicomptelachaine", "incroyablestransformations", "adjugevendu",
+            "lemeilleurdelatvrealite", "motuslachaine", "lemeilleurdarthur",
+        )
+        add(Section.MUSIQUE, "mtvclassics")
+    }
+
     private val BRACKETS = Regex("""\([^)]*\)?|\[[^\]]*]?""")
     private val NON_WORD = Regex("[^a-z0-9+]+")
     private val MARKS = Regex("\\p{Mn}+")
@@ -401,6 +448,8 @@ object ChannelLineup {
     private val SECTION_NOISE = setOf(
         "fr", "fra", "france", "francais", "francaise", "french", "chaine", "chaines", "tv", "les", "des", "et", "de", "la", "le",
         "hd", "fhd", "sd", "uhd", "4k", "vip", "premium", "live",
+        // Services gratuits dont la playlist donne les rubriques (« ▀▄ PLUTO TV ▀▄ DOCUMENTAIRE ▄▀▄ »).
+        "pluto", "rakuten",
     )
 
     /** Mots d'un séparateur et rubrique qu'ils annoncent. */
@@ -410,11 +459,14 @@ object ChannelLineup {
         add(Section.CINEMA, "cinema", "cinemas", "cine", "films", "film", "movies", "movie", "box", "office")
         add(Section.SERIES, "divertissement", "divertissements", "series", "serie", "entertainment", "fiction", "fictions")
         add(Section.SPORT, "sport", "sports", "foot", "football")
-        add(Section.DECOUVERTE, "decouverte", "decouvertes", "documentaire", "documentaires", "docs", "doc", "documentary", "nature", "culture")
+        add(
+            Section.DECOUVERTE, "decouverte", "decouvertes", "documentaire", "documentaires", "docs", "doc", "documentary", "nature",
+            "culture", "lifestyle", "deco",
+        )
         add(Section.JEUNESSE, "jeunesse", "enfants", "enfant", "kids", "junior", "dessins", "animes")
         add(Section.MUSIQUE, "musique", "musiques", "music", "clips")
         add(Section.INFO, "info", "infos", "information", "informations", "news", "actualite", "actualites")
-        add(Section.GENERAL, "generaliste", "generalistes", "tnt", "nationale", "nationales")
+        add(Section.GENERAL, "generaliste", "generalistes", "tnt", "nationale", "nationales", "spiritualite", "religion")
         add(Section.REGIONAL, "regionales", "regionale", "regional", "regions", "region", "locales", "locale", "local")
         add(Section.OUTREMER, "outre", "mer", "outremer", "dom", "tom", "ultramarines")
     }
@@ -576,6 +628,7 @@ object ChannelLineup {
         add(Section.INFO, "B Smart", "bsmart", "bsmarttv", "bsmart4change")
         add(Section.INFO, "CGTN France", "cgtnfrance")
         add(Section.INFO, "CGTN", "cgtn")
+        add(Section.INFO, "Tech&Co", "techetco", "techco")
         // Chaînes locales.
         add(Section.REGIONAL, "TV8 Mont-Blanc", "tv8montblanc")
         add(Section.REGIONAL, "Le Figaro TV Île-de-France", "lefigaroidf", "lefigarotvidf")

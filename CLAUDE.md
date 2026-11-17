@@ -159,6 +159,11 @@ Commandes :
   choisi pour la chaîne (`SettingsRepository.channelSound`). Qualité choisie à la main (options › « Qualité de la
   chaîne ») : `AppContainer.lockedQualities`, en mémoire seulement (jusqu'à la fermeture), lue par `channelStart`
   (qualité automatique coupée).
+- Pluto TV / Rakuten TV (0.2.175) : rangés par thème grâce à leurs séparateurs (« ▀▄ PLUTO TV ▀▄ DOCUMENTAIRE ▄▀▄ » ; « pluto »,
+  « rakuten » sont des mots passe-partout, les mots inconnus d'un séparateur sont ignorés) ; programmes mal rangés par la
+  playlist corrigés par nom (`NAMED_SHOWS`) ; « cinéma » / « film » dans le nom l'emporte sur la rubrique ; rubrique
+  `RADIO` (« Radios ») ; à défaut de tout, les mots du nom (« MYSPORTS »). Vérifié sur la vraie playlist le 17/11/2026 :
+  plus aucune catégorie de la playlist parmi les chaînes françaises, 5 chaînes dans « Autres chaînes » (KTO, Daystar, NHK).
 - Rangement recalculé sans relire la playlist : `ChannelFilters.rearrange` (au lancement quand `ChannelLineup.VERSION`
   dépasse le `lineupVersion` des réglages). Toute nouvelle règle de `ChannelLineup` : augmenter `ChannelLineup.VERSION`.
 - « Chaînes françaises seulement » (réglage) : colonne `french` (section autre que `OTHER` dans `ChannelLineup`), masquée

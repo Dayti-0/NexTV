@@ -4,6 +4,11 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.175
+- Chaînes rassemblées : les chaînes Pluto TV et Rakuten TV sont maintenant rangées par thème comme les autres (documentaires dans Découverte, UFC et sports de combat dans Sport, films dans Cinéma, dessins animés dans Jeunesse…) au lieu de rester dans leur propre catégorie
+- Nouvelle catégorie « Radios » (NRJ, RTL, RMC, Skyrock, Nostalgie…)
+- Quelques chaînes mieux rangées : L’Équipe Cinéma et Bouygues Cinéma dans Cinéma, Tech&Co dans Info, MySports dans Sport, Les Marseillais et Zone interdite de Pluto TV dans Séries et divertissement
+
 ## 0.2.174
 - Direct figé : une chaîne qui ne donne plus d’image depuis 20 secondes (écran noir ou image arrêtée, sans message) est rouverte toute seule
 - Direct coupé : l’appli réessaie pendant environ 4 minutes au lieu de 8 secondes, pour qu’une coupure du fournisseur la nuit ne laisse plus un écran noir au matin

@@ -78,9 +78,9 @@ class FrenchOnlyTest {
         assertTrue(all(id).toString(), all(id).any { "LA UNE" in it.uppercase() })
 
         container.channelFilters.apply(id, settings(frenchOnly = true))
-        // Ni chaînes ni catégories des autres pays ; les chaînes françaises, Pluto TV compris, restent.
-        assertEquals(listOf("TNT", "Cinéma", "Sport", "PLUTO TV (FRANCE)"), groups(id))
-        assertEquals(listOf("TF1", "France 2", "Ciné+ Frisson", "beIN Sports 1", "PLUTO TV FILMS"), all(id))
+        // Ni chaînes ni catégories des autres pays ; les chaînes françaises restent, Pluto TV compris, rangée par thème.
+        assertEquals(listOf("TNT", "Cinéma", "Sport"), groups(id))
+        assertEquals(listOf("TF1", "France 2", "Ciné+ Frisson", "PLUTO TV FILMS", "beIN Sports 1"), all(id))
         assertEquals(5, dao.observeListedCount(id).first())
         // Section Foot : la chaîne espagnole d'un match reste trouvée (après les chaînes visibles).
         assertEquals(listOf("|ES| DAZN LALIGA 1"), dao.eventChannelCandidates(id, 0, Long.MAX_VALUE).map { it.name })

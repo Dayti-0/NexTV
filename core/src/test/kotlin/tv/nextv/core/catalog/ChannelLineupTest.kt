@@ -169,7 +169,7 @@ class ChannelLineupTest {
                 "CANAL+", "CANAL+ CINEMA.(S)", "CANAL+ SPORT", "CANAL+ FOOT", "CANAL+ SPORT 360", "CANAL+ GRAND ECRAN", "CANAL+ BOX OFFICE",
                 "CANAL+ KIDS",
                 // Cinéma (connues, puis celles de la rubrique).
-                "CINE FRISSON", "CINE FAMILY", "DRIVE IN MOVIE",
+                "CINE FRISSON", "CINE FAMILY", "DRIVE IN MOVIE", "CINÉ WESTERN BY PLUTO TV",
                 // Séries et divertissement.
                 "PARIS PREMIERE", "STAR ACADEMY", "TURBO 24/24",
                 // Sport.
@@ -181,7 +181,7 @@ class ChannelLineupTest {
                 // Chaînes « événement ».
                 "CANAL+ LIVE 1", "CANAL+ SPORT 1", "CANAL+ SPORT 2", "CANAL+ SPORT 3", "CANAL+ SPORT 4", "MATCH 1 (StadiumFX)",
                 // Autres chaînes françaises, puis les autres pays.
-                "KTO", "CINÉ WESTERN BY PLUTO TV", "LA UNE",
+                "KTO", "LA UNE",
             ),
             lineup(channels),
         )
@@ -223,11 +223,53 @@ class ChannelLineupTest {
         assertEquals("Info" to "Euronews", shown["|FR| EURONEWS HD"])
         // Sans thème, dans une catégorie presque toute rangée par thème : « Autres chaînes ».
         assertEquals("Autres chaînes" to "KTO", shown["|FR| KTO FHD"])
-        // Catégorie d'un service à part (Pluto TV), chaîne d'un autre pays : leur catégorie reste celle de la playlist.
-        assertEquals(null to "CINÉ WESTERN BY PLUTO TV", shown["|FR| CINÉ WESTERN BY PLUTO TV HD"])
+        // Service gratuit (Pluto TV) : ses chaînes sont rangées par thème comme les autres ; chaîne d'un autre pays : sa
+        // catégorie reste celle de la playlist.
+        assertEquals("Cinéma" to "CINÉ WESTERN BY PLUTO TV", shown["|FR| CINÉ WESTERN BY PLUTO TV HD"])
+        assertEquals("Autres chaînes" to "PLUTO TV POLAR", shown["|FR| PLUTO TV POLAR HD"])
         assertEquals(null to null, shown["|BE| LA UNE FHD"])
         // Séparateurs : ni catégorie ni nom.
         assertEquals(null to null, shown["▀▄ FR ▀▄▀▄  CINEMA  ▄▀▄▀▄▀"])
+    }
+
+    /**
+     * Pluto TV et Rakuten TV : chaque chaîne dans la catégorie de son thème d'après les rubriques de la playlist
+     * (« ▀▄ PLUTO TV ▀▄ SPORTS ▄▀▄ »), sauf les programmes connus mal rangés par la playlist ; radios dans « Radios ».
+     */
+    @Test
+    fun `free services and radios are ranged by theme`() {
+        val channels = load(
+            "PLUTO TV (FRANCE)" to "▀▄ PLUTO TV ▀▄ DOCUMENTAIRE ▄▀▄", "PLUTO TV (FRANCE)" to "|FR| PLUTO TV HISTOIRE HD",
+            "PLUTO TV (FRANCE)" to "|FR| LES MARSEILLAIS HD", "PLUTO TV (FRANCE)" to "|FR| MTV CLASSICS HD",
+            "PLUTO TV (FRANCE)" to "▀▄ PLUTO TV ▀▄ ENFANTS ▄▀▄", "PLUTO TV (FRANCE)" to "|FR| ONE PIECE HD",
+            "PLUTO TV (FRANCE)" to "▀▄ PLUTO TV ▀▄ SPORTS ▄▀▄", "PLUTO TV (FRANCE)" to "|FR| UFC HD",
+            "RAKUTEN TV (FRANCE)" to "▀▄ RAKUTEN ▀▄ CINÉMA (ACTION, DRAME, COMÉDIE) ▄▀▄",
+            "RAKUTEN TV (FRANCE)" to "|FR| THRILLERS - RAKUTEN TV FHD",
+            "RAKUTEN TV (FRANCE)" to "▀▄ RAKUTEN ▀▄ LIFESTYLE & DÉCO ★ ▄▀▄", "RAKUTEN TV (FRANCE)" to "|FR| GUSTO TV FHD",
+            "RAKUTEN TV (FRANCE)" to "▀▄ RAKUTEN ▀▄ SPIRITUALITÉ ▄▀▄", "RAKUTEN TV (FRANCE)" to "|FR| DAYSTAR TV FHD",
+            "FR TV HD" to "▀▄ FR ▀▄▀▄▀▄  DIVERTISSEMENT  ▄▀▄▀▄▀", "FR TV HD" to "|FR| L'EQUIPE CINEMA FHD",
+            "FR TV HD" to "▀▄ FR ▀▄▀▄▀▄  JEUNESSE  ▄▀▄▀▄▀", "FR TV HD" to "|FR| TECH & CO HD",
+            "" to "|FR| NRJ", "" to "|FR| RFM RADIO", "" to "|FR| SkyRock FM",
+            "SUISSES (SWITZERLAND)" to "|FR| MYSPORTS 1 HD", "FR TV HD" to "|FR| RTA (RADIO TV ANALAMANGA) HD",
+        )
+        val theme = channels.associate { it.name to it.theme }
+        assertEquals("Découverte", theme["|FR| PLUTO TV HISTOIRE HD"])
+        assertEquals("Séries et divertissement", theme["|FR| LES MARSEILLAIS HD"])
+        assertEquals("Musique", theme["|FR| MTV CLASSICS HD"])
+        assertEquals("Jeunesse", theme["|FR| ONE PIECE HD"])
+        assertEquals("Sport", theme["|FR| UFC HD"])
+        assertEquals("Cinéma", theme["|FR| THRILLERS - RAKUTEN TV FHD"])
+        assertEquals("Découverte", theme["|FR| GUSTO TV FHD"])
+        assertEquals("Autres chaînes", theme["|FR| DAYSTAR TV FHD"])
+        // « Cinéma » dans le nom l'emporte sur la rubrique ; Tech&Co est une chaîne d'info.
+        assertEquals("Cinéma", theme["|FR| L'EQUIPE CINEMA FHD"])
+        assertEquals("Info", theme["|FR| TECH & CO HD"])
+        assertEquals("Radios", theme["|FR| NRJ"])
+        assertEquals("Radios", theme["|FR| RFM RADIO"])
+        assertEquals("Radios", theme["|FR| SkyRock FM"])
+        assertEquals("Sport", theme["|FR| MYSPORTS 1 HD"])
+        // « Radio » entre parenthèses : une chaîne de télé.
+        assertEquals(null, channels.single { it.name == "|FR| RTA (RADIO TV ANALAMANGA) HD" }.theme?.takeIf { it == "Radios" })
     }
 
     @Test
