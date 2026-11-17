@@ -23,9 +23,9 @@ object QualityParser {
      * 9 : versions « Double audio » et « Dolby Digital » d'une chaîne regroupées avec elle ;
      * 10 : écritures d'un même nom regroupées (« + », « & », pluriels), séparateurs de la playlist à part, ordre rangé
      * des chaînes et versions de son gardées pour le réglage « Rassembler les chaînes » ; 11 : catégories par thème et
-     * noms propres des chaînes rassemblées).
+     * noms propres des chaînes rassemblées ; 12 : radios Internet ajoutées aux chaînes en direct).
      */
-    const val VERSION = 11
+    const val VERSION = 12
 
     data class Result(
         /** Nom sans les mentions de qualité ni de codec. */

@@ -168,7 +168,7 @@ class AppContainer(context: Context) {
         store = playlistStore,
         credentialStore = EncryptedCredentialStore(database.credentialDao(), cipher, logger),
         loaders = PlaylistLoaderRegistry(
-            listOf(M3uPlaylistLoader(contentOpener, usesProxy = httpClients::usesProxy)),
+            listOf(M3uPlaylistLoader(contentOpener, usesProxy = httpClients::usesProxy, internetRadios = true)),
         ),
         epgLoader = EpgLoader(
             opener = contentOpener,

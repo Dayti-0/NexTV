@@ -4,6 +4,10 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.176
+- Radios Internet reggae sans pub ajoutées dans la catégorie « Radios », après celles de la playlist : FIP Reggae, SomaFM Heavyweight Reggae, La Grosse Radio Reggae, Reggae.fr et Alpha Boys School Radio (Jamaïque)
+- La playlist est relue une fois au premier lancement pour les ajouter
+
 ## 0.2.175
 - Chaînes rassemblées : les chaînes Pluto TV et Rakuten TV sont maintenant rangées par thème comme les autres (documentaires dans Découverte, UFC et sports de combat dans Sport, films dans Cinéma, dessins animés dans Jeunesse…) au lieu de rester dans leur propre catégorie
 - Nouvelle catégorie « Radios » (NRJ, RTL, RMC, Skyrock, Nostalgie…)

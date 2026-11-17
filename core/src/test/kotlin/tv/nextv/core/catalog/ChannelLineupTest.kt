@@ -98,7 +98,9 @@ class ChannelLineupTest {
     }
 
     /** Playlist rangée comme celle d'un fournisseur courant (vrais noms), lue par le vrai chargeur. */
-    private fun load(vararg entries: Pair<String, String>): List<Channel> {
+    private fun load(vararg entries: Pair<String, String>): List<Channel> = load(internetRadios = false, *entries)
+
+    private fun load(internetRadios: Boolean, vararg entries: Pair<String, String>): List<Channel> {
         val text = buildString {
             appendLine("#EXTM3U")
             entries.forEachIndexed { index, (group, name) ->
@@ -108,7 +110,8 @@ class ChannelLineupTest {
         }
         val opener = CompositeContentOpener(listOf(FakeDocumentOpener(mapOf("doc" to text.toByteArray()))))
         return runBlocking {
-            M3uPlaylistLoader(opener).load(PlaylistSource(name = "P", location = SourceLocation.LocalDocument("doc", "p.m3u")), null).channels
+            M3uPlaylistLoader(opener, internetRadios = internetRadios)
+                .load(PlaylistSource(name = "P", location = SourceLocation.LocalDocument("doc", "p.m3u")), null).channels
         }
     }
 
@@ -270,6 +273,16 @@ class ChannelLineupTest {
         assertEquals("Sport", theme["|FR| MYSPORTS 1 HD"])
         // « Radio » entre parenthèses : une chaîne de télé.
         assertEquals(null, channels.single { it.name == "|FR| RTA (RADIO TV ANALAMANGA) HD" }.theme?.takeIf { it == "Radios" })
+    }
+
+    /** Radios Internet de l'appli : à la fin de la playlist, rangées avec les radios, après celles de la playlist. */
+    @Test
+    fun `internet radios join the radios of the playlist`() {
+        val channels = load(internetRadios = true, "FR TV HD" to "|FR| TF1 HD", "" to "|FR| NRJ", "BELGES" to "|BE| LA UNE FHD")
+        val radios = channels.filter { it.theme == "Radios" }.sortedBy { it.lineup }
+        assertEquals(listOf("NRJ") + InternetRadios.all.map { it.name }, radios.map { it.niceTitle })
+        assertTrue(radios.all { it.french && it.kind == ContentKind.LIVE })
+        assertEquals("SomaFM Heavyweight Reggae", channels.single { it.logoUrl != null && it.groupTitle == InternetRadios.GROUP }.name)
     }
 
     @Test

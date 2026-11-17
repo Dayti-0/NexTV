@@ -164,6 +164,10 @@ Commandes :
   playlist corrigés par nom (`NAMED_SHOWS`) ; « cinéma » / « film » dans le nom l'emporte sur la rubrique ; rubrique
   `RADIO` (« Radios ») ; à défaut de tout, les mots du nom (« MYSPORTS »). Vérifié sur la vraie playlist le 17/11/2026 :
   plus aucune catégorie de la playlist parmi les chaînes françaises, 5 chaînes dans « Autres chaînes » (KTO, Daystar, NHK).
+- Radios Internet (0.2.176) : `core/catalog/InternetRadios.kt` (liste, catégorie « Radios Internet »), ajoutées à la fin
+  des chaînes en direct par `M3uPlaylistLoader(internetRadios = true)` (seulement l'appli, pas les tests), rubrique
+  `RADIO` après les radios de la playlist. Ajouter une radio : vérifier le flux (curl), puis augmenter
+  `QualityParser.VERSION` pour que la playlist soit relue au lancement.
 - Rangement recalculé sans relire la playlist : `ChannelFilters.rearrange` (au lancement quand `ChannelLineup.VERSION`
   dépasse le `lineupVersion` des réglages). Toute nouvelle règle de `ChannelLineup` : augmenter `ChannelLineup.VERSION`.
 - « Chaînes françaises seulement » (réglage) : colonne `french` (section autre que `OTHER` dans `ChannelLineup`), masquée

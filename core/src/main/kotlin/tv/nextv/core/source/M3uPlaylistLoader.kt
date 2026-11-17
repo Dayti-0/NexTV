@@ -5,6 +5,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import tv.nextv.core.catalog.ChannelLineup
+import tv.nextv.core.catalog.InternetRadios
 import tv.nextv.core.catalog.ContentClassifier
 import tv.nextv.core.catalog.LiveVariants
 import tv.nextv.core.catalog.QualityParser
@@ -52,6 +53,8 @@ class M3uPlaylistLoader(
     private val limits: ContentLimits = ContentLimits.PLAYLIST,
     private val usesProxy: (RequestPurpose) -> Boolean = { false },
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    /** Ajoute les radios Internet ([InternetRadios]) aux chaînes en direct d'une playlist qui en a. */
+    private val internetRadios: Boolean = false,
 ) : PlaylistLoader {
 
     override val type = SourceType.M3U
@@ -145,6 +148,7 @@ class M3uPlaylistLoader(
         if (channels.isEmpty()) {
             throw SourceException(if (playlist.hasHeader) SourceError.NoChannels else SourceError.NotAPlaylist)
         }
+        if (internetRadios && channels.any { it.kind == ModelContentKind.LIVE }) channels += InternetRadios.channels(channels.size)
         channels.trimToSize()
 
         val warnings = buildSet {
