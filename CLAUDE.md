@@ -127,6 +127,12 @@ Commandes :
 - Lecteur : `ui/player/PlayerViewModel.kt` avec `PlayerEngine` (un seul ExoPlayer par écran, une source réseau par
   flux via `PlayerFactory.mediaSource`), `DelayedPlaybackController` (pause, différé, replay, avance rapide),
   `AutoQualityController`, `ResumeController`, `ChannelMenuController`.
+- Direct coupé ou figé (0.2.174) : `LiveRetries` (9 relances sur ~4 min ; les 2 premières coupures d'un direct qui a
+  joué sont rouvertes dans la même qualité avant `quality.onError`), `LiveStallWatch` (rien de neuf depuis 20 s —
+  images sorties du décodeur, `PlayerEngine.liveProgress` — alors que le lecteur se croit en lecture : flux rouvert ;
+  écran noir au matin après une nuit en direct). Qualité automatique (`QualitySwitcher.Config`) : on descend après 10 s
+  de blocage, 3 chargements d'au moins 1 s en 2 min, ou 120 images perdues en 10 s (l'utilisateur la trouvait trop
+  réactive avec 3 s / 2 en 30 s / 30 en 5 s).
 - Actualisations automatiques (playlist, guide) : `RefreshController` (dans `AppContainer.kt`) avec `background = true`
   passe par `BackgroundWork` : rien pendant qu'un lecteur est ouvert (`AppContainer.playbackOpen`), une actualisation
   en cours est abandonnée quand une lecture démarre et refaite après. Mémoire tampon : `PlayerFactory.loadControl()`

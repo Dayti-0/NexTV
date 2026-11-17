@@ -147,6 +147,9 @@ class PlayerViewModel(
     private var liveRetryJob: Job? = null
     private var liveStableJob: Job? = null
 
+    /** Direct figé sans erreur (plus d'images ni de position depuis 20 s) : rouvert comme une coupure. */
+    private val liveStall = LiveStallWatch()
+
     /** Direct fermé en quittant l'écran (veille, autre application) : à rouvrir au retour. */
     private var reopenLiveOnStart = false
 
@@ -291,6 +294,7 @@ class PlayerViewModel(
                 // Épisode : le suivant est proposé 40 s avant la fin.
                 resume.checkUpNext()
                 if (vlc == null) engine.updateAdCues()
+                checkLiveStall()
                 val adMuted = engine.adVolume.enabled && engine.adVolume.attenuating
                 updateAdMusic(adMuted)
                 val adWatch = if (vlc == null) engine.adVolume.watch() else null
@@ -1117,6 +1121,13 @@ class PlayerViewModel(
             return
         }
         if (failure != null && recoverFromCodecFailure(failure, player)) return
+        // Direct qui jouait, coupé (réseau, serveur) : d'abord rouvert dans la même qualité (deux fois). Une coupure
+        // passagère du fournisseur faisait descendre la qualité aussitôt, et elle y restait.
+        if (failure == null && error.errorCode in RETRIABLE_LIVE_ERRORS && liveRetries.hasPlayed &&
+            liveRetries.done < SAME_QUALITY_RETRIES && retryLive(error.errorCodeName)
+        ) {
+            return
+        }
         // Autre version de la même chaîne, de qualité inférieure, si elle existe.
         if (quality.onError()) return
         // Direct qui jouait, coupé (réseau, serveur) : rouvert quelques fois avant d'afficher l'erreur.
@@ -1227,6 +1238,7 @@ class PlayerViewModel(
 
     fun onStart() {
         started.value = true
+        liveStall.reset()
         shownOnce = true
         if (reopenLiveOnStart) {
             // Direct fermé à la sortie (veille…) : la chaîne est rouverte, au direct.
@@ -1353,6 +1365,25 @@ class PlayerViewModel(
         liveRetryJob?.cancel()
         liveStableJob?.cancel()
         liveRetries.newChannel()
+        liveStall.reset()
+    }
+
+    /**
+     * Direct qui se croit en lecture mais dont plus rien n'avance depuis 20 s ([LiveStallWatch]) : rouvert comme une
+     * coupure ([retryLive]). Sans cela, l'écran restait noir ou figé toute la nuit, jusqu'au changement de chaîne.
+     * Relances épuisées : le flux est arrêté et l'erreur s'affiche (bouton « Réessayer »). Une chaîne qui n'a encore
+     * jamais joué n'est pas concernée (démarrage lent).
+     */
+    private fun checkLiveStall() {
+        val watched = vlc == null && watchingLive && !delayed.playingTimeshift && liveRetryJob?.isActive != true &&
+            state.value.error == null && !state.value.paused && state.value.liveDelayMs == 0L
+        val progress = if (watched) engine.liveProgress() else null
+        if (!liveStall.check(SystemClock.elapsedRealtime(), progress)) return
+        if (!liveRetries.hasPlayed) return
+        container.logger.warn(TAG, "Direct figé (rien de neuf depuis ${LiveStallWatch.DEFAULT_LIMIT_MILLIS / 1_000} s) : ${state.value.channelName}")
+        if (retryLive("image figée")) return
+        engine.stop()
+        mutableState.update { it.copy(buffering = false, error = resources.getString(R.string.player_error_stream_frozen)) }
     }
 
     /** Le flux joue : après [LIVE_STABLE_MILLIS] sans coupure, les relances repartent de zéro. */
@@ -1505,6 +1536,9 @@ class PlayerViewModel(
         private const val MAX_AUDIO_TRIES = 3
         private const val MAX_DECODER_TRIES = 2
         private const val MAX_COPY_TRIES = 3
+
+        /** Coupures d'un direct rouvert dans la même qualité avant d'essayer une version inférieure. */
+        private const val SAME_QUALITY_RETRIES = 2
 
         /** Lecture sans coupure pendant ce temps : les relances repartent de zéro. */
         private const val LIVE_STABLE_MILLIS = 30_000L

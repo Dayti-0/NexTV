@@ -4,6 +4,11 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.174
+- Direct figé : une chaîne qui ne donne plus d’image depuis 20 secondes (écran noir ou image arrêtée, sans message) est rouverte toute seule
+- Direct coupé : l’appli réessaie pendant environ 4 minutes au lieu de 8 secondes, pour qu’une coupure du fournisseur la nuit ne laisse plus un écran noir au matin
+- Qualité automatique plus patiente : elle ne baisse plus au moindre petit chargement (10 secondes de blocage, ou 3 vrais chargements en 2 minutes), et une coupure du flux est d’abord réessayée dans la même qualité
+
 ## 0.2.173
 - Enregistrements d’analyse : après un changement de chaîne, ils notent que le son n’est plus baissé (avant, l’ancienne baisse semblait continuer)
 - Enregistrement automatique : L’Équipe et Novo19 (analysées le 17 novembre) passent après les chaînes moins enregistrées

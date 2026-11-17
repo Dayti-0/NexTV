@@ -42,8 +42,8 @@ enum class QualityTarget {
 /**
  * Choix automatique de la qualité parmi les versions d'une même chaîne (FHD → HD → SD → LOW).
  *
- * - Erreur de lecture, mise en mémoire tampon prolongée ou répétée : passage à la version
- *   inférieure disponible, en quelques secondes. Le démarrage d'une chaîne a droit à plus de
+ * - Erreur de lecture, mise en mémoire tampon prolongée (10 s) ou répétée (3 fois en 2 min) : passage à la
+ *   version inférieure disponible. Le démarrage d'une chaîne a droit à plus de
  *   temps qu'un blocage en cours de lecture. Jamais vers une autre chaîne : seules les [options] fournies
  *   (versions de la chaîne regardée) sont envisagées.
  * - Trop d'images perdues par le décodeur (l'appareil ne suit pas, typiquement en 4K) : passage
@@ -69,12 +69,18 @@ class QualitySwitcher(
     private val maxRank: Int? = null,
 ) {
     data class Config(
-        /** Blocage en cours de lecture toléré avant de changer de version. */
-        val maxContinuousBufferingMillis: Long = 3_000,
+        /**
+         * Blocage en cours de lecture toléré avant de changer de version. 3 s faisaient descendre la qualité au moindre
+         * accroc du fournisseur (0.2.174) : un petit chargement se rattrape seul, une version inférieure reste ensuite.
+         */
+        val maxContinuousBufferingMillis: Long = 10_000,
         /** Démarrage de la version (chargement initial) toléré avant de changer de version. */
-        val maxInitialBufferingMillis: Long = 8_000,
-        val rebufferWindowMillis: Long = 30_000,
-        val maxRebuffersInWindow: Int = 2,
+        val maxInitialBufferingMillis: Long = 12_000,
+        /** Chargements en pleine lecture comptés sur cette durée ([maxRebuffersInWindow] : on descend). */
+        val rebufferWindowMillis: Long = 120_000,
+        val maxRebuffersInWindow: Int = 3,
+        /** Chargement plus court : un simple accroc, pas compté. */
+        val minRebufferMillis: Long = 1_000,
         /** Lecture stable avant de remonter quand le débit mesuré le justifie. */
         val stableMillisBeforeUpgrade: Long = 60_000,
         val upgradeHeadroom: Double = 1.4,
@@ -85,8 +91,8 @@ class QualitySwitcher(
         val failureCooldownMillis: Long = 5 * 60_000,
         val maxFailureCooldownMillis: Long = 60 * 60_000,
         /** Images perdues tolérées sur [droppedFramesWindowMillis] avant de juger que l'appareil ne suit pas. */
-        val maxDroppedFramesInWindow: Int = 30,
-        val droppedFramesWindowMillis: Long = 5_000,
+        val maxDroppedFramesInWindow: Int = 120,
+        val droppedFramesWindowMillis: Long = 10_000,
     )
 
     enum class Reason { ERROR, BUFFERING, DECODER, UPGRADE }
@@ -141,14 +147,14 @@ class QualitySwitcher(
     val isAdaptive: Boolean get() = enabled && ladder.size > 1
 
     fun onBufferingStarted() {
-        val now = clock()
-        if (bufferingSince == null) {
-            bufferingSince = now
-            if (played) rebuffers.addLast(now)
-        }
+        if (bufferingSince == null) bufferingSince = clock()
     }
 
     fun onReady() {
+        // Chargement en pleine lecture : compté à sa fin, s'il a duré (un accroc d'une fraction de seconde ne compte pas).
+        val now = clock()
+        val since = bufferingSince
+        if (played && since != null && now - since >= config.minRebufferMillis) rebuffers.addLast(now)
         bufferingSince = null
         played = true
         trialFrom = null

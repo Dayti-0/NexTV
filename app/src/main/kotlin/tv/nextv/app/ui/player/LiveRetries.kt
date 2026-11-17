@@ -14,6 +14,9 @@ internal class LiveRetries(private val delays: List<Long> = DEFAULT_DELAYS) {
     /** Le direct a déjà joué depuis l'ouverture de la chaîne. */
     private var played = false
 
+    /** Le direct a déjà joué depuis l'ouverture de la chaîne (un blocage avant n'est qu'un démarrage lent). */
+    val hasPlayed: Boolean get() = played
+
     /** Relances faites depuis la dernière lecture stable. */
     var done = 0
         private set
@@ -43,7 +46,11 @@ internal class LiveRetries(private val delays: List<Long> = DEFAULT_DELAYS) {
     }
 
     private companion object {
-        /** Trois essais, de plus en plus espacés. */
-        val DEFAULT_DELAYS = listOf(1_000L, 2_500L, 5_000L)
+        /**
+         * Essais de plus en plus espacés, pendant un peu plus de 4 min : une coupure du fournisseur la nuit (serveur
+         * redémarré, source de la chaîne absente un moment) se rattrape seule. Trois essais en 8 s laissaient l'erreur
+         * affichée, puis l'appareil se mettait en veille : écran noir au matin.
+         */
+        val DEFAULT_DELAYS = listOf(1_000L, 2_500L, 5_000L, 10_000L, 20_000L, 30_000L, 60_000L, 60_000L, 60_000L)
     }
 }

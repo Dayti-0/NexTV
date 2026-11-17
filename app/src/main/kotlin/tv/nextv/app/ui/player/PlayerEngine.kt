@@ -832,6 +832,24 @@ internal class PlayerEngine(
         return delta.coerceAtLeast(0)
     }
 
+    /**
+     * Repère d'avancement du flux en cours, pour reconnaître un direct figé ([LiveStallWatch]) : images sorties du
+     * décodeur vidéo (affichées, sautées ou perdues : c'est le flux qui doit avancer, pas l'affichage), ou position
+     * de lecture sans piste vidéo (radio). `null` quand rien ne doit avancer : pas de lecteur, en pause, en erreur,
+     * arrêté ou terminé.
+     */
+    fun liveProgress(): Long? {
+        val player = mutablePlayer.value ?: return null
+        if (player.playerError != null || !player.playWhenReady) return null
+        if (player.playbackState != Player.STATE_READY && player.playbackState != Player.STATE_BUFFERING) return null
+        val counters = player.videoDecoderCounters
+        if (player.videoFormat != null && counters != null) {
+            counters.ensureUpdated()
+            return counters.renderedOutputBufferCount.toLong() + counters.skippedOutputBufferCount + counters.droppedBufferCount
+        }
+        return player.currentPosition
+    }
+
     /** Met à jour les infos de lecture ; le type de décodeur (matériel ou logiciel) est déduit dès que possible. */
     private fun updateInfo(transform: (PlaybackInfo) -> PlaybackInfo) {
         state.update { state ->
