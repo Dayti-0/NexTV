@@ -267,6 +267,10 @@ Commandes :
   seulement cet écran fixe (pas compté comme pub). `AdRecorder.newStream` ne notait pas le retour du son à un changement de
   flux : la baisse semblait continuer sur la chaîne suivante (40 s « à tort » qui n'existaient pas). Corrigé en 0.2.173 ;
   `AdDeviceReplayTool` et `ad_sheets.py` lisent aussi « flux » comme son remonté pour les anciens fichiers.
+- Matin du 17/11/2026 (box en automatique 0.2.173 : CStar, 6ter, TF1 Séries Films, T18 ; 2 h 15) : appareil 92 % des
+  secondes de pub baissées, 123 s de programme à tort, délai moyen 15 s (rejeu du code : 87 %, 66 s, 27 s, il ne sait pas ce
+  que l'appareil avait appris). Erreurs éparses : clip de CStar baissé 30 s (« logo parti depuis 20 s », refermé comme prévu),
+  page de T18 refermée 47 s tard (logo pas encore appris), pages de TF1 Séries Films ouvertes ~25 s tard. Pas de correction.
 
 ## Essais sur de vrais flux
 
