@@ -308,7 +308,8 @@ class AdDeviceReplayTool {
                 }.orEmpty()
                 val soundRates = events.filter { it.second == "frequence" }.mapNotNull { (time, _, value) -> value.toIntOrNull()?.let { time to it } }
                 val audio = read("audio.ulaw")?.let { bytes -> FloatArray(bytes.size) { ulaw(bytes[it]) / 32_768f } } ?: FloatArray(0)
-                val lowering = events.filter { it.second == "baisse" }.map { it.first to (it.third == "1") }
+                // Changement de flux : la détection repart de zéro, son non baissé (avant 0.2.173, l'appareil ne le notait pas).
+                val lowering = events.filter { it.second == "baisse" || it.second == "flux" }.map { it.first to (it.second == "baisse" && it.third == "1") }
                 return DeviceRecording(info, slices, audio, prints, soundRates, frames.sortedBy { it.time }, lowering, events)
             }
 

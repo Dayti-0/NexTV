@@ -5,7 +5,8 @@ from PIL import Image, ImageDraw
 d, out, step = sys.argv[1], sys.argv[2], int(sys.argv[3]) if len(sys.argv) > 3 else 20
 os.makedirs(out, exist_ok=True)
 ev = [l.split("\t") for l in open(os.path.join(d, "events.tsv")).read().splitlines() if l.count("\t") >= 2]
-low = [(int(t), v == "1") for t, w, v in ev if w == "baisse"]
+# « flux » : la détection repart de zéro, son non baissé (avant 0.2.173, l’appareil ne notait pas ce retour).
+low = [(int(t), w == "baisse" and v == "1") for t, w, v in ev if w in ("baisse", "flux")]
 logo = [(int(t), v) for t, w, v in ev if w == "logo"]
 def at(lst, t, default):
     r = default

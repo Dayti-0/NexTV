@@ -260,6 +260,13 @@ Commandes :
   `AdDeviceReplayTool` prenait le nom de la chaîne précédente pour un flux changé moins d'une seconde après le début du
   fichier (Gulli appris comme TF1 : 283 s à tort qui n'existaient pas) : corrigé. Reste : une page de CNews refermée en
   pleine pub après 80 s sans jonction (« logo toujours absent »), puis rouverte 45 s plus tard.
+- Nuit du 16 au 17/11/2026 (box en automatique 0.2.172 partie d'une liste hors TNT : beIN Sports, E!, Novelas, chaînes
+  « 24/24 » de M6+ ; Fire TV : L'Équipe, Novo19 ; 6 h 25) : appareil 87 % des secondes de pub baissées, ~250 s de programme
+  à tort (rugby après une page sur beIN, logo différent : 80 s ; ouverture « carton » juste après l'écran « M6+ revient dans
+  un instant » : 50 s ; fermeture tardive sur Novo19, logo pas encore appris : 50 s). Les chaînes « 24/24 » n'ont pas de pubs,
+  seulement cet écran fixe (pas compté comme pub). `AdRecorder.newStream` ne notait pas le retour du son à un changement de
+  flux : la baisse semblait continuer sur la chaîne suivante (40 s « à tort » qui n'existaient pas). Corrigé en 0.2.173 ;
+  `AdDeviceReplayTool` et `ad_sheets.py` lisent aussi « flux » comme son remonté pour les anciens fichiers.
 
 ## Essais sur de vrais flux
 

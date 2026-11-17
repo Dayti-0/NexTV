@@ -108,6 +108,8 @@ class AdRecorder(
         streamChanges++
         base = last
         event(0, "flux", name.orEmpty())
+        // La détection du nouveau flux part son non baissé : noté, sinon l'ancienne baisse paraît continuer (relevés faux).
+        event(0, "baisse", "0")
     }
 
     /** Tranche de son traitée par la détection : son carré moyen et sa durée. [now] : horloge de la détection après elle. */

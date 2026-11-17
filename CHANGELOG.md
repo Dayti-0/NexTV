@@ -4,6 +4,10 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.173
+- Enregistrements d’analyse : après un changement de chaîne, ils notent que le son n’est plus baissé (avant, l’ancienne baisse semblait continuer)
+- Enregistrement automatique : L’Équipe et Novo19 (analysées le 17 novembre) passent après les chaînes moins enregistrées
+
 ## 0.2.172
 - Enregistrement automatique : CNews, LCI, T18 et Novo19 (analysés le 16 novembre au soir) passent après les chaînes encore jamais enregistrées
 

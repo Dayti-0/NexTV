@@ -164,6 +164,9 @@ class AdRecorderTest {
         assertTrue("nouveau flux à $stream ms", stream in 39_000..41_000)
         val channel = events.lines().first { "\tchaine\tW9" in it }.substringBefore('\t').toLong()
         assertTrue(channel >= stream)
+        // Le son du nouveau flux part non baissé : noté juste après le changement.
+        val after = events.lines().dropWhile { "\tflux\t" !in it }.drop(1).first()
+        assertTrue(after, after.endsWith("\tbaisse\t0"))
     }
 
     @Test
