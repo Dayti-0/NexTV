@@ -4,6 +4,13 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.194
+- Configuration à distance : au premier lancement, la télé affiche un code ; de chez vous (Réglages › Configuration à distance › Configurer une autre télé), entrez ce code et envoyez sa playlist, vos réglages, vos clés et les catégories à masquer : tout s'installe tout seul, sans relier les deux télés
+- Réglages › Configuration à distance › « Afficher le code de cette télé » : pour la reconfigurer plus tard (nouveau compte, par exemple)
+- Animation des radios : le nom de la radio et son genre passent dans le coin en haut à gauche
+- Animation des radios : couleurs tirées de la pochette du morceau quand elle en a (sinon celles de la radio)
+- Animation des radios : liste des artistes affichée en entier (écrite plus petit quand elle est longue)
+
 ## 0.2.193
 - Animation « Vinyle » des radios : la pochette du morceau s'affiche aussi en carré, fixe, au-dessus du titre (en plus du disque qui tourne)
 

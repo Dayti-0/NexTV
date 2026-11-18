@@ -177,7 +177,7 @@ Commandes :
 - Animation des radios (0.2.179, réglage `RadioVisual`, Réglages › Son) : `ui/player/RadioVisualizer.kt` (Spectre,
   Ondes, Aurore, Particules, Vinyle, Mélange ; 30 images/s et moins de particules sur une petite Fire TV), affichée par
   `PlayerScreen` quand le flux n'a que du son (`PlayerUiState.audioOnly`, pistes vues par `PlayerEngine.onTracksChanged`),
-  avec le morceau en cours (métadonnées ICY, `radioTitle`). Vinyle (0.2.187) : pochette du morceau (`nowPlayingCover`) en étiquette du disque, qui tourne avec lui (`graphicsLayer`, même taille que `drawVinyl` : `VINYL_RADIUS`, `VINYL_LABEL_SHARE`), logo dessous tant qu'elle charge. Texte (0.2.188, `NowPlayingText`) : radio · genre en petit, titre en grand, artiste dessous (titre ICY séparé par `NowPlaying.fromStreamTitle` dans `PlayerScreen` ; services : `nowPlayingSong` / `nowPlayingArtist` ; RTL : émission en titre, jamais séparée) ; Vinyle sur écran large : disque à gauche (`vinylCenter`), texte à droite, avec la pochette en carré fixe au-dessus (0.2.193, `SquareCover`, `VINYL_COVER_SHARE` ; à côté du texte sur un téléphone). Son : `SpectrumTap` (processeur audio de chaque lecteur de
+  avec le morceau en cours (métadonnées ICY, `radioTitle`). Vinyle (0.2.187) : pochette du morceau (`nowPlayingCover`) en étiquette du disque, qui tourne avec lui (`graphicsLayer`, même taille que `drawVinyl` : `VINYL_RADIUS`, `VINYL_LABEL_SHARE`), logo dessous tant qu'elle charge. Texte (0.2.188, `NowPlayingText`) : radio · genre en petit, titre en grand, artiste dessous (titre ICY séparé par `NowPlaying.fromStreamTitle` dans `PlayerScreen` ; services : `nowPlayingSong` / `nowPlayingArtist` ; RTL : émission en titre, jamais séparée) ; Vinyle sur écran large : disque à gauche (`vinylCenter`), texte à droite, avec la pochette en carré fixe au-dessus (0.2.193, `SquareCover`, `VINYL_COVER_SHARE` ; à côté du texte sur un téléphone). Radio et genre dans le coin en haut à gauche (`RadioBadge`, 0.2.194) ; couleurs tirées de la pochette (`core/audio/CoverColors`, `coverPaletteOf`, pochette réduite à 48 × 48 ; sans couleur franche : celles de `paletteFor`) ; artistes en entier (5 lignes, plus petit au-delà de `LONG_ARTIST`). Son : `SpectrumTap` (processeur audio de chaque lecteur de
   `PlayerFactory`, simple copie tant qu'aucune animation n'est affichée) → `core/audio/SpectrumAnalyzer` (FFT 1024,
   32 bandes). Sans son analysé (VLC, son passé à l'ampli) : houle de remplacement. Captures : `Screenshots.radioVisuals`
   (`animate = false`, sinon la boucle d'images empêche le test de finir). Choix aussi dans les options du lecteur (rubrique en
@@ -248,6 +248,16 @@ Commandes :
   `SettingsRepository.DEVICE_ONLY`), `TvSync` (quand : 5 s après un changement, fin de lecture, retour dans l'appli,
   toutes les 5 min ; jamais pendant une lecture), `EncryptedSyncStateStore` (`files/sync`), écran `ui/settings/TvLink.kt`.
   Nouveau réglage partagé : rien à faire ; propre à l'appareil : l'ajouter à `DEVICE_ONLY`.
+- Configuration à distance (0.2.194, Réglages › Configuration à distance) : pour installer la télé d'un ami sans y être.
+  `core/sync/RemoteSetup.kt` (`RemoteSetupLink` : code à 6 chiffres, page filebin `nixtv-setup-<sha256 du code>`, fichiers
+  chiffrés avec une clé tirée du code : `attente.bin` (nom de la télé) → `configuration.bin` (`RemoteConfig` : une playlist,
+  réglages, clés, catégories masquées LIVE/MOVIE/SERIES) → `recu.bin` ; page supprimée par celle qui configure dès la
+  réponse, sinon 2 min après ; code valable 15 min, renouvelé seul). Télé configurée : `RemoteSetupReceiver` (actif tant
+  qu'un écran montre le code : bienvenue, première étape de la configuration rapide sans playlist, page des réglages ;
+  coupé sous Robolectric) puis `RemoteSetupApplier` (playlist ajoutée et choisie, ou mise à jour si même fournisseur ;
+  configuration rapide marquée faite) ; `NexTvNavHost` recharge alors la playlist. Celle qui configure :
+  `ui/settings/RemoteSetup.kt` (`RemoteSendViewModel` : serveur prérempli d'après sa playlist, identifiant + mot de passe
+  de l'ami, réglages `SettingsRepository.remoteSetupPreferences` sans les équipes suivies). Pas de lien durable (≠ Télés reliées).
 - Rangement recalculé sans relire la playlist : `ChannelFilters.rearrange` (au lancement quand `ChannelLineup.VERSION`
   dépasse le `lineupVersion` des réglages). Toute nouvelle règle de `ChannelLineup` : augmenter `ChannelLineup.VERSION`.
 - « Chaînes françaises seulement » (réglage) : colonne `french` (section autre que `OTHER` et `GENERAL` « Autres chaînes »,

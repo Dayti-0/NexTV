@@ -428,6 +428,27 @@ class AppContainer(context: Context) {
         }
     }
 
+    /** Configuration à distance : code affiché sur une télé, configuration envoyée par une autre (filebin, chiffrée). */
+    val remoteSetupLink: tv.nextv.core.sync.RemoteSetupLink by lazy {
+        tv.nextv.core.sync.RemoteSetupLink(tv.nextv.app.data.sync.FilebinRelay(httpClients.client(RequestPurpose.METADATA)), { deviceName() })
+    }
+
+    /** Configuration reçue d'une autre télé : playlist, réglages, clés et catégories masquées installés sur celle-ci. */
+    val remoteSetupApplier: tv.nextv.app.data.sync.RemoteSetupApplier by lazy {
+        tv.nextv.app.data.sync.RemoteSetupApplier(playlistStore, sourceRepository, hiddenGroupDao, settings)
+    }
+
+    /** Code de configuration à distance de cette télé (écran de bienvenue, réglages). Rien n'est déposé pendant les tests. */
+    val remoteSetupReceiver: tv.nextv.app.data.sync.RemoteSetupReceiver by lazy {
+        tv.nextv.app.data.sync.RemoteSetupReceiver(
+            link = remoteSetupLink,
+            install = { config -> remoteSetupApplier.apply(config) },
+            scope = applicationScope,
+            logger = logger,
+            enabled = Build.FINGERPRINT != "robolectric",
+        )
+    }
+
     /** Nom de la télé montré aux autres télés reliées : celui donné dans les paramètres de l'appareil, sinon son modèle. */
     private fun deviceName(): String {
         val named = runCatching { android.provider.Settings.Global.getString(appContext.contentResolver, "device_name") }.getOrNull()

@@ -491,6 +491,12 @@ class SettingsRepository(
     }
 
     /**
+     * Réglages envoyés à une télé configurée à distance (Réglages › Configuration à distance) : ceux des télés reliées,
+     * sans les choix personnels (équipes suivies).
+     */
+    suspend fun remoteSetupPreferences(): Map<String, String> = syncedPreferences() - FAVORITE_TEAMS.name
+
+    /**
      * Applique les réglages venus des autres télés reliées (valeur `null` : réglage remis par défaut).
      * @return nombre de réglages connus de cette version (les autres sont ignorés).
      */

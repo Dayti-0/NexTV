@@ -10,7 +10,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -37,12 +39,22 @@ import androidx.compose.ui.unit.sp
 import tv.nextv.app.R
 import tv.nextv.app.ui.components.PillButton
 import tv.nextv.app.ui.components.PillStyle
+import tv.nextv.app.ui.components.rememberWindowInfo
 import tv.nextv.app.ui.theme.NexTvColors
 
-/** Premier lancement (aucune playlist) : présentation et ajout de la première playlist. */
+/**
+ * Premier lancement (aucune playlist) : présentation et ajout de la première playlist. [remoteCode] : carte du code de
+ * configuration à distance (à côté sur un écran large, dessous sinon).
+ */
 @Composable
-fun WelcomeScreen(onAdd: () -> Unit, animate: Boolean = true, onAddFromPhone: (() -> Unit)? = null) {
+fun WelcomeScreen(
+    onAdd: () -> Unit,
+    animate: Boolean = true,
+    onAddFromPhone: (() -> Unit)? = null,
+    remoteCode: (@Composable (Modifier) -> Unit)? = null,
+) {
     val focusRequester = remember { FocusRequester() }
+    val window = rememberWindowInfo()
     LaunchedEffect(Unit) { runCatching { focusRequester.requestFocus() } }
     Box(
         Modifier
@@ -50,37 +62,58 @@ fun WelcomeScreen(onAdd: () -> Unit, animate: Boolean = true, onAddFromPhone: ((
             .background(screenBackground()),
         contentAlignment = Alignment.Center,
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.widthIn(max = 620.dp).verticalScroll(rememberScrollState()).padding(32.dp),
-        ) {
-            AnimatedLogo(animate = animate)
-            Spacer(Modifier.height(16.dp))
-            Text(stringResource(R.string.welcome_title), fontSize = 34.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-            Spacer(Modifier.height(8.dp))
-            Text(
-                stringResource(R.string.welcome_message),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-            Spacer(Modifier.height(28.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                WelcomeStep(1, stringResource(R.string.welcome_step_playlist))
-                WelcomeStep(2, stringResource(R.string.welcome_step_guide))
-                WelcomeStep(3, stringResource(R.string.welcome_step_remote))
-            }
-            Spacer(Modifier.height(32.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                PillButton(
-                    stringResource(R.string.action_add_first_source),
-                    onAdd,
-                    icon = Icons.Filled.Add,
-                    style = PillStyle.Primary,
-                    modifier = Modifier.focusRequester(focusRequester),
+        val intro: @Composable (Modifier) -> Unit = { modifier ->
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = modifier) {
+                AnimatedLogo(animate = animate)
+                Spacer(Modifier.height(16.dp))
+                Text(stringResource(R.string.welcome_title), fontSize = 34.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    stringResource(R.string.welcome_message),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
                 )
-                // Saisie au clavier du téléphone (QR code) plutôt qu'à la télécommande.
-                onAddFromPhone?.let { PillButton(stringResource(R.string.action_add_from_phone), it, icon = Icons.Filled.Phone) }
+                Spacer(Modifier.height(28.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    WelcomeStep(1, stringResource(R.string.welcome_step_playlist))
+                    WelcomeStep(2, stringResource(R.string.welcome_step_guide))
+                    WelcomeStep(3, stringResource(R.string.welcome_step_remote))
+                }
+                Spacer(Modifier.height(32.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    PillButton(
+                        stringResource(R.string.action_add_first_source),
+                        onAdd,
+                        icon = Icons.Filled.Add,
+                        style = PillStyle.Primary,
+                        modifier = Modifier.focusRequester(focusRequester),
+                    )
+                    // Saisie au clavier du téléphone (QR code) plutôt qu'à la télécommande.
+                    onAddFromPhone?.let { PillButton(stringResource(R.string.action_add_from_phone), it, icon = Icons.Filled.Phone) }
+                }
+            }
+        }
+        if (remoteCode != null && window.isWide) {
+            // Le code toujours visible, sans faire défiler : à droite de la présentation.
+            Row(
+                Modifier.verticalScroll(rememberScrollState()).padding(32.dp),
+                horizontalArrangement = Arrangement.spacedBy(40.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                intro(Modifier.widthIn(max = 560.dp))
+                remoteCode(Modifier.width(380.dp))
+            }
+        } else {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.widthIn(max = 620.dp).verticalScroll(rememberScrollState()).padding(32.dp),
+            ) {
+                intro(Modifier)
+                remoteCode?.let {
+                    Spacer(Modifier.height(28.dp))
+                    it(Modifier.fillMaxWidth())
+                }
             }
         }
     }

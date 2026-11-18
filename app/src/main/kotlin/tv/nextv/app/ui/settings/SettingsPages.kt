@@ -23,6 +23,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Build
@@ -85,6 +86,9 @@ enum class SettingsPage {
 
     /** Télés reliées : mêmes favoris et réglages sur plusieurs télés. */
     LINK,
+
+    /** Configuration à distance : installer une autre télé par un code (sans la relier). */
+    REMOTE,
     BACKUP,
     UPDATE,
 }
@@ -98,6 +102,7 @@ private fun SettingsPage.title(): Int = when (this) {
     SettingsPage.SERVICES -> R.string.settings_page_services
     SettingsPage.NETWORK -> R.string.settings_network
     SettingsPage.LINK -> R.string.settings_link
+    SettingsPage.REMOTE -> R.string.remote_setup
     SettingsPage.BACKUP -> R.string.settings_backup
     SettingsPage.UPDATE -> R.string.settings_update
 }
@@ -111,6 +116,7 @@ private fun SettingsPage.description(): Int? = when (this) {
     SettingsPage.SERVICES -> R.string.settings_page_services_help
     SettingsPage.NETWORK -> R.string.settings_page_network_help
     SettingsPage.LINK -> R.string.settings_page_link_help
+    SettingsPage.REMOTE -> R.string.settings_page_remote_help
     SettingsPage.BACKUP -> R.string.settings_page_backup_help
     SettingsPage.UPDATE -> R.string.settings_page_update_help
 }
@@ -124,6 +130,7 @@ private fun SettingsPage.icon(): ImageVector = when (this) {
     SettingsPage.SERVICES -> Icons.Filled.Star
     SettingsPage.NETWORK -> NexTvIcons.Cloud
     SettingsPage.LINK -> Icons.Filled.Share
+    SettingsPage.REMOTE -> Icons.AutoMirrored.Filled.Send
     SettingsPage.BACKUP -> Icons.Filled.Lock
     SettingsPage.UPDATE -> Icons.Filled.Refresh
 }

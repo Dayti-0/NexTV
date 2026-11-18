@@ -151,8 +151,8 @@ abstract class ScreenshotSuite(private val device: String) {
                     name = "West Coast G-Funk",
                     logoUrl = null,
                     genre = "Hip-hop",
-                    title = "Histoire d'un soir (Bye bye les galères) (Version 2001 remasterisée)",
-                    artist = "Bibi Flash",
+                    title = "The Package (Night Time Remix)",
+                    artist = "Omen44, Smif-N-Wessun, Ruste Juxx, Rockness Monsta, Da Beatminerz, Sean Price",
                     cover = "https://exemple.invalid/pochette.jpg",
                     lowPower = false,
                     warmUpSeconds = 4,
@@ -186,6 +186,60 @@ abstract class ScreenshotSuite(private val device: String) {
     @Test
     fun welcome() = capture("04_bienvenue") {
         WelcomeScreen(onAdd = {}, animate = false)
+    }
+
+    /** Premier lancement : le code de configuration à distance à côté de la présentation. */
+    @Test
+    fun welcomeRemoteCode() = capture("04b_bienvenue_code") {
+        WelcomeScreen(
+            onAdd = {},
+            animate = false,
+            onAddFromPhone = {},
+            remoteCode = { modifier ->
+                tv.nextv.app.ui.settings.RemoteCodeCard(
+                    tv.nextv.app.data.sync.RemoteReceiveState.Waiting(tv.nextv.core.sync.RemoteSetupOffer("482913", SampleData.NOW + 14 * 60_000L)),
+                    modifier,
+                    now = SampleData.NOW,
+                )
+            },
+        )
+    }
+
+    /** Configurer une autre télé : code, compte de l'ami, réglages et catégories, envoi réussi. */
+    @Test
+    fun remoteSend() = capture("16m_configurer_une_autre_tele") {
+        tv.nextv.app.ui.settings.RemoteSendContent(
+            form = tv.nextv.app.ui.settings.RemoteSendForm(
+                code = "482913",
+                server = "http://fournisseur.exemple:8080",
+                username = "paul",
+                password = "motdepasse",
+                hidden = mapOf(tv.nextv.core.model.ContentKind.LIVE to setOf("Adultes", "Arabe"), tv.nextv.core.model.ContentKind.MOVIE to setOf("Films arabes")),
+                phase = tv.nextv.app.ui.settings.RemoteSendPhase.Done("Fire TV de Paul"),
+            ),
+            onEdit = {},
+            onPick = {},
+            onSend = {},
+            onBack = {},
+        )
+    }
+
+    @Test
+    fun settingsRemote() = capture("16l_reglages_configuration_a_distance") {
+        SettingsContent(
+            state = SampleData.settings,
+            snackbarHostState = remember { SnackbarHostState() },
+            onBack = {},
+            onPlaylists = {},
+            onRefreshPlaylist = {},
+            onRefreshGuide = {},
+            onAutoQuality = {},
+            onSaveTmdbKey = {},
+            onClearTmdbKey = {},
+            onProxy = {},
+            now = SampleData.NOW,
+            initialPage = SettingsPage.REMOTE,
+        )
     }
 
     @Test

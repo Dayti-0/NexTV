@@ -1,5 +1,7 @@
 package tv.nextv.app.ui.player
 
+import coil3.request.allowHardware
+import coil3.toBitmap
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -157,8 +159,11 @@ fun RadioVisualizer(
     warmUpSeconds: Int = 0,
     animate: Boolean = true,
 ) {
-    val palette = remember(name, genre) { paletteFor(name, genre) }
     val context = androidx.compose.ui.platform.LocalContext.current
+    // Couleurs de la pochette du morceau quand elle en a, sinon celles de la radio ; passage en douceur de l'une à l'autre.
+    val radioPalette = remember(name, genre) { paletteFor(name, genre) }
+    val coverPalette by androidx.compose.runtime.produceState<Palette?>(null, cover) { value = cover?.let { coverPaletteOf(context, it) } }
+    val palette = animatedPalette(coverPalette ?: radioPalette)
     val frame = remember(lowPower) {
         VisualFrame(analyzer.bandCount, if (lowPower) 70 else 150).also { warm ->
             repeat(warmUpSeconds * 30) { step ->
@@ -277,7 +282,6 @@ fun RadioVisualizer(
                     name = name,
                     genre = genre,
                     track = track,
-                    logoUrl = logoUrl,
                     palette = palette,
                     big = wide,
                     modifier = textModifier,
@@ -339,13 +343,91 @@ fun RadioVisualizer(
                     name = name,
                     genre = genre,
                     track = track,
-                    // Le logo est déjà en grand quand il n'y a pas de pochette.
-                    logoUrl = logoUrl.takeIf { cover != null },
                     palette = palette,
                     big = wide,
                     modifier = Modifier.widthIn(max = 640.dp),
                 )
             }
+        }
+        // Morceau connu : la radio et son genre en petit, dans le coin en haut à gauche (plus entre la pochette et le titre).
+        if (track != null) {
+            RadioBadge(
+                name = name,
+                genre = genre,
+                // Autres animations sans pochette : le logo est déjà en grand en bas.
+                logoUrl = logoUrl.takeIf { vinyl || cover != null },
+                palette = palette,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .offset(drift.value.x.dp, drift.value.y.dp)
+                    .padding(horizontal = if (wide) 48.dp else 24.dp, vertical = if (wide) 36.dp else 28.dp)
+                    .widthIn(max = if (wide) 520.dp else 320.dp),
+            )
+        }
+    }
+}
+
+/** Palette qui passe en douceur d'une pochette à la suivante. */
+@Composable
+private fun animatedPalette(target: Palette): Palette {
+    val spec = androidx.compose.animation.core.tween<Color>(PALETTE_FADE_MILLIS)
+    val background by androidx.compose.animation.animateColorAsState(target.background, spec, label = "fond")
+    val a by androidx.compose.animation.animateColorAsState(target.a, spec, label = "a")
+    val b by androidx.compose.animation.animateColorAsState(target.b, spec, label = "b")
+    val c by androidx.compose.animation.animateColorAsState(target.c, spec, label = "c")
+    return Palette(background, a, b, c)
+}
+
+private const val PALETTE_FADE_MILLIS = 1_500
+
+/** Couleurs tirées de la pochette (réduite à 48 × 48) ; `null` si elle n'en a pas assez, ou n'a pas pu être lue. */
+private suspend fun coverPaletteOf(context: android.content.Context, cover: String): Palette? = runCatching {
+    val request = coil3.request.ImageRequest.Builder(context)
+        .data(cover)
+        .size(COVER_SAMPLE, COVER_SAMPLE)
+        .allowHardware(false)
+        .build()
+    val result = coil3.SingletonImageLoader.get(context).execute(request) as? coil3.request.SuccessResult ?: return@runCatching null
+    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+        val bitmap = result.image.toBitmap(COVER_SAMPLE, COVER_SAMPLE)
+        val pixels = IntArray(bitmap.width * bitmap.height)
+        bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+        tv.nextv.core.audio.CoverColors.extract(pixels)?.let { Palette(Color(it.background), Color(it.a), Color(it.b), Color(it.c)) }
+    }
+}.getOrNull()
+
+private const val COVER_SAMPLE = 48
+
+/** Radio et genre en petit, avec le logo de la radio. */
+@Composable
+private fun RadioBadge(name: String, genre: String?, logoUrl: String?, palette: Palette, modifier: Modifier = Modifier) {
+    val shadow = androidx.compose.ui.text.TextStyle(shadow = TEXT_SHADOW)
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        if (logoUrl != null) {
+            ChannelLogo(url = logoUrl, name = name, modifier = Modifier.size(30.dp), shape = CircleShape, monogramSize = 12.dp)
+            androidx.compose.foundation.layout.Spacer(Modifier.size(12.dp))
+        }
+        Text(
+            name.uppercase(),
+            color = Color.White.copy(alpha = 0.92f),
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 2.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            style = shadow,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+        genre?.let {
+            Text(
+                "  ·  ${it.uppercase()}",
+                color = palette.c,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 2.sp,
+                maxLines = 1,
+                style = shadow,
+            )
         }
     }
 }
@@ -385,7 +467,6 @@ private fun NowPlayingText(
     name: String,
     genre: String?,
     track: TrackLines?,
-    logoUrl: String?,
     palette: Palette,
     big: Boolean,
     modifier: Modifier = Modifier,
@@ -393,35 +474,8 @@ private fun NowPlayingText(
     val shadow = androidx.compose.ui.text.TextStyle(shadow = TEXT_SHADOW)
     Column(modifier) {
         if (track != null) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (logoUrl != null) {
-                    ChannelLogo(url = logoUrl, name = name, modifier = Modifier.size(30.dp), shape = CircleShape, monogramSize = 12.dp)
-                    androidx.compose.foundation.layout.Spacer(Modifier.size(12.dp))
-                }
-                Text(
-                    name.uppercase(),
-                    color = Color.White.copy(alpha = 0.92f),
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 2.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = shadow,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-                genre?.let {
-                    Text(
-                        "  ·  ${it.uppercase()}",
-                        color = palette.c,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 2.sp,
-                        maxLines = 1,
-                        style = shadow,
-                    )
-                }
-            }
-            AccentBar(palette, Modifier.padding(vertical = if (big) 16.dp else 12.dp))
+            // La radio et son genre sont dans le coin de l'écran (RadioBadge).
+            AccentBar(palette, Modifier.padding(bottom = if (big) 16.dp else 12.dp))
             // Titre en entier (« Histoire d'un soir (Bye bye les galères) (Version 2001) ») : plus petit s'il est long,
             // sur 4 lignes au plus.
             val long = track.song.length > LONG_TITLE
@@ -440,17 +494,20 @@ private fun NowPlayingText(
                     else -> if (big) 46.sp else 35.sp
                 },
                 fontWeight = FontWeight.ExtraBold,
-                maxLines = 4,
+                maxLines = 5,
                 overflow = TextOverflow.Ellipsis,
                 style = shadow,
             )
             track.artist?.let {
+                // Tous les artistes (« Omen44, Smif-N-Wessun, Ruste Juxx, Rockness Monsta… ») : plus petit si la liste est longue.
+                val longArtist = it.length > LONG_ARTIST
                 Text(
                     it,
                     color = Color.White.copy(alpha = 0.75f),
-                    fontSize = if (big) 24.sp else 19.sp,
+                    fontSize = if (longArtist) (if (big) 20.sp else 16.sp) else (if (big) 24.sp else 19.sp),
+                    lineHeight = if (longArtist) (if (big) 26.sp else 21.sp) else (if (big) 30.sp else 24.sp),
                     fontWeight = FontWeight.Medium,
-                    maxLines = 2,
+                    maxLines = 5,
                     overflow = TextOverflow.Ellipsis,
                     style = shadow,
                     modifier = Modifier.padding(top = 6.dp),
@@ -486,6 +543,9 @@ private fun NowPlayingText(
 /** Titre du morceau long (en caractères) : écrit plus petit, pour tenir en entier. */
 private const val LONG_TITLE = 32
 private const val VERY_LONG_TITLE = 60
+
+/** Liste d'artistes longue (en caractères) : écrite plus petit, pour tenir en entier. */
+private const val LONG_ARTIST = 50
 
 /** Petit trait aux couleurs de la radio entre la ligne du haut et le titre. */
 @Composable

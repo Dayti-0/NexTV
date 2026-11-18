@@ -34,6 +34,10 @@ import tv.nextv.app.ui.player.PlayerViewModel
 import tv.nextv.app.ui.settings.ChannelGroupsScreen
 import tv.nextv.app.ui.settings.ProxySettingsScreen
 import tv.nextv.app.ui.settings.QuickSetupScreen
+import tv.nextv.app.ui.settings.RemoteCodeCard
+import tv.nextv.app.ui.settings.RemoteReceiveScreen
+import tv.nextv.app.ui.settings.rememberRemoteSetupCode
+import tv.nextv.app.ui.settings.RemoteSendScreen
 import tv.nextv.app.ui.settings.SettingsScreen
 import tv.nextv.app.ui.sources.SourcesScreen
 import tv.nextv.app.ui.settings.AppearanceScreen
@@ -60,6 +64,8 @@ internal object Routes {
     const val PROXY = "proxy"
     const val GROUPS = "groups/{$ARG_KIND}"
     const val PHONE_SETUP = "phone-setup"
+    const val REMOTE_SEND = "remote-send"
+    const val REMOTE_RECEIVE = "remote-receive"
 
     fun startup(reload: Boolean = false) = "startup?${StartupViewModel.ARG_RELOAD}=$reload"
     fun editor(sourceId: Long? = null) = "editor?${SourceEditorViewModel.ARG_SOURCE_ID}=${sourceId ?: -1}"
@@ -149,6 +155,10 @@ private fun AppNavHost(navController: NavHostController) {
     val scope = rememberCoroutineScope()
     // Transitions courtes entre les écrans (0,7 s par défaut : l'appli paraissait lente à réagir). Le lecteur
     // s'ouvre et se ferme sans fondu (image noire tout de suite, retour immédiat à l'écran d'avant).
+    // Configuration reçue d'une autre télé (code affiché ici) : sa playlist se charge, puis l'accueil.
+    LaunchedEffect(container) {
+        container.remoteSetupReceiver.installed.collect { navController.restartAt(Routes.startup(reload = true)) }
+    }
     NavHost(
         navController = navController,
         startDestination = Routes.STARTUP,
@@ -188,7 +198,12 @@ private fun AppNavHost(navController: NavHostController) {
             )
         }
         composable(Routes.WELCOME) {
-            WelcomeScreen(onAdd = { navController.navigate(Routes.editor()) }, onAddFromPhone = { navController.navigate(Routes.PHONE_SETUP) })
+            WelcomeScreen(
+                onAdd = { navController.navigate(Routes.editor()) },
+                onAddFromPhone = { navController.navigate(Routes.PHONE_SETUP) },
+                // Code de configuration à distance : la personne qui a donné l'appli installe tout de chez elle.
+                remoteCode = { modifier -> RemoteCodeCard(rememberRemoteSetupCode(), modifier) },
+            )
         }
         composable(Routes.HOME) {
             HomeScreen(
@@ -248,7 +263,15 @@ private fun AppNavHost(navController: NavHostController) {
                 onRestored = { navController.restartAt(Routes.startup(reload = true)) },
                 onAppearance = { navController.navigate(Routes.APPEARANCE) },
                 onQuickSetup = { navController.navigate(Routes.SETUP) },
+                onRemoteSend = { navController.navigate(Routes.REMOTE_SEND) },
+                onRemoteReceive = { navController.navigate(Routes.REMOTE_RECEIVE) },
             )
+        }
+        composable(Routes.REMOTE_SEND) {
+            RemoteSendScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Routes.REMOTE_RECEIVE) {
+            RemoteReceiveScreen(onBack = { navController.popBackStack() })
         }
         composable(Routes.SETUP) {
             QuickSetupScreen(onDone = { navController.popBackStack() })

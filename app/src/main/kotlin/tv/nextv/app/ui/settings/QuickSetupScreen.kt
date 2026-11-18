@@ -30,6 +30,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import kotlinx.coroutines.flow.map
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -85,6 +86,9 @@ class QuickSetupViewModel(container: AppContainer) : ViewModel() {
     val trailer: StateFlow<Boolean> = settings.trailerAutoplay.stateIn(viewModelScope, SharingStarted.Eagerly, true)
     val lastChannel: StateFlow<Boolean> = settings.startOnLastChannel.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
+    /** Aucune playlist (premier lancement) : le code de configuration à distance est proposé dès la première étape. */
+    val noPlaylist: StateFlow<Boolean> = settings.activePlaylistId.map { it == null }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
     init {
         // Proposée une seule fois : dès qu'elle s'ouvre, même si elle est quittée en route.
         viewModelScope.launch { settings.setQuickSetupDone() }
@@ -115,6 +119,7 @@ fun QuickSetupScreen(onDone: () -> Unit) {
     val preview by viewModel.preview.collectAsStateWithLifecycle()
     val trailer by viewModel.trailer.collectAsStateWithLifecycle()
     val lastChannel by viewModel.lastChannel.collectAsStateWithLifecycle()
+    val noPlaylist by viewModel.noPlaylist.collectAsStateWithLifecycle()
     var step by rememberSaveable { mutableStateOf(QuickSetupStep.WELCOME) }
     QuickSetupContent(
         step = step,
@@ -132,6 +137,11 @@ fun QuickSetupScreen(onDone: () -> Unit) {
         onTrailer = viewModel::setTrailer,
         lastChannel = lastChannel,
         onLastChannel = viewModel::setLastChannel,
+        welcomeExtra = if (noPlaylist) {
+            { RemoteCodeCard(rememberRemoteSetupCode(), Modifier.widthIn(max = 620.dp)) }
+        } else {
+            null
+        },
     )
 }
 
@@ -152,6 +162,8 @@ fun QuickSetupContent(
     onTrailer: (Boolean) -> Unit,
     lastChannel: Boolean,
     onLastChannel: (Boolean) -> Unit,
+    /** Sous la présentation de la première étape (code de configuration à distance au premier lancement). */
+    welcomeExtra: (@Composable () -> Unit)? = null,
 ) {
     val window = rememberWindowInfo()
     val steps = QuickSetupStep.entries
@@ -222,7 +234,10 @@ fun QuickSetupContent(
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 when (step) {
-                    QuickSetupStep.WELCOME -> StepTitle(R.string.quick_setup_welcome_title, R.string.quick_setup_welcome_text)
+                    QuickSetupStep.WELCOME -> {
+                        StepTitle(R.string.quick_setup_welcome_title, R.string.quick_setup_welcome_text)
+                        welcomeExtra?.invoke()
+                    }
                     QuickSetupStep.INTERFACE -> {
                         StepTitle(R.string.quick_setup_interface_title, R.string.quick_setup_interface_text)
                         Row(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(top = 6.dp)) {

@@ -134,6 +134,8 @@ fun SettingsScreen(
     onRestored: () -> Unit = {},
     onAppearance: () -> Unit = {},
     onQuickSetup: () -> Unit = {},
+    onRemoteSend: () -> Unit = {},
+    onRemoteReceive: () -> Unit = {},
 ) {
     val viewModel = appViewModel { container, _ -> SettingsViewModel(container) }
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -317,6 +319,8 @@ fun SettingsScreen(
         onFrenchOnly = viewModel::setFrenchOnly,
         update = update,
         onQuickSetup = onQuickSetup,
+        onRemoteSend = onRemoteSend,
+        onRemoteReceive = onRemoteReceive,
         onCheckUpdate = viewModel::checkUpdate,
         onInstallUpdate = viewModel::installUpdate,
         onAllowInstall = {
@@ -398,6 +402,9 @@ fun SettingsContent(
     account: AccountState? = null,
     now: Long = System.currentTimeMillis(),
     onQuickSetup: () -> Unit = {},
+    /** Configuration à distance : envoyer à une autre télé, afficher le code de celle-ci. */
+    onRemoteSend: () -> Unit = {},
+    onRemoteReceive: () -> Unit = {},
     /** Page ouverte en arrivant (écran large). */
     initialPage: SettingsPage = SettingsPage.PLAYLIST,
 ) {
@@ -847,6 +854,7 @@ fun SettingsContent(
 
             // Mêmes favoris, « Déjà vu » et réglages sur plusieurs télés.
             SettingsPage.LINK -> TvLinkPage(tvLink, tvLinkActions, now)
+            SettingsPage.REMOTE -> RemoteSetupPage(onRemoteSend, onRemoteReceive)
 
             // Sauvegarde et restauration.
             SettingsPage.BACKUP -> SectionCard(stringResource(R.string.settings_group_backup_file), subtitle = stringResource(R.string.settings_backup_help)) {
@@ -886,6 +894,7 @@ fun SettingsContent(
             SettingsPage.SERVICES -> null
             SettingsPage.NETWORK -> dnsLabel(state.dns)
             SettingsPage.LINK -> tvLinkSummary(tvLink)
+            SettingsPage.REMOTE -> null
             SettingsPage.BACKUP -> null
             SettingsPage.UPDATE -> when (update) {
                 is UpdateState.Available -> stringResource(R.string.settings_page_update_available, update.release.version)
