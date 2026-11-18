@@ -4,6 +4,11 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.188
+- Animation des radios : nouvel affichage du morceau en cours, avec le titre en grand, l'artiste dessous, la radio et son genre en petit au-dessus
+- Mode « Vinyle » : sur la télé, le disque est à gauche et le morceau à droite (ils ne se chevauchent plus)
+- Autres animations : pochette du morceau en grand à côté du titre
+
 ## 0.2.187
 - Animation « Vinyle » des radios : la pochette du morceau en cours est au centre du disque et tourne avec lui (le logo de la radio passe dans la carte du bas)
 

@@ -97,6 +97,17 @@ class NowPlayingTest {
     }
 
     @Test
+    fun theStreamTitleIsSplitIntoArtistAndSong() {
+        val track = NowPlaying.fromStreamTitle("Candyman - Knockin' Boots")!!
+        assertEquals("Candyman", track.artist)
+        assertEquals("Knockin' Boots", track.title)
+        assertEquals("Jay-Z", NowPlaying.fromStreamTitle("Jay-Z – Song Cry")!!.artist)
+        assertEquals("Hey Ya!", NowPlaying.fromStreamTitle("OutKast - Hey Ya! - Radio Edit")!!.title.substringBefore(" - "))
+        assertEquals(null, NowPlaying.fromStreamTitle("Jay-Z"))
+        assertEquals(null, NowPlaying.fromStreamTitle(" - Titre"))
+    }
+
+    @Test
     fun theSnippetGivesTheLastSecondsAsWav() {
         val snippet = AudioSnippet(seconds = 10)
         val rate = 44_100

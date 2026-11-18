@@ -49,15 +49,19 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.random.Random
 
 /** Modes réellement dessinés ([RadioVisual.MIX] passe de l'un à l'autre). */
 private val DRAWN = listOf(RadioVisual.SPECTRUM, RadioVisual.WAVES, RadioVisual.AURORA, RadioVisual.PARTICLES, RadioVisual.VINYL)
 
-/** Vinyle : place verticale du disque (−1 haut, 1 bas) et taille de son étiquette (logo). */
-private const val VINYL_BIAS = -0.22f
-private val VINYL_LABEL = 96.dp
+/** Écran large (télé) : plus large que haut de ce rapport. Vinyle : disque à gauche, texte à droite. */
+private const val WIDE_RATIO = 1.2f
+
+/** Vinyle sur écran large : centre du disque et début du texte (part de la largeur). */
+private const val VINYL_WIDE_X = 0.3f
+private const val VINYL_TEXT_START = 0.53f
 
 /** Vinyle : rayon du disque (part du petit côté de l'écran) et part de ce rayon occupée par l'étiquette (pochette). */
 private const val VINYL_RADIUS = 0.29f
@@ -129,8 +133,8 @@ private class VisualFrame(bandCount: Int, particleCount: Int) {
 
 /**
  * Animation plein écran d'une radio ou Web radio ([RadioVisual]), au rythme du son ([analyzer]) quand le lecteur de
- * l'appli le décode, sinon un mouvement doux de remplacement (moteur VLC). En dessous : logo, nom, genre et morceau en
- * cours. [lowPower] (petite Fire TV) : 30 images par seconde et moins de particules.
+ * l'appli le décode, sinon un mouvement doux de remplacement (moteur VLC). Par-dessus : le morceau en cours en grand
+ * (titre, artiste), la radio et son genre en petit ; en mode Vinyle, la pochette sert d'étiquette au disque. [lowPower] (petite Fire TV) : 30 images par seconde et moins de particules.
  */
 @Composable
 fun RadioVisualizer(
@@ -141,7 +145,9 @@ fun RadioVisualizer(
     genre: String?,
     title: String?,
     lowPower: Boolean,
-    /** Pochette du morceau en cours, à la place du logo dans la carte. */
+    /** Artiste du morceau en cours (affiché sous son titre [title]). */
+    artist: String? = null,
+    /** Pochette du morceau en cours (au centre du disque en mode Vinyle, à côté du texte sinon). */
     cover: String? = null,
     modifier: Modifier = Modifier,
     /** Captures d'écran : quelques secondes d'animation déjà jouées, puis image fixe ([animate] faux). */
@@ -190,6 +196,8 @@ fun RadioVisualizer(
     BoxWithConstraints(modifier.fillMaxSize().background(palette.background)) {
         // Vinyle : diamètre de l'étiquette dessinée par drawVinyl (un peu moins, pour garder un liseré sombre).
         val labelSize = min(maxWidth.value, maxHeight.value).dp * (2 * VINYL_RADIUS * VINYL_LABEL_SHARE * 0.98f)
+        val wide = maxWidth > maxHeight * WIDE_RATIO
+        val vinyl = drawn == RadioVisual.VINYL
         Canvas(Modifier.fillMaxSize()) {
             @Suppress("UNUSED_EXPRESSION")
             tick // relu ici : seule l'image est redessinée, sans recomposition.
@@ -201,6 +209,16 @@ fun RadioVisualizer(
                 else -> drawSpectrum(frame, palette)
             }
         }
+        // Texte lisible sur l'animation : le bas de l'écran (ou la droite, à côté du disque) assombri en douceur.
+        Box(
+            Modifier.fillMaxSize().background(
+                if (vinyl && wide) {
+                    Brush.horizontalGradient(0.35f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.45f))
+                } else {
+                    Brush.verticalGradient(0.45f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.6f))
+                },
+            ),
+        )
         // Le texte glisse très lentement (quelques dizaines de pixels en plusieurs minutes) : pas de marque sur l'écran.
         val drift = remember { mutableStateOf(Offset.Zero) }
         LaunchedEffect(animate) {
@@ -209,41 +227,21 @@ fun RadioVisualizer(
                 kotlinx.coroutines.delay(1_000)
             }
         }
-        Row(
-            Modifier
-                .align(if (drawn == RadioVisual.VINYL) Alignment.BottomCenter else Alignment.BottomStart)
-                .offset(drift.value.x.dp, drift.value.y.dp)
-                .padding(horizontal = 56.dp, vertical = 44.dp)
-                .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
-                .padding(horizontal = 20.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            // Vinyle : la pochette est au centre du disque, la carte garde le logo.
-            if (cover != null && drawn != RadioVisual.VINYL) {
-                coil3.compose.AsyncImage(
-                    model = cover,
-                    contentDescription = null,
-                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                    modifier = Modifier.size(84.dp).clip(RoundedCornerShape(14.dp)),
-                )
-            } else {
-                ChannelLogo(url = logoUrl, name = name, modifier = Modifier.size(64.dp), shape = RoundedCornerShape(14.dp), monogramSize = 22.dp)
-            }
-            Column(Modifier.widthIn(max = 560.dp)) {
-                Text(name, color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                genre?.let { Text(it, color = palette.c.copy(alpha = 0.9f), fontSize = 15.sp, maxLines = 1) }
-                title?.let {
-                    Text("♪  $it", color = Color.White.copy(alpha = 0.85f), fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            }
-        }
-        if (drawn == RadioVisual.VINYL) {
-            // Étiquette du disque : le logo au centre, recouvert par la pochette du morceau quand elle est connue.
-            Box(Modifier.align(androidx.compose.ui.BiasAlignment(0f, VINYL_BIAS)).size(VINYL_LABEL), contentAlignment = Alignment.Center) {
+        val track = remember(title, artist) { trackLines(title, artist) }
+        if (vinyl) {
+            // Étiquette du disque : le logo, recouvert par la pochette du morceau quand elle est connue.
+            Box(
+                Modifier
+                    .offset {
+                        val center = vinylCenter(constraints.maxWidth.toFloat(), constraints.maxHeight.toFloat())
+                        val half = labelSize.toPx() / 2
+                        androidx.compose.ui.unit.IntOffset((center.x - half).roundToInt(), (center.y - half).roundToInt())
+                    }
+                    .requiredSize(labelSize),
+                contentAlignment = Alignment.Center,
+            ) {
                 ChannelLogo(url = logoUrl, name = name, modifier = Modifier.fillMaxSize(), shape = CircleShape, monogramSize = 30.dp)
                 if (cover != null) {
-                    // Toute l'étiquette du disque (même taille que dans drawVinyl), qui tourne avec lui comme un vrai disque.
                     // Fondu d'une pochette à la suivante (pas dans les captures, image fixe).
                     val fade = !androidx.compose.ui.platform.LocalInspectionMode.current
                     coil3.compose.AsyncImage(
@@ -253,7 +251,7 @@ fun RadioVisualizer(
                         contentDescription = null,
                         contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                         modifier = Modifier
-                            .requiredSize(labelSize)
+                            .fillMaxSize()
                             .graphicsLayer {
                                 @Suppress("UNUSED_EXPRESSION")
                                 tick // relu ici : seule la rotation change à chaque image.
@@ -269,9 +267,183 @@ fun RadioVisualizer(
                     )
                 }
             }
+            // Écran large : texte à droite du disque ; sinon (téléphone en hauteur) sous le disque.
+            NowPlayingText(
+                name = name,
+                genre = genre,
+                track = track,
+                logoUrl = logoUrl,
+                palette = palette,
+                big = wide,
+                modifier = if (wide) {
+                    Modifier
+                        .align(Alignment.CenterStart)
+                        .offset(drift.value.x.dp, drift.value.y.dp)
+                        .padding(start = maxWidth * VINYL_TEXT_START, end = 48.dp)
+                } else {
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .offset(drift.value.x.dp, drift.value.y.dp)
+                        .padding(horizontal = 28.dp, vertical = 40.dp)
+                },
+            )
+        } else {
+            // Autres animations : pochette (ou logo) en grand, puis le texte, en bas à gauche.
+            Row(
+                Modifier
+                    .align(Alignment.BottomStart)
+                    .offset(drift.value.x.dp, drift.value.y.dp)
+                    .padding(horizontal = if (wide) 56.dp else 28.dp, vertical = if (wide) 48.dp else 40.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(if (wide) 28.dp else 18.dp),
+            ) {
+                val art = if (wide) 132.dp else 96.dp
+                val artShape = RoundedCornerShape(18.dp)
+                if (cover != null) {
+                    coil3.compose.AsyncImage(
+                        model = cover,
+                        contentDescription = null,
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier
+                            .size(art)
+                            .clip(artShape)
+                            .border(1.dp, Color.White.copy(alpha = 0.18f), artShape),
+                    )
+                } else {
+                    ChannelLogo(url = logoUrl, name = name, modifier = Modifier.size(art), shape = artShape, monogramSize = 36.dp)
+                }
+                NowPlayingText(
+                    name = name,
+                    genre = genre,
+                    track = track,
+                    // Le logo est déjà en grand quand il n'y a pas de pochette.
+                    logoUrl = logoUrl.takeIf { cover != null },
+                    palette = palette,
+                    big = wide,
+                    modifier = Modifier.widthIn(max = 640.dp),
+                )
+            }
         }
     }
 }
+
+/** Morceau en cours à afficher : titre (en grand) et artiste (dessous). */
+private class TrackLines(val song: String, val artist: String?)
+
+/** Titre et artiste du morceau en cours ; `null` : aucun morceau connu. */
+private fun trackLines(title: String?, artist: String?): TrackLines? =
+    title?.trim()?.takeIf { it.isNotEmpty() }?.let { TrackLines(it, artist?.trim()?.takeIf { a -> a.isNotEmpty() }) }
+
+private val TEXT_SHADOW = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.55f), Offset(0f, 2f), 10f)
+
+/**
+ * Texte de l'animation : radio et genre en petit (avec son logo), puis le morceau en grand et l'artiste ; sans morceau
+ * connu, le nom de la radio en grand. [big] : écran de télé (le téléphone a moins de place).
+ */
+@Composable
+private fun NowPlayingText(
+    name: String,
+    genre: String?,
+    track: TrackLines?,
+    logoUrl: String?,
+    palette: Palette,
+    big: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val shadow = androidx.compose.ui.text.TextStyle(shadow = TEXT_SHADOW)
+    Column(modifier) {
+        if (track != null) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (logoUrl != null) {
+                    ChannelLogo(url = logoUrl, name = name, modifier = Modifier.size(30.dp), shape = CircleShape, monogramSize = 12.dp)
+                    androidx.compose.foundation.layout.Spacer(Modifier.size(12.dp))
+                }
+                Text(
+                    name.uppercase(),
+                    color = Color.White.copy(alpha = 0.92f),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 2.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = shadow,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                genre?.let {
+                    Text(
+                        "  ·  ${it.uppercase()}",
+                        color = palette.c,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 2.sp,
+                        maxLines = 1,
+                        style = shadow,
+                    )
+                }
+            }
+            AccentBar(palette, Modifier.padding(vertical = if (big) 16.dp else 12.dp))
+            Text(
+                track.song,
+                color = Color.White,
+                fontSize = if (big) 40.sp else 30.sp,
+                lineHeight = if (big) 46.sp else 35.sp,
+                fontWeight = FontWeight.ExtraBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                style = shadow,
+            )
+            track.artist?.let {
+                Text(
+                    it,
+                    color = Color.White.copy(alpha = 0.75f),
+                    fontSize = if (big) 24.sp else 19.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = shadow,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            }
+        } else {
+            Text(
+                name,
+                color = Color.White,
+                fontSize = if (big) 40.sp else 30.sp,
+                lineHeight = if (big) 46.sp else 35.sp,
+                fontWeight = FontWeight.ExtraBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                style = shadow,
+            )
+            AccentBar(palette, Modifier.padding(vertical = if (big) 14.dp else 10.dp))
+            genre?.let {
+                Text(
+                    it.uppercase(),
+                    color = palette.c,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 2.sp,
+                    maxLines = 1,
+                    style = shadow,
+                )
+            }
+        }
+    }
+}
+
+/** Petit trait aux couleurs de la radio entre la ligne du haut et le titre. */
+@Composable
+private fun AccentBar(palette: Palette, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .size(width = 56.dp, height = 4.dp)
+            .background(Brush.horizontalGradient(listOf(palette.a, palette.b)), RoundedCornerShape(2.dp)),
+    )
+}
+
+/** Vinyle : centre du disque, à gauche sur un écran large (texte à droite), en haut sur un écran en hauteur. */
+private fun vinylCenter(width: Float, height: Float): Offset =
+    if (width > height * WIDE_RATIO) Offset(width * VINYL_WIDE_X, height / 2) else Offset(width / 2, height * 0.36f)
 
 private fun firstMode(visual: RadioVisual, name: String): RadioVisual =
     if (visual == RadioVisual.MIX) mixMode(name, 0) else visual
@@ -459,9 +631,8 @@ private fun DrawScope.drawParticles(frame: VisualFrame, palette: Palette) {
 /** Vinyle : disque qui tourne, sillons éclairés par le spectre, reflet tournant, halo des basses. */
 private fun DrawScope.drawVinyl(frame: VisualFrame, palette: Palette) {
     val radius = size.minDimension * VINYL_RADIUS
-    // Même centre que le logo posé dessus (VINYL_BIAS), au-dessus de la carte du nom.
-    val label = VINYL_LABEL.toPx()
-    val center = Offset(size.width / 2, (1f + VINYL_BIAS) / 2 * (size.height - label) + label / 2)
+    // Même centre que l'étiquette (logo ou pochette) posée dessus.
+    val center = vinylCenter(size.width, size.height)
     glow(frame, palette, palette.a, center)
     drawCircle(palette.b.copy(alpha = 0.25f + 0.4f * frame.bass), radius * (1.04f + 0.06f * frame.bass), center, style = Stroke(width = 6f))
     drawCircle(Color(0xFF0B0B0E), radius, center)

@@ -124,6 +124,10 @@ data class PlayerUiState(
      */
     val nowPlaying: String? = null,
     val nowPlayingCover: String? = null,
+    /** Artiste de [nowPlaying] quand il est connu à part (affiché sous le titre du morceau). */
+    val nowPlayingArtist: String? = null,
+    /** Titre seul de [nowPlaying] (sans l'artiste). */
+    val nowPlayingSong: String? = null,
     /** Lecture par le moteur VLC (son ou image que le lecteur de l'appli ne sait pas lire). */
     val engineVlc: Boolean = false,
     /** Format du son illisible (« MP2 », « DTS-HD »), pour le dire dans le message. */

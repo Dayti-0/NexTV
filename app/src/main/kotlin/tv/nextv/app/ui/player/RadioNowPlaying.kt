@@ -63,7 +63,7 @@ internal class RadioNowPlaying(
         if (target == following) return
         following = target
         job?.cancel()
-        state.update { it.copy(nowPlaying = null, nowPlayingCover = null) }
+        state.update { it.copy(nowPlaying = null, nowPlayingCover = null, nowPlayingArtist = null, nowPlayingSong = null) }
         if (!active) return
         snippet.clear()
         job = scope.launch { loop(InternetRadios.titlesFor(channelName)) }
@@ -81,7 +81,7 @@ internal class RadioNowPlaying(
             when {
                 // La radio annonce le morceau : c'est lui qui est affiché.
                 !state.value.radioTitle.isNullOrBlank() -> {
-                    if (state.value.nowPlaying != null) state.update { it.copy(nowPlaying = null, nowPlayingCover = null) }
+                    if (state.value.nowPlaying != null) show(null)
                 }
                 useSource -> if (now >= nextSource) {
                     val playing = fromSource(source!!)
@@ -135,7 +135,14 @@ internal class RadioNowPlaying(
     }
 
     private fun show(playing: NowPlaying?) {
-        state.update { it.copy(nowPlaying = playing?.label, nowPlayingCover = playing?.cover) }
+        state.update {
+            it.copy(
+                nowPlaying = playing?.label,
+                nowPlayingCover = playing?.cover,
+                nowPlayingArtist = playing?.artist?.takeIf { artist -> artist.isNotBlank() },
+                nowPlayingSong = playing?.title,
+            )
+        }
     }
 
     private suspend fun recognize(wav: ByteArray): NowPlaying? {

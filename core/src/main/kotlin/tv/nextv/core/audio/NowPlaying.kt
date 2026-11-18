@@ -174,6 +174,19 @@ data class NowPlaying(
             null
         }
 
+        /**
+         * Titre annoncé dans le flux d'une radio (métadonnées ICY, « Artiste - Titre ») séparé en artiste et titre ;
+         * `null` sans séparateur (titre seul, nom d'émission).
+         */
+        fun fromStreamTitle(text: String): NowPlaying? {
+            val match = STREAM_SEPARATOR.find(text) ?: return null
+            val artist = text.substring(0, match.range.first).trim()
+            val title = text.substring(match.range.last + 1).trim()
+            return if (artist.isEmpty() || title.isEmpty()) null else NowPlaying(artist = artist, title = title)
+        }
+
+        private val STREAM_SEPARATOR = Regex("\\s+[-–—]\\s+")
+
         /** Réponse du groupe RTL (`/ws/live/live`) : l'émission en cours (« Ça peut vous arriver – Julien Courbet »), son image. */
         fun fromRtlProgram(body: String): NowPlaying? = try {
             val json = JSONObject(body)

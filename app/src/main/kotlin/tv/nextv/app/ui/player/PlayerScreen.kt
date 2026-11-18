@@ -497,13 +497,16 @@ fun PlayerScreen(
 
         // Radio ou Web radio (son sans image) : animation à la place de l'écran noir (réglage « Animation des radios »).
         if (state.audioOnly && !film && radioVisual != RadioVisual.OFF && state.error == null) {
+            val streamTrack = remember(state.radioTitle) { state.radioTitle?.let(tv.nextv.core.audio.NowPlaying::fromStreamTitle) }
             RadioVisualizer(
                 visual = radioVisual,
                 analyzer = viewModel.spectrum,
                 name = state.channelName,
                 logoUrl = state.logoUrl,
                 genre = remember(state.channelName) { tv.nextv.core.catalog.InternetRadios.byName(state.channelName)?.genre },
-                title = state.radioTitle ?: state.nowPlaying,
+                // Titre du flux (« Artiste - Titre ») séparé ; sinon titre et artiste donnés à part par le service de la radio.
+                title = streamTrack?.title ?: state.radioTitle ?: state.nowPlayingSong,
+                artist = if (state.radioTitle != null) streamTrack?.artist else state.nowPlayingArtist,
                 cover = state.nowPlayingCover.takeIf { state.radioTitle == null },
                 lowPower = lowPower,
             )
