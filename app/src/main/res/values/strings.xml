@@ -487,7 +487,7 @@
     <string name="remote_setup_receive">Afficher le code de cette télé</string>
     <string name="remote_setup_receive_help">« Afficher le code de cette télé » : pour que quelqu\'un configure celle-ci à distance (changer de compte, par exemple). Le code est aussi affiché au premier lancement de l\'appli.</string>
     <string name="remote_code_title">Configuration à distance</string>
-    <string name="remote_code_help">Donnez ce code à la personne qui vous a donné l\'appli. Elle l\'entre de chez elle (Réglages › Configuration à distance › Configurer une autre télé) et tout s\'installe tout seul ici.</string>
+    <string name="remote_code_help">Donnez ce code à la personne qui vous a donné l\'appli. Elle l\'entre de chez elle (Réglages › Configuration et sauvegarde › Configurer une autre télé) et tout s\'installe tout seul ici.</string>
     <string name="remote_code_opening">Préparation du code…</string>
     <string name="remote_code_offline">Pas de connexion Internet : nouvel essai dans quelques secondes.</string>
     <string name="remote_code_waiting">En attente de la configuration. Nouveau code %1$s.</string>
@@ -496,10 +496,10 @@
     <string name="remote_code_installed">Configuration installée : chargement de la playlist…</string>
     <string name="remote_send_title">Configurer une autre télé</string>
     <string name="remote_send_code_section">Code de l\'autre télé</string>
-    <string name="remote_send_code_help">Affiché sur l\'autre télé au premier lancement de l\'appli, ou dans ses Réglages › Configuration à distance.</string>
+    <string name="remote_send_code_help">Affiché sur l\'autre télé au premier lancement de l\'appli, ou dans ses Réglages › Configuration et sauvegarde.</string>
     <string name="remote_send_code">Code à 6 chiffres</string>
     <string name="remote_send_playlist_section">Sa playlist</string>
-    <string name="remote_send_playlist_help">Le serveur de votre playlist est déjà rempli : entrez l\'identifiant et le mot de passe de son abonnement. Pour un lien M3U complet, collez-le à la place du serveur et laissez l\'identifiant vide.</string>
+    <string name="remote_send_playlist_help">Le serveur de votre playlist est déjà rempli : entrez l\'identifiant et le mot de passe de son abonnement. King 365 : écrivez king365 à la place du serveur. Lien M3U complet : collez-le à la place du serveur et laissez l\'identifiant vide. La playlist s\'appellera NixTV.</string>
     <string name="remote_send_server">Serveur ou lien M3U</string>
     <string name="remote_send_username">Identifiant</string>
     <string name="remote_send_password">Mot de passe</string>
@@ -516,7 +516,10 @@
     <string name="remote_send_hidden_none">%1$s · aucune masquée</string>
     <string name="remote_send_button">Envoyer</string>
     <string name="remote_send_error_code">Le code a 6 chiffres.</string>
-    <string name="remote_send_error_server">Adresse du serveur ou lien invalide.</string>
+    <string name="remote_send_error_server">Adresse du serveur ou lien invalide (ou king365).</string>
+    <string name="remote_send_error_account">Entrez l\'identifiant et le mot de passe.</string>
+    <string name="remote_send_phone">Avec mon téléphone</string>
+    <string name="remote_send_phone_help">Scannez ce QR code avec un téléphone sur le même Wi-Fi que cette télé : le formulaire s\'ouvre dessus, plus simple à remplir. Les réglages et catégories choisis ici partent avec.</string>
     <string name="remote_send_searching">Recherche de la télé…</string>
     <string name="remote_send_sending">Télé trouvée : %1$s. Envoi…</string>
     <string name="remote_send_waiting">Envoyé à %1$s. Installation en cours…</string>

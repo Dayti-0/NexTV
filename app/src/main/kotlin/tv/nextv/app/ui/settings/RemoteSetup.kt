@@ -54,6 +54,17 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import tv.nextv.app.AppContainer
 import tv.nextv.app.R
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material.icons.filled.Phone
+import tv.nextv.app.ui.components.QrCode
+import tv.nextv.app.ui.phonesetup.PhoneSetupServer
+import tv.nextv.app.ui.phonesetup.PhoneSetupPage
+import tv.nextv.app.ui.phonesetup.PhoneFormReply
+import tv.nextv.app.ui.phonesetup.PhoneForm
+import tv.nextv.app.King
 import tv.nextv.app.data.db.GroupVisibilityRow
 import tv.nextv.app.data.sync.RemoteReceiveState
 import tv.nextv.app.data.sync.RemoteSetupApplier
@@ -183,12 +194,15 @@ sealed interface RemoteSendPhase {
     data object Offline : RemoteSendPhase
 }
 
-enum class RemoteSendField { CODE, SERVER }
+enum class RemoteSendField { CODE, SERVER, USERNAME }
 
 /** Formulaire « Configurer une autre télé ». */
 data class RemoteSendForm(
     val code: String = "",
-    /** Serveur du compte Xtream (prérempli avec celui de la playlist de cette télé), ou lien M3U complet. */
+    /**
+     * Serveur du compte Xtream (prérempli avec celui de la playlist de cette télé), « king365 » pour un compte King 365
+     * (serveurs intégrés à l'appli), ou lien M3U complet sans identifiant.
+     */
     val server: String = "",
     val username: String = "",
     val password: String = "",
@@ -232,7 +246,12 @@ class RemoteSendViewModel(private val container: AppContainer, private val link:
             val id = container.settings.activePlaylistId.first() ?: return@launch
             val source = container.playlistStore.getSource(id) ?: return@launch
             own = source
-            val server = ((source.location as? SourceLocation.Remote)?.url)?.let(XtreamAccount::parse)?.server.orEmpty()
+            val url = (source.location as? SourceLocation.Remote)?.url
+            // Même fournisseur que cette télé, en général : « king365 » si c'est un compte King 365, sinon son serveur.
+            val server = when {
+                url != null && King.available && King.isKing(url) -> KING_SERVER
+                else -> url?.let(XtreamAccount::parse)?.server.orEmpty()
+            }
             val hidden = KINDS.associateWith { kind -> container.hiddenGroupDao.titles(id, kind.name).toSet() }
             mutableForm.update { form -> form.copy(server = form.server.ifEmpty { server }, hidden = hidden) }
         }
@@ -257,7 +276,7 @@ class RemoteSendViewModel(private val container: AppContainer, private val link:
         val url = playlistUrl(form)
         val errors = buildSet {
             if (code == null) add(RemoteSendField.CODE)
-            if (url == null) add(RemoteSendField.SERVER)
+            if (url == null) add(accountProblem(form))
         }
         if (code == null || url == null) {
             mutableForm.update { it.copy(errors = errors, phase = RemoteSendPhase.Idle) }
@@ -290,6 +309,34 @@ class RemoteSendViewModel(private val container: AppContainer, private val link:
 
     private fun setPhase(phase: RemoteSendPhase) = mutableForm.update { it.copy(phase = phase) }
 
+    /**
+     * Formulaire rempli sur le téléphone (QR code de cette page) : champs repris, puis envoi comme avec « Envoyer ».
+     * @return le message à montrer sur le téléphone si quelque chose ne va pas, `null` si l'envoi est parti.
+     */
+    fun fromPhone(fields: Map<String, String>): String? {
+        val current = mutableForm.value
+        if (current.busy) return "Un envoi est déjà en cours : attendez qu'il se termine sur la télé."
+        val updated = current.copy(
+            code = fields["code"].orEmpty().filter(Char::isDigit).take(SyncPairing.CODE_DIGITS),
+            server = fields["server"]?.trim() ?: current.server,
+            username = fields["username"]?.trim().orEmpty(),
+            password = fields["password"].orEmpty(),
+            errors = emptySet(),
+            phase = RemoteSendPhase.Idle,
+        )
+        if (SyncPairing.normalize(updated.code) == null) return "Le code de l'autre télé a 6 chiffres."
+        if (playlistUrl(updated) == null) {
+            return when (accountProblem(updated)) {
+                RemoteSendField.USERNAME -> "Remplissez l'identifiant et le mot de passe."
+                else -> "Serveur ou lien invalide (exemple : http://serveur.com:8080, ou king365)."
+
+            }
+        }
+        mutableForm.value = updated
+        send()
+        return null
+    }
+
     private suspend fun config(form: RemoteSendForm, url: String): RemoteConfig {
         val settings = container.settings
         val source = own
@@ -307,12 +354,19 @@ class RemoteSendViewModel(private val container: AppContainer, private val link:
         } else {
             emptyMap()
         }
+        val king = isKing(form.server)
         return RemoteConfig(
             playlist = RemotePlaylist(
-                name = if (sameProvider) source!!.name else "",
+                // Toujours le même nom sur les télés configurées à distance.
+                name = REMOTE_PLAYLIST_NAME,
                 url = url,
                 userAgent = if (sameProvider) source!!.userAgent else null,
-                mirrors = if (sameProvider) source!!.mirrors else emptyList(),
+                // King : les autres serveurs du fournisseur, intégrés à l'application.
+                mirrors = when {
+                    king -> King.mirrorsFor(url)
+                    sameProvider -> source!!.mirrors
+                    else -> emptyList()
+                },
             ),
             settings = if (form.copySettings) settings.remoteSetupPreferences() else emptyMap(),
             serviceKeys = keys,
@@ -323,20 +377,35 @@ class RemoteSendViewModel(private val container: AppContainer, private val link:
     companion object {
         val KINDS = listOf(ContentKind.LIVE, ContentKind.MOVIE, ContentKind.SERIES)
 
+        /** Nom de la playlist installée sur une télé configurée à distance. */
+        const val REMOTE_PLAYLIST_NAME = "NixTV"
+
+        /** À écrire à la place du serveur pour un compte King 365 (serveurs intégrés à l'appli). */
+        const val KING_SERVER = "king365"
+
+        /** « king365 », « King 365 », « king » : compte King 365 (si cette version connaît ses serveurs). */
+        fun isKing(server: String): Boolean =
+            King.available && server.lowercase().filter { it.isLetterOrDigit() } in setOf("king365", "king")
+
         /**
-         * Lien de la playlist : compte Xtream (serveur + identifiant + mot de passe), ou lien M3U complet si aucun
-         * identifiant n'est saisi. `null` si l'adresse ne convient pas.
+         * Lien de la playlist : compte King 365 (« king365 » à la place du serveur), compte Xtream (serveur, identifiant,
+         * mot de passe) ou lien M3U complet si aucun identifiant n'est saisi. `null` si le compte ou l'adresse ne convient pas.
          */
         fun playlistUrl(form: RemoteSendForm): String? {
             val user = form.username.trim()
-            val url = if (user.isNotEmpty()) {
-                XtreamAccount(form.server.trim(), user, form.password).playlistUrl()
-            } else {
-                form.server.trim().takeIf { it.isNotEmpty() }
+            val server = form.server.trim()
+            val url = when {
+                isKing(server) -> if (user.isEmpty() || form.password.isEmpty()) null else King.playlistUrl(user, form.password)
+                user.isNotEmpty() -> XtreamAccount(server, user, form.password).playlistUrl()
+                else -> server.takeIf { it.isNotEmpty() }
             } ?: return null
             val valid = SourceInputValidator.validate(SourceInput(name = "", location = SourceLocation.Remote(url)))
             return ((valid as? SourceInputValidator.Result.Valid)?.input?.location as? SourceLocation.Remote)?.url
         }
+
+        /** Champ à signaler quand [playlistUrl] refuse le compte. */
+        fun accountProblem(form: RemoteSendForm): RemoteSendField =
+            if (isKing(form.server) && (form.username.isBlank() || form.password.isEmpty())) RemoteSendField.USERNAME else RemoteSendField.SERVER
     }
 }
 
@@ -346,6 +415,16 @@ fun RemoteSendScreen(onBack: () -> Unit) {
     val viewModel = appViewModel { container, _ -> RemoteSendViewModel(container) }
     val form by viewModel.form.collectAsStateWithLifecycle()
     val groups by viewModel.groups.collectAsStateWithLifecycle()
+    // Formulaire aussi sur le téléphone (même Wi-Fi) : QR code de la page servie par cette télé, tant qu'elle est ouverte.
+    val scope = rememberCoroutineScope()
+    var phoneAddress by remember { mutableStateOf<String?>(null) }
+    DisposableEffect(viewModel) {
+        val server = PhoneSetupServer(RemotePhoneForm(viewModel))
+        val ip = PhoneSetupServer.localAddress()
+        val port = ip?.let { runCatching { server.start(scope) }.getOrNull() }
+        if (ip != null && port != null) phoneAddress = "http://$ip:$port/${server.token}"
+        onDispose { server.stop() }
+    }
     form.picking?.let { kind ->
         BackHandler { viewModel.pick(null) }
         ChannelGroupsContent(
@@ -357,7 +436,20 @@ fun RemoteSendScreen(onBack: () -> Unit) {
         )
         return
     }
-    RemoteSendContent(form, onEdit = viewModel::edit, onPick = viewModel::pick, onSend = viewModel::send, onBack = onBack)
+    RemoteSendContent(form, onEdit = viewModel::edit, onPick = viewModel::pick, onSend = viewModel::send, onBack = onBack, phoneAddress = phoneAddress)
+}
+
+/** Page du téléphone : code de l'autre télé et son compte ; les réglages et catégories sont ceux choisis sur la télé. */
+private class RemotePhoneForm(private val viewModel: RemoteSendViewModel) : PhoneForm {
+    override val single: Boolean = false
+
+    override fun page(error: String?): String {
+        val form = viewModel.form.value
+        return PhoneSetupPage.remoteForm(error, form.server)
+    }
+
+    override fun submit(form: Map<String, String>): PhoneFormReply = viewModel.fromPhone(form)?.let(PhoneFormReply::Retry)
+        ?: PhoneFormReply.Done("C'est parti !", "Regardez la télé : l'envoi à l'autre télé est en cours. Revenez en arrière pour configurer une autre télé ensuite.")
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -368,6 +460,8 @@ fun RemoteSendContent(
     onPick: (ContentKind) -> Unit,
     onSend: () -> Unit,
     onBack: () -> Unit,
+    /** Adresse de la page du téléphone (QR code) ; `null` sans réseau local. */
+    phoneAddress: String? = null,
 ) {
     val window = rememberWindowInfo()
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
@@ -382,6 +476,17 @@ fun RemoteSendContent(
                     Modifier.widthIn(max = 760.dp).fillMaxWidth().padding(horizontal = window.horizontalPadding, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
+                    phoneAddress?.let { address ->
+                        SectionCard(stringResource(R.string.remote_send_phone), subtitle = stringResource(R.string.remote_send_phone_help), icon = Icons.Filled.Phone) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                                QrCode(address, 132.dp)
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text(stringResource(R.string.phone_setup_or_type), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(address, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                        }
+                    }
                     SectionCard(stringResource(R.string.remote_send_code_section), subtitle = stringResource(R.string.remote_send_code_help)) {
                         NexTvTextField(
                             value = form.code,
@@ -404,6 +509,7 @@ fun RemoteSendContent(
                             value = form.username,
                             onValueChange = { value -> onEdit { it.copy(username = value) } },
                             label = stringResource(R.string.remote_send_username),
+                            error = if (RemoteSendField.USERNAME in form.errors) stringResource(R.string.remote_send_error_account) else null,
                         )
                         NexTvTextField(
                             value = form.password,

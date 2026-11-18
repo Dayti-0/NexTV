@@ -38,6 +38,27 @@ internal object PhoneSetupPage {
         """,
     )
 
+    /**
+     * « Configurer une autre télé » : le code affiché sur l'autre télé et le compte de son abonnement (serveur, ou
+     * « king365 », ou lien M3U sans identifiant). [server] : prérempli comme sur la télé.
+     */
+    fun remoteForm(error: String?, server: String): String = page(
+        """
+        <h1>Configurer une autre télé</h1>
+        <p class="hint">Le code est affiché sur l'autre télé. Les réglages et catégories choisis sur cette télé partent avec.</p>
+        ${error?.let { "<p class=\"error\">${escape(it)}</p>" }.orEmpty()}
+        <form method="post">
+          <label>Code de l'autre télé<input name="code" inputmode="numeric" maxlength="7" autocomplete="off" placeholder="123 456"></label>
+          <label>Serveur ou lien M3U<input name="server" inputmode="url" autocapitalize="off" autocorrect="off" value="${escape(server)}" placeholder="http://serveur.com:8080"></label>
+          <p class="hint">King 365 : écrivez king365. Lien M3U complet : laissez l'identifiant vide.</p>
+          <label>Identifiant<input name="username" autocapitalize="off" autocorrect="off" autocomplete="off"></label>
+          <label>Mot de passe<input name="password" autocapitalize="off" autocorrect="off" autocomplete="off"></label>
+          <button type="submit">Envoyer à l'autre télé</button>
+        </form>
+        """,
+    )
+
+
     fun message(title: String, text: String): String = page("<h1>${escape(title)}</h1><p>${escape(text)}</p>")
 
     private fun page(body: String): String = """

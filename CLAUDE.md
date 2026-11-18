@@ -264,7 +264,10 @@ Commandes :
   coupé sous Robolectric) puis `RemoteSetupApplier` (playlist ajoutée et choisie, ou mise à jour si même fournisseur ;
   configuration rapide marquée faite) ; `NexTvNavHost` recharge alors la playlist. Celle qui configure :
   `ui/settings/RemoteSetup.kt` (`RemoteSendViewModel` : serveur prérempli d'après sa playlist, identifiant + mot de passe
-  de l'ami, réglages `SettingsRepository.remoteSetupPreferences` sans les équipes suivies). Pas de lien durable (≠ Télés reliées).
+  de l'ami, réglages `SettingsRepository.remoteSetupPreferences` sans les équipes suivies ; « king365 » à la place du serveur =
+  King 365 (`isKing`, serveurs de `King`) ; playlist toujours nommée « NixTV » (`REMOTE_PLAYLIST_NAME`) ; QR code d'un formulaire
+  sur le téléphone, 0.2.198 : `PhoneSetupServer` + `PhoneForm` (`RemotePhoneForm` → `fromPhone`, plusieurs envois
+  acceptés), page `PhoneSetupPage.remoteForm`). Pas de lien durable (≠ Télés reliées).
 - Rangement recalculé sans relire la playlist : `ChannelFilters.rearrange` (au lancement quand `ChannelLineup.VERSION`
   dépasse le `lineupVersion` des réglages). Toute nouvelle règle de `ChannelLineup` : augmenter `ChannelLineup.VERSION`.
 - « Chaînes françaises seulement » (réglage) : colonne `french` (section autre que `OTHER` et `GENERAL` « Autres chaînes »,

@@ -217,6 +217,7 @@ abstract class ScreenshotSuite(private val device: String) {
             onPick = {},
             onSend = {},
             onBack = {},
+            phoneAddress = "http://192.168.1.20:43117/k3m8p2x7qa",
         )
     }
 

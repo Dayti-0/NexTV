@@ -17,14 +17,50 @@ import java.net.Socket
 import java.net.URLDecoder
 import java.security.SecureRandom
 
+/** Formulaire servi au téléphone : sa page, et ce que la télé fait de ce qui est envoyé. */
+interface PhoneForm {
+    /** Page du formulaire, avec le message d'erreur du dernier envoi. */
+    fun page(error: String?): String
+
+    /** Envoi du téléphone (appelé hors du fil principal). */
+    fun submit(form: Map<String, String>): PhoneFormReply
+
+    /** Un seul envoi accepté (sinon, le formulaire revient après chaque envoi). */
+    val single: Boolean get() = true
+}
+
+sealed interface PhoneFormReply {
+    /** Envoi accepté : page de confirmation. */
+    data class Done(val title: String, val text: String) : PhoneFormReply
+
+    /** Envoi refusé : le formulaire revient avec ce message. */
+    data class Retry(val error: String) : PhoneFormReply
+}
+
+/** Ajout d'une playlist depuis le téléphone : elle arrive sur la télé ([onPlaylist]), qui ouvre l'ajout prérempli. */
+private class PlaylistForm(private val onPlaylist: (PlaylistImport) -> Unit) : PhoneForm {
+    override fun page(error: String?): String = PhoneSetupPage.form(error = error, king = King.available)
+
+    override fun submit(form: Map<String, String>): PhoneFormReply = when (val result = phoneImport(form)) {
+        is PhoneImportResult.Ok -> {
+            onPlaylist(result.import)
+            PhoneFormReply.Done("C'est envoyé !", "Regardez la télé : il ne reste qu'à confirmer l'ajout de la playlist avec OK.")
+        }
+        is PhoneImportResult.Error -> PhoneFormReply.Retry(result.message)
+    }
+}
+
 /**
- * Petite page web servie par la télé pendant que l'écran « Configurer depuis le téléphone » est ouvert :
- * le téléphone (même Wi-Fi) l'ouvre avec le QR code, saisit un compte Xtream ou un lien M3U, et la playlist
- * arrive sur la télé ([onPlaylist]), qui ouvre l'ajout prérempli. Rien ne passe par Internet.
+ * Petite page web servie par la télé pendant qu'un écran qui l'utilise est ouvert (« Configurer depuis le téléphone »,
+ * « Configurer une autre télé ») : le téléphone (même Wi-Fi) l'ouvre avec le QR code et remplit le formulaire ([form]).
+ * Rien ne passe par Internet.
  *
- * Seule l'adresse avec le code secret ([token], tiré au hasard) répond, et une seule playlist est acceptée.
+ * Seule l'adresse avec le code secret ([token], tiré au hasard) répond.
  */
-class PhoneSetupServer(private val onPlaylist: (PlaylistImport) -> Unit) {
+class PhoneSetupServer(private val form: PhoneForm) {
+    /** Ajout d'une playlist : une seule acceptée. */
+    constructor(onPlaylist: (PlaylistImport) -> Unit) : this(PlaylistForm(onPlaylist))
+
     val token: String = randomToken()
     private var socket: ServerSocket? = null
     private var job: Job? = null
@@ -69,18 +105,17 @@ class PhoneSetupServer(private val onPlaylist: (PlaylistImport) -> Unit) {
             return
         }
         if (used) {
-            respond("200 OK", PhoneSetupPage.message("Déjà envoyé", "La playlist est arrivée sur la télé. Pour en envoyer une autre, rouvrez l'écran du QR code."))
+            respond("200 OK", PhoneSetupPage.message("Déjà envoyé", "C'est arrivé sur la télé. Pour envoyer autre chose, rouvrez l'écran du QR code."))
             return
         }
         when (request.method) {
-            "GET" -> respond("200 OK", PhoneSetupPage.form(error = null, king = King.available))
-            "POST" -> when (val result = phoneImport(parseForm(request.body))) {
-                is PhoneImportResult.Ok -> {
-                    used = true
-                    onPlaylist(result.import)
-                    respond("200 OK", PhoneSetupPage.message("C'est envoyé !", "Regardez la télé : il ne reste qu'à confirmer l'ajout de la playlist avec OK."))
+            "GET" -> respond("200 OK", form.page(error = null))
+            "POST" -> when (val reply = form.submit(parseForm(request.body))) {
+                is PhoneFormReply.Done -> {
+                    if (form.single) used = true
+                    respond("200 OK", PhoneSetupPage.message(reply.title, reply.text))
                 }
-                is PhoneImportResult.Error -> respond("200 OK", PhoneSetupPage.form(error = result.message, king = King.available))
+                is PhoneFormReply.Retry -> respond("200 OK", form.page(error = reply.error))
             }
             else -> respond("405 Method Not Allowed", PhoneSetupPage.message("Requête refusée", ""))
         }

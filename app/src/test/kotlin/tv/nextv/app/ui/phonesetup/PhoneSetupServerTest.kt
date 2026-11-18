@@ -67,6 +67,36 @@ class PhoneSetupServerTest {
     }
 
     @Test
+    fun aFormForSeveralSendsAcceptsEachOne() {
+        val sent = mutableListOf<Map<String, String>>()
+        val multi = PhoneSetupServer(
+            object : PhoneForm {
+                override val single = false
+                override fun page(error: String?) = PhoneSetupPage.remoteForm(error, server = "king365")
+                override fun submit(form: Map<String, String>): PhoneFormReply =
+                    if (form["code"].isNullOrEmpty()) PhoneFormReply.Retry("Code manquant") else PhoneFormReply.Done("C'est parti !", "").also { sent += form }
+            },
+        )
+        val multiPort = multi.start(scope)
+        try {
+            fun post(form: Map<String, String>): String {
+                val connection = URL("http://127.0.0.1:$multiPort/${multi.token}").openConnection() as HttpURLConnection
+                connection.requestMethod = "POST"
+                connection.doOutput = true
+                val body = form.entries.joinToString("&") { (k, v) -> "${URLEncoder.encode(k, "UTF-8")}=${URLEncoder.encode(v, "UTF-8")}" }
+                connection.outputStream.use { it.write(body.toByteArray()) }
+                return connection.inputStream.bufferedReader().readText()
+            }
+            assertTrue(post(mapOf("code" to "")).contains("Code manquant"))
+            assertTrue(post(mapOf("code" to "123456", "server" to "king365")).contains("C'est parti"))
+            assertTrue(post(mapOf("code" to "654321", "server" to "king365")).contains("C'est parti"))
+            assertEquals(listOf("123456", "654321"), sent.map { it["code"] })
+        } finally {
+            multi.stop()
+        }
+    }
+
+    @Test
     fun formErrorsAreShownOnThePhone() {
         val (_, page) = request("/${server.token}", mapOf("mode" to "m3u", "url" to "ftp://non"))
         assertTrue(page.contains("http:// ou https://"))

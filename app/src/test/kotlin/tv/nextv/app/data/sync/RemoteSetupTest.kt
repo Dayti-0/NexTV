@@ -201,6 +201,26 @@ class RemoteSetupTest {
     }
 
     @Test
+    fun `king365 instead of the server uses the King 365 servers built into the app`() {
+        val before = tv.nextv.app.King.servers
+        tv.nextv.app.King.servers = listOf("http://king.example:8080", "http://secours.example:8080")
+        try {
+            val form = RemoteSendForm(server = "King 365", username = "paul", password = "secret")
+            assertEquals("http://king.example:8080/get.php?username=paul&password=secret&type=m3u_plus&output=ts", RemoteSendViewModel.playlistUrl(form))
+            assertTrue(RemoteSendViewModel.isKing(" king365 "))
+            // Sans mot de passe : le compte est signalé, pas le serveur.
+            val missing = form.copy(password = "")
+            assertEquals(null, RemoteSendViewModel.playlistUrl(missing))
+            assertEquals(tv.nextv.app.ui.settings.RemoteSendField.USERNAME, RemoteSendViewModel.accountProblem(missing))
+            // Version sans serveurs King : « king365 » n'est qu'une adresse invalide.
+            tv.nextv.app.King.servers = emptyList()
+            assertEquals(null, RemoteSendViewModel.playlistUrl(form))
+        } finally {
+            tv.nextv.app.King.servers = before
+        }
+    }
+
+    @Test
     fun `the playlist link is built from the server and the friend's account`() {
         val xtream = RemoteSendViewModel.playlistUrl(RemoteSendForm(server = "provider.example:8080", username = "paul", password = "secret"))!!
         assertEquals("http://provider.example:8080/get.php?username=paul&password=secret&type=m3u_plus&output=ts", xtream)
