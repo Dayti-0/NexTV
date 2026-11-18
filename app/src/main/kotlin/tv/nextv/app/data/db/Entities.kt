@@ -181,6 +181,23 @@ data class HiddenGroupEntity(
     val title: String,
 )
 
+/**
+ * Film ou série déjà vu jusqu'au bout et pas en cours (version 15 du schéma) : rangé à la fin des listes de films et de
+ * séries. Copie, tenue à jour par `SeenTitles`, du « Déjà vu » (base à part) moins les reprises, pour pouvoir trier les
+ * listes dans la même requête.
+ */
+@Entity(
+    tableName = "seen_titles",
+    primaryKeys = ["sourceId", "itemKey"],
+    foreignKeys = [
+        ForeignKey(entity = SourceEntity::class, parentColumns = ["id"], childColumns = ["sourceId"], onDelete = ForeignKey.CASCADE),
+    ],
+)
+data class SeenTitleEntity(
+    val sourceId: Long,
+    val itemKey: String,
+)
+
 /** Fiche TMDB en cache (ou absence de résultat, [found] faux). */
 @Entity(tableName = "tmdb_cache")
 data class TmdbCacheEntity(

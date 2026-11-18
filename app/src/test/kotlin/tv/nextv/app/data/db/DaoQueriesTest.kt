@@ -177,6 +177,37 @@ class DaoQueriesTest {
         assertEquals("HD", dao.seriesRow(other, "Séries", 10).single().quality)
     }
 
+    /** Films et séries déjà vus (et pas en cours) : à la fin des listes et des rangées de leur catégorie. */
+    @Test
+    fun `seen films and series go to the end of the lists`() = runBlocking {
+        fun movie(title: String, position: Int) = Channel(
+            position = position, name = title, stream = StreamDescriptor("http://example.com/movie/$position.mkv"),
+            groupTitle = "Films", kind = ContentKind.MOVIE, title = title, year = 2024,
+        )
+        RoomPlaylistStore(db).replaceChannels(sourceId, listOf(movie("Heat", 1), movie("Alien", 2), movie("Dune", 3)) + listOf(
+            Channel(position = 10, name = "Lupin S01E01", stream = StreamDescriptor("http://example.com/series/1.mkv"), groupTitle = "Séries",
+                kind = ContentKind.SERIES, title = "Lupin", episode = EpisodeInfo("Lupin", 1, 1)),
+            Channel(position = 11, name = "Dark S01E01", stream = StreamDescriptor("http://example.com/series/2.mkv"), groupTitle = "Séries",
+                kind = ContentKind.SERIES, title = "Dark", episode = EpisodeInfo("Dark", 1, 1)),
+        )) {}
+        val dao = db.channelDao()
+        val heat = dao.pageMovies(sourceId, 0, "", "").all().first { it.title == "Heat" }.itemKey
+        // Heat vu, Lupin fini (un épisode vu, plus de reprise) ; Alien vu mais repris : il garde sa place.
+        val seen = tv.nextv.app.data.progress.SeenTitles.of(
+            listOf(heat, "movie:alien", "series:lupin|S1E1"),
+            inProgress = listOf("movie:alien"),
+        )
+        assertEquals(setOf(heat, "series:lupin"), seen)
+        db.seenTitleDao().replace(sourceId, seen)
+        assertEquals(listOf("Alien", "Dune", "Heat"), dao.pageMovies(sourceId, 0, "", "").all().map { it.title })
+        assertEquals(listOf("Alien", "Dune", "Heat"), dao.movieRow(sourceId, "Films", 10).map { it.title })
+        assertEquals(listOf("Dark", "Lupin"), dao.pageSeries(sourceId, 0, "", "").all().map { it.title })
+        assertEquals(listOf("Dark", "Lupin"), dao.seriesRow(sourceId, "Séries", 10).map { it.title })
+        // Plus rien de vu : l'ordre de la playlist revient.
+        db.seenTitleDao().replace(sourceId, emptySet())
+        assertEquals(listOf("Heat", "Alien", "Dune"), dao.pageMovies(sourceId, 0, "", "").all().map { it.title })
+    }
+
     /** « Masquer les chaînes 4K » : un film qui existe aussi hors 4K n'affiche plus le badge 4K sur son affiche. */
     @Test
     fun `with 4K hidden, a film also offered in FHD shows the FHD badge`() = runBlocking {
@@ -269,6 +300,7 @@ class DaoQueriesTest {
             execSQL("ALTER TABLE `channels` DROP COLUMN `niceTitle`")
             execSQL("ALTER TABLE `channels` DROP COLUMN `baseTitle`")
             execSQL("ALTER TABLE `channels` DROP COLUMN `french`")
+            execSQL("DROP TABLE `seen_titles`")
             version = 6
         }
         old.close()
@@ -276,7 +308,7 @@ class DaoQueriesTest {
             .addMigrations(
                 NexTvDatabase.MIGRATION_6_7, NexTvDatabase.MIGRATION_7_8, NexTvDatabase.MIGRATION_8_9, NexTvDatabase.MIGRATION_9_10,
                 NexTvDatabase.MIGRATION_10_11, NexTvDatabase.MIGRATION_11_12, NexTvDatabase.MIGRATION_12_13,
-                NexTvDatabase.MIGRATION_13_14,
+                NexTvDatabase.MIGRATION_13_14, NexTvDatabase.MIGRATION_14_15,
             )
             .allowMainThreadQueries()
             .build()

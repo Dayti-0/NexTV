@@ -18,6 +18,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         HiddenGroupEntity::class,
         GuideOnlyChannelEntity::class,
         MeasuredQualityEntity::class,
+        SeenTitleEntity::class,
     ],
     version = NexTvDatabase.VERSION,
     // Schéma de chaque version gardé dans app/schemas : il sert à écrire et à tester la migration suivante.
@@ -32,6 +33,7 @@ abstract class NexTvDatabase : RoomDatabase() {
     abstract fun tmdbDao(): TmdbDao
     abstract fun hiddenGroupDao(): HiddenGroupDao
     abstract fun guideOnlyChannelDao(): GuideOnlyChannelDao
+    abstract fun seenTitleDao(): SeenTitleDao
 
     companion object {
         /** Année des programmes du guide : nouvelle colonne, les données existantes sont conservées. */
@@ -151,6 +153,17 @@ abstract class NexTvDatabase : RoomDatabase() {
             }
         }
 
+        /** Films et séries déjà vus, rangés en fin de liste : nouvelle table (remplie au lancement d'après le « Déjà vu »). */
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `seen_titles` (`sourceId` INTEGER NOT NULL, `itemKey` TEXT NOT NULL, " +
+                        "PRIMARY KEY(`sourceId`, `itemKey`), " +
+                        "FOREIGN KEY(`sourceId`) REFERENCES `sources`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+                )
+            }
+        }
+
         internal const val MEASURED_QUALITY_SQL = "CREATE TABLE IF NOT EXISTS `measured_quality` (`sourceId` INTEGER NOT NULL, " +
             "`streamUrl` TEXT NOT NULL, `quality` TEXT NOT NULL, `fromPlayback` INTEGER NOT NULL, `measuredAt` INTEGER NOT NULL, " +
             "PRIMARY KEY(`sourceId`, `streamUrl`), FOREIGN KEY(`sourceId`) REFERENCES `sources`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )"
@@ -173,7 +186,7 @@ abstract class NexTvDatabase : RoomDatabase() {
          * refuse de démarrer (et le test des migrations échoue) au lieu d'effacer en silence playlists, favoris et
          * identifiants.
          */
-        const val VERSION = 14
+        const val VERSION = 15
 
         /** Première version dont les données sont conservées (la 1, version de test, est rechargée depuis la playlist). */
         const val FIRST_MIGRATED_VERSION = 2
@@ -182,7 +195,7 @@ abstract class NexTvDatabase : RoomDatabase() {
         val MIGRATIONS: List<Migration> =
             listOf(
                 MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10,
-                MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14,
+                MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15,
             )
 
         fun create(context: Context): NexTvDatabase =

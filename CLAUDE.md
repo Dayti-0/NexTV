@@ -235,6 +235,9 @@ Commandes :
   catégories masquées sous l'ancien nom sont renommées (`RoomPlaylistStore.renameHiddenContentGroups`). « Contenus
   français seulement » les traite comme des catégories masquées (`HIDDEN_MOVIE_GROUPS`, `HIDDEN_SERIES_GROUPS`,
   `HIDDEN_KIND_GROUPS` de `Daos.kt`). Nouveau nom : augmenter `QualityParser.VERSION`.
+- « Déjà vu » en fin de liste (0.2.199) : table `seen_titles` de la base des chaînes (version 15), copie tenue par
+  `AppContainer` (`SeenTitles.of` : films vus et séries dont un épisode est vu, moins les reprises) ; tri `SEEN_LAST` /
+  `SERIES_SEEN_LAST` dans `pageMovies`, `pageSeries`, `movieRow`, `seriesRow` (le « Déjà vu » lui-même est dans une base à part).
 - Année de sortie dans la fiche programme : celle du guide (`<date>`, la moitié des films de xmltvfr), sinon celle de la
   fiche TMDB du même titre (`rememberProgrammeYear`, `sameTitleYear` dans `ProgrammeArt.kt`, même cache que l'image).
 - Fun Radio / RTL2 : `icecast.funradio.fr` redirige vers `streaming-ice.audiomeans.fr` (paramètres AdsWizz `aw_…` : pubs

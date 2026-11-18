@@ -29,6 +29,12 @@ import tv.nextv.core.model.ContentKind
  * - [HIDDEN_UHD] : versions 4K masquées (rang de qualité 5, voir StreamQuality.UHD) ;
  * - [HIDDEN_FOREIGN] : chaînes des autres pays masquées (réglage « Chaînes françaises seulement », colonne `french`).
  */
+/** Films et séries déjà vus (et pas en cours) en fin de liste : clé de tri à mettre avant l'ordre de la playlist. */
+private const val SEEN_LAST = "EXISTS (SELECT 1 FROM seen_titles s WHERE s.sourceId = c.sourceId AND s.itemKey = c.itemKey)"
+
+/** Même chose pour les requêtes de séries écrites sans alias (`channels`). */
+private const val SERIES_SEEN_LAST = "EXISTS (SELECT 1 FROM seen_titles s WHERE s.sourceId = channels.sourceId AND s.itemKey = channels.itemKey)"
+
 internal const val HIDDEN_ITEM = "LIVE_ITEM"
 internal const val HIDDEN_UHD = "LIVE_UHD"
 internal const val HIDDEN_FOREIGN = "LIVE_FOREIGN"
@@ -643,7 +649,7 @@ interface ChannelDao {
         """
         SELECT $MOVIE_COLUMNS FROM channels c
         WHERE c.sourceId = :sourceId AND c.kind = 'MOVIE' AND c.groupTitle IS :group AND $MOVIE_IN_GROUP
-        ORDER BY c.position + 0 LIMIT :limit
+        ORDER BY $SEEN_LAST, c.position + 0 LIMIT :limit
         """,
     )
     suspend fun movieRow(sourceId: Long, group: String?, limit: Int): List<MovieRow>
@@ -694,7 +700,7 @@ interface ChannelDao {
         """
         SELECT id, seriesName AS title, year, logoUrl, groupTitle, itemKey, variantCount AS episodeCount, quality FROM channels
         WHERE sourceId = :sourceId AND kind = 'SERIES' AND isPrimary = 1 AND seriesName IS NOT NULL AND groupTitle IS :group
-        ORDER BY position + 0 LIMIT :limit
+        ORDER BY $SERIES_SEEN_LAST, position + 0 LIMIT :limit
         """,
     )
     suspend fun seriesRow(sourceId: Long, group: String?, limit: Int): List<SeriesRow>
@@ -736,7 +742,7 @@ interface ChannelDao {
             OR EXISTS (SELECT 1 FROM channels o WHERE o.sourceId = c.sourceId AND o.kind = 'MOVIE' AND o.itemKey = c.itemKey
               AND o.name LIKE '%' || :query || '%' ESCAPE '\'))
           AND CASE WHEN :filterGroup = 1 THEN IFNULL(c.groupTitle, '') = :group AND $MOVIE_IN_GROUP ELSE $MOVIE_VISIBLE END
-        ORDER BY c.position
+        ORDER BY $SEEN_LAST, c.position
         """,
     )
     fun pageMovies(sourceId: Long, filterGroup: Int, group: String, query: String, key: String): PagingSource<Int, MovieRow>
@@ -772,7 +778,7 @@ interface ChannelDao {
           AND (:filterGroup = 0 OR IFNULL(groupTitle, '') = :group)
           AND (:query = '' OR seriesName LIKE '%' || :query || '%' ESCAPE '\'
             OR (:key != '' AND itemKey LIKE 'series:%' || :key || '%'))
-        ORDER BY position
+        ORDER BY $SERIES_SEEN_LAST, position
         """,
     )
     fun pageSeries(sourceId: Long, filterGroup: Int, group: String, query: String, key: String): PagingSource<Int, SeriesRow>
@@ -1188,6 +1194,26 @@ interface FavoriteDao {
 
     @Query("DELETE FROM favorites WHERE id = :id")
     suspend fun deleteById(id: Long)
+}
+
+/** Films et séries déjà vus (rangés en fin de liste). */
+@Dao
+interface SeenTitleDao {
+    @Query("SELECT itemKey FROM seen_titles WHERE sourceId = :sourceId")
+    suspend fun keys(sourceId: Long): List<String>
+
+    @Query("DELETE FROM seen_titles WHERE sourceId = :sourceId")
+    suspend fun clear(sourceId: Long)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertAll(titles: List<SeenTitleEntity>)
+
+    /** Remplace la liste d'une playlist en une seule écriture (les listes ne se rechargent qu'une fois). */
+    @androidx.room.Transaction
+    suspend fun replace(sourceId: Long, keys: Collection<String>) {
+        clear(sourceId)
+        if (keys.isNotEmpty()) insertAll(keys.map { SeenTitleEntity(sourceId, it) })
+    }
 }
 
 /** Catégories masquées (les favoris restent toujours visibles). */

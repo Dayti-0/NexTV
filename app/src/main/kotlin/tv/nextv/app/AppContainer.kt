@@ -562,6 +562,24 @@ class AppContainer(context: Context) {
                 }
         }
 
+        // Films et séries déjà vus (et pas en cours) : copiés dans la base des chaînes, qui les range en fin de liste.
+        applicationScope.launch {
+            val seen = database.seenTitleDao()
+            settings.activePlaylistId.distinctUntilChanged().collectLatest { id ->
+                if (id == null) return@collectLatest
+                combine(
+                    watched.observeKeys(id),
+                    progress.observeAll(id, tv.nextv.core.model.ContentKind.MOVIE.name),
+                    progress.observeAll(id, tv.nextv.core.model.ContentKind.SERIES.name),
+                ) { keys, movies, series -> tv.nextv.app.data.progress.SeenTitles.of(keys, (movies + series).map { it.itemKey }) }
+                    .distinctUntilChanged()
+                    .collect { keys ->
+                        // Écrit seulement ce qui change : chaque écriture fait recharger les listes de films et de séries.
+                        safely("Déjà vu en fin de liste") { if (seen.keys(id).toSet() != keys) seen.replace(id, keys) }
+                    }
+            }
+        }
+
         // Reprises de lecture : rattachées à leurs films et épisodes au lancement et après chaque mise à jour d'une
         // playlist (leur numéro de ligne change quand l'adresse du flux change).
         applicationScope.launch {

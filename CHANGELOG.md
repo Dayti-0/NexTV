@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.199
+- Films et séries : ceux déjà vus passent à la fin des listes et des rangées (pas ceux en cours, qui gardent leur place)
+
 ## 0.2.198
 - Configurer une autre télé : un QR code permet de tout remplir depuis le téléphone (même Wi-Fi), puis l'envoi part tout seul
 - Configurer une autre télé : écrire « king365 » à la place du serveur installe un compte King 365
