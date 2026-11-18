@@ -510,6 +510,26 @@ fun PlayerScreen(
                 cover = state.nowPlayingCover.takeIf { state.radioTitle == null },
                 lowPower = lowPower,
             )
+            // Émission filmée en direct (Skyrock, Planète Rap) : sa vidéo par-dessus l'animation, avec son propre son
+            // (celui de la radio est coupé le temps de la vidéo : les deux ne sont pas calés). Vidéo qui ne démarre pas ou
+            // direct terminé : l'animation et le son de la radio reviennent.
+            state.radioVideo?.let { video ->
+                var endedVideo by remember { mutableStateOf<String?>(null) }
+                if (video != endedVideo) {
+                    tv.nextv.app.ui.home.TrailerBackdrop(
+                        key = video,
+                        language = "fr",
+                        modifier = Modifier.fillMaxSize(),
+                        delayMillis = 0,
+                        // Moteur VLC : son de la radio gardé, vidéo muette.
+                        muted = state.engineVlc,
+                        onShown = { shown -> viewModel.radioVideoShown(shown && !state.engineVlc) },
+                        onFinished = { endedVideo = video },
+                        onFailed = { endedVideo = video },
+                    )
+                    DisposableEffect(video) { onDispose { viewModel.radioVideoShown(false) } }
+                }
+            }
         }
 
         // Film ou épisode : commandes NixTV.

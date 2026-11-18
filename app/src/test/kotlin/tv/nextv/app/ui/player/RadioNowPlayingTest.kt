@@ -56,7 +56,8 @@ class RadioNowPlayingTest {
                 }
                 "/skyrock" -> MockResponse.Builder().body(
                     """{"schedule":[{"type":"record","info":{"title":"Sicario","start_ts":"0","end_ts":"9999999999",
-                    "cover_mid_uri":"https://media.skyrock.fm/b.jpg"}}]}""",
+                    "cover_mid_uri":"https://media.skyrock.fm/b.jpg"}}],
+                    "live_video":{"on_air":true,"provider":"youtube","external_stream_id":"7iKTYkIk7Bs"}}""",
                 ).build()
                 "/indes/www.jazzradio.fr" -> MockResponse.Builder().body(
                     """{"1":{"artist":"MADELEINE PEYROUX","title":"Walkin' after midnight","cover":"https://covers.eg-ad.fr/m.jpg"}}""",
@@ -114,7 +115,11 @@ class RadioNowPlayingTest {
         follower.follow(active = true, channelName = "|FR| SkyRock FM")
         waitFor { state.value.nowPlaying != null }
         assertEquals("Sicario", state.value.nowPlaying)
+        // Émission filmée en direct : sa vidéo YouTube.
+        waitFor { state.value.radioVideo != null }
+        assertEquals("7iKTYkIk7Bs", state.value.radioVideo)
         follower.follow(active = true, channelName = "Jazz Radio")
+        assertEquals(null, state.value.radioVideo)
         waitFor { state.value.nowPlaying?.contains("PEYROUX") == true }
         assertEquals("MADELEINE PEYROUX – Walkin' after midnight", state.value.nowPlaying)
         assertEquals("https://covers.eg-ad.fr/m.jpg", state.value.nowPlayingCover)

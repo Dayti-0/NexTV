@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.191
+- Skyrock : pendant une émission filmée en direct (Planète Rap, 20 h – 21 h), la vidéo du live s'affiche en plein écran sur la station, avec son son ; à la fin, l'animation et la radio reviennent
+
 ## 0.2.190
 - « Contenus français seulement » masque aussi la catégorie « Autres chaînes » (KTO, Daystar…)
 - Streaming : le menu des catégories s'ouvre sur la catégorie affichée, même loin dans la liste (au lieu de la recherche)

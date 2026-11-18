@@ -201,6 +201,11 @@ Commandes :
   `NEXTV_AUDD_API_KEY` → `BuildConfig.AUDD_API_KEY`), relancée à la fin du morceau reconnu (`durationInMillis` −
   `timecode`). Lecture des réponses : `core/audio/NowPlaying.kt`. Pas de Shazam : pas d'accès public autorisé.
   Flux sans titre ICY (vérifié) : Radio France, NRJ / Chérie / Rire, RTL2, Fun, Nova, Jazz Radio, TSF, Infomaniak (titre vide).
+- Vidéo du direct de Skyrock (0.2.191) : `live_video` de `skyrock.fm/api/v3/player/onair/national` (`on_air`, `provider`
+  « youtube », `external_stream_id` ; relevé pendant Planète Rap le 18/11/2026, lecture intégrée permise) lu par
+  `NowPlaying.skyrockLiveVideo`, relu toutes les minutes (`RadioNowPlaying.followLiveVideo`) → `PlayerUiState.radioVideo` ;
+  `PlayerScreen` l'affiche par-dessus l'animation avec le lecteur des bandes-annonces (`TrailerBackdrop`, son de la vidéo,
+  son de la radio coupé : `PlayerViewModel.radioVideoShown`). `radiovision/stream` de Skyrock : clips, liste vide, pas le live.
 - Logos des radios : `InternetRadios` (logos officiels de Wikipédia ou des sites des radios ; Wikipédia et ses images
   refusent l'agent d'OkHttp par défaut : client `IMAGE` avec l'agent de l'appli, `HttpClientProvider`) ; radios de la
   playlist : `InternetRadios.logoFor` à l'import (0.2.189 : remplace aussi l'image de la playlist pour une radio connue, ex. drapeau

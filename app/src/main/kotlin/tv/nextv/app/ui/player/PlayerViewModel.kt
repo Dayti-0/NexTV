@@ -414,7 +414,12 @@ class PlayerViewModel(
     // --- Moteur VLC ---------------------------------------------------------------------------------
 
     /** « Lire avec le moteur VLC » (options du lecteur). */
-    fun useVlc() {
+    /** Vidéo du direct d'une radio affichée avec son propre son : celui de la radio est coupé le temps de la vidéo. */
+    fun radioVideoShown(shown: Boolean) {
+        engine.current?.volume = if (shown) 0f else 1f
+    }
+
+        fun useVlc() {
         vlcTried = false
         switchToVlc()
     }

@@ -128,6 +128,8 @@ data class PlayerUiState(
     val nowPlayingArtist: String? = null,
     /** Titre seul de [nowPlaying] (sans l'artiste). */
     val nowPlayingSong: String? = null,
+    /** Vidéo YouTube du direct filmé de la radio (Skyrock, Planète Rap), `null` hors direct. */
+    val radioVideo: String? = null,
     /** Lecture par le moteur VLC (son ou image que le lecteur de l'appli ne sait pas lire). */
     val engineVlc: Boolean = false,
     /** Format du son illisible (« MP2 », « DTS-HD »), pour le dire dans le message. */

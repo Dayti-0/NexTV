@@ -52,6 +52,7 @@ internal class RadioNowPlaying(
     private val recognitionUrl: String = "https://api.audd.io/",
 ) {
     private var job: Job? = null
+    private var videoJob: Job? = null
     private var following: Pair<Boolean, String>? = null
 
     /** Reconnaissance refusée (limite du jour sans clé, clé invalide) : plus d'essai avant ce moment. */
@@ -63,10 +64,14 @@ internal class RadioNowPlaying(
         if (target == following) return
         following = target
         job?.cancel()
-        state.update { it.copy(nowPlaying = null, nowPlayingCover = null, nowPlayingArtist = null, nowPlayingSong = null) }
+        videoJob?.cancel()
+        state.update { it.copy(nowPlaying = null, nowPlayingCover = null, nowPlayingArtist = null, nowPlayingSong = null, radioVideo = null) }
         if (!active) return
         snippet.clear()
-        job = scope.launch { loop(InternetRadios.titlesFor(channelName)) }
+        val source = InternetRadios.titlesFor(channelName)
+        job = scope.launch { loop(source) }
+        // Skyrock : vidéo du direct quand l'émission est filmée (relu toutes les minutes, même si le flux donne le titre).
+        if (source == InternetRadios.TitleSource.Skyrock) videoJob = scope.launch { followLiveVideo() }
     }
 
     private suspend fun loop(source: InternetRadios.TitleSource?) {
@@ -114,6 +119,18 @@ internal class RadioNowPlaying(
                 }
             }
             delay(1_000)
+        }
+    }
+
+    private suspend fun followLiveVideo() {
+        while (true) {
+            val body = call(Request.Builder().url(skyrockUrl).build())
+            // Réponse manquée (réseau) : la vidéo en cours reste.
+            if (body != null) {
+                val video = NowPlaying.skyrockLiveVideo(body)
+                if (video != state.value.radioVideo) state.update { it.copy(radioVideo = video) }
+            }
+            delay(LIVE_VIDEO_MILLIS)
         }
     }
 
@@ -188,6 +205,9 @@ internal class RadioNowPlaying(
 
         /** Réponses vides de suite du service de la radio avant de passer à la reconnaissance. */
         const val SOURCE_FAILURES = 3
+
+        /** Vidéo du direct de Skyrock : relue toutes les minutes. */
+        const val LIVE_VIDEO_MILLIS = 60_000L
 
         /** Reconnaissance refusée (limite du jour) : pause. */
         const val PAUSE_AFTER_REFUSAL_MILLIS = 30 * 60_000L

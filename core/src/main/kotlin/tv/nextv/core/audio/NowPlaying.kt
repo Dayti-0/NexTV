@@ -63,6 +63,21 @@ data class NowPlaying(
         }
 
         /**
+         * Vidéo du direct de Skyrock (émission filmée, Planète Rap de 20 h à 21 h) dans la même réponse : l'identifiant
+         * de la vidéo YouTube (`live_video` : `on_air`, `provider` « youtube », `external_stream_id`), `null` hors direct.
+         */
+        fun skyrockLiveVideo(body: String): String? = try {
+            JSONObject(body).optJSONObject("live_video")
+                ?.takeIf { it.optBoolean("on_air") && it.optString("provider").equals("youtube", ignoreCase = true) }
+                ?.optString("external_stream_id")?.trim()
+                ?.takeIf { YOUTUBE_ID.matches(it) }
+        } catch (e: JSONException) {
+            null
+        }
+
+        private val YOUTUBE_ID = Regex("[A-Za-z0-9_-]{6,20}")
+
+        /**
          * Réponse de Skyrock (`skyrock.fm/api/v3/player/onair/national`) : le morceau de la liste « schedule » qui passe à
          * [nowSeconds] (heure Unix), sinon le dernier commencé ; titre seul (l'artiste n'y est pas), pochette.
          */

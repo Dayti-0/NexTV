@@ -96,6 +96,17 @@ class NowPlayingTest {
         assertEquals(1_794_997_800_000L, program.untilMillis)
     }
 
+    /** Direct filmé de Skyrock (relevé pendant Planète Rap le 18/11/2026) : la vidéo YouTube, rien hors direct. */
+    @Test
+    fun skyrockGivesItsLiveVideo() {
+        val live = """{"live_video":{"on_air":true,"title":"LIVE VIDEO","provider":"youtube",
+            "external_stream_web_url":"https://www.youtube.com/watch?v=7iKTYkIk7Bs","external_stream_id":"7iKTYkIk7Bs"}}"""
+        assertEquals("7iKTYkIk7Bs", NowPlaying.skyrockLiveVideo(live))
+        assertEquals(null, NowPlaying.skyrockLiveVideo("""{"live_video":{"on_air":false}}"""))
+        assertEquals(null, NowPlaying.skyrockLiveVideo("""{"live_video":{"on_air":true,"provider":"twitch","external_stream_id":"skyrock"}}"""))
+        assertEquals(null, NowPlaying.skyrockLiveVideo("pas du json"))
+    }
+
     @Test
     fun theStreamTitleIsSplitIntoArtistAndSong() {
         val track = NowPlaying.fromStreamTitle("Candyman - Knockin' Boots")!!
