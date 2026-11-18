@@ -4,6 +4,10 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.178
+- Guide TV enrichi : les programmes de Pluto TV, Samsung TV Plus et Plex complètent le guide habituel pour les chaînes gratuites. Presque toutes les chaînes Pluto TV ont maintenant leur programme, ainsi que les deux tiers des chaînes Rakuten TV et quelques autres (Drive TV, BBC Earth, Masha et Michka, Les Lapins Crétins, Journal du Golf…)
+- Le guide est relu une fois au premier lancement pour les ajouter
+
 ## 0.2.177
 - Enregistrement pour l'analyse des pubs (à la main ou automatique) : les chaînes passent dans leur moins bonne qualité tant qu'il dure. La détection n'utilise que des images réduites et le son, pareils dans toutes les qualités : moins de connexion et moins de travail pour la box ou la Fire TV. La qualité habituelle revient à l'arrêt (une qualité choisie à la main dans les options reste prioritaire)
 
