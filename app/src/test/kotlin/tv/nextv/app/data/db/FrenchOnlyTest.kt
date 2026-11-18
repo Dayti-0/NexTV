@@ -110,4 +110,54 @@ class FrenchOnlyTest {
         container.channelFilters.apply(id, settings(frenchOnly = true))
         assertEquals(arranged, groups(id) to all(id))
     }
+
+    /**
+     * Films et séries : catégories sous leur nom propre (« SC FICTION | HORREUR » → « Science-fiction et horreur »),
+     * celles d'autres pays (films arabes, séries turques) masquées avec l'option ; une catégorie masquée sous le nom de la
+     * playlist le reste sous son nom propre.
+     */
+    @Test
+    fun foreignMoviesAndSeriesAreHiddenAndCategoriesHaveProperNames() = runBlocking {
+        val vod = buildString {
+            appendLine("#EXTM3U")
+            val items = listOf(
+                Triple("SC FICTION | HORREUR", "Alien (1979)", "movie/u/p/1.mkv"),
+                Triple("افلام عربية | FILMS ARABES", "Al Kitkat (1991)", "movie/u/p/2.mkv"),
+                Triple("COMEDIE", "Le Dîner de cons (1998)", "movie/u/p/3.mkv"),
+                Triple("DRAME ( NETFLIX| PRIME | HBO | APPLE TV+ | STARZ | PARAMOUNT+ )", "The Crown S01 E01", "series/u/p/4.mkv"),
+                Triple("مسلسلات تركية | SERIES TURQUES", "Kurulus Osman S01 E01", "series/u/p/5.mkv"),
+            )
+            items.forEach { (group, name, path) ->
+                appendLine("#EXTINF:-1 group-title=\"$group\",$name")
+                appendLine("http://example.com/$path")
+            }
+        }
+        val opener = object : ContentOpener {
+            override fun supports(location: SourceLocation) = true
+            override suspend fun open(location: SourceLocation, request: OpenRequest) = OpenedContent(vod.toByteArray().inputStream())
+        }
+        val channels = M3uPlaylistLoader(opener).load(PlaylistSource(name = "P", location = SourceLocation.LocalDocument("doc", "p.m3u")), null).channels
+        val id = container.sourceRepository.add(SourceInput("P", SourceLocation.Remote("http://example.com/p.m3u")))
+        // Catégorie masquée par une version d'avant les noms propres.
+        container.hiddenGroupDao.hide(HiddenGroupEntity(id, "MOVIE", "COMEDIE"))
+        container.playlistStore.replaceChannels(id, channels) {}
+        suspend fun movieGroups() = dao.observeContentGroups(id, "MOVIE").first().map { it.title }
+        suspend fun seriesGroups() = dao.observeContentGroups(id, "SERIES").first().map { it.title }
+        suspend fun movies() = dao.pageMovies(id, 0, "", "").all().map { it.title }
+        suspend fun series() = dao.pageSeries(id, 0, "", "").all().map { it.title }
+
+        container.channelFilters.apply(id, settings(frenchOnly = false))
+        assertEquals(listOf("Science-fiction et horreur", "Films arabes"), movieGroups())
+        assertEquals(listOf("Drame", "Séries turques"), seriesGroups())
+        assertEquals(listOf("Comédie"), container.hiddenGroupDao.titles(id, "MOVIE"))
+        assertEquals(listOf("Alien", "Al Kitkat"), movies())
+
+        container.channelFilters.apply(id, settings(frenchOnly = true))
+        assertEquals(listOf("Science-fiction et horreur"), movieGroups())
+        assertEquals(listOf("Drame"), seriesGroups())
+        assertEquals(listOf("Alien"), movies())
+        assertEquals(listOf("The Crown"), series())
+        // Réglages › catégories : les catégories d'autres pays n'y sont plus proposées.
+        assertEquals(listOf("Science-fiction et horreur", "Comédie"), dao.observeAllGroups(id, "MOVIE").first().map { it.title })
+    }
 }

@@ -211,6 +211,17 @@ Commandes :
   Gradle reprend l'ancien résultat). Écartés le 18/11/2026 : guides étrangers de Pluto/Plex/Samsung (autres grilles sous
   les mêmes noms), epgshare01 BE2/CH1 (peu de chaînes, une fausse association), iptv-org (pas de guide prêt à
   télécharger, seulement un outil à faire tourner soi-même).
+- Catégories de films et de séries (0.2.185) : `core/catalog/VodCategories.kt` donne le nom propre (`properName`, table
+  `NAMES` des noms vus dans la playlist, sinon écriture normale des majuscules ; redonne le même nom à un nom déjà propre)
+  et les catégories d'autres pays (`isFrench` : arabes, maghrébines, turques, polonaises, ramadan ; coréennes gardées).
+  Appliqué à la lecture de la playlist (`M3uPlaylistLoader.toChannel` : `groupTitle` propre, colonne `french`) ; les
+  catégories masquées sous l'ancien nom sont renommées (`RoomPlaylistStore.renameHiddenContentGroups`). « Contenus
+  français seulement » les traite comme des catégories masquées (`HIDDEN_MOVIE_GROUPS`, `HIDDEN_SERIES_GROUPS`,
+  `HIDDEN_KIND_GROUPS` de `Daos.kt`). Nouveau nom : augmenter `QualityParser.VERSION`.
+- Année de sortie dans la fiche programme : celle du guide (`<date>`, la moitié des films de xmltvfr), sinon celle de la
+  fiche TMDB du même titre (`rememberProgrammeYear`, `sameTitleYear` dans `ProgrammeArt.kt`, même cache que l'image).
+- Radios : pas de détection des pubs sur un flux sans image (`PlayerEngine.radioStream`, 0.2.184 : elle baissait la
+  musique entre deux morceaux).
 - Rangement recalculé sans relire la playlist : `ChannelFilters.rearrange` (au lancement quand `ChannelLineup.VERSION`
   dépasse le `lineupVersion` des réglages). Toute nouvelle règle de `ChannelLineup` : augmenter `ChannelLineup.VERSION`.
 - « Chaînes françaises seulement » (réglage) : colonne `french` (section autre que `OTHER` dans `ChannelLineup`), masquée

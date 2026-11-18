@@ -497,10 +497,11 @@ private fun ProgrammeDetails(highlighted: Pair<GuideChannel, GuideProgramme>?, n
 
 @Composable
 private fun ProgrammeDetailsText(channel: GuideChannel, programme: GuideProgramme, now: Long) {
+    val year = rememberProgrammeYear(programme)
     Text(
         "${channel.name}  ·  ${dayPrefix(programme.startMillis, now)}${timeRange(programme.startMillis, programme.stopMillis)}  ·  ${duration(programme)}" +
             (programme.category?.let { "  ·  $it" } ?: "") +
-            (programme.year?.let { "  ·  $it" } ?: ""),
+            (year?.let { "  ·  $it" } ?: ""),
         style = MaterialTheme.typography.labelLarge,
         color = if (programme.isLive(now)) NexTvColors.Live else MaterialTheme.colorScheme.primary,
         maxLines = 1,
@@ -859,11 +860,12 @@ fun ProgrammeSheetContent(
                         .verticalScroll(detailsScroll),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
+                    val year = rememberProgrammeYear(programme)
                     val details: @Composable () -> Unit = {
                         Text(programme.title, style = MaterialTheme.typography.headlineSmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
                         programme.subtitle?.let { Text(it, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis) }
-                        // Genre et année de production, quand le guide les indique.
-                        listOfNotNull(programme.category, programme.year?.toString()).joinToString("  ·  ").takeIf { it.isNotEmpty() }?.let {
+                        // Genre et année de sortie (guide, sinon fiche TMDB d'un film ou d'une série).
+                        listOfNotNull(programme.category, year?.toString()).joinToString("  ·  ").takeIf { it.isNotEmpty() }?.let {
                             Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                         }
                         if (programme.isLive(now)) LiveProgress(programme.startMillis, programme.stopMillis, now)

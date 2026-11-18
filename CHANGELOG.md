@@ -4,6 +4,11 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.185
+- Films et séries : catégories sous un nom propre (« Science-fiction et horreur », « Drame », « Séries coréennes »… au lieu de « SC FICTION | HORREUR » ou « DRAME ( NETFLIX| PRIME | HBO… ) »)
+- Réglage « Contenus français seulement » (anciennement « Chaînes françaises seulement ») : masque aussi les films et séries étrangers (arabes, maghrébins, turcs, polonais)
+- Guide TV : la fiche d'un film ou d'une série affiche son année de sortie, même quand le guide ne la donne pas
+
 ## 0.2.184
 - Radios et Web radios : la détection des pubs ne baisse plus la musique (elle prenait le silence entre deux morceaux pour une coupure pub)
 

@@ -25,6 +25,7 @@ import tv.nextv.app.data.catalog.MetadataState
 import tv.nextv.app.data.db.ItemKeys
 import androidx.compose.ui.platform.LocalContext
 import tv.nextv.app.NexTvApplication
+import tv.nextv.core.meta.MediaDetails
 import tv.nextv.core.meta.MediaType
 
 /**
@@ -51,6 +52,34 @@ fun rememberProgrammeImage(programme: GuideProgramme?): String? {
         value = (state as? MetadataState.Available)?.details?.let { it.backdropUrl ?: it.posterUrl }
     }
     return image
+}
+
+/**
+ * Année de sortie d'un programme : celle du guide, sinon, pour un film ou une série, celle de la fiche TMDB qui porte
+ * le même titre (la même fiche que pour l'image, gardée en cache). `null` : inconnue.
+ */
+@Composable
+fun rememberProgrammeYear(programme: GuideProgramme?): Int? {
+    val container = (LocalContext.current.applicationContext as? NexTvApplication)?.container
+    val known = programme?.year
+    val year by produceState(known, programme?.title, programme?.startMillis) {
+        value = known
+        if (known != null || programme == null) return@produceState
+        val lookup = lookupOf(programme)?.takeIf { !it.exact } ?: return@produceState
+        if (container == null || !container.hasTmdbKey()) return@produceState
+        delay(LOOKUP_DELAY_MILLIS)
+        val title = programme.title.substringBefore(" - ").trim()
+        val key = "epg|${lookup.type.name}|${ItemKeys.normalize(title)}|"
+        val details = (runCatching { container.metadata.details(key, lookup.type, title, null, false) }.getOrNull() as? MetadataState.Available)?.details
+        value = sameTitleYear(title, details)
+    }
+    return year
+}
+
+/** Année de la fiche TMDB la plus proche, seulement si elle porte bien ce titre (sinon l'année d'un autre film). */
+internal fun sameTitleYear(title: String, details: MediaDetails?): Int? {
+    val wanted = ItemKeys.normalize(title)
+    return details?.takeIf { d -> listOfNotNull(d.title, d.originalTitle).any { ItemKeys.normalize(it) == wanted } }?.year
 }
 
 private class Lookup(val type: MediaType, val exact: Boolean)

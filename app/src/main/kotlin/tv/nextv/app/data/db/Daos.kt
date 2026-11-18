@@ -144,8 +144,29 @@ private const val CATCHUP_DAYS =
  * pour lui (le cas de presque tous les films).
  */
 
-/** Catégories de films masquées (sous-requête). */
-private const val HIDDEN_MOVIE_GROUPS = "(SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'MOVIE')"
+/**
+ * Catégories de films ou de séries d'autres pays (films arabes, séries turques… colonne `french`), masquées comme les
+ * catégories choisies quand « Contenus français seulement » est activé. Le réglage est lu avant les chaînes : désactivé,
+ * rien n'est parcouru.
+ */
+private const val FOREIGN_MOVIE_GROUPS =
+    "SELECT IFNULL(f.groupTitle, '') FROM channels f WHERE $FOREIGN_HIDDEN AND f.sourceId = :sourceId AND f.kind = 'MOVIE' AND f.french = 0"
+private const val FOREIGN_SERIES_GROUPS =
+    "SELECT IFNULL(f.groupTitle, '') FROM channels f WHERE $FOREIGN_HIDDEN AND f.sourceId = :sourceId AND f.kind = 'SERIES' AND f.french = 0"
+private const val FOREIGN_KIND_GROUPS =
+    "SELECT IFNULL(f.groupTitle, '') FROM channels f WHERE $FOREIGN_HIDDEN AND f.sourceId = :sourceId AND f.kind = :kind AND f.french = 0"
+
+/** Catégories de films masquées (sous-requête), avec celles d'autres pays (voir FOREIGN_MOVIE_GROUPS). */
+private const val HIDDEN_MOVIE_GROUPS =
+    "(SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'MOVIE' UNION $FOREIGN_MOVIE_GROUPS)"
+
+/** Catégories de séries masquées, avec celles d'autres pays. */
+private const val HIDDEN_SERIES_GROUPS =
+    "(SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'SERIES' UNION $FOREIGN_SERIES_GROUPS)"
+
+/** Catégories de films ou de séries ([kind]) masquées, avec celles d'autres pays. */
+private const val HIDDEN_KIND_GROUPS =
+    "(SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = :kind UNION $FOREIGN_KIND_GROUPS)"
 
 /** Catégorie du film `c` non masquée. */
 private const val MOVIE_GROUP_VISIBLE = "IFNULL(c.groupTitle, '') NOT IN $HIDDEN_MOVIE_GROUPS"
@@ -530,7 +551,7 @@ interface ChannelDao {
         FROM channels c
         WHERE c.sourceId = :sourceId AND c.kind = :kind
           AND CASE :kind WHEN 'MOVIE' THEN $MOVIE_IN_GROUP ELSE c.isPrimary = 1 END
-          AND IFNULL(c.groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = :kind)
+          AND IFNULL(c.groupTitle, '') NOT IN $HIDDEN_KIND_GROUPS
         GROUP BY c.groupTitle ORDER BY MIN(c.position)
         """,
     )
@@ -583,6 +604,7 @@ interface ChannelDao {
         FROM channels c
         WHERE c.sourceId = :sourceId AND c.kind = :kind
           AND CASE :kind WHEN 'MOVIE' THEN $MOVIE_IN_GROUP ELSE c.isPrimary = 1 END
+          AND NOT (c.french = 0 AND $FOREIGN_HIDDEN)
         GROUP BY c.groupTitle ORDER BY MIN(c.position)
         """,
     )
@@ -642,7 +664,7 @@ interface ChannelDao {
         """
         SELECT id, seriesName AS title, year, logoUrl, groupTitle, itemKey, variantCount AS episodeCount, quality FROM channels
         WHERE sourceId = :sourceId AND kind = 'SERIES' AND isPrimary = 1 AND seriesName IS NOT NULL AND year >= :minYear
-          AND IFNULL(groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'SERIES')
+          AND IFNULL(groupTitle, '') NOT IN $HIDDEN_SERIES_GROUPS
         ORDER BY year DESC, position LIMIT :limit
         """,
     )
@@ -746,7 +768,7 @@ interface ChannelDao {
         SELECT id, seriesName AS title, year, logoUrl, groupTitle, itemKey, variantCount AS episodeCount, quality
         FROM channels
         WHERE sourceId = :sourceId AND kind = 'SERIES' AND isPrimary = 1 AND seriesName IS NOT NULL
-          AND IFNULL(groupTitle, '') NOT IN (SELECT h.title FROM hidden_groups h WHERE h.sourceId = :sourceId AND h.kind = 'SERIES')
+          AND IFNULL(groupTitle, '') NOT IN $HIDDEN_SERIES_GROUPS
           AND (:filterGroup = 0 OR IFNULL(groupTitle, '') = :group)
           AND (:query = '' OR seriesName LIKE '%' || :query || '%' ESCAPE '\'
             OR (:key != '' AND itemKey LIKE 'series:%' || :key || '%'))
@@ -1188,6 +1210,9 @@ interface HiddenGroupDao {
 
     @Query("SELECT EXISTS (SELECT 1 FROM hidden_groups WHERE sourceId = :sourceId AND kind = :kind AND title = :title)")
     suspend fun isHidden(sourceId: Long, kind: String, title: String): Boolean
+
+    @Query("SELECT title FROM hidden_groups WHERE sourceId = :sourceId AND kind = :kind")
+    suspend fun titles(sourceId: Long, kind: String): List<String>
 
     @Query("SELECT title FROM hidden_groups WHERE sourceId = :sourceId AND kind = :kind")
     fun observeTitles(sourceId: Long, kind: String): Flow<List<String>>

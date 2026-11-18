@@ -9,6 +9,7 @@ import tv.nextv.core.catalog.InternetRadios
 import tv.nextv.core.catalog.ContentClassifier
 import tv.nextv.core.catalog.LiveVariants
 import tv.nextv.core.catalog.QualityParser
+import tv.nextv.core.catalog.VodCategories
 import tv.nextv.core.model.StreamQuality
 import tv.nextv.core.error.SourceError
 import tv.nextv.core.error.SourceException
@@ -206,7 +207,8 @@ class M3uPlaylistLoader(
             position = position,
             name = name,
             stream = stream,
-            groupTitle = entry.group?.let { strings.getOrPut(it) { it } },
+            // Films et séries : nom propre de la catégorie (« SC FICTION | HORREUR » → « Science-fiction et horreur »).
+            groupTitle = (if (live) entry.group else VodCategories.properName(entry.group))?.let { strings.getOrPut(it) { it } },
             logoUrl = attributes["tvg-logo"]?.takeIf { it.isNotBlank() }?.let { resolveLogo(it, baseUrl) },
             tvgId = attributes["tvg-id"]?.takeIf { it.isNotBlank() },
             tvgName = attributes["tvg-name"]?.takeIf { it.isNotBlank() },
@@ -219,6 +221,8 @@ class M3uPlaylistLoader(
             year = classification.year,
             episode = classification.episode,
             audio = quality?.audioRank ?: 0,
+            // Films et séries d'autres pays (arabes, turcs…) : masqués par « Contenus français seulement ».
+            french = live || VodCategories.isFrench(entry.group),
         )
     }
 

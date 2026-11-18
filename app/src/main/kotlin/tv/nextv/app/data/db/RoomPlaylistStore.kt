@@ -8,6 +8,7 @@ import tv.nextv.core.catalog.LiveVariants
 import tv.nextv.core.epg.EpgChannelRef
 import tv.nextv.core.error.SourceError
 import tv.nextv.core.model.Channel
+import tv.nextv.core.catalog.VodCategories
 import tv.nextv.core.model.ContentKind
 import tv.nextv.core.model.StreamQuality
 import tv.nextv.core.model.StreamSupport
@@ -111,6 +112,20 @@ class RoomPlaylistStore(
                 saved += batch.size
                 onSaved(saved)
             }
+            renameHiddenContentGroups(sourceId)
+        }
+    }
+
+    /**
+     * Catégories de films et de séries masquées sous le nom de la playlist (avant les noms propres, VodCategories) :
+     * ramenées à leur nom propre, elles restent masquées.
+     */
+    private suspend fun renameHiddenContentGroups(sourceId: Long) {
+        val dao = database.hiddenGroupDao()
+        for (kind in listOf(ContentKind.MOVIE.name, ContentKind.SERIES.name)) {
+            val titles = dao.titles(sourceId, kind)
+            val renamed = titles.map { VodCategories.properName(it) ?: it }
+            if (renamed != titles) dao.replace(sourceId, kind, renamed.toSet())
         }
     }
 
@@ -328,7 +343,7 @@ class RoomPlaylistStore(
                 listGroup = if (live && merge) channel.theme ?: channel.groupTitle else channel.groupTitle,
                 niceTitle = if (live) channel.niceTitle else null,
                 baseTitle = channel.title,
-                french = !live || channel.french,
+                french = channel.french,
             )
         }
 
