@@ -67,6 +67,9 @@ private const val VINYL_TEXT_START = 0.53f
 private const val VINYL_RADIUS = 0.29f
 private const val VINYL_LABEL_SHARE = 0.34f
 
+/** Vinyle sur écran large : côté de la pochette fixe au-dessus du texte (part de la hauteur de l'écran). */
+private const val VINYL_COVER_SHARE = 0.26f
+
 /** Durée de chaque mode en mode « Mélange ». */
 private const val MIX_NANOS = 120_000_000_000L
 
@@ -134,7 +137,7 @@ private class VisualFrame(bandCount: Int, particleCount: Int) {
 /**
  * Animation plein écran d'une radio ou Web radio ([RadioVisual]), au rythme du son ([analyzer]) quand le lecteur de
  * l'appli le décode, sinon un mouvement doux de remplacement (moteur VLC). Par-dessus : le morceau en cours en grand
- * (titre, artiste), la radio et son genre en petit ; en mode Vinyle, la pochette sert d'étiquette au disque. [lowPower] (petite Fire TV) : 30 images par seconde et moins de particules.
+ * (titre, artiste), la radio et son genre en petit ; en mode Vinyle, la pochette sert d'étiquette au disque et s'affiche aussi en carré, fixe, au-dessus du texte. [lowPower] (petite Fire TV) : 30 images par seconde et moins de particules.
  */
 @Composable
 fun RadioVisualizer(
@@ -267,26 +270,46 @@ fun RadioVisualizer(
                     )
                 }
             }
-            // Écran large : texte à droite du disque ; sinon (téléphone en hauteur) sous le disque.
-            NowPlayingText(
-                name = name,
-                genre = genre,
-                track = track,
-                logoUrl = logoUrl,
-                palette = palette,
-                big = wide,
-                modifier = if (wide) {
+            // Pochette fixe en carré, en plus de l'étiquette qui tourne. Écran large : pochette puis texte à droite du
+            // disque ; sinon (téléphone en hauteur) pochette et texte côte à côte sous le disque.
+            val text: @Composable (Modifier) -> Unit = { textModifier ->
+                NowPlayingText(
+                    name = name,
+                    genre = genre,
+                    track = track,
+                    logoUrl = logoUrl,
+                    palette = palette,
+                    big = wide,
+                    modifier = textModifier,
+                )
+            }
+            val coverSide = (maxHeight * VINYL_COVER_SHARE).coerceAtMost(200.dp)
+            if (wide) {
+                Column(
                     Modifier
                         .align(Alignment.CenterStart)
                         .offset(drift.value.x.dp, drift.value.y.dp)
-                        .padding(start = maxWidth * VINYL_TEXT_START, end = 48.dp)
-                } else {
+                        .padding(start = maxWidth * VINYL_TEXT_START, end = 48.dp),
+                ) {
+                    if (cover != null) {
+                        SquareCover(cover, coverSide)
+                        androidx.compose.foundation.layout.Spacer(Modifier.size(24.dp))
+                    }
+                    text(Modifier)
+                }
+            } else {
+                Row(
                     Modifier
                         .align(Alignment.BottomStart)
                         .offset(drift.value.x.dp, drift.value.y.dp)
-                        .padding(horizontal = 28.dp, vertical = 40.dp)
-                },
-            )
+                        .padding(horizontal = 28.dp, vertical = 40.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(18.dp),
+                ) {
+                    if (cover != null) SquareCover(cover, 96.dp)
+                    text(Modifier)
+                }
+            }
         } else {
             // Autres animations : pochette (ou logo) en grand, puis le texte, en bas à gauche.
             Row(
@@ -325,6 +348,23 @@ fun RadioVisualizer(
             }
         }
     }
+}
+
+/** Vinyle : pochette du morceau en carré, fixe (fondu d'une pochette à la suivante, sauf dans les captures). */
+@Composable
+private fun SquareCover(cover: String, size: androidx.compose.ui.unit.Dp) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val fade = !androidx.compose.ui.platform.LocalInspectionMode.current
+    val shape = RoundedCornerShape(12.dp)
+    coil3.compose.AsyncImage(
+        model = remember(cover, fade) { coil3.request.ImageRequest.Builder(context).data(cover).crossfade(fade).build() },
+        contentDescription = null,
+        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+        modifier = Modifier
+            .size(size)
+            .clip(shape)
+            .border(1.dp, Color.White.copy(alpha = 0.18f), shape),
+    )
 }
 
 /** Morceau en cours à afficher : titre (en grand) et artiste (dessous). */

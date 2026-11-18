@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.193
+- Animation « Vinyle » des radios : la pochette du morceau s'affiche aussi en carré, fixe, au-dessus du titre (en plus du disque qui tourne)
+
 ## 0.2.192
 - Live vidéo de Skyrock : image en meilleure qualité, et le bandeau ne reste plus affiché (OK ne met plus en pause la radio cachée sous la vidéo)
 - Animation des radios : titre du morceau affiché en entier (écrit plus petit quand il est long)
