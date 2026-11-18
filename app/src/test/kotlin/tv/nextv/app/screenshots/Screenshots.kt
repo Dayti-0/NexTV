@@ -1,5 +1,6 @@
 package tv.nextv.app.screenshots
 
+import coil3.asImage
 import android.app.Application
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -118,6 +119,39 @@ abstract class ScreenshotSuite(private val device: String) {
                     logoUrl = null,
                     genre = listOf("Hip-hop", "Rap", "Ska", "Groove, funk, soul", "Reggae")[index],
                     title = "Artiste – Titre du morceau",
+                    lowPower = false,
+                    warmUpSeconds = 4,
+                    animate = false,
+                )
+            }
+        }
+    }
+
+    /** Vinyle avec la pochette du morceau au centre du disque (image fabriquée : pas de réseau dans les tests). */
+    @OptIn(coil3.annotation.ExperimentalCoilApi::class)
+    @Test
+    fun radioVinylCover() {
+        val art = android.graphics.Bitmap.createBitmap(300, 300, android.graphics.Bitmap.Config.ARGB_8888).also { bitmap ->
+            val canvas = android.graphics.Canvas(bitmap)
+            canvas.drawColor(0xFFE65100.toInt())
+            val paint = android.graphics.Paint().apply { color = 0xFF1A237E.toInt() }
+            canvas.drawRect(0f, 150f, 300f, 300f, paint)
+            paint.color = 0xFFFFF176.toInt()
+            canvas.drawCircle(210f, 95f, 45f, paint)
+        }
+        capture("405_radio_vinyl_pochette") {
+            androidx.compose.runtime.CompositionLocalProvider(
+                androidx.compose.ui.platform.LocalInspectionMode provides true,
+                coil3.compose.LocalAsyncImagePreviewHandler provides coil3.compose.AsyncImagePreviewHandler { art.asImage() },
+            ) {
+                tv.nextv.app.ui.player.RadioVisualizer(
+                    visual = tv.nextv.app.data.settings.RadioVisual.VINYL,
+                    analyzer = tv.nextv.core.audio.SpectrumAnalyzer(),
+                    name = "FIP",
+                    logoUrl = null,
+                    genre = "Éclectique",
+                    title = "Artiste – Titre du morceau",
+                    cover = "https://exemple.invalid/pochette.jpg",
                     lowPower = false,
                     warmUpSeconds = 4,
                     animate = false,

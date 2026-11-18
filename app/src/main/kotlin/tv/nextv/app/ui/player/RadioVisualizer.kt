@@ -2,13 +2,16 @@ package tv.nextv.app.ui.player
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
@@ -26,6 +29,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -37,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil3.request.crossfade
 import tv.nextv.app.data.settings.RadioVisual
 import tv.nextv.app.ui.components.ChannelLogo
 import tv.nextv.core.audio.SpectrumAnalyzer
@@ -53,6 +58,10 @@ private val DRAWN = listOf(RadioVisual.SPECTRUM, RadioVisual.WAVES, RadioVisual.
 /** Vinyle : place verticale du disque (−1 haut, 1 bas) et taille de son étiquette (logo). */
 private const val VINYL_BIAS = -0.22f
 private val VINYL_LABEL = 96.dp
+
+/** Vinyle : rayon du disque (part du petit côté de l'écran) et part de ce rayon occupée par l'étiquette (pochette). */
+private const val VINYL_RADIUS = 0.29f
+private const val VINYL_LABEL_SHARE = 0.34f
 
 /** Durée de chaque mode en mode « Mélange ». */
 private const val MIX_NANOS = 120_000_000_000L
@@ -140,6 +149,7 @@ fun RadioVisualizer(
     animate: Boolean = true,
 ) {
     val palette = remember(name, genre) { paletteFor(name, genre) }
+    val context = androidx.compose.ui.platform.LocalContext.current
     val frame = remember(lowPower) {
         VisualFrame(analyzer.bandCount, if (lowPower) 70 else 150).also { warm ->
             repeat(warmUpSeconds * 30) { step ->
@@ -177,7 +187,9 @@ fun RadioVisualizer(
         }
     }
 
-    Box(modifier.fillMaxSize().background(palette.background)) {
+    BoxWithConstraints(modifier.fillMaxSize().background(palette.background)) {
+        // Vinyle : diamètre de l'étiquette dessinée par drawVinyl (un peu moins, pour garder un liseré sombre).
+        val labelSize = min(maxWidth.value, maxHeight.value).dp * (2 * VINYL_RADIUS * VINYL_LABEL_SHARE * 0.98f)
         Canvas(Modifier.fillMaxSize()) {
             @Suppress("UNUSED_EXPRESSION")
             tick // relu ici : seule l'image est redessinée, sans recomposition.
@@ -207,7 +219,8 @@ fun RadioVisualizer(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            if (cover != null) {
+            // Vinyle : la pochette est au centre du disque, la carte garde le logo.
+            if (cover != null && drawn != RadioVisual.VINYL) {
                 coil3.compose.AsyncImage(
                     model = cover,
                     contentDescription = null,
@@ -226,14 +239,36 @@ fun RadioVisualizer(
             }
         }
         if (drawn == RadioVisual.VINYL) {
-            // Étiquette du disque : le logo au centre.
-            ChannelLogo(
-                url = logoUrl,
-                name = name,
-                modifier = Modifier.align(androidx.compose.ui.BiasAlignment(0f, VINYL_BIAS)).size(VINYL_LABEL),
-                shape = CircleShape,
-                monogramSize = 30.dp,
-            )
+            // Étiquette du disque : le logo au centre, recouvert par la pochette du morceau quand elle est connue.
+            Box(Modifier.align(androidx.compose.ui.BiasAlignment(0f, VINYL_BIAS)).size(VINYL_LABEL), contentAlignment = Alignment.Center) {
+                ChannelLogo(url = logoUrl, name = name, modifier = Modifier.fillMaxSize(), shape = CircleShape, monogramSize = 30.dp)
+                if (cover != null) {
+                    // Toute l'étiquette du disque (même taille que dans drawVinyl), qui tourne avec lui comme un vrai disque.
+                    // Fondu d'une pochette à la suivante (pas dans les captures, image fixe).
+                    val fade = !androidx.compose.ui.platform.LocalInspectionMode.current
+                    coil3.compose.AsyncImage(
+                        model = remember(cover, fade) {
+                            coil3.request.ImageRequest.Builder(context).data(cover).crossfade(fade).build()
+                        },
+                        contentDescription = null,
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier
+                            .requiredSize(labelSize)
+                            .graphicsLayer {
+                                @Suppress("UNUSED_EXPRESSION")
+                                tick // relu ici : seule la rotation change à chaque image.
+                                rotationZ = (frame.spin * 180f / PI.toFloat()) % 360f
+                            }
+                            .clip(CircleShape),
+                    )
+                    // Trou central du disque.
+                    Box(
+                        Modifier.size(10.dp)
+                            .background(palette.background, CircleShape)
+                            .border(1.5.dp, Color.White.copy(alpha = 0.35f), CircleShape),
+                    )
+                }
+            }
         }
     }
 }
@@ -423,7 +458,7 @@ private fun DrawScope.drawParticles(frame: VisualFrame, palette: Palette) {
 
 /** Vinyle : disque qui tourne, sillons éclairés par le spectre, reflet tournant, halo des basses. */
 private fun DrawScope.drawVinyl(frame: VisualFrame, palette: Palette) {
-    val radius = size.minDimension * 0.29f
+    val radius = size.minDimension * VINYL_RADIUS
     // Même centre que le logo posé dessus (VINYL_BIAS), au-dessus de la carte du nom.
     val label = VINYL_LABEL.toPx()
     val center = Offset(size.width / 2, (1f + VINYL_BIAS) / 2 * (size.height - label) + label / 2)
@@ -431,7 +466,7 @@ private fun DrawScope.drawVinyl(frame: VisualFrame, palette: Palette) {
     drawCircle(palette.b.copy(alpha = 0.25f + 0.4f * frame.bass), radius * (1.04f + 0.06f * frame.bass), center, style = Stroke(width = 6f))
     drawCircle(Color(0xFF0B0B0E), radius, center)
     val n = frame.bands.size
-    val labelRadius = radius * 0.34f
+    val labelRadius = radius * VINYL_LABEL_SHARE
     for (i in 0 until n) {
         val r = labelRadius + (radius - labelRadius) * (i + 0.5f) / n
         val energy = frame.bands[n - 1 - i]

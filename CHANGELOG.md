@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.187
+- Animation « Vinyle » des radios : la pochette du morceau en cours est au centre du disque et tourne avec lui (le logo de la radio passe dans la carte du bas)
+
 ## 0.2.186
 - Nouveau : Réglages › Télés reliées. Reliez vos télés avec un code à 6 chiffres : elles gardent les mêmes favoris, « Déjà vu », reprises de lecture, catégories masquées, réglages et clés des services
 - Une télé neuve reliée reçoit aussi la playlist des autres ; chaque télé garde sinon son propre compte

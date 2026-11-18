@@ -54,6 +54,10 @@ Commandes :
 - Tests de focus à la télécommande : activer `PackageManager.FEATURE_LEANBACK` (Robolectric `shadowOf(...)`), sinon
   le défilement n'est pas celui d'une télé.
 - Pour une capture ponctuelle dans un test temporaire, passer `-Proborazzi.test.record=true`.
+- Robolectric télécharge `android-all-instrumented` au premier test ; si Maven Central répond 429, le prendre sur
+  `maven-central.storage-download.googleapis.com/maven2/…` (avec son `.sha512`) dans `~/.m2/repository/` au même chemin.
+- Image Coil dans une capture : `LocalInspectionMode` + `LocalAsyncImagePreviewHandler` (`Screenshots.radioVinylCover`),
+  sans fondu (`crossfade`), sinon l'image reste transparente.
 
 ## Pièges déjà rencontrés
 
@@ -173,7 +177,7 @@ Commandes :
 - Animation des radios (0.2.179, réglage `RadioVisual`, Réglages › Son) : `ui/player/RadioVisualizer.kt` (Spectre,
   Ondes, Aurore, Particules, Vinyle, Mélange ; 30 images/s et moins de particules sur une petite Fire TV), affichée par
   `PlayerScreen` quand le flux n'a que du son (`PlayerUiState.audioOnly`, pistes vues par `PlayerEngine.onTracksChanged`),
-  avec le morceau en cours (métadonnées ICY, `radioTitle`). Son : `SpectrumTap` (processeur audio de chaque lecteur de
+  avec le morceau en cours (métadonnées ICY, `radioTitle`). Vinyle (0.2.187) : pochette du morceau (`nowPlayingCover`) en étiquette du disque, qui tourne avec lui (`graphicsLayer`, même taille que `drawVinyl` : `VINYL_RADIUS`, `VINYL_LABEL_SHARE`), logo dessous tant qu'elle charge ; la carte garde alors le logo. Son : `SpectrumTap` (processeur audio de chaque lecteur de
   `PlayerFactory`, simple copie tant qu'aucune animation n'est affichée) → `core/audio/SpectrumAnalyzer` (FFT 1024,
   32 bandes). Sans son analysé (VLC, son passé à l'ampli) : houle de remplacement. Captures : `Screenshots.radioVisuals`
   (`animate = false`, sinon la boucle d'images empêche le test de finir). Choix aussi dans les options du lecteur (rubrique en
