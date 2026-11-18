@@ -264,6 +264,9 @@ class ChannelLineupTest {
         assertEquals("Cinéma", theme["|FR| THRILLERS - RAKUTEN TV FHD"])
         assertEquals("Découverte", theme["|FR| GUSTO TV FHD"])
         assertEquals("Autres chaînes", theme["|FR| DAYSTAR TV FHD"])
+        // « Autres chaînes » : masquées par « Contenus français seulement » ; une chaîne rangée par thème reste visible.
+        assertEquals(false, channels.single { it.name == "|FR| DAYSTAR TV FHD" }.french)
+        assertEquals(true, channels.single { it.name == "|FR| GUSTO TV FHD" }.french)
         // « Cinéma » dans le nom l'emporte sur la rubrique ; Tech&Co est une chaîne d'info.
         assertEquals("Cinéma", theme["|FR| L'EQUIPE CINEMA FHD"])
         assertEquals("Info", theme["|FR| TECH & CO HD"])

@@ -49,7 +49,8 @@ object ChannelLineup {
     /**
      * Ce que l'ordre rangé donne à une chaîne : son rang ([lineup]), sa catégorie par thème ([theme], `null` : celle de
      * la playlist) et son nom propre ([name] : « Ciné+ Frisson » pour « FR| CINE FRISSON » ; `null` : celui de la
-     * playlist), et si elle est française ([french] : faux pour les autres pays et les séparateurs de la playlist).
+     * playlist), et si elle est française ([french] : faux pour les autres pays, les séparateurs de la playlist et la
+     * catégorie « Autres chaînes », masqués par « Contenus français seulement »).
      */
     data class Arrangement(val lineup: Int, val theme: String?, val name: String?, val french: Boolean = true)
 
@@ -57,7 +58,7 @@ object ChannelLineup {
      * Version des règles de [arrange] : l'augmenter fait recalculer au lancement le rang, la catégorie, le nom et la
      * nationalité des chaînes déjà enregistrées, sans attendre une relecture de la playlist.
      */
-    const val VERSION = 5
+    const val VERSION = 6
 
     /** Place d'une chaîne : sa rubrique, puis son rang dans la rubrique ([UNRANKED] : ordre de la playlist). */
     data class Placement(val section: Section, val rank: Int = UNRANKED) : Comparable<Placement> {
@@ -116,7 +117,8 @@ object ChannelLineup {
                 else -> section.title
             }
             val name = if (section == Section.OTHER || separator) null else properName(channel, names.getValue(channel))
-            result[channel.position] = Arrangement(index, theme, name, french = section != Section.OTHER)
+            // « Autres chaînes » (KTO, Daystar, NHK World…) : masquées aussi par « Contenus français seulement ».
+            result[channel.position] = Arrangement(index, theme, name, french = section != Section.OTHER && section != Section.GENERAL)
         }
         return result
     }

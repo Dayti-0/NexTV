@@ -33,6 +33,7 @@ import androidx.compose.ui.test.hasAnyDescendant
 import androidx.paging.PagingData
 import androidx.paging.compose.collectAsLazyPagingItems
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import androidx.compose.runtime.collectAsState
 import androidx.paging.cachedIn
@@ -108,6 +109,53 @@ class HomeFocusTest {
         val last = focused.lastOrNull()?.substringBefore(" · ")
         println("Focus après 14 × bas : $last")
         assertTrue("Focus : $last", last != null && last.removePrefix("Groupe ").toInt() >= 8)
+    }
+
+    /**
+     * Retour sur les rangées de Streaming après un film ouvert loin dans la liste : dès la première image, la liste est
+     * sur sa rangée. Elle s'affichait d'abord en haut, puis sautait à la rangée (on croyait voir passer une autre page).
+     */
+    @Test
+    fun streamingRowsComeBackOnTheOpenedRowFromTheFirstFrame() {
+        val tester = StateRestorationTester(compose)
+        val focused = mutableListOf<String>()
+        val opened = mutableListOf<Long>()
+        var section by mutableStateOf(HomeSection.MOVIES)
+        // Top 10 en tête, affiché tout de suite (comme sur l'appareil), puis les rangées des catégories.
+        val top10 = Discover(trending = List(10) { i -> SampleData.movies[i % SampleData.movies.size].toPoster().copy(itemKey = "top$i") })
+        tester.setContent { Home(HomeLayout.STREAMING, HomeActions(onPosterFocus = { focused += it.title }, onOpenMovie = { opened += it }), section, discover = top10) }
+        compose.waitForIdle()
+        enterStreamingContent()
+        repeat(6) { press(Key.DirectionDown) }
+        val row = focused.last().substringBefore(" · ")
+        press(Key.DirectionCenter)
+        assertTrue("Film ouvert", opened.isNotEmpty())
+        // Pendant la lecture, l'accueil est passé au guide ; retour dans l'appli (écran recréé), puis Films par le menu.
+        section = HomeSection.GUIDE
+        compose.waitForIdle()
+        tester.emulateSavedInstanceStateRestore()
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
+        compose.mainClock.autoAdvance = false
+        section = HomeSection.MOVIES
+        // Image par image (1,5 s) : ce que montre la liste (rangée du haut, rangée ouverte).
+        val seen = mutableListOf<String>()
+        repeat(90) {
+            compose.mainClock.advanceTimeByFrame()
+            val top = compose.onAllNodesWithText("Top 10 de la semaine", substring = false).fetchSemanticsNodes().isNotEmpty()
+            val mine = compose.onAllNodesWithText(row, substring = false).fetchSemanticsNodes().isNotEmpty()
+            seen += when {
+                top -> "haut"
+                mine -> "rangée"
+                else -> "rien"
+            }
+        }
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        val steps = seen.fold(mutableListOf<String>()) { acc, it -> if (acc.lastOrNull() != it) acc += it; acc }
+        println("Rangée ouverte : $row ; images : $steps")
+        assertTrue("Liste montrée en haut avant la rangée $row : $steps", "haut" !in seen)
+        assertEquals("rangée", seen.last())
     }
 
     /** Streaming et Classique : ← au bord gauche des rangées ouvre le volet de toutes les catégories. */
@@ -433,6 +481,115 @@ class HomeFocusTest {
         val picked = (chosen.last() as Category.Group).title
         val first = SampleData.channels.first { it.groupTitle == picked }.title
         assertTrue("Première chaîne de $picked : ${focusedText()}", focusedText()?.contains(first) == true)
+    }
+
+    /**
+     * Catégorie choisie dont la liste est vide un instant avant d'arriver (box lente) : le volet se referme quand même
+     * à l'arrivée des chaînes, la sélection sur la première (il restait ouvert, la sélection sur la catégorie).
+     */
+    @Test
+    fun streamingCategoryPickClosesTheDrawerAfterAMomentaryEmptyList() {
+        val categoryFlow = kotlinx.coroutines.flow.MutableStateFlow<Category>(Category.All)
+        val arrived = kotlinx.coroutines.flow.MutableStateFlow(false)
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main)
+        val paged = categoryFlow.flatMapLatest { c ->
+            val list = SampleData.channels.filter { c !is Category.Group || it.groupTitle.orEmpty() == c.title }
+            if (c is Category.Group) {
+                kotlinx.coroutines.flow.flow {
+                    emit(PagingData.from(emptyList<ChannelListRow>()))
+                    arrived.first { it }
+                    emit(PagingData.from(list))
+                }
+            } else {
+                flowOf(PagingData.from(list))
+            }
+        }.cachedIn(scope)
+        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().setInTouchMode(false)
+        compose.setContent {
+            val category by categoryFlow.collectAsState()
+            NexTvTheme(ThemeStyle.NIGHT) {
+                HomeContent(
+                    section = HomeSection.TV,
+                    groups = SampleData.groups,
+                    category = category,
+                    query = "",
+                    channels = paged.collectAsLazyPagingItems(),
+                    favoriteChannels = emptyList(),
+                    movies = remember { flowOf(PagingData.from(SampleData.movies)) }.collectAsLazyPagingItems(),
+                    favoriteMovies = emptyList(),
+                    series = remember { flowOf(PagingData.from(SampleData.series)) }.collectAsLazyPagingItems(),
+                    favoriteSeries = emptyList(),
+                    favoriteKeys = emptySet(),
+                    reorder = ReorderState(),
+                    now = SampleData.NOW,
+                    snackbarHostState = remember { SnackbarHostState() },
+                    actions = HomeActions(onCategory = { categoryFlow.value = it }),
+                    guide = {},
+                    football = {},
+                    layout = HomeLayout.STREAMING,
+                )
+            }
+        }
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
+        repeat(2) { press(Key.DirectionDown) }
+        press(Key.DirectionLeft)
+        repeat(2) { press(Key.DirectionDown) }
+        press(Key.DirectionCenter)
+        // Liste vide pendant 2 s, puis les chaînes arrivent.
+        compose.mainClock.advanceTimeBy(2_000)
+        compose.waitForIdle()
+        arrived.value = true
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(2_000)
+        compose.waitForIdle()
+        val picked = (categoryFlow.value as Category.Group).title
+        val first = SampleData.channels.first { it.groupTitle == picked }.title
+        assertTrue("Volet encore ouvert : ${focusedText()}", compose.onAllNodesWithTag(CATEGORY_DRAWER_TAG).fetchSemanticsNodes().isEmpty())
+        assertTrue("Première chaîne de $picked : ${focusedText()}", focusedText()?.contains(first) == true)
+    }
+
+    /**
+     * Chaînes de Streaming dans une catégorie loin dans la liste (la 25e sur 30) : ← ouvre le volet avec la sélection
+     * sur elle, pas sur la recherche en haut (elle n'était pas encore créée à l'ouverture du volet).
+     */
+    @Test
+    fun streamingDrawerOpensOnTheCurrentCategoryFarDown() {
+        val current = Category.Group("Groupe 25")
+        val list = SampleData.channels.mapIndexed { index, channel -> channel.copy(id = 2500L + index, itemKey = "g25-$index", groupTitle = "Groupe 25") }
+        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().setInTouchMode(false)
+        compose.setContent {
+            NexTvTheme(ThemeStyle.NIGHT) {
+                HomeContent(
+                    section = HomeSection.TV,
+                    groups = groups,
+                    category = current,
+                    query = "",
+                    channels = remember { flowOf(PagingData.from(list)) }.collectAsLazyPagingItems(),
+                    favoriteChannels = emptyList(),
+                    movies = remember { flowOf(PagingData.from(SampleData.movies)) }.collectAsLazyPagingItems(),
+                    favoriteMovies = emptyList(),
+                    series = remember { flowOf(PagingData.from(SampleData.series)) }.collectAsLazyPagingItems(),
+                    favoriteSeries = emptyList(),
+                    favoriteKeys = emptySet(),
+                    reorder = ReorderState(),
+                    now = SampleData.NOW,
+                    snackbarHostState = remember { SnackbarHostState() },
+                    actions = HomeActions(),
+                    guide = {},
+                    football = {},
+                    layout = HomeLayout.STREAMING,
+                )
+            }
+        }
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
+        repeat(2) { press(Key.DirectionDown) }
+        press(Key.DirectionLeft)
+        assertTrue("Volet ouvert", compose.onAllNodesWithTag(CATEGORY_DRAWER_TAG).fetchSemanticsNodes().isNotEmpty())
+        assertTrue("Volet : ${focusedText()}", focusedText()?.contains("Groupe 25") == true)
     }
 
     private class ListSource(private val rows: List<ChannelListRow>, private val delayMillis: Long = 0) : androidx.paging.PagingSource<Int, ChannelListRow>() {

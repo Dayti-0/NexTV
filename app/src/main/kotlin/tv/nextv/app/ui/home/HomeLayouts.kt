@@ -183,9 +183,15 @@ internal fun StreamingHome(
 ) {
     val section = content.section
     val padding = if (window.isWide) 28.dp else window.horizontalPadding
-    val listState = rememberSaveable(section, saver = LazyListState.Saver) { LazyListState() }
     // Grand écran : pas de recherche de section (« Recherche Globale » du menu) ; ailleurs, en tête des rangées.
     val searchInList = !window.isWide
+    val shelves = shelfList(content)
+    val rowKeys = (if (searchInList) listOf("search") else emptyList()) + shelves.map { it.key }
+    // Retour sur une affiche ouverte avant (« Reprendre la lecture »…) : la liste s'ouvre déjà sur sa rangée. Elle
+    // s'affichait d'abord en haut (Top 10), puis sautait à la rangée : on croyait voir passer une autre page.
+    val listState = rememberSaveable(section, saver = LazyListState.Saver) {
+        LazyListState(firstVisibleItemIndex = lastOpened.value?.takeIf { it.pending() }?.row?.let(rowKeys::indexOf)?.coerceAtLeast(0) ?: 0)
+    }
     val scrolled by remember(searchInList) { derivedStateOf { listState.firstVisibleItemIndex > if (searchInList) 1 else 0 } }
     val hero = window.isWide && section != HomeSection.TV
     // Bandeau vedette : tant que la sélection est sur le bandeau (et à l'ouverture), pas sur les rangées.
@@ -276,8 +282,7 @@ internal fun StreamingHome(
         }
         val sizes = ShelfSizes.of(window)
         PreloadRows(content, posterWidth = sizes.poster.takeIf { section != HomeSection.TV })
-        val shelves = shelfList(content)
-        RestoreRow(listState, lastOpened, (if (searchInList) listOf("search") else emptyList()) + shelves.map { it.key })
+        RestoreRow(listState, lastOpened, rowKeys)
         // Petit écran : la recherche précède les rangées dans la liste.
         RowJumpEffect(LocalRowJump.current, listState, content, shelves, offset = if (searchInList) 1 else 0, onOpen = actions.onCategory)
         AnchoredRows(peekBelow = STREAMING_NEXT_ROW_PEEK, listState = listState) { _ ->

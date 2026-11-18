@@ -4,6 +4,12 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.190
+- « Contenus français seulement » masque aussi la catégorie « Autres chaînes » (KTO, Daystar…)
+- Streaming : le menu des catégories s'ouvre sur la catégorie affichée, même loin dans la liste (au lieu de la recherche)
+- Streaming : le menu des catégories se referme bien après le choix d'une catégorie, même quand sa liste met un instant à arriver
+- Streaming, films et séries : retour direct sur la rangée de la dernière affiche ouverte, sans passer par le haut de la page
+
 ## 0.2.189
 - Radios : vrai logo de Skyrock (et des autres radios connues) à la place de l'image de la playlist
 - Logos ajoutés : Dublab, Alpha Boys School Radio, Sensi Hip Hop

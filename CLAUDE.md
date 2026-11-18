@@ -245,7 +245,8 @@ Commandes :
   Nouveau réglage partagé : rien à faire ; propre à l'appareil : l'ajouter à `DEVICE_ONLY`.
 - Rangement recalculé sans relire la playlist : `ChannelFilters.rearrange` (au lancement quand `ChannelLineup.VERSION`
   dépasse le `lineupVersion` des réglages). Toute nouvelle règle de `ChannelLineup` : augmenter `ChannelLineup.VERSION`.
-- « Chaînes françaises seulement » (réglage) : colonne `french` (section autre que `OTHER` dans `ChannelLineup`), masquée
+- « Chaînes françaises seulement » (réglage) : colonne `french` (section autre que `OTHER` et `GENERAL` « Autres chaînes »,
+  0.2.190, dans `ChannelLineup`), masquée
   par `VISIBLE_VERSION` quand `hidden_groups` contient `LIVE_FOREIGN`. La section Foot (`epgChannels`,
   `eventChannelCandidates`) garde toutes les chaînes, masquées en dernier.
 - Retour du lecteur à l'accueil : la chaîne regardée (`AppContainer.lastLiveChannel`) et la catégorie où elle a été
@@ -254,6 +255,11 @@ Commandes :
   cette liste (`AppContainer.lastLivePlace`, lue dans la base) ; `TvBody` charge la liste jusqu'à elle,
   `FollowLastChannel` / `restoreFocus` (`FocusMemory.kt`) y posent la sélection (à défaut, sur la première chaîne : une
   sélection perdue ouvrait le menu de gauche de Streaming). Les tests attendent cette place avant le retour (CI lente).
+- Volet des catégories de Streaming (0.2.190) : la colonne (`CategoryRail`) s'ouvre déjà défilée sur la catégorie choisie
+  (`railIndexOf`), sinon une catégorie loin dans la liste n'existait pas encore et la sélection allait à la recherche. Liste
+  d'une catégorie choisie vide moins de 1,5 s (`EMPTY_LIST_CONFIRM_MILLIS`) : pas prise pour une catégorie vide (le volet
+  restait ouvert sur la box, cause exacte non reproduite). Rangées de Streaming : `LazyListState` créé sur la rangée de
+  `lastOpened` (en plus de `RestoreRow`) ; saut « haut de page → rangée » vu en vidéo sur la box, non reproduit ici.
 - Zapping (haut/bas, chaîne +/-) : `PlayerViewModel.zap` reste, en boucle, dans la liste d'où la chaîne a été ouverte :
   favoris (`ARG_FAVORITES`), catégorie (`ARG_GROUP` : `Routes.groupPlayer`, depuis `HomeActions.onPlayGroupChannel` et le
   guide), sinon toutes les chaînes ; `playFromMenu` prend la catégorie du menu. Requêtes `ChannelDao.nextChannelId` /

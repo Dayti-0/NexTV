@@ -1264,7 +1264,11 @@ internal fun CategoryRail(
         verticalArrangement = Arrangement.spacedBy(10.dp - RAIL_FOCUS_ROOM),
     ) {
         SearchField(query, searchHint(section), actions.onQuery, Modifier.padding(horizontal = RAIL_FOCUS_ROOM))
-        val railState = rememberLazyListState()
+        // La liste s'ouvre déjà sur la catégorie choisie : une catégorie plus bas (« Autres chaînes ») n'existait pas
+        // encore à l'ouverture du volet, et la sélection allait à la recherche, en haut, au lieu d'elle.
+        val railState = rememberLazyListState(
+            initialFirstVisibleItemIndex = (railIndexOf(category, groups, recentCount != null, resumeCount != null) - RAIL_ITEMS_ABOVE).coerceAtLeast(0),
+        )
         FadingBottom({ railState.canScrollForward }, { railState.canScrollBackward }) { fade ->
             LazyColumn(
                 state = railState,
@@ -1309,6 +1313,21 @@ internal fun CategoryRail(
         }
     }
 }
+
+/** Place de [category] dans la colonne des catégories (favoris, récentes, reprise, toutes, puis les groupes). */
+internal fun railIndexOf(category: Category, groups: List<GroupRow>, recent: Boolean, resume: Boolean): Int {
+    val beforeAll = 1 + (if (recent) 1 else 0) + (if (resume) 1 else 0)
+    return when (category) {
+        Category.Favorites -> 0
+        Category.Recent -> 1
+        Category.ContinueWatching -> if (recent) 2 else 1
+        Category.All -> beforeAll
+        is Category.Group -> groups.indexOfFirst { it.title.orEmpty() == category.title }.let { if (it < 0) 0 else beforeAll + 1 + it }
+    }
+}
+
+/** Catégories laissées visibles au-dessus de la catégorie choisie à l'ouverture de la colonne. */
+private const val RAIL_ITEMS_ABOVE = 3
 
 @Composable
 private fun SectionBody(
@@ -1520,6 +1539,9 @@ internal class ListFocusHandoff(val closeDrawer: () -> Unit) {
 /** Catégorie choisie : la sélection est à poser sur sa nouvelle liste (voir [TakeFocusOnNewList]). */
 internal val LocalTakeListFocus = staticCompositionLocalOf<ListFocusHandoff?> { null }
 
+/** Liste de la catégorie choisie vide aussi longtemps : elle est vraiment vide (pas une liste encore en lecture). */
+private const val EMPTY_LIST_CONFIRM_MILLIS = 1_500L
+
 /** Attente de la nouvelle liste, volet ouvert (box lentes : la requête peut prendre plus d'une seconde). */
 private const val NEW_LIST_WAIT_MILLIS = 5_000L
 
@@ -1561,9 +1583,17 @@ internal fun TvBody(
     val favoritesMode = category == Category.Favorites
     val recentMode = category == Category.Recent
     // Catégorie choisie vide : aucune chaîne pour prendre la sélection, elle reste dans le volet (ouvert), d'où l'on
-    // peut en choisir une autre.
+    // peut en choisir une autre. Seulement si elle le reste : sur la box, la liste de la catégorie choisie est souvent
+    // vide un instant avant d'arriver ; le volet restait alors ouvert, la liste affichée derrière.
     val handoff = LocalTakeListFocus.current
-    val noChannelToSelect: @Composable () -> Unit = { if (handoff != null) LaunchedEffect(category) { handoff.finish() } }
+    val noChannelToSelect: @Composable () -> Unit = {
+        if (handoff != null) {
+            LaunchedEffect(category) {
+                delay(EMPTY_LIST_CONFIRM_MILLIS)
+                handoff.finish()
+            }
+        }
+    }
     if (favoritesMode && favorites.isEmpty()) {
         noChannelToSelect()
         EmptyState(Icons.Filled.Star, stringResource(R.string.favorites_empty_title), stringResource(R.string.favorites_empty_channels))
