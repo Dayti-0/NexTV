@@ -275,6 +275,24 @@ class AdRecorderTest {
         }
     }
 
+    /**
+     * Fichier commencé longtemps après l'ouverture de la chaîne (fichier suivant d'un enregistrement coupé à 2 h) : sa durée
+     * part de son début, pas de l'horloge de la détection. Sinon il paraissait déjà durer 2 h et était recoupé chaque seconde.
+     */
+    @Test
+    fun `a recording started on a channel open for a while measures its own duration`() {
+        val recordings = AdRecordings(folder.newFolder("recordings"), "0.0.0-test", minMillis = 60_000)
+        play(90.0)
+        recordings.start("TF1", control)
+        play(30.0)
+        assertTrue("durée ${control.recordingMillis}", control.recordingMillis!! in 29_000..31_000)
+        // Suite coupée : le fichier suivant repart de zéro.
+        recordings.start("TF1", control)
+        play(10.0)
+        assertTrue("durée ${control.recordingMillis}", control.recordingMillis!! in 9_000..11_000)
+        recordings.stop()
+    }
+
     @Test
     fun `less than a minute is not kept`() {
         val recordings = AdRecordings(folder.newFolder("recordings"), "0.0.0-test", minMillis = 60_000)

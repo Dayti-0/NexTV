@@ -69,10 +69,18 @@ class AdRecorder(
     private var thumbnailAt = Long.MIN_VALUE
     private var eventsFlushedAt = 0L
 
-    /** Durée enregistrée, en millisecondes. */
+    /**
+     * Durée enregistrée dans ce fichier, en millisecondes : depuis son premier son, pas depuis le début de l'horloge (celle
+     * de la détection, qui compte depuis l'ouverture de la chaîne). Lue sur l'horloge, un fichier suivant (coupé à 2 h)
+     * paraissait déjà durer 2 h et était recoupé à chaque seconde (26 fichiers d'une seconde sur TF1 le 17/11).
+     */
     @Volatile
     var recordedMillis: Long = 0
         private set
+
+    /** Horloge de l'enregistrement au premier son de ce fichier. */
+    @Volatile
+    private var firstSound = Long.MIN_VALUE
 
     /** Pourquoi l'enregistrement s'est arrêté tout seul (place), `null` s'il a été arrêté à la main. */
     @Volatile
@@ -116,7 +124,8 @@ class AdRecorder(
     fun sound(meanSquare: Double, durationMillis: Long, now: Long) {
         if (finished.get()) return
         val time = at(now)
-        recordedMillis = time
+        if (firstSound == Long.MIN_VALUE) firstSound = time
+        recordedMillis = time - firstSound
         val square = meanSquare.toFloat()
         val checkSpace = time - spaceCheckedAt >= SPACE_CHECK_MILLIS
         if (checkSpace) spaceCheckedAt = time
