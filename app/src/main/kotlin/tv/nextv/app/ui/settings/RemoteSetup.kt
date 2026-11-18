@@ -111,17 +111,7 @@ fun RemoteCodeCard(state: RemoteReceiveState, modifier: Modifier = Modifier, now
                 color = if (offer != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(stringResource(R.string.remote_code_help), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            val (status, error) = when (state) {
-                RemoteReceiveState.Idle, RemoteReceiveState.Opening -> stringResource(R.string.remote_code_opening) to false
-                RemoteReceiveState.Offline -> stringResource(R.string.remote_code_offline) to true
-                is RemoteReceiveState.Waiting -> if (state.refused) {
-                    stringResource(R.string.remote_code_refused) to true
-                } else {
-                    stringResource(R.string.remote_code_waiting, relativeTime(state.offer.expiresAt, now).lowercase()) to false
-                }
-                is RemoteReceiveState.Installing -> stringResource(R.string.remote_code_installing, state.from) to false
-                is RemoteReceiveState.Installed -> stringResource(R.string.remote_code_installed) to false
-            }
+            val (status, error) = remoteCodeStatus(state, now)
             Text(
                 status,
                 style = MaterialTheme.typography.bodyMedium,
@@ -132,6 +122,20 @@ fun RemoteCodeCard(state: RemoteReceiveState, modifier: Modifier = Modifier, now
             }
         }
     }
+}
+
+/** Où en est le code : texte à afficher sous le code, et s'il s'agit d'un problème. */
+@Composable
+internal fun remoteCodeStatus(state: RemoteReceiveState, now: Long): Pair<String, Boolean> = when (state) {
+    RemoteReceiveState.Idle, RemoteReceiveState.Opening -> stringResource(R.string.remote_code_opening) to false
+    RemoteReceiveState.Offline -> stringResource(R.string.remote_code_offline) to true
+    is RemoteReceiveState.Waiting -> if (state.refused) {
+        stringResource(R.string.remote_code_refused) to true
+    } else {
+        stringResource(R.string.remote_code_waiting, relativeTime(state.offer.expiresAt, now).lowercase()) to false
+    }
+    is RemoteReceiveState.Installing -> stringResource(R.string.remote_code_installing, state.from) to false
+    is RemoteReceiveState.Installed -> stringResource(R.string.remote_code_installed) to false
 }
 
 /** Réglages › Configuration à distance › « Afficher le code de cette télé ». */

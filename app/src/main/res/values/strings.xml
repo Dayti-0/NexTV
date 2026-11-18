@@ -128,10 +128,17 @@
     <string name="startup_continue_cached">Continuer avec les données enregistrées</string>
     <string name="startup_choose_playlist">Choisir une autre playlist</string>
     <string name="welcome_title">Bienvenue sur NixTV</string>
-    <string name="welcome_message">Vos chaînes, films et séries IPTV, pensés pour la télécommande.</string>
-    <string name="welcome_step_playlist">Ajoutez votre playlist M3U (adresse en ligne ou fichier).</string>
-    <string name="welcome_step_guide">Le guide TV se télécharge et se met à jour tout seul.</string>
-    <string name="welcome_step_remote">Appui long sur OK pour les favoris, Retour pendant la lecture pour la liste des chaînes.</string>
+    <string name="welcome_question">Comment voulez-vous ajouter vos chaînes ?</string>
+    <string name="welcome_manual_title">Mon abonnement</string>
+    <string name="welcome_manual_text">Serveur, identifiant et mot de passe, ou lien M3U, à la télécommande.</string>
+    <string name="welcome_manual_action">Commencer</string>
+    <string name="welcome_phone_title">Mon téléphone</string>
+    <string name="welcome_phone_text">Scannez un QR code, puis tapez votre compte sur le téléphone (même Wi-Fi que la télé).</string>
+    <string name="welcome_phone_action">Afficher le QR code</string>
+    <string name="welcome_remote_title">On me l\'installe</string>
+    <string name="welcome_remote_text">Donnez ce code à la personne qui vous a donné l\'appli : elle installe tout de chez elle.</string>
+    <string name="welcome_other">Une sauvegarde à restaurer, ou une autre télé NixTV à relier ?</string>
+    <string name="welcome_settings">Réglages</string>
 
     <!-- Accueil -->
     <string name="home_tv">TV</string>
@@ -468,9 +475,9 @@
     <string name="settings_page_no_playlist">Aucune playlist</string>
     <string name="settings_page_version">Version %1$s</string>
     <string name="settings_page_update_available">Nouvelle version %1$s</string>
-    <string name="settings_page_playlist_help">La playlist affichée à l’accueil et sa mise à jour</string>
-    <string name="settings_page_playback_help">Qualité de l’image, son et ouverture des chaînes</string>
-    <string name="settings_page_display_help">Interface de l’accueil, couleurs, aperçus et catégories</string>
+    <string name="settings_page_playlist_help">La playlist affichée à l’accueil, sa mise à jour et le guide TV</string>
+    <string name="settings_page_playback_help">Qualité de l’image et décodeurs vidéo</string>
+    <string name="settings_page_display_help">Interface de l’accueil, couleurs, aperçus et bandes-annonces</string>
     <string name="settings_page_guide_help">Les programmes des chaînes, mis à jour chaque jour</string>
     <string name="settings_page_services_help">Les fiches des films et séries, et les matchs de la section Foot</string>
     <string name="settings_page_network_help">Adresse des serveurs et passage par un proxy</string>
@@ -557,6 +564,20 @@
     <string name="settings_link_unlinked">Cette télé n\'est plus reliée. Elle garde ses favoris et réglages.</string>
     <string name="settings_link_summary_none">Aucune</string>
     <string name="settings_page_backup_help">Vos playlists et réglages dans un fichier</string>
+    <string name="settings_page_playlist">Playlist et guide</string>
+    <string name="settings_page_channels">Chaînes</string>
+    <string name="settings_page_channels_help">Rangement des chaînes, chaînes françaises, région de France 3 et catégories masquées</string>
+    <string name="settings_page_picture">Image</string>
+    <string name="settings_page_sound">Son et radios</string>
+    <string name="settings_page_sound_help">Animation des radios, son des pubs et sortie du son</string>
+    <string name="settings_page_transfer">Sauvegarde et transfert</string>
+    <string name="settings_page_transfer_help">Installer une autre télé à distance, sauvegarder ou restaurer celle-ci</string>
+    <string name="settings_group_radios">Radios</string>
+    <string name="settings_group_ads">Pubs</string>
+    <string name="settings_group_ads_help">Pendant les pages de pub des chaînes en direct et du replay (jamais pendant un film).</string>
+    <string name="settings_group_audio_output">Sortie du son</string>
+    <string name="settings_channels_summary_merged">Chaînes rassemblées</string>
+    <string name="settings_channels_summary_all">Toutes les versions</string>
     <string name="settings_page_update_help">Version installée et nouveautés</string>
     <string name="settings_group_active_playlist">Playlist active</string>
     <string name="settings_group_quality">Qualité</string>

@@ -23,13 +23,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
@@ -77,61 +77,71 @@ import tv.nextv.app.ui.theme.NexTvIcons
 enum class SettingsPage {
     /** Dernier plantage, seulement s'il y en a un. */
     INCIDENT,
+
+    /** Playlist active et guide TV. */
     PLAYLIST,
+
+    /** Listes de chaînes : rangement, chaînes françaises, région de France 3, catégories masquées. */
+    CHANNELS,
+
+    /** Qualité de l'image et décodeurs. */
     PLAYBACK,
+
+    /** Animation des radios, pubs (son, musique, enregistrements), son passé à l'ampli. */
+    SOUND,
+
+    /** Interface, couleurs, aperçus et bandes-annonces. */
     DISPLAY,
-    GUIDE,
     SERVICES,
-    NETWORK,
 
     /** Télés reliées : mêmes favoris et réglages sur plusieurs télés. */
     LINK,
 
-    /** Configuration à distance : installer une autre télé par un code (sans la relier). */
-    REMOTE,
-    BACKUP,
+    /** Configuration à distance d'une autre télé, et sauvegarde dans un fichier. */
+    TRANSFER,
+    NETWORK,
     UPDATE,
 }
 
 private fun SettingsPage.title(): Int = when (this) {
     SettingsPage.INCIDENT -> R.string.settings_crash
-    SettingsPage.PLAYLIST -> R.string.settings_playlist
-    SettingsPage.PLAYBACK -> R.string.settings_playback
+    SettingsPage.PLAYLIST -> R.string.settings_page_playlist
+    SettingsPage.CHANNELS -> R.string.settings_page_channels
+    SettingsPage.PLAYBACK -> R.string.settings_page_picture
+    SettingsPage.SOUND -> R.string.settings_page_sound
     SettingsPage.DISPLAY -> R.string.settings_page_display
-    SettingsPage.GUIDE -> R.string.settings_guide
     SettingsPage.SERVICES -> R.string.settings_page_services
     SettingsPage.NETWORK -> R.string.settings_network
     SettingsPage.LINK -> R.string.settings_link
-    SettingsPage.REMOTE -> R.string.remote_setup
-    SettingsPage.BACKUP -> R.string.settings_backup
+    SettingsPage.TRANSFER -> R.string.settings_page_transfer
     SettingsPage.UPDATE -> R.string.settings_update
 }
 
 private fun SettingsPage.description(): Int? = when (this) {
     SettingsPage.INCIDENT -> null
     SettingsPage.PLAYLIST -> R.string.settings_page_playlist_help
+    SettingsPage.CHANNELS -> R.string.settings_page_channels_help
     SettingsPage.PLAYBACK -> R.string.settings_page_playback_help
+    SettingsPage.SOUND -> R.string.settings_page_sound_help
     SettingsPage.DISPLAY -> R.string.settings_page_display_help
-    SettingsPage.GUIDE -> R.string.settings_page_guide_help
     SettingsPage.SERVICES -> R.string.settings_page_services_help
     SettingsPage.NETWORK -> R.string.settings_page_network_help
     SettingsPage.LINK -> R.string.settings_page_link_help
-    SettingsPage.REMOTE -> R.string.settings_page_remote_help
-    SettingsPage.BACKUP -> R.string.settings_page_backup_help
+    SettingsPage.TRANSFER -> R.string.settings_page_transfer_help
     SettingsPage.UPDATE -> R.string.settings_page_update_help
 }
 
 private fun SettingsPage.icon(): ImageVector = when (this) {
     SettingsPage.INCIDENT -> Icons.Filled.Warning
     SettingsPage.PLAYLIST -> NexTvIcons.Tv
+    SettingsPage.CHANNELS -> Icons.AutoMirrored.Filled.List
     SettingsPage.PLAYBACK -> Icons.Filled.PlayArrow
+    SettingsPage.SOUND -> NexTvIcons.VolumeUp
     SettingsPage.DISPLAY -> NexTvIcons.Grid
-    SettingsPage.GUIDE -> NexTvIcons.Guide
     SettingsPage.SERVICES -> Icons.Filled.Star
     SettingsPage.NETWORK -> NexTvIcons.Cloud
     SettingsPage.LINK -> Icons.Filled.Share
-    SettingsPage.REMOTE -> Icons.AutoMirrored.Filled.Send
-    SettingsPage.BACKUP -> Icons.Filled.Lock
+    SettingsPage.TRANSFER -> Icons.AutoMirrored.Filled.Send
     SettingsPage.UPDATE -> Icons.Filled.Refresh
 }
 

@@ -34,7 +34,6 @@ import tv.nextv.app.ui.player.PlayerViewModel
 import tv.nextv.app.ui.settings.ChannelGroupsScreen
 import tv.nextv.app.ui.settings.ProxySettingsScreen
 import tv.nextv.app.ui.settings.QuickSetupScreen
-import tv.nextv.app.ui.settings.RemoteCodeCard
 import tv.nextv.app.ui.settings.RemoteReceiveScreen
 import tv.nextv.app.ui.settings.rememberRemoteSetupCode
 import tv.nextv.app.ui.settings.RemoteSendScreen
@@ -190,9 +189,9 @@ private fun AppNavHost(navController: NavHostController) {
                     }
                 },
                 onWelcome = {
+                    // Première ouverture : d'abord les chaînes (playlist, téléphone ou code de configuration à distance) ;
+                    // la configuration rapide vient une fois la playlist chargée (onHome), sauf installation à distance.
                     navController.restartAt(Routes.WELCOME)
-                    // Première ouverture : la configuration rapide, puis l'ajout d'une playlist.
-                    scope.launch { if (!container.settings.quickSetupDone.first()) navController.navigate(Routes.SETUP) }
                 },
                 onChoosePlaylist = { navController.navigate(Routes.PLAYLISTS) },
             )
@@ -202,7 +201,8 @@ private fun AppNavHost(navController: NavHostController) {
                 onAdd = { navController.navigate(Routes.editor()) },
                 onAddFromPhone = { navController.navigate(Routes.PHONE_SETUP) },
                 // Code de configuration à distance : la personne qui a donné l'appli installe tout de chez elle.
-                remoteCode = { modifier -> RemoteCodeCard(rememberRemoteSetupCode(), modifier) },
+                remote = rememberRemoteSetupCode(),
+                onSettings = { navController.navigate(Routes.SETTINGS) },
             )
         }
         composable(Routes.HOME) {

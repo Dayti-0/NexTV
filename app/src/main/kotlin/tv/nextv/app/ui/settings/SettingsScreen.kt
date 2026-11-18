@@ -478,29 +478,33 @@ fun SettingsContent(
                         }
                     }
                 }
+                // Guide TV commun à toutes les playlists.
+                SectionCard(
+                    stringResource(R.string.settings_group_guide_source),
+                    subtitle = stringResource(R.string.settings_guide_help, HttpEpgFeedProvider.XMLTV_FR_URL),
+                ) {
+                    val epg = state.playlist?.status?.epg
+                    InfoText(
+                        state.guideDownloadedAt?.let { stringResource(R.string.settings_guide_downloaded, relativeTime(it, now).lowercaseFirst()) }
+                            ?: stringResource(R.string.settings_guide_never),
+                    )
+                    if (epg != null && epg.programmeCount > 0) {
+                        InfoText(stringResource(R.string.settings_guide_matched, epg.programmeCount, epg.matchedChannelCount))
+                    }
+                    epg?.error?.let { ErrorText(resources.describe(it)) }
+                    if (state.playlist != null) {
+                        PillButton(
+                            stringResource(R.string.settings_guide_refresh),
+                            onRefreshGuide,
+                            icon = Icons.Filled.Refresh,
+                            enabled = !state.refreshing,
+                        )
+                    }
+                }
             }
 
-            SettingsPage.PLAYBACK -> {
-                SectionCard(stringResource(R.string.settings_group_quality)) {
-                    ValueRow(
-                        title = stringResource(R.string.settings_quality_target),
-                        value = qualityTargetLabel(state.qualityTarget),
-                        onClick = onCycleQualityTarget,
-                    )
-                    InfoText(qualityTargetHelp(state.qualityTarget))
-                    ToggleRow(
-                        title = stringResource(R.string.settings_auto_quality),
-                        description = stringResource(R.string.settings_auto_quality_help),
-                        checked = state.autoQuality,
-                        onChange = onAutoQuality,
-                    )
-                    ToggleRow(
-                        title = stringResource(R.string.settings_hide_uhd),
-                        description = stringResource(R.string.settings_hide_uhd_help),
-                        checked = state.hideUhd,
-                        onChange = onHideUhd,
-                    )
-                }
+            // Ce que montrent les listes de chaînes : rangement, pays, région, catégories masquées.
+            SettingsPage.CHANNELS -> {
                 SectionCard(stringResource(R.string.settings_group_channels)) {
                     ToggleRow(
                         title = stringResource(R.string.settings_merge_channels),
@@ -551,7 +555,61 @@ fun SettingsContent(
                         )
                     }
                 }
-                SectionCard(stringResource(R.string.settings_group_sound)) {
+                if (state.playlist != null) {
+                    // Catégories masquables : chaînes, films, séries.
+                    SectionCard(stringResource(R.string.settings_group_categories)) {
+                        listOf(
+                            // Sous « Catégories affichées » : juste Chaînes, Films, Séries.
+                            ContentKind.LIVE to R.string.settings_groups_channels,
+                            ContentKind.MOVIE to R.string.settings_groups_movies,
+                            ContentKind.SERIES to R.string.settings_groups_series,
+                        ).forEach { (kind, title) ->
+                            val hidden = state.hiddenGroups[kind] ?: 0
+                            ValueRow(
+                                title = stringResource(title),
+                                value = if (hidden == 0) {
+                                    stringResource(R.string.settings_channel_groups_visible)
+                                } else {
+                                    resources.getQuantityString(R.plurals.channel_groups_hidden, hidden, hidden)
+                                },
+                                onClick = { onGroups(kind) },
+                            )
+                        }
+                    }
+                }
+            }
+
+            SettingsPage.PLAYBACK -> {
+                SectionCard(stringResource(R.string.settings_group_quality)) {
+                    ValueRow(
+                        title = stringResource(R.string.settings_quality_target),
+                        value = qualityTargetLabel(state.qualityTarget),
+                        onClick = onCycleQualityTarget,
+                    )
+                    InfoText(qualityTargetHelp(state.qualityTarget))
+                    ToggleRow(
+                        title = stringResource(R.string.settings_auto_quality),
+                        description = stringResource(R.string.settings_auto_quality_help),
+                        checked = state.autoQuality,
+                        onChange = onAutoQuality,
+                    )
+                    ToggleRow(
+                        title = stringResource(R.string.settings_hide_uhd),
+                        description = stringResource(R.string.settings_hide_uhd_help),
+                        checked = state.hideUhd,
+                        onChange = onHideUhd,
+                    )
+                }
+                if (state.decoders.isNotEmpty()) {
+                    SectionCard(stringResource(R.string.settings_group_decoders), subtitle = stringResource(R.string.settings_decoder_help)) {
+                        state.decoders.forEach { choice -> DecoderRow(choice) { onCycleDecoder(choice.mimeType) } }
+                    }
+                }
+            }
+
+            // Radios, pubs et sortie du son.
+            SettingsPage.SOUND -> {
+                SectionCard(stringResource(R.string.settings_group_radios)) {
                     // Radios et Web radios : animation à la place de l'écran noir, ou rien.
                     var choosingVisual by remember { mutableStateOf(false) }
                     ValueRow(
@@ -574,6 +632,8 @@ fun SettingsContent(
                             onDismiss = { choosingVisual = false },
                         )
                     }
+                }
+                SectionCard(stringResource(R.string.settings_group_ads), subtitle = stringResource(R.string.settings_group_ads_help)) {
                     ToggleRow(
                         title = stringResource(R.string.settings_lower_ads),
                         description = stringResource(R.string.settings_lower_ads_help),
@@ -668,17 +728,14 @@ fun SettingsContent(
                         // Stockages annoncés par le système : la photo de cette ligne dit pourquoi une clé n'est pas proposée.
                         if (adPlace.storage.isNotEmpty()) InfoText(stringResource(R.string.settings_ad_recordings_storage, adPlace.storage))
                     }
+                }
+                SectionCard(stringResource(R.string.settings_group_audio_output)) {
                     ToggleRow(
                         title = stringResource(R.string.settings_audio_passthrough),
                         description = stringResource(R.string.settings_audio_passthrough_help),
                         checked = state.audioPassthrough,
                         onChange = onAudioPassthrough,
                     )
-                }
-                if (state.decoders.isNotEmpty()) {
-                    SectionCard(stringResource(R.string.settings_group_decoders), subtitle = stringResource(R.string.settings_decoder_help)) {
-                        state.decoders.forEach { choice -> DecoderRow(choice) { onCycleDecoder(choice.mimeType) } }
-                    }
                 }
             }
 
@@ -733,52 +790,6 @@ fun SettingsContent(
                             onClick = onCycleTrailerDelay,
                         )
                     }
-                }
-                if (state.playlist != null) {
-                    // Catégories masquables : chaînes, films, séries.
-                    SectionCard(stringResource(R.string.settings_group_categories)) {
-                        listOf(
-                            // Sous « Catégories affichées » : juste Chaînes, Films, Séries.
-                            ContentKind.LIVE to R.string.settings_groups_channels,
-                            ContentKind.MOVIE to R.string.settings_groups_movies,
-                            ContentKind.SERIES to R.string.settings_groups_series,
-                        ).forEach { (kind, title) ->
-                            val hidden = state.hiddenGroups[kind] ?: 0
-                            ValueRow(
-                                title = stringResource(title),
-                                value = if (hidden == 0) {
-                                    stringResource(R.string.settings_channel_groups_visible)
-                                } else {
-                                    resources.getQuantityString(R.plurals.channel_groups_hidden, hidden, hidden)
-                                },
-                                onClick = { onGroups(kind) },
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Guide TV commun.
-            SettingsPage.GUIDE -> SectionCard(
-                stringResource(R.string.settings_group_guide_source),
-                subtitle = stringResource(R.string.settings_guide_help, HttpEpgFeedProvider.XMLTV_FR_URL),
-            ) {
-                val epg = state.playlist?.status?.epg
-                InfoText(
-                    state.guideDownloadedAt?.let { stringResource(R.string.settings_guide_downloaded, relativeTime(it, now).lowercaseFirst()) }
-                        ?: stringResource(R.string.settings_guide_never),
-                )
-                if (epg != null && epg.programmeCount > 0) {
-                    InfoText(stringResource(R.string.settings_guide_matched, epg.programmeCount, epg.matchedChannelCount))
-                }
-                epg?.error?.let { ErrorText(resources.describe(it)) }
-                if (state.playlist != null) {
-                    PillButton(
-                        stringResource(R.string.settings_guide_refresh),
-                        onRefreshGuide,
-                        icon = Icons.Filled.Refresh,
-                        enabled = !state.refreshing,
-                    )
                 }
             }
 
@@ -854,13 +865,15 @@ fun SettingsContent(
 
             // Mêmes favoris, « Déjà vu » et réglages sur plusieurs télés.
             SettingsPage.LINK -> TvLinkPage(tvLink, tvLinkActions, now)
-            SettingsPage.REMOTE -> RemoteSetupPage(onRemoteSend, onRemoteReceive)
 
-            // Sauvegarde et restauration.
-            SettingsPage.BACKUP -> SectionCard(stringResource(R.string.settings_group_backup_file), subtitle = stringResource(R.string.settings_backup_help)) {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    PillButton(stringResource(R.string.settings_backup_save), onBackup, icon = Icons.Filled.Check)
-                    PillButton(stringResource(R.string.settings_backup_restore), onRestore, icon = Icons.Filled.Refresh)
+            // Installer une autre télé à distance, sauvegarder ou restaurer celle-ci dans un fichier.
+            SettingsPage.TRANSFER -> {
+                RemoteSetupPage(onRemoteSend, onRemoteReceive)
+                SectionCard(stringResource(R.string.settings_group_backup_file), subtitle = stringResource(R.string.settings_backup_help)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        PillButton(stringResource(R.string.settings_backup_save), onBackup, icon = Icons.Filled.Check)
+                        PillButton(stringResource(R.string.settings_backup_restore), onRestore, icon = Icons.Filled.Refresh)
+                    }
                 }
             }
 
@@ -888,14 +901,14 @@ fun SettingsContent(
         when (page) {
             SettingsPage.INCIDENT -> state.lastCrash?.let { relativeTime(it.atMillis, now) }
             SettingsPage.PLAYLIST -> state.playlist?.name ?: stringResource(R.string.settings_page_no_playlist)
+            SettingsPage.CHANNELS -> channelsSummary(state)
             SettingsPage.PLAYBACK -> qualityTargetLabel(state.qualityTarget)
+            SettingsPage.SOUND -> stringResource(radioVisual.labelRes())
             SettingsPage.DISPLAY -> "${homeLayoutLabel(state.homeLayout)} · ${themeLabel(state.theme)}"
-            SettingsPage.GUIDE -> state.guideDownloadedAt?.let { relativeTime(it, now) }
             SettingsPage.SERVICES -> null
             SettingsPage.NETWORK -> dnsLabel(state.dns)
             SettingsPage.LINK -> tvLinkSummary(tvLink)
-            SettingsPage.REMOTE -> null
-            SettingsPage.BACKUP -> null
+            SettingsPage.TRANSFER -> null
             SettingsPage.UPDATE -> when (update) {
                 is UpdateState.Available -> stringResource(R.string.settings_page_update_available, update.release.version)
                 else -> stringResource(R.string.settings_page_version, state.version)
@@ -942,6 +955,17 @@ fun SettingsContent(
                 }
             }
         }
+    }
+}
+
+/** Résumé de la page « Chaînes » : catégories masquées, sinon les chaînes rassemblées ou non. */
+@Composable
+private fun channelsSummary(state: SettingsUiState): String {
+    val hidden = state.hiddenGroups.values.sum()
+    return when {
+        hidden > 0 -> LocalContext.current.resources.getQuantityString(R.plurals.channel_groups_hidden, hidden, hidden)
+        state.frenchOnly -> stringResource(R.string.settings_french_only)
+        else -> stringResource(if (state.mergeChannels) R.string.settings_channels_summary_merged else R.string.settings_channels_summary_all)
     }
 }
 

@@ -141,6 +141,12 @@ Commandes :
   passe par `BackgroundWork` : rien pendant qu'un lecteur est ouvert (`AppContainer.playbackOpen`), une actualisation
   en cours est abandonnée quand une lecture démarre et refaite après. Mémoire tampon : `PlayerFactory.loadControl()`
   pour un direct, `filmLoadControl()` pour un film ou un épisode.
+- Réglages (0.2.195) : pages `SettingsPage` (Playlist et guide, Chaînes, Image = `PLAYBACK`, Son et radios = `SOUND`,
+  Affichage, Films séries et foot, Télés reliées, Sauvegarde et transfert = `TRANSFER` : configuration à distance + fichier,
+  Réseau, Mise à jour) ; contenu dans `SettingsContent.body` (`SettingsScreen.kt`), liste et titres dans `SettingsPages.kt`.
+- Premier lancement sans playlist (0.2.195, `ui/startup/WelcomeScreen.kt`) : trois cartes (abonnement → éditeur,
+  téléphone → QR code, « On me l'installe » avec le code de configuration à distance affiché) et « Réglages ». La
+  configuration rapide n'est plus ouverte par-dessus : elle vient après le premier chargement (`onHome`, `quickSetupDone`).
 - Accueil : `ui/home/` (interfaces Live Center, Streaming, Classique) ; composants communs dans
   `ui/components/Components.kt` (fondus `bottomFade`, `FadingRow` / `edgeFade`).
 - Guide TV et fiche programme : `ui/guide/`.

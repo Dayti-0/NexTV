@@ -101,12 +101,12 @@ class SettingsScrollTest {
     @Test
     fun `moving down the list shows each page`() {
         setContent()
-        selectPage("Lecture")
-        assertTrue(shown("Qualité de l’image, son et ouverture des chaînes"))
+        selectPage("Image")
+        assertTrue(shown("Qualité de l’image et décodeurs vidéo"))
         assertTrue(shown("Qualité visée"))
         press(Key.DirectionDown)
-        assertTrue(focusedText(), focusedText().startsWith("Affichage"))
-        assertTrue(shown("Aperçu et bande-annonce"))
+        assertTrue(focusedText(), focusedText().startsWith("Son et radios"))
+        assertTrue(shown("Sortie du son"))
         // La page précédente n'est plus affichée.
         assertTrue(!shown("Qualité visée"))
     }
@@ -114,17 +114,17 @@ class SettingsScrollTest {
     @Test
     fun `a page reaches both of its ends, then left goes back to its name`() {
         setContent()
-        selectPage("Lecture")
+        selectPage("Son et radios")
         press(Key.DirectionRight)
-        assertTrue("Dans la page", !focusedText().startsWith("Lecture"))
+        assertTrue("Dans la page", !focusedText().startsWith("Son et radios"))
         assertTrue("Page plus longue que l'écran", scroll().maxValue() > 0f)
         press(Key.DirectionDown, 40)
         assertEquals("Tout en bas", scroll().maxValue(), scroll().value(), 1f)
         press(Key.DirectionUp, 40)
         assertEquals("Tout en haut", 0f, scroll().value(), 1f)
         press(Key.DirectionLeft)
-        assertTrue(focusedText(), focusedText().startsWith("Lecture"))
-        assertTrue(shown("Qualité visée"))
+        assertTrue(focusedText(), focusedText().startsWith("Son et radios"))
+        assertTrue(shown("Sortie du son"))
     }
 
     @Test

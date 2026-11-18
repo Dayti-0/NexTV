@@ -4,6 +4,11 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.195
+- Nouvel écran de premier lancement : trois choix côte à côte (mon abonnement, mon téléphone, on me l'installe avec le code déjà affiché), et un accès aux réglages pour restaurer une sauvegarde ou relier une autre télé
+- La configuration rapide n'est plus imposée avant d'avoir des chaînes : elle vient une fois la playlist chargée
+- Réglages réorganisés : Playlist et guide, Chaînes (rangement, chaînes françaises, France 3, catégories masquées), Image, Son et radios (radios, pubs, sortie du son), Affichage, Films séries et foot, Télés reliées, Sauvegarde et transfert (configuration à distance et fichier de sauvegarde), Réseau, Mise à jour
+
 ## 0.2.194
 - Configuration à distance : au premier lancement, la télé affiche un code ; de chez vous (Réglages › Configuration à distance › Configurer une autre télé), entrez ce code et envoyez sa playlist, vos réglages, vos clés et les catégories à masquer : tout s'installe tout seul, sans relier les deux télés
 - Réglages › Configuration à distance › « Afficher le code de cette télé » : pour la reconfigurer plus tard (nouveau compte, par exemple)

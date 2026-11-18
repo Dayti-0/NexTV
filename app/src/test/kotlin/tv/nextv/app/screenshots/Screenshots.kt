@@ -195,13 +195,9 @@ abstract class ScreenshotSuite(private val device: String) {
             onAdd = {},
             animate = false,
             onAddFromPhone = {},
-            remoteCode = { modifier ->
-                tv.nextv.app.ui.settings.RemoteCodeCard(
-                    tv.nextv.app.data.sync.RemoteReceiveState.Waiting(tv.nextv.core.sync.RemoteSetupOffer("482913", SampleData.NOW + 14 * 60_000L)),
-                    modifier,
-                    now = SampleData.NOW,
-                )
-            },
+            remote = tv.nextv.app.data.sync.RemoteReceiveState.Waiting(tv.nextv.core.sync.RemoteSetupOffer("482913", SampleData.NOW + 14 * 60_000L)),
+            onSettings = {},
+            now = SampleData.NOW,
         )
     }
 
@@ -238,7 +234,7 @@ abstract class ScreenshotSuite(private val device: String) {
             onClearTmdbKey = {},
             onProxy = {},
             now = SampleData.NOW,
-            initialPage = SettingsPage.REMOTE,
+            initialPage = SettingsPage.TRANSFER,
         )
     }
 
