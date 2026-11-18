@@ -1,6 +1,7 @@
 package tv.nextv.core.epg
 
 import org.xmlpull.v1.XmlPullParser
+import tv.nextv.core.catalog.ChannelLineup
 import tv.nextv.core.catalog.ContentClassifier
 import tv.nextv.core.catalog.FranceRegions
 import tv.nextv.core.model.Programme
@@ -45,6 +46,11 @@ data class EpgImportResult(
     val skippedProgrammes: Int,
     val coveredEpgIds: Set<String>,
     val guideOnlyChannels: Map<String, String> = emptyMap(),
+    /**
+     * Chaînes déclarées après le début des programmes (guides Plex, Samsung TV Plus : chaque chaîne suivie de ses
+     * programmes) : pas encore associées. Un second passage les associe ([EpgImporter.import] avec `declared`).
+     */
+    val lateChannels: List<XmltvChannel> = emptyList(),
 )
 
 /**
@@ -64,20 +70,27 @@ class EpgImporter(
     /**
      * @param excludedEpgIds identifiants déjà couverts par un guide précédent (plusieurs guides
      * pour une même playlist : le premier qui fournit une chaîne l'emporte).
+     * @param declared chaînes du guide à associer, connues d'avance (second passage : [EpgImportResult.lateChannels]) ;
+     * seuls leurs programmes sont alors lus.
      */
     suspend fun import(
         input: InputStream,
         channels: List<EpgChannelRef>,
         sink: ProgrammeSink,
         excludedEpgIds: Set<String> = emptySet(),
+        declared: List<XmltvChannel>? = null,
         checkCancelled: () -> Unit = {},
     ): EpgImportResult {
+        // Séparateurs de la playlist (« ▀▄ PLUTO TV ▀▄ FILMS ▄▀▄ ») : pas des chaînes, jamais associés.
+        @Suppress("NAME_SHADOWING")
+        val channels = channels.filter { !ChannelLineup.isSeparator(it.name) }
         val reader = XmltvReader(input, parserFactory)
         val now = clock()
         val windowStart = now - options.pastWindowMillis
         val windowEnd = now + options.futureWindowMillis
 
         val xmltvChannels = ArrayList<XmltvChannel>()
+        val lateChannels = ArrayList<XmltvChannel>()
         var mapping: Map<Long, String>? = null
         var relevant: Set<String> = emptySet()
         // Chaînes de sport du guide sans chaîne de la playlist : seuls leurs matchs de football sont gardés.
@@ -116,13 +129,17 @@ class EpgImporter(
             val item = reader.next() ?: break
             if (++items % CANCELLATION_CHECK_INTERVAL == 0) checkCancelled()
             when (item) {
-                is XmltvChannel -> if (mapping == null) xmltvChannels += item
+                is XmltvChannel -> when {
+                    declared != null -> Unit
+                    mapping == null -> xmltvChannels += item
+                    else -> lateChannels += item
+                }
                 is XmltvProgramme -> {
                     if (mapping == null) {
-                        val found = match(channels, xmltvChannels, excludedEpgIds)
+                        val found = match(channels, declared ?: xmltvChannels, excludedEpgIds)
                         mapping = found
                         relevant = found.values.toSet()
-                        sports = xmltvChannels.filter(::isSportsChannel)
+                        sports = (declared ?: xmltvChannels).filter(::isSportsChannel)
                             .associate { channel -> normalizeId(channel.id) to (channel.displayNames.firstOrNull() ?: channel.id) }
                             .filterKeys { id -> id !in relevant && id !in excludedEpgIds }
                         // Les programmes des chaînes absentes de la playlist (souvent la majorité) ne sont plus analysés.
@@ -144,9 +161,9 @@ class EpgImporter(
             sink.write(batch.toList())
             written += batch.size
         }
-        val finalMapping = (mapping ?: match(channels, xmltvChannels, excludedEpgIds))
+        val finalMapping = (mapping ?: match(channels, declared ?: xmltvChannels, excludedEpgIds))
             .filterValues { it in covered }
-        return EpgImportResult(finalMapping, written, reader.skippedProgrammes, covered, sportsKept)
+        return EpgImportResult(finalMapping, written, reader.skippedProgrammes, covered, sportsKept, lateChannels)
     }
 
     /** Chaîne de sport française du guide (beIN, Ligue 1+, DAZN, Canal+, RMC Sport, L'Équipe…). */
@@ -241,7 +258,7 @@ class EpgImporter(
          * avec une version antérieure est réimporté dès le lancement suivant, sans attendre sa
          * réimportation quotidienne.
          */
-        const val VERSION = 8
+        const val VERSION = 9
 
         /** Nom du guide de la chaîne nationale France 3 ([normalizeName]). */
         private const val FRANCE_3 = "france3"

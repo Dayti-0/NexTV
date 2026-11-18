@@ -493,6 +493,63 @@ class SourceRepositoryTest {
         assertEquals(3, obtained)
     }
 
+    /**
+     * Guides d'appoint (Pluto TV, Samsung TV Plus, Plex) : seulement pour les chaînes que le guide principal ne couvre pas,
+     * même quand le guide déclare chaque chaîne juste avant ses programmes (Samsung TV Plus, Plex) ; un guide d'appoint
+     * injoignable n'empêche rien.
+     */
+    @Test
+    fun `extra guides fill the channels the main guide misses`() = runBlocking {
+        route("/list.m3u", playlistWithEpg("/ignored.xml"))
+        fun file(text: String) = java.io.File.createTempFile("guide", ".xml").apply { writeText(text); deleteOnExit() }
+        val main = file(
+            """
+            <tv>
+              <channel id="tf1.fr"><display-name>TF1</display-name></channel>
+              <programme start="20240101110000 +0000" stop="20240101130000 +0000" channel="tf1.fr"><title>JT</title></programme>
+            </tv>
+            """.trimIndent(),
+        )
+        // Chaque chaîne suivie de ses programmes ; TF1 y est aussi, mais le guide principal l'a déjà.
+        val interleaved = file(
+            """
+            <tv>
+              <channel id="FR123"><display-name>TF1</display-name></channel>
+              <programme start="20240101110000 +0000" stop="20240101130000 +0000" channel="FR123"><title>Autre JT</title></programme>
+              <channel id="FR456"><display-name>France 2</display-name></channel>
+              <programme start="20240101110000 +0000" stop="20240101130000 +0000" channel="FR456"><title>Série</title></programme>
+            </tv>
+            """.trimIndent(),
+        )
+        fun feed(guide: java.io.File?) = object : tv.nextv.core.epg.EpgFeedProvider {
+            override suspend fun obtain(force: Boolean, progress: tv.nextv.core.io.ProgressListener?): tv.nextv.core.epg.EpgFeed =
+                guide?.let { tv.nextv.core.epg.EpgFeed(it, now - 1_000, now) } ?: throw tv.nextv.core.error.SourceException(SourceError.Timeout)
+
+            override fun cached() = null
+        }
+        val logger = RedactingLogger(captured, redactor)
+        val opener = CompositeContentOpener(listOf(RemoteContentOpener(HttpClientProvider(logger = logger), logger)))
+        val withFeeds = SourceRepository(
+            store = store,
+            credentialStore = credentials,
+            loaders = PlaylistLoaderRegistry(listOf(M3uPlaylistLoader(opener))),
+            epgLoader = EpgLoader(opener, EpgImporter({ KXmlParser() }, clock = { now })),
+            redactor = redactor,
+            logger = logger,
+            clock = { now },
+            epgFeed = feed(main),
+            extraEpgFeeds = listOf(feed(null), feed(interleaved)),
+        )
+        val id = withFeeds.add(SourceInput(name = "IPTV", location = SourceLocation.Remote(server.url("/list.m3u").toString())))
+
+        val result = withFeeds.refresh(id) as RefreshResult.Success
+
+        assertEquals(2, result.epg.programmeCount)
+        assertEquals(2, result.epg.matchedChannelCount)
+        assertEquals(listOf("JT", "Série"), store.programmes.getValue(id).map { it.title }.sorted())
+        assertEquals(setOf("tf1.fr", "fr456"), store.epgMapping.getValue(id).values.toSet())
+    }
+
     private suspend fun SourceRepository.sourcesSnapshot() = store.getSources()
 
     private fun MockWebServer.takeRequestPaths(): List<String> =

@@ -64,6 +64,11 @@ class SourceRepository(
      * les guides configurés par playlist ou annoncés par leur en-tête.
      */
     private val epgFeed: EpgFeedProvider? = null,
+    /**
+     * Guides d'appoint, importés après [epgFeed] pour les chaînes qu'il ne couvre pas (Pluto TV, Plex, Samsung TV Plus).
+     * Un guide d'appoint injoignable n'empêche pas l'import des autres.
+     */
+    private val extraEpgFeeds: List<EpgFeedProvider> = emptyList(),
     /** Jours de replay des chaînes, par identifiant de flux (comptes Xtream) ; `null` : inconnus. */
     private val catchupDays: suspend (PlaylistSource) -> Map<String, Int>? = { null },
     /**
@@ -488,9 +493,19 @@ class SourceRepository(
             logger.warn(TAG, "Guide indisponible pour la source ${source.id} : ${e.error.code}", e)
             return EpgOutcome(previous.copy(lastAttemptAtMillis = attemptAt, error = e.error), failure = e.error)
         }
+        // Guides d'appoint : la copie en cache sert quand le serveur ne répond pas ; aucun guide n'est obligatoire.
+        val extras = extraEpgFeeds.mapNotNull { provider ->
+            try {
+                provider.obtain(force)
+            } catch (e: SourceException) {
+                logger.warn(TAG, "Guide d'appoint indisponible : ${e.error.code}", e)
+                null
+            }
+        }
         val lastImport = previous.lastSuccessAtMillis
         val upToDate = !channelsChanged && !force && previous.error == null && lastImport != null &&
-            lastImport >= feed.updatedAtMillis && attemptAt - lastImport < EPG_REIMPORT_MILLIS
+            lastImport >= feed.updatedAtMillis && extras.all { lastImport >= it.updatedAtMillis } &&
+            attemptAt - lastImport < EPG_REIMPORT_MILLIS
         if (upToDate) {
             progress?.onProgress(LoadProgress(LoadStep.EPG_IMPORT, 1, 1))
             return EpgOutcome(previous.copy(lastAttemptAtMillis = attemptAt, error = feed.error), failure = null, unchanged = feed.error == previous.error)
@@ -498,14 +513,35 @@ class SourceRepository(
 
         val session = store.beginEpgImport(source.id)
         try {
-            val result = epgLoader.importFile(feed.file, store.getEpgChannelRefs(source.id), session, progress = progress)
-            session.commit(result.mapping, result.guideOnlyChannels)
+            val refs = store.getEpgChannelRefs(source.id)
+            val result = epgLoader.importFile(feed.file, refs, session, progress = progress)
             logger.info(TAG, "Guide : ${result.programmeCount} programmes, ${result.mapping.size} chaînes associées")
+            val mapping = HashMap(result.mapping)
+            val guideOnly = HashMap(result.guideOnlyChannels)
+            val covered = HashSet(result.coveredEpgIds).apply { addAll(result.guideOnlyChannels.keys) }
+            var programmes = result.programmeCount
+            // Chaînes sans programme dans le guide principal : guides d'appoint, le premier qui en a l'emporte.
+            for (extra in extras) {
+                val remaining = refs.filter { it.channelId !in mapping }
+                if (remaining.isEmpty()) break
+                try {
+                    val more = epgLoader.importFile(extra.file, remaining, session, excludedEpgIds = covered)
+                    more.mapping.forEach { (channelId, epgId) -> mapping.putIfAbsent(channelId, epgId) }
+                    more.guideOnlyChannels.forEach { (epgId, name) -> guideOnly.putIfAbsent(epgId, name) }
+                    covered += more.coveredEpgIds
+                    covered += more.guideOnlyChannels.keys
+                    programmes += more.programmeCount
+                    logger.info(TAG, "Guide d'appoint ${extra.file.parentFile?.name} : ${more.programmeCount} programmes, ${more.mapping.size} chaînes associées")
+                } catch (e: SourceException) {
+                    logger.warn(TAG, "Import du guide d'appoint ${extra.file.parentFile?.name} impossible : ${e.error.code}", e)
+                }
+            }
+            session.commit(mapping, guideOnly.filterKeys { it !in mapping.values })
             val status = EpgStatus(
                 lastAttemptAtMillis = attemptAt,
                 lastSuccessAtMillis = clock(),
-                programmeCount = result.programmeCount,
-                matchedChannelCount = result.mapping.size,
+                programmeCount = programmes,
+                matchedChannelCount = mapping.size,
                 error = feed.error,
             )
             return EpgOutcome(status, failure = null)

@@ -65,11 +65,28 @@ class EpgLoader(
         } catch (e: FileNotFoundException) {
             throw SourceException(SourceError.FileNotFound, e)
         }
-        OpenedContent(stream, contentLength = file.length(), displayName = file.name).use { content ->
+        val first = OpenedContent(stream, contentLength = file.length(), displayName = file.name).use { content ->
             ContentPipeline.mapReadErrors(viaProxy = false) {
                 import(content, channels, sink, excludedEpgIds, progress)
             }
         }
+        // Chaînes déclarées au fil des programmes (Plex, Samsung TV Plus) : second passage pour elles seules, sur les
+        // chaînes de la playlist encore sans guide.
+        val late = first.lateChannels.filter { EpgImporter.normalizeId(it.id) !in excludedEpgIds && EpgImporter.normalizeId(it.id) !in first.coveredEpgIds }
+        val remaining = channels.filter { it.channelId !in first.mapping }
+        if (late.isEmpty() || remaining.isEmpty()) return@withContext first
+        val second = OpenedContent(FileInputStream(file), contentLength = file.length(), displayName = file.name).use { content ->
+            ContentPipeline.mapReadErrors(viaProxy = false) {
+                import(content, remaining, sink, excludedEpgIds + first.coveredEpgIds + first.guideOnlyChannels.keys, null, declared = late)
+            }
+        }
+        EpgImportResult(
+            mapping = first.mapping + second.mapping,
+            programmeCount = first.programmeCount + second.programmeCount,
+            skippedProgrammes = first.skippedProgrammes,
+            coveredEpgIds = first.coveredEpgIds + second.coveredEpgIds,
+            guideOnlyChannels = first.guideOnlyChannels + second.guideOnlyChannels,
+        )
     }
 
     private suspend fun import(
@@ -78,6 +95,7 @@ class EpgLoader(
         sink: ProgrammeSink,
         excludedEpgIds: Set<String>,
         progress: ProgressListener?,
+        declared: List<XmltvChannel>? = null,
     ): EpgImportResult {
         val context = kotlin.coroutines.coroutineContext
         val total = content.contentLength
@@ -92,7 +110,7 @@ class EpgLoader(
             DetectedContent.XML -> Unit
             else -> throw SourceException(SourceError.InvalidXmltv)
         }
-        val result = importer.import(input, channels, sink, excludedEpgIds) { context.ensureActive() }
+        val result = importer.import(input, channels, sink, excludedEpgIds, declared) { context.ensureActive() }
         progress?.onProgress(LoadProgress(LoadStep.EPG_IMPORT, total ?: 1, total ?: 1))
         return result
     }

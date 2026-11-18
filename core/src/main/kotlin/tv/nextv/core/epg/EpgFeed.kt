@@ -187,6 +187,18 @@ class HttpEpgFeedProvider(
     companion object {
         /** Guide XMLTV français utilisé automatiquement. */
         const val XMLTV_FR_URL = "https://xmltvfr.fr/xmltv/xmltv.xml.gz"
+
+        /**
+         * Guides d'appoint (i.mjh.nz, mis à jour plusieurs fois par jour) pour les chaînes gratuites que le guide français
+         * ne couvre pas, dans l'ordre d'import : Pluto TV, Samsung TV Plus et Plex France. Seulement les éditions
+         * françaises : les autres pays ont d'autres grilles sous les mêmes noms. Nom du dossier de cache → adresse.
+         * Vérifié sur la playlist le 18/11/2026 : 112 des 120 chaînes Pluto TV, une partie des chaînes Rakuten TV.
+         */
+        val EXTRA_GUIDES = linkedMapOf(
+            "pluto_fr" to "https://i.mjh.nz/PlutoTV/fr.xml.gz",
+            "samsung_fr" to "https://i.mjh.nz/SamsungTVPlus/fr.xml.gz",
+            "plex_fr" to "https://i.mjh.nz/Plex/fr.xml.gz",
+        )
         const val DEFAULT_MAX_AGE_MILLIS = 12 * 60 * 60_000L
 
         private const val TAG = "EpgFeed"

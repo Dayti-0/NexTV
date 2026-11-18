@@ -147,6 +147,11 @@ class AppContainer(context: Context) {
         logger = logger,
     )
 
+    /** Guides d'appoint (Pluto TV, Samsung TV Plus, Plex) pour les chaînes que le guide français ne couvre pas. */
+    private val extraEpgFeeds = HttpEpgFeedProvider.EXTRA_GUIDES.map { (folder, url) ->
+        HttpEpgFeedProvider(clients = httpClients, url = url.toHttpUrl(), directory = File(appContext.filesDir, "epg_$folder"), logger = logger)
+    }
+
     /** Comptes Xtream Codes : abonnement (date de fin, connexions simultanées) et chaînes avec replay. */
     val xtreamApi = XtreamApi(httpClients, logger)
 
@@ -179,6 +184,7 @@ class AppContainer(context: Context) {
         logger = logger,
         documentAccess = documentAccess,
         epgFeed = epgFeed,
+        extraEpgFeeds = extraEpgFeeds,
         catchupDays = xtreamApi::archiveDays,
     )
 

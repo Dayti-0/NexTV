@@ -659,7 +659,7 @@
     <string name="settings_decoder_none">Aucun décodeur proposé par l’appareil</string>
     <string name="settings_decoder_help">OK pour changer de décodeur. Le décodeur choisi est essayé en premier, les autres servent de repli. Les infos de lecture (touche Info ou menu des chaînes) indiquent celui qui est utilisé.</string>
     <string name="settings_guide">Guide TV</string>
-    <string name="settings_guide_help">Téléchargé automatiquement depuis %1$s, mis en cache sur l’appareil et actualisé toutes les 12 heures.</string>
+    <string name="settings_guide_help">Téléchargé automatiquement depuis %1$s, complété par les guides de Pluto TV, Samsung TV Plus et Plex (i.mjh.nz) pour les chaînes gratuites, mis en cache sur l’appareil et actualisé toutes les 12 heures.</string>
     <string name="settings_guide_downloaded">Dernier téléchargement %1$s</string>
     <string name="settings_guide_never">Pas encore téléchargé.</string>
     <string name="settings_guide_matched">%1$d programmes · %2$d chaînes associées</string>
