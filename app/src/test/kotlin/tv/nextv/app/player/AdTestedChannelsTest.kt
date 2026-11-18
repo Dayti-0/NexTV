@@ -16,7 +16,7 @@ class AdTestedChannelsTest {
         val tested = AdTestedChannels(file)
         // Gulli : pas encore enregistrée sur cet appareil ; TF1 part avec ce que Claude a déjà analysé.
         assertEquals(32 * 60_000L, tested.millis("Gulli"))
-        assertEquals(82 * 60_000L, tested.millis("TF1"))
+        assertEquals(AdTestedChannels.ANALYZED.getValue("tnt1") * 60_000L, tested.millis("TF1"))
         tested.add("Gulli HD", 30_000)
         tested.add("GULLI FHD", 40_000)
         tested.add("Ma chaîne", 5_000)
