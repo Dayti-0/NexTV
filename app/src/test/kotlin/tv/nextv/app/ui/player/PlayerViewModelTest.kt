@@ -356,6 +356,33 @@ class PlayerViewModelTest {
     }
 
     /**
+     * Radio (son sans image) : la détection des pubs s'arrête. Sans image, elle prenait le silence entre deux morceaux
+     * pour une coupure et baissait la musique, de nouveau à chaque changement de radio. L'enregistrement d'analyse en
+     * cours n'est pas arrêté pour autant.
+     */
+    @Test
+    fun aRadioStreamStopsTheAdDetection() {
+        runBlocking { container.settings.setLowerAdVolume(true) }
+        val (live, _) = playlist()
+        val (viewModel, store) = open(live)
+        viewModel.onStart()
+        idle()
+        assertTrue(viewModel.engine.adVolume.enabled)
+        viewModel.toggleAdRecording()
+        idle()
+        val recorder = checkNotNull(container.adRecordings.current)
+        // Pistes du flux : du son seulement.
+        viewModel.engine.radioStream()
+        idle()
+        assertFalse(viewModel.engine.adVolume.enabled)
+        assertFalse(viewModel.engine.adVolume.attenuating)
+        assertTrue(recorder.active)
+        assertSame(recorder, container.adRecordings.current)
+        viewModel.toggleAdRecording()
+        store.clear()
+    }
+
+    /**
      * Enregistrement pour l'analyse des pubs : la chaîne passe à sa moins bonne version (images réduites et son seulement,
      * pareils dans toutes les qualités), sans repartir de zéro ; les chaînes ouvertes pendant l'enregistrement aussi, et la
      * qualité visée revient à l'arrêt. La version basse n'est pas retenue comme « dernière qualité qui a fonctionné ».

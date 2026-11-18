@@ -178,8 +178,8 @@ class PlayerViewModel(
     /** Dernier serveur qui a répondu (playlist, racine) : les chaînes suivantes commencent par lui. */
     private var workingServer: Pair<Long, String>? = null
 
-    // Lecteur ExoPlayer : lecture, pistes, infos techniques.
-    private val engine: PlayerEngine = PlayerEngine(
+    // Lecteur ExoPlayer : lecture, pistes, infos techniques (lu aussi par les tests).
+    internal val engine: PlayerEngine = PlayerEngine(
         container = container,
         scope = viewModelScope,
         state = mutableState,

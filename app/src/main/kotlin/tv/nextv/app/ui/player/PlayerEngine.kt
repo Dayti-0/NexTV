@@ -239,6 +239,7 @@ internal class PlayerEngine(
             val problem = audioProblemOf(tracks)
             // Son sans image (radio) : animation à la place de l'écran noir.
             val audioOnly = !tracks.isEmpty && tracks.containsType(C.TRACK_TYPE_AUDIO) && !tracks.containsType(C.TRACK_TYPE_VIDEO)
+            if (audioOnly) radioStream()
             state.update {
                 it.copy(
                     tracks = describeTracks(tracks), audioProblem = problem, unsupportedAudio = unsupportedAudio ?: it.unsupportedAudio.takeIf { problem != null },
@@ -637,6 +638,23 @@ internal class PlayerEngine(
      * « Baisser le son des pubs » pour le flux qui s'ouvre : en service pour un direct ou un replay seulement, avec
      * ce qui a déjà été appris de cette chaîne (logo, carton entre deux pubs).
      */
+    /**
+     * Radio (son sans image) : pas de pages de pubs à reconnaître. Sans image, la détection prenait le silence entre
+     * deux morceaux pour une coupure et baissait la musique ; rien n'est appris ni enregistré pour l'analyse sur ce flux
+     * (l'enregistrement reprend sur la prochaine chaîne de télé).
+     */
+    internal fun radioStream() {
+        adBreaks = false
+        adMarksKey = null
+        adMarks = null
+        adContinuing = null
+        if (!adVolume.enabled) return
+        adVolume.enabled = false
+        adVolume.prints = null
+        adVolume.detachRecording()
+        adVolume.newStream(null)
+    }
+
     private fun startAdWatch() {
         val enabled = adVolumeEnabled && adBreaks
         val continuing = adContinuing

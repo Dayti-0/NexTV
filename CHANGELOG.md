@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.184
+- Radios et Web radios : la détection des pubs ne baisse plus la musique (elle prenait le silence entre deux morceaux pour une coupure pub)
+
 ## 0.2.183
 - Radios : le morceau en cours d'Europe 2, de RFM et de Reggae.fr vient maintenant de leur site (avec la pochette), sans passer par la reconnaissance
 - RTL : l'émission en cours et ses animateurs s'affichent
