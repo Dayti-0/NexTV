@@ -24,9 +24,10 @@ object QualityParser {
      * 10 : écritures d'un même nom regroupées (« + », « & », pluriels), séparateurs de la playlist à part, ordre rangé
      * des chaînes et versions de son gardées pour le réglage « Rassembler les chaînes » ; 11 : catégories par thème et
      * noms propres des chaînes rassemblées ; 12 : radios Internet ajoutées aux chaînes en direct ; 16 : noms propres
-     * des catégories de films et de séries, et celles d'autres pays repérées, voir VodCategories).
+     * des catégories de films et de séries, et celles d'autres pays repérées, voir VodCategories ; 17 : vrai logo des radios
+     * connues à la place de l'image de la playlist, logos de Dublab, Alpha Boys School Radio, Sensi Hip Hop).
      */
-    const val VERSION = 16
+    const val VERSION = 17
 
     data class Result(
         /** Nom sans les mentions de qualité ni de codec. */

@@ -203,7 +203,8 @@ Commandes :
   Flux sans titre ICY (vérifié) : Radio France, NRJ / Chérie / Rire, RTL2, Fun, Nova, Jazz Radio, TSF, Infomaniak (titre vide).
 - Logos des radios : `InternetRadios` (logos officiels de Wikipédia ou des sites des radios ; Wikipédia et ses images
   refusent l'agent d'OkHttp par défaut : client `IMAGE` avec l'agent de l'appli, `HttpClientProvider`) ; radios de la
-  playlist sans image : `InternetRadios.logoFor` à l'import. Wikimedia limite fortement les requêtes depuis le cloud (429).
+  playlist : `InternetRadios.logoFor` à l'import (0.2.189 : remplace aussi l'image de la playlist pour une radio connue, ex. drapeau
+  de SkyRock FM ; pas de logo trouvé pour West Coast G-Funk — AzuraCast sans logo — ni Tonic Ska Radio — site refusé d'ici). Wikimedia limite fortement les requêtes depuis le cloud (429).
   Radios françaises ajoutées (`InternetRadios.french`, catégorie `FRENCH_GROUP` rangée dans `RADIO`) seulement si la
   playlist ne les a pas déjà parmi ses radios (`M3uPlaylistLoader`).
 - Guides (0.2.178-0.2.179) : `xmltvfr.fr` d'abord, puis `HttpEpgFeedProvider.EXTRA_GUIDES` (Pluto TV, Samsung TV Plus,
@@ -224,6 +225,9 @@ Commandes :
   `HIDDEN_KIND_GROUPS` de `Daos.kt`). Nouveau nom : augmenter `QualityParser.VERSION`.
 - Année de sortie dans la fiche programme : celle du guide (`<date>`, la moitié des films de xmltvfr), sinon celle de la
   fiche TMDB du même titre (`rememberProgrammeYear`, `sameTitleYear` dans `ProgrammeArt.kt`, même cache que l'image).
+- Fun Radio / RTL2 : `icecast.funradio.fr` redirige vers `streaming-ice.audiomeans.fr` (paramètres AdsWizz `aw_…` : pubs
+  insérées, sans doute seulement en France). « Flux invalide » sur la box le 18/11/2026 : radio de l'appli illisible même en
+  HLS → moteur VLC (`UNREADABLE_STREAM_ERRORS`, `handleError`, 0.2.189).
 - Radios : pas de détection des pubs sur un flux sans image (`PlayerEngine.radioStream`, 0.2.184 : elle baissait la
   musique entre deux morceaux).
 - Télés reliées (0.2.186, Réglages › Télés reliées) : `core/sync/` — `SyncDocument` (dernière écriture gagnante par clé,

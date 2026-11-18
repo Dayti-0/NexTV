@@ -4,6 +4,11 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.189
+- Radios : vrai logo de Skyrock (et des autres radios connues) à la place de l'image de la playlist
+- Logos ajoutés : Dublab, Alpha Boys School Radio, Sensi Hip Hop
+- Fun Radio et les autres radios de l'appli : quand le flux est illisible, l'appli passe d'elle-même au second moteur de lecture au lieu d'afficher « Flux invalide »
+
 ## 0.2.188
 - Animation des radios : nouvel affichage du morceau en cours, avec le titre en grand, l'artiste dessous, la radio et son genre en petit au-dessus
 - Mode « Vinyle » : sur la télé, le disque est à gauche et le morceau à droite (ils ne se chevauchent plus)

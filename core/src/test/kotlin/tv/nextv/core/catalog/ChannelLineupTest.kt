@@ -306,6 +306,26 @@ class ChannelLineupTest {
         assertEquals("skyrock", InternetRadios.logoKey("|FR| SkyRock FM"))
     }
 
+    /** Radio connue de la playlist avec sa propre image (un drapeau) : le vrai logo la remplace ; une chaîne de télé garde la sienne. */
+    @Test
+    fun `known playlist radios get their real logo instead of the playlist image`() {
+        val text = buildString {
+            appendLine("#EXTM3U")
+            appendLine("#EXTINF:-1 tvg-logo=\"http://example.com/flag-fr.png\" group-title=\"FR RADIOS\",SkyRock FM")
+            appendLine("http://example.com/live/u/p/1.ts")
+            appendLine("#EXTINF:-1 tvg-logo=\"http://example.com/tf1.png\" group-title=\"FR TV HD\",|FR| TF1 HD")
+            appendLine("http://example.com/live/u/p/2.ts")
+        }
+        val opener = CompositeContentOpener(listOf(FakeDocumentOpener(mapOf("doc" to text.toByteArray()))))
+        val channels = runBlocking {
+            M3uPlaylistLoader(opener, internetRadios = true)
+                .load(PlaylistSource(name = "P", location = SourceLocation.LocalDocument("doc", "p.m3u")), null).channels
+        }
+        assertEquals(InternetRadios.logoFor("SkyRock FM"), channels.single { it.name == "SkyRock FM" }.logoUrl)
+        assertTrue(InternetRadios.logoFor("SkyRock FM")!!.contains("Skyrock"))
+        assertEquals("http://example.com/tf1.png", channels.single { it.name == "|FR| TF1 HD" }.logoUrl)
+    }
+
     @Test
     fun `a playlist without country prefix is ranged by the names of its channels`() {
         val channels = load(

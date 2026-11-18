@@ -78,10 +78,10 @@ object InternetRadios {
         Radio("mouv", "Mouv'", "Rap", "https://icecast.radiofrance.fr/mouv-hifi.aac", MOUV_LOGO, titles = TitleSource.RadioFrance(6)),
         Radio("fip_hiphop", "FIP Hip-Hop", "Hip-hop", "https://icecast.radiofrance.fr/fiphiphop-hifi.aac", FIP_LOGO),
         Radio("west_coast", "West Coast G-Funk", "Hip-hop", "https://r.bgp.rodeo/listen/west_coast/radio.mp3"),
-        Radio("sensi_hiphop", "Sensi Hip Hop", "Hip-hop", "https://sensihiphop.radioca.st/stream"),
+        Radio("sensi_hiphop", "Sensi Hip Hop", "Hip-hop", "https://sensihiphop.radioca.st/stream", "https://sensimedia.net/images/covers/logo.jpg"),
         // Groove, funk, soul
         Radio("fip_groove", "FIP Groove", "Groove, funk, soul", "https://icecast.radiofrance.fr/fipgroove-hifi.aac", FIP_LOGO, titles = TitleSource.RadioFrance(66)),
-        Radio("dublab", "Dublab", "Groove, beats", "https://dublab.out.airtime.pro/dublab_a"),
+        Radio("dublab", "Dublab", "Groove, beats", "https://dublab.out.airtime.pro/dublab_a", "https://dublab.com/assets/icons/apple-touch-icon-180x180.png"),
         // Ska
         Radio("tonic_ska", "Tonic Ska Radio", "Ska", "https://eu10.fastcast4u.com/tonicska"),
         Radio(
@@ -96,7 +96,10 @@ object InternetRadios {
             "reggae_fr", "Reggae.fr Webradio", "Reggae", "https://listen.radioking.com/radio/50473/stream/87415", "https://www.reggae.fr/apple-touch-icon.png",
             titles = TitleSource.Radioking(50473),
         ),
-        Radio("alpha_boys", "Alpha Boys School Radio", "Reggae, ska", "https://alphaboys-live.streamguys1.com/alphaboys.mp3"),
+        Radio(
+            "alpha_boys", "Alpha Boys School Radio", "Reggae, ska", "https://alphaboys-live.streamguys1.com/alphaboys.mp3",
+            "https://static.wixstatic.com/media/a09246_cd77033704f5403988933c7f658ce6ad~mv2.png/v1/fill/w_300,h_300,lg_1,usm_0.66_1.00_0.01/a09246_cd77033704f5403988933c7f658ce6ad~mv2.png",
+        ),
         // Électro, jazz, monde
         Radio("fip_electro", "FIP Electro", "Électro", "https://icecast.radiofrance.fr/fipelectro-hifi.aac", FIP_LOGO, titles = TitleSource.RadioFrance(74)),
         Radio("fip_jazz", "FIP Jazz", "Jazz", "https://icecast.radiofrance.fr/fipjazz-hifi.aac", FIP_LOGO, titles = TitleSource.RadioFrance(65)),

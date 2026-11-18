@@ -151,14 +151,16 @@ class M3uPlaylistLoader(
         }
         if (internetRadios && channels.any { it.kind == ModelContentKind.LIVE }) {
             // Radios de la playlist (sans catégorie, ou dans une catégorie de radios) : leurs noms écartent les radios
-            // françaises qu'elle a déjà ; et celles sans image reçoivent leur logo.
+            // françaises qu'elle a déjà ; et elles reçoivent le vrai logo des radios connues, à la place de l'image de la
+            // playlist (souvent un simple drapeau : SkyRock FM). Les autres chaînes sans image le reçoivent aussi.
             val radios = channels.filter { channel ->
                 channel.kind == ModelContentKind.LIVE &&
                     (channel.groupTitle.isNullOrBlank() || channel.groupTitle!!.contains("radio", ignoreCase = true) || RADIO_NAME.containsMatchIn(channel.name))
             }
+            val radioSet = radios.toHashSet()
             for (index in channels.indices) {
                 val channel = channels[index]
-                if (channel.kind != ModelContentKind.LIVE || !channel.logoUrl.isNullOrBlank()) continue
+                if (channel.kind != ModelContentKind.LIVE || (!channel.logoUrl.isNullOrBlank() && channel !in radioSet)) continue
                 InternetRadios.logoFor(channel.name)?.let { channels[index] = channel.copy(logoUrl = it) }
             }
             channels += InternetRadios.channels(channels.size, radios.map { it.name })

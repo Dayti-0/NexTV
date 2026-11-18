@@ -1124,6 +1124,14 @@ class PlayerViewModel(
             start(forceHls = true)
             return
         }
+        // Radio de l'appli illisible, même lue en HLS (Fun Radio sur la box : son passé par un serveur qui insère des pubs,
+        // parfois dans un autre format) : le moteur VLC, plus tolérant, la lit à la place.
+        if ((session.triedHlsFallback || format !in HLS_FALLBACK_FORMATS) && error.errorCode in UNREADABLE_STREAM_ERRORS &&
+            tv.nextv.core.catalog.InternetRadios.byUrl(playbackRequest.stream.url) != null
+        ) {
+            container.logger.info(TAG, "Radio illisible (${error.errorCodeName}) : moteur VLC")
+            if (switchToVlc()) return
+        }
         if (error.errorCode in SERVER_ERRORS && session.backupUrls.isNotEmpty()) {
             // Serveur injoignable : même flux sur un serveur de secours de la playlist.
             container.logger.info(TAG, "Serveur injoignable (${error.errorCodeName}), essai d'un serveur de secours")
@@ -1619,6 +1627,14 @@ class PlayerViewModel(
         private val HLS_FALLBACK_ERRORS = setOf(
             PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
             PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+        )
+
+        /** Flux qu'on ne sait pas lire (abîmé, ou dans un format inattendu). */
+        private val UNREADABLE_STREAM_ERRORS = setOf(
+            PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+            PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+            PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED,
+            PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED,
         )
 
         /** Erreurs qui peuvent venir du serveur (injoignable, en panne, bloqué) : un serveur de secours peut répondre. */
