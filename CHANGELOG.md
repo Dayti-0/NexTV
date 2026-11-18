@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.197
+- Réglages : les clés des services (fiches des films et séries, foot, titres des radios) rejoignent la page « Configuration et sauvegarde »
+
 ## 0.2.196
 - Réglages : la configuration rapide rejoint la page « Configuration et sauvegarde » (avec la configuration à distance et le fichier de sauvegarde), rangée en dernier avec « Films, séries et foot », les réglages les moins touchés
 

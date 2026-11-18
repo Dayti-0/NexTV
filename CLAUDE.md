@@ -142,8 +142,8 @@ Commandes :
   en cours est abandonnée quand une lecture démarre et refaite après. Mémoire tampon : `PlayerFactory.loadControl()`
   pour un direct, `filmLoadControl()` pour un film ou un épisode.
 - Réglages (0.2.195-0.2.196) : pages `SettingsPage` (Playlist et guide, Chaînes, Image = `PLAYBACK`, Son et radios = `SOUND`,
-  Affichage, Télés reliées, Réseau, Mise à jour, puis les moins touchées en dernier : Films séries et foot (clés),
-  Configuration et sauvegarde = `TRANSFER` : configuration rapide + configuration à distance + fichier) ; contenu dans
+  Affichage, Télés reliées, Réseau, Mise à jour, puis la moins touchée en dernier : Configuration et sauvegarde =
+  `TRANSFER` : configuration rapide + configuration à distance + fichier + clés des services, 0.2.197) ; contenu dans
   `SettingsContent.body` (`SettingsScreen.kt`), liste et titres dans `SettingsPages.kt`.
 - Premier lancement sans playlist (0.2.195, `ui/startup/WelcomeScreen.kt`) : trois cartes (abonnement → éditeur,
   téléphone → QR code, « On me l'installe » avec le code de configuration à distance affiché) et « Réglages ». La

@@ -794,8 +794,43 @@ fun SettingsContent(
                 }
             }
 
-            // Fiches films et séries, matchs de la section Foot.
-            SettingsPage.SERVICES -> {
+            SettingsPage.NETWORK -> {
+                SectionCard(stringResource(R.string.settings_group_dns)) {
+                    ValueRow(
+                        title = stringResource(R.string.settings_dns),
+                        value = dnsLabel(state.dns),
+                        onClick = onCycleDns,
+                    )
+                }
+                SectionCard(stringResource(R.string.settings_group_proxy)) {
+                    InfoText(
+                        if (state.proxyEnabled) {
+                            stringResource(R.string.settings_proxy_on, state.proxyAddress.orEmpty())
+                        } else {
+                            stringResource(R.string.settings_proxy_off)
+                        },
+                    )
+                    PillButton(stringResource(R.string.settings_proxy_configure), onProxy, icon = Icons.Filled.Settings)
+                }
+            }
+
+            // Mêmes favoris, « Déjà vu » et réglages sur plusieurs télés.
+            SettingsPage.LINK -> TvLinkPage(tvLink, tvLinkActions, now)
+
+            // Installer une autre télé à distance, sauvegarder ou restaurer celle-ci dans un fichier.
+            SettingsPage.TRANSFER -> {
+                // Configuration rapide : interface, couleurs et lecture, une étape par écran (comme au premier lancement).
+                SectionCard(stringResource(R.string.quick_setup_title), subtitle = stringResource(R.string.quick_setup_entry_help), icon = Icons.Filled.Build) {
+                    PillButton(stringResource(R.string.settings_quick_setup_open), onQuickSetup, icon = Icons.Filled.Build, style = PillStyle.Primary)
+                }
+                RemoteSetupPage(onRemoteSend, onRemoteReceive)
+                SectionCard(stringResource(R.string.settings_group_backup_file), subtitle = stringResource(R.string.settings_backup_help)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        PillButton(stringResource(R.string.settings_backup_save), onBackup, icon = Icons.Filled.Check)
+                        PillButton(stringResource(R.string.settings_backup_restore), onRestore, icon = Icons.Filled.Refresh)
+                    }
+                }
+                // Clés des services : fiches des films et séries, matchs de la section Foot, titres des radios.
                 KeyCard(
                     title = stringResource(R.string.settings_tmdb),
                     subtitle = stringResource(R.string.settings_tmdb_help),
@@ -844,44 +879,6 @@ fun SettingsContent(
                 )
             }
 
-            SettingsPage.NETWORK -> {
-                SectionCard(stringResource(R.string.settings_group_dns)) {
-                    ValueRow(
-                        title = stringResource(R.string.settings_dns),
-                        value = dnsLabel(state.dns),
-                        onClick = onCycleDns,
-                    )
-                }
-                SectionCard(stringResource(R.string.settings_group_proxy)) {
-                    InfoText(
-                        if (state.proxyEnabled) {
-                            stringResource(R.string.settings_proxy_on, state.proxyAddress.orEmpty())
-                        } else {
-                            stringResource(R.string.settings_proxy_off)
-                        },
-                    )
-                    PillButton(stringResource(R.string.settings_proxy_configure), onProxy, icon = Icons.Filled.Settings)
-                }
-            }
-
-            // Mêmes favoris, « Déjà vu » et réglages sur plusieurs télés.
-            SettingsPage.LINK -> TvLinkPage(tvLink, tvLinkActions, now)
-
-            // Installer une autre télé à distance, sauvegarder ou restaurer celle-ci dans un fichier.
-            SettingsPage.TRANSFER -> {
-                // Configuration rapide : interface, couleurs et lecture, une étape par écran (comme au premier lancement).
-                SectionCard(stringResource(R.string.quick_setup_title), subtitle = stringResource(R.string.quick_setup_entry_help), icon = Icons.Filled.Build) {
-                    PillButton(stringResource(R.string.settings_quick_setup_open), onQuickSetup, icon = Icons.Filled.Build, style = PillStyle.Primary)
-                }
-                RemoteSetupPage(onRemoteSend, onRemoteReceive)
-                SectionCard(stringResource(R.string.settings_group_backup_file), subtitle = stringResource(R.string.settings_backup_help)) {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        PillButton(stringResource(R.string.settings_backup_save), onBackup, icon = Icons.Filled.Check)
-                        PillButton(stringResource(R.string.settings_backup_restore), onRestore, icon = Icons.Filled.Refresh)
-                    }
-                }
-            }
-
             // Mise à jour de l'application, puis version et mentions légales.
             SettingsPage.UPDATE -> {
                 SectionCard(stringResource(R.string.settings_update)) {
@@ -910,7 +907,6 @@ fun SettingsContent(
             SettingsPage.PLAYBACK -> qualityTargetLabel(state.qualityTarget)
             SettingsPage.SOUND -> stringResource(radioVisual.labelRes())
             SettingsPage.DISPLAY -> "${homeLayoutLabel(state.homeLayout)} · ${themeLabel(state.theme)}"
-            SettingsPage.SERVICES -> null
             SettingsPage.NETWORK -> dnsLabel(state.dns)
             SettingsPage.LINK -> tvLinkSummary(tvLink)
             SettingsPage.TRANSFER -> null

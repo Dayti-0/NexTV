@@ -471,7 +471,6 @@
     <string name="settings_title">Réglages</string>
     <!-- Réglages : pages -->
     <string name="settings_page_display">Affichage</string>
-    <string name="settings_page_services">Films, séries et foot</string>
     <string name="settings_page_no_playlist">Aucune playlist</string>
     <string name="settings_page_version">Version %1$s</string>
     <string name="settings_page_update_available">Nouvelle version %1$s</string>
@@ -479,7 +478,6 @@
     <string name="settings_page_playback_help">Qualité de l’image et décodeurs vidéo</string>
     <string name="settings_page_display_help">Interface de l’accueil, couleurs, aperçus et bandes-annonces</string>
     <string name="settings_page_guide_help">Les programmes des chaînes, mis à jour chaque jour</string>
-    <string name="settings_page_services_help">Les fiches des films et séries, et les matchs de la section Foot</string>
     <string name="settings_page_network_help">Adresse des serveurs et passage par un proxy</string>
     <string name="settings_page_link_help">Mêmes favoris et réglages sur toutes vos télés</string>
     <string name="remote_setup">Configuration à distance</string>
@@ -571,7 +569,7 @@
     <string name="settings_page_sound">Son et radios</string>
     <string name="settings_page_sound_help">Animation des radios, son des pubs et sortie du son</string>
     <string name="settings_page_transfer">Configuration et sauvegarde</string>
-    <string name="settings_page_transfer_help">Configuration rapide, installation d\'une autre télé à distance, sauvegarde</string>
+    <string name="settings_page_transfer_help">Configuration rapide, installation d\'une autre télé à distance, sauvegarde et clés des services</string>
     <string name="settings_quick_setup_open">Lancer la configuration rapide</string>
     <string name="settings_group_radios">Radios</string>
     <string name="settings_group_ads">Pubs</string>

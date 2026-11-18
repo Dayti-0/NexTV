@@ -32,7 +32,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -97,10 +96,8 @@ enum class SettingsPage {
     NETWORK,
     UPDATE,
 
-    /** Les réglages les moins touchés, en dernier : clés des services… */
-    SERVICES,
-
-    /** … puis configuration rapide, configuration à distance d'une autre télé et sauvegarde dans un fichier. */
+    /** Les réglages les moins touchés, en dernier : configuration rapide, configuration à distance d'une autre télé,
+     *  sauvegarde dans un fichier et clés des services. */
     TRANSFER,
 }
 
@@ -111,7 +108,6 @@ private fun SettingsPage.title(): Int = when (this) {
     SettingsPage.PLAYBACK -> R.string.settings_page_picture
     SettingsPage.SOUND -> R.string.settings_page_sound
     SettingsPage.DISPLAY -> R.string.settings_page_display
-    SettingsPage.SERVICES -> R.string.settings_page_services
     SettingsPage.NETWORK -> R.string.settings_network
     SettingsPage.LINK -> R.string.settings_link
     SettingsPage.TRANSFER -> R.string.settings_page_transfer
@@ -125,7 +121,6 @@ private fun SettingsPage.description(): Int? = when (this) {
     SettingsPage.PLAYBACK -> R.string.settings_page_playback_help
     SettingsPage.SOUND -> R.string.settings_page_sound_help
     SettingsPage.DISPLAY -> R.string.settings_page_display_help
-    SettingsPage.SERVICES -> R.string.settings_page_services_help
     SettingsPage.NETWORK -> R.string.settings_page_network_help
     SettingsPage.LINK -> R.string.settings_page_link_help
     SettingsPage.TRANSFER -> R.string.settings_page_transfer_help
@@ -139,7 +134,6 @@ private fun SettingsPage.icon(): ImageVector = when (this) {
     SettingsPage.PLAYBACK -> Icons.Filled.PlayArrow
     SettingsPage.SOUND -> NexTvIcons.VolumeUp
     SettingsPage.DISPLAY -> NexTvIcons.Grid
-    SettingsPage.SERVICES -> Icons.Filled.Star
     SettingsPage.NETWORK -> NexTvIcons.Cloud
     SettingsPage.LINK -> Icons.Filled.Share
     SettingsPage.TRANSFER -> Icons.AutoMirrored.Filled.Send
