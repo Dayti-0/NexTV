@@ -27,7 +27,6 @@ import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PlayArrow
@@ -92,15 +91,17 @@ enum class SettingsPage {
 
     /** Interface, couleurs, aperçus et bandes-annonces. */
     DISPLAY,
-    SERVICES,
 
     /** Télés reliées : mêmes favoris et réglages sur plusieurs télés. */
     LINK,
-
-    /** Configuration à distance d'une autre télé, et sauvegarde dans un fichier. */
-    TRANSFER,
     NETWORK,
     UPDATE,
+
+    /** Les réglages les moins touchés, en dernier : clés des services… */
+    SERVICES,
+
+    /** … puis configuration rapide, configuration à distance d'une autre télé et sauvegarde dans un fichier. */
+    TRANSFER,
 }
 
 private fun SettingsPage.title(): Int = when (this) {
@@ -157,7 +158,6 @@ internal fun SettingsPanes(
     pages: List<SettingsPage>,
     window: WindowInfo,
     onBack: () -> Unit,
-    onQuickSetup: () -> Unit,
     summary: @Composable (SettingsPage) -> String?,
     body: @Composable (SettingsPage) -> Unit,
     modifier: Modifier = Modifier,
@@ -198,8 +198,6 @@ internal fun SettingsPanes(
                         .padding(start = window.horizontalPadding - 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    QuickSetupItem(onQuickSetup, Modifier.focusProperties { right = content })
-                    Spacer(Modifier.height(8.dp))
                     pages.forEach { target ->
                         PageItem(
                             page = target,
@@ -304,37 +302,6 @@ private fun PageItem(page: SettingsPage, summary: String?, selected: Boolean, on
             if (selected) Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = colors.primary, modifier = Modifier.size(20.dp))
         }
     }
-}
-
-/** Entrée « Configuration rapide », en tête de la liste. */
-@Composable
-private fun QuickSetupItem(onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val colors = MaterialTheme.colorScheme
-    FocusSurface(
-        onClick = onClick,
-        modifier = modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.medium,
-        color = colors.primaryContainer.copy(alpha = 0.55f),
-        focusedColor = colors.primaryContainer,
-        contentColor = colors.onPrimaryContainer,
-        focusScale = 1f,
-    ) {
-        Row(Modifier.padding(horizontal = 10.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Box(Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(colors.primary), contentAlignment = Alignment.Center) {
-                Icon(Icons.Filled.Build, contentDescription = null, tint = colors.onPrimary, modifier = Modifier.size(20.dp))
-            }
-            Column(Modifier.weight(1f)) {
-                Text(stringResource(R.string.quick_setup_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                Text(stringResource(R.string.quick_setup_entry_help), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            }
-        }
-    }
-}
-
-/** Écran étroit : la configuration rapide en carte, au-dessus des pages. */
-@Composable
-internal fun QuickSetupCard(onClick: () -> Unit) {
-    QuickSetupItem(onClick)
 }
 
 /** Clé d'un service (TMDB, football-data.org) : jamais affichée une fois enregistrée. */

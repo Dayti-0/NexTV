@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.196
+- Réglages : la configuration rapide rejoint la page « Configuration et sauvegarde » (avec la configuration à distance et le fichier de sauvegarde), rangée en dernier avec « Films, séries et foot », les réglages les moins touchés
+
 ## 0.2.195
 - Nouvel écran de premier lancement : trois choix côte à côte (mon abonnement, mon téléphone, on me l'installe avec le code déjà affiché), et un accès aux réglages pour restaurer une sauvegarde ou relier une autre télé
 - La configuration rapide n'est plus imposée avant d'avoir des chaînes : elle vient une fois la playlist chargée

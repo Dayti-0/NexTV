@@ -570,8 +570,9 @@
     <string name="settings_page_picture">Image</string>
     <string name="settings_page_sound">Son et radios</string>
     <string name="settings_page_sound_help">Animation des radios, son des pubs et sortie du son</string>
-    <string name="settings_page_transfer">Sauvegarde et transfert</string>
-    <string name="settings_page_transfer_help">Installer une autre télé à distance, sauvegarder ou restaurer celle-ci</string>
+    <string name="settings_page_transfer">Configuration et sauvegarde</string>
+    <string name="settings_page_transfer_help">Configuration rapide, installation d\'une autre télé à distance, sauvegarde</string>
+    <string name="settings_quick_setup_open">Lancer la configuration rapide</string>
     <string name="settings_group_radios">Radios</string>
     <string name="settings_group_ads">Pubs</string>
     <string name="settings_group_ads_help">Pendant les pages de pub des chaînes en direct et du replay (jamais pendant un film).</string>

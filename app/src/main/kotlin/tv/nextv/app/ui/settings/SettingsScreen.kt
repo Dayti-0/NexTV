@@ -29,6 +29,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
@@ -868,6 +869,10 @@ fun SettingsContent(
 
             // Installer une autre télé à distance, sauvegarder ou restaurer celle-ci dans un fichier.
             SettingsPage.TRANSFER -> {
+                // Configuration rapide : interface, couleurs et lecture, une étape par écran (comme au premier lancement).
+                SectionCard(stringResource(R.string.quick_setup_title), subtitle = stringResource(R.string.quick_setup_entry_help), icon = Icons.Filled.Build) {
+                    PillButton(stringResource(R.string.settings_quick_setup_open), onQuickSetup, icon = Icons.Filled.Build, style = PillStyle.Primary)
+                }
                 RemoteSetupPage(onRemoteSend, onRemoteReceive)
                 SectionCard(stringResource(R.string.settings_group_backup_file), subtitle = stringResource(R.string.settings_backup_help)) {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -925,7 +930,6 @@ fun SettingsContent(
                 pages = pages,
                 window = window,
                 onBack = onBack,
-                onQuickSetup = onQuickSetup,
                 summary = summary,
                 body = body,
                 modifier = Modifier.fillMaxSize().padding(padding),
@@ -946,7 +950,6 @@ fun SettingsContent(
                             .padding(horizontal = window.horizontalPadding, vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
-                        QuickSetupCard(onQuickSetup)
                         pages.forEach { page ->
                             PageHeader(page, Modifier.padding(top = 12.dp))
                             body(page)
