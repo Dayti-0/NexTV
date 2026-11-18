@@ -1156,6 +1156,10 @@ interface ChannelDao {
 
 @Dao
 interface FavoriteDao {
+    /** Tous les favoris d'une playlist, de tous les types (télés reliées). */
+    @Query("SELECT * FROM favorites WHERE sourceId = :sourceId")
+    suspend fun all(sourceId: Long): List<FavoriteEntity>
+
     @Query("SELECT * FROM favorites WHERE sourceId = :sourceId AND kind = :kind ORDER BY position")
     suspend fun list(sourceId: Long, kind: String): List<FavoriteEntity>
 
@@ -1189,6 +1193,10 @@ interface FavoriteDao {
 /** Catégories masquées (les favoris restent toujours visibles). */
 @Dao
 interface HiddenGroupDao {
+    /** Toutes les catégories masquées d'une playlist (télés reliées). */
+    @Query("SELECT * FROM hidden_groups WHERE sourceId = :sourceId")
+    suspend fun all(sourceId: Long): List<HiddenGroupEntity>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun hide(group: HiddenGroupEntity)
 

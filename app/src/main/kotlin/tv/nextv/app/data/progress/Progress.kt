@@ -122,6 +122,15 @@ class ProgressRepository(database: ProgressDatabase, private val clock: () -> Lo
         if (existing == null || existing.updatedAt < progress.updatedAt) dao.put(progress)
     }
 
+    /**
+     * Reprise venue d'une autre télé reliée : remplace celle de cette télé, en gardant son titre si elle visait le
+     * même (sinon [relink] le retrouve).
+     */
+    suspend fun replace(progress: ProgressEntity) = write {
+        val existing = dao.get(progress.sourceId, progress.itemKey)
+        dao.put(if (existing != null) progress.copy(channelId = existing.channelId) else progress)
+    }
+
     /** La reprise vise encore un titre de la playlist, et le bon (même clé). */
     suspend fun isLinked(progress: ProgressEntity, channels: ChannelDao): Boolean =
         channels.identities(listOf(progress.channelId)).any { it.sourceId == progress.sourceId && it.itemKey == progress.itemKey }

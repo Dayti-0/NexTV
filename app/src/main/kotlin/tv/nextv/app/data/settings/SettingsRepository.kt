@@ -19,6 +19,7 @@ import kotlin.reflect.KClass
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import tv.nextv.app.data.security.KeystoreSecretCipher
@@ -469,6 +470,73 @@ class SettingsRepository(
         }
     }
 
+    /**
+     * Réglages partagés par les télés reliées, nom → valeur notée avec son type (« b:true », « i:4 », « l:5 »,
+     * « s:texte », « S:[…] »). Sans les réglages propres à chaque appareil ([DEVICE_ONLY]) ni ceux d'un type inattendu.
+     */
+    suspend fun syncedPreferences(): Map<String, String> = buildMap {
+        for ((key, value) in preferences.first().asMap()) {
+            if (!isSynced(key.name)) continue
+            val type = TYPES[key.name]
+            val text = when {
+                type == Boolean::class && value is Boolean -> "b:$value"
+                type == Int::class && value is Int -> "i:$value"
+                type == Long::class && value is Long -> "l:$value"
+                type == String::class && value is String -> "s:$value"
+                type == Set::class && value is Set<*> -> "S:" + org.json.JSONArray(value.filterIsInstance<String>().sorted()).toString()
+                else -> null
+            } ?: continue
+            put(key.name, text)
+        }
+    }
+
+    /**
+     * Applique les réglages venus des autres télés reliées (valeur `null` : réglage remis par défaut).
+     * @return nombre de réglages connus de cette version (les autres sont ignorés).
+     */
+    suspend fun applySyncedPreferences(changes: Map<String, String?>): Int {
+        var known = 0
+        if (changes.isEmpty()) return known
+        edit { prefs ->
+            for ((name, text) in changes) {
+                if (!isSynced(name)) continue
+                val type = TYPES[name] ?: continue
+                known++
+                if (text == null) {
+                    when (type) {
+                        Boolean::class -> prefs.remove(booleanPreferencesKey(name))
+                        Int::class -> prefs.remove(intPreferencesKey(name))
+                        Long::class -> prefs.remove(longPreferencesKey(name))
+                        String::class -> prefs.remove(stringPreferencesKey(name))
+                        Set::class -> prefs.remove(stringSetPreferencesKey(name))
+                    }
+                    continue
+                }
+                val value = text.substringAfter(':')
+                when {
+                    type == Boolean::class && text.startsWith("b:") -> value.toBooleanStrictOrNull()?.let { prefs[booleanPreferencesKey(name)] = it }
+                    type == Int::class && text.startsWith("i:") -> value.toIntOrNull()?.let { prefs[intPreferencesKey(name)] = it }
+                    type == Long::class && text.startsWith("l:") -> value.toLongOrNull()?.let { prefs[longPreferencesKey(name)] = it }
+                    type == String::class && text.startsWith("s:") -> prefs[stringPreferencesKey(name)] = value
+                    type == Set::class && text.startsWith("S:") -> runCatching { org.json.JSONArray(value) }.getOrNull()?.let { array ->
+                        prefs[stringSetPreferencesKey(name)] = (0 until array.length()).map { array.getString(it) }.toSet()
+                    }
+                }
+            }
+        }
+        return known
+    }
+
+    /** Émet à chaque changement d'un réglage partagé avec les télés reliées. */
+    val syncedChanges: Flow<Unit> = preferences
+        .map { prefs -> prefs.asMap().filterKeys { isSynced(it.name) } }
+        .distinctUntilChanged()
+        .drop(1)
+        .map { }
+
+    private fun isSynced(name: String): Boolean =
+        isPortable(name) && name in TYPES && name !in DEVICE_ONLY && DEVICE_ONLY_PREFIXES.none { name.startsWith(it) }
+
     private fun isPortable(name: String): Boolean =
         name !in NOT_PORTABLE && NOT_PORTABLE_PREFIXES.none { name.startsWith(it) }
 
@@ -676,6 +744,16 @@ class SettingsRepository(
         /** Secrets chiffrés pour cet appareil, playlist active (numéro local), réglages retirés. */
         val NOT_PORTABLE = setOf(PROXY_CREDENTIALS, TMDB_KEY, FOOTBALL_KEY, AUDD_KEY, ACTIVE_PLAYLIST, EPG_IMPORT_VERSION, CATALOG_IMPORT_VERSION, LINEUP_VERSION).map { it.name }.toSet() + OBSOLETE
         val NOT_PORTABLE_PREFIXES = listOf(DECODER_PREFIX, RECENT_PREFIX, QUALITY_PREFIX, SOUND_PREFIX)
+
+        /**
+         * Réglages propres à chaque appareil, jamais pris aux autres télés reliées : emplacement et envoi des
+         * enregistrements, son passé à l'ampli, passage sans coupure et bandes-annonces (selon la puissance de
+         * l'appareil), réglage rapide fait, réseau (proxy).
+         */
+        val DEVICE_ONLY = setOf(
+            AD_RECORDINGS_LOCATION, AD_UPLOAD_BIN, AUDIO_PASSTHROUGH, PREVIEW_HANDOFF, TRAILER_AUTOPLAY, QUICK_SETUP_DONE,
+        ).map { it.name }.toSet()
+        val DEVICE_ONLY_PREFIXES = listOf("proxy_")
         const val DECODER_PREFIX = "decoder_"
         const val RECENT_PREFIX = "recent_channels_"
         const val MAX_RECENT_CHANNELS = 30

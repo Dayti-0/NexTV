@@ -71,6 +71,9 @@ class WatchedRepository(database: WatchedDatabase, private val clock: () -> Long
         if ((dao.watchedAt(sourceId, key) ?: Long.MIN_VALUE) < watchedAt) dao.put(WatchedEntity(sourceId, key, watchedAt))
     }
 
+    /** « Déjà vu » venu d'une autre télé reliée : sa date telle quelle. */
+    suspend fun put(sourceId: Long, key: String, watchedAt: Long) = dao.put(WatchedEntity(sourceId, key, watchedAt))
+
     fun observeKeys(sourceId: Long): Flow<Set<String>> = dao.observeKeys(sourceId).map { it.toSet() }.distinctUntilChanged()
 
     companion object {

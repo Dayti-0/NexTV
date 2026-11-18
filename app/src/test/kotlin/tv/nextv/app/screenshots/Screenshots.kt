@@ -845,6 +845,32 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
+    fun settingsLink() = capture("16k_reglages_teles_reliees") {
+        SettingsContent(
+            state = SampleData.settings,
+            snackbarHostState = remember { SnackbarHostState() },
+            onBack = {},
+            onPlaylists = {},
+            onRefreshPlaylist = {},
+            onRefreshGuide = {},
+            onAutoQuality = {},
+            onSaveTmdbKey = {},
+            onClearTmdbKey = {},
+            onProxy = {},
+            tvLink = tv.nextv.app.ui.settings.TvLinkUi(
+                status = tv.nextv.core.sync.SyncStatus(
+                    linked = true,
+                    peers = listOf(tv.nextv.core.sync.SyncDevice("a", "Fire TV du salon", at = SampleData.NOW - 3 * 60_000L)),
+                    lastSyncAt = SampleData.NOW - 60_000L,
+                ),
+                invite = tv.nextv.core.sync.SyncInvite("482913", SampleData.NOW + 10 * 60_000L),
+            ),
+            now = SampleData.NOW,
+            initialPage = SettingsPage.LINK,
+        )
+    }
+
+    @Test
     fun quickSetupInterface() = quickSetup("16h_configuration_interface", QuickSetupStep.INTERFACE)
 
     @Test

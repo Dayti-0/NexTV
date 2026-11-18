@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
@@ -81,6 +82,9 @@ enum class SettingsPage {
     GUIDE,
     SERVICES,
     NETWORK,
+
+    /** Télés reliées : mêmes favoris et réglages sur plusieurs télés. */
+    LINK,
     BACKUP,
     UPDATE,
 }
@@ -93,6 +97,7 @@ private fun SettingsPage.title(): Int = when (this) {
     SettingsPage.GUIDE -> R.string.settings_guide
     SettingsPage.SERVICES -> R.string.settings_page_services
     SettingsPage.NETWORK -> R.string.settings_network
+    SettingsPage.LINK -> R.string.settings_link
     SettingsPage.BACKUP -> R.string.settings_backup
     SettingsPage.UPDATE -> R.string.settings_update
 }
@@ -105,6 +110,7 @@ private fun SettingsPage.description(): Int? = when (this) {
     SettingsPage.GUIDE -> R.string.settings_page_guide_help
     SettingsPage.SERVICES -> R.string.settings_page_services_help
     SettingsPage.NETWORK -> R.string.settings_page_network_help
+    SettingsPage.LINK -> R.string.settings_page_link_help
     SettingsPage.BACKUP -> R.string.settings_page_backup_help
     SettingsPage.UPDATE -> R.string.settings_page_update_help
 }
@@ -117,6 +123,7 @@ private fun SettingsPage.icon(): ImageVector = when (this) {
     SettingsPage.GUIDE -> NexTvIcons.Guide
     SettingsPage.SERVICES -> Icons.Filled.Star
     SettingsPage.NETWORK -> NexTvIcons.Cloud
+    SettingsPage.LINK -> Icons.Filled.Share
     SettingsPage.BACKUP -> Icons.Filled.Lock
     SettingsPage.UPDATE -> Icons.Filled.Refresh
 }

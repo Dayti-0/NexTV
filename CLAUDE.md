@@ -222,6 +222,19 @@ Commandes :
   fiche TMDB du même titre (`rememberProgrammeYear`, `sameTitleYear` dans `ProgrammeArt.kt`, même cache que l'image).
 - Radios : pas de détection des pubs sur un flux sans image (`PlayerEngine.radioStream`, 0.2.184 : elle baissait la
   musique entre deux morceaux).
+- Télés reliées (0.2.186, Réglages › Télés reliées) : `core/sync/` — `SyncDocument` (dernière écriture gagnante par clé,
+  effacements gardés 90 jours ; une télé qui rejoint ajoute ses éléments datés de 1 : les réglages du groupe l'emportent,
+  favoris réunis), `SyncKeys` (clés `s` réglage, `k` clé de service, `p` playlist, `f` favori, `h` catégorie masquée,
+  `w` « Déjà vu », `r` reprise ; éléments rangés par fournisseur = serveur de l'adresse sans identifiants ni port :
+  chaque télé garde son compte, une seule connexion par abonnement), `TvSyncEngine` (chaque télé dépose son document
+  complet chiffré AES-GCM `tv-<id>.bin` sur la page filebin du groupe `nixtv-sync-…`, et fusionne ceux des autres ;
+  page fermée par filebin — 7 jours sans dépôt ou supprimée, 405 — : page suivante `…-1`, redépôt tous les 3 jours),
+  `SyncPairing` (code à 6 chiffres : invitation chiffrée sur `nixtv-link-<sha256 du code>`, supprimée à la réponse ou
+  après 10 min). Appli : `data/sync/RoomSyncLocal` (lecture / écriture des bases et réglages ; playlist ajoutée
+  seulement à une télé sans ce fournisseur, jamais retirée ailleurs ; réglages propres à l'appareil :
+  `SettingsRepository.DEVICE_ONLY`), `TvSync` (quand : 5 s après un changement, fin de lecture, retour dans l'appli,
+  toutes les 5 min ; jamais pendant une lecture), `EncryptedSyncStateStore` (`files/sync`), écran `ui/settings/TvLink.kt`.
+  Nouveau réglage partagé : rien à faire ; propre à l'appareil : l'ajouter à `DEVICE_ONLY`.
 - Rangement recalculé sans relire la playlist : `ChannelFilters.rearrange` (au lancement quand `ChannelLineup.VERSION`
   dépasse le `lineupVersion` des réglages). Toute nouvelle règle de `ChannelLineup` : augmenter `ChannelLineup.VERSION`.
 - « Chaînes françaises seulement » (réglage) : colonne `french` (section autre que `OTHER` dans `ChannelLineup`), masquée

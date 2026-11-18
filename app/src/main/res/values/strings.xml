@@ -474,6 +474,39 @@
     <string name="settings_page_guide_help">Les programmes des chaînes, mis à jour chaque jour</string>
     <string name="settings_page_services_help">Les fiches des films et séries, et les matchs de la section Foot</string>
     <string name="settings_page_network_help">Adresse des serveurs et passage par un proxy</string>
+    <string name="settings_page_link_help">Mêmes favoris et réglages sur toutes vos télés</string>
+    <string name="settings_link">Télés reliées</string>
+    <string name="settings_link_help">Les télés reliées gardent les mêmes favoris, « Déjà vu », reprises de lecture, catégories masquées, réglages et clés des services. Une télé sans playlist reçoit celle des autres ; chaque télé garde sinon son propre compte. Les changements passent par Internet (filebin.net), chiffrés : ils arrivent même sur une télé éteinte au moment du changement, dès qu\'elle se rallume.</string>
+    <string name="settings_link_none">Cette télé n\'est reliée à aucune autre.</string>
+    <string name="settings_link_waiting">Reliée, en attente des autres télés.</string>
+    <string name="settings_link_peers">Reliée à : %1$s</string>
+    <string name="settings_link_running">Synchronisation en cours…</string>
+    <string name="settings_link_failed">Pas de connexion à filebin.net : nouvel essai dans quelques minutes.</string>
+    <string name="settings_link_last">Dernière synchronisation %1$s.</string>
+    <string name="settings_link_show_code">Afficher un code</string>
+    <string name="settings_link_busy">Un instant…</string>
+    <string name="settings_link_new_code">Nouveau code</string>
+    <string name="settings_link_sync_now">Synchroniser maintenant</string>
+    <string name="settings_link_unlink">Ne plus relier cette télé</string>
+    <string name="settings_link_code_title">Code à saisir sur l\'autre télé</string>
+    <string name="settings_link_code_help">Sur l\'autre télé : Réglages › Télés reliées › « Relier avec un code ». Le code expire %1$s.</string>
+    <string name="settings_link_code_close">Fermer le code</string>
+    <string name="settings_link_join">Relier avec un code</string>
+    <string name="settings_link_join_help">Sur une télé déjà installée, ouvrez cette page et choisissez « Afficher un code », puis saisissez-le ici. Les réglages de l\'autre télé l\'emportent ; les favoris des deux télés sont gardés.</string>
+    <string name="settings_link_join_code">Code à 6 chiffres</string>
+    <string name="settings_link_join_button">Relier</string>
+    <string name="settings_link_linked">%1$s est reliée à cette télé.</string>
+    <string name="settings_link_joined">Reliée à %1$s : favoris et réglages sont à jour.</string>
+    <string name="settings_link_joined_playlist">Reliée à %1$s : sa playlist, ses favoris et ses réglages sont arrivés.</string>
+    <string name="settings_link_joined_later">Reliée à %1$s. Pas de connexion pour l\'instant : tout arrivera dans quelques minutes.</string>
+    <string name="settings_link_unknown_code">Code inconnu ou expiré. Vérifiez-le, ou affichez-en un nouveau sur l\'autre télé.</string>
+    <string name="settings_link_invalid_code">Le code a 6 chiffres.</string>
+    <string name="settings_link_already">Cette télé est déjà reliée à celle-ci.</string>
+    <string name="settings_link_offline">Pas de connexion à filebin.net. Vérifiez Internet et réessayez.</string>
+    <string name="settings_link_expired">Le code a expiré sans être saisi.</string>
+    <string name="settings_link_synced_none">Tout est déjà à jour.</string>
+    <string name="settings_link_unlinked">Cette télé n\'est plus reliée. Elle garde ses favoris et réglages.</string>
+    <string name="settings_link_summary_none">Aucune</string>
     <string name="settings_page_backup_help">Vos playlists et réglages dans un fichier</string>
     <string name="settings_page_update_help">Version installée et nouveautés</string>
     <string name="settings_group_active_playlist">Playlist active</string>
@@ -781,6 +814,14 @@
     <plurals name="settings_account_connections">
         <item quantity="one">%d connexion simultanée</item>
         <item quantity="other">%d connexions simultanées</item>
+    </plurals>
+    <plurals name="settings_link_summary">
+        <item quantity="one">%d autre télé</item>
+        <item quantity="other">%d autres télés</item>
+    </plurals>
+    <plurals name="settings_link_synced">
+        <item quantity="one">À jour : %d changement reçu.</item>
+        <item quantity="other">À jour : %d changements reçus.</item>
     </plurals>
     <plurals name="settings_restore_done">
         <item quantity="one">Sauvegarde restaurée (%d playlist).</item>

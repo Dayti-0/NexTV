@@ -145,6 +145,9 @@ fun SettingsScreen(
     val radioVisual by viewModel.radioVisual.collectAsStateWithLifecycle()
     val auddKeySaved by viewModel.auddKeySaved.collectAsStateWithLifecycle()
     val adUpload by viewModel.adUpload.collectAsStateWithLifecycle()
+    val tvLink by viewModel.tvLink.state.collectAsStateWithLifecycle()
+    // Playlist venue d'une télé reliée, choisie parce que celle-ci n'en avait pas : chargée comme après une restauration.
+    LaunchedEffect(viewModel) { viewModel.tvLink.reload.collect { onRestored() } }
     // Clé USB branchée ou retirée, autorisation accordée : emplacements relus à chaque retour sur les réglages.
     val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle) {
@@ -264,6 +267,16 @@ fun SettingsScreen(
                 }
             }
         },
+        tvLink = tvLink,
+        tvLinkActions = remember(viewModel) {
+            TvLinkActions(
+                onShowCode = viewModel.tvLink::showCode,
+                onHideCode = viewModel.tvLink::hideCode,
+                onJoin = viewModel.tvLink::join,
+                onSyncNow = viewModel.tvLink::syncNow,
+                onUnlink = viewModel.tvLink::unlink,
+            )
+        },
         onCycleDecoder = viewModel::cycleDecoder,
         onChannelPreview = viewModel::setChannelPreview,
         onPreviewHandoff = viewModel::setPreviewHandoff,
@@ -379,6 +392,9 @@ fun SettingsContent(
     onAllowInstall: () -> Unit = {},
     onBackup: () -> Unit = {},
     onRestore: () -> Unit = {},
+    /** Télés reliées. */
+    tvLink: TvLinkUi = TvLinkUi(),
+    tvLinkActions: TvLinkActions = TvLinkActions(),
     account: AccountState? = null,
     now: Long = System.currentTimeMillis(),
     onQuickSetup: () -> Unit = {},
@@ -829,6 +845,9 @@ fun SettingsContent(
                 }
             }
 
+            // Mêmes favoris, « Déjà vu » et réglages sur plusieurs télés.
+            SettingsPage.LINK -> TvLinkPage(tvLink, tvLinkActions, now)
+
             // Sauvegarde et restauration.
             SettingsPage.BACKUP -> SectionCard(stringResource(R.string.settings_group_backup_file), subtitle = stringResource(R.string.settings_backup_help)) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -866,6 +885,7 @@ fun SettingsContent(
             SettingsPage.GUIDE -> state.guideDownloadedAt?.let { relativeTime(it, now) }
             SettingsPage.SERVICES -> null
             SettingsPage.NETWORK -> dnsLabel(state.dns)
+            SettingsPage.LINK -> tvLinkSummary(tvLink)
             SettingsPage.BACKUP -> null
             SettingsPage.UPDATE -> when (update) {
                 is UpdateState.Available -> stringResource(R.string.settings_page_update_available, update.release.version)

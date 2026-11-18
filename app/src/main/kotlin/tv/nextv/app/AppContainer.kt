@@ -370,10 +370,12 @@ class AppContainer(context: Context) {
     val channelFilters = ChannelFilters(channelDao, hiddenGroupDao)
 
     /** Reprise de lecture des films et séries (base distincte, sans migration de celle des playlists). */
-    val progress = ProgressRepository(ProgressDatabase.create(appContext))
+    private val progressDatabase = ProgressDatabase.create(appContext)
+    val progress = ProgressRepository(progressDatabase)
 
     /** Films et épisodes regardés jusqu'au bout (badge « Déjà vu »). */
-    val watched = WatchedRepository(WatchedDatabase.create(appContext))
+    private val watchedDatabase = WatchedDatabase.create(appContext)
+    val watched = WatchedRepository(watchedDatabase)
 
     /** Favoris, reprises, « Déjà vu » et chaînes récentes dont la clé a changé (versions regroupées sous un autre nom). */
     val itemKeyRelinker = tv.nextv.app.data.catalog.ItemKeyRelinker(database, progress, watched, settings)
@@ -390,6 +392,47 @@ class AppContainer(context: Context) {
         channelDao = channelDao,
         inTransaction = { block -> database.withTransaction { block() } },
     )
+
+    /**
+     * Télés reliées (Réglages › Télés reliées) : favoris, « Déjà vu », reprises, catégories masquées et réglages
+     * partagés par un document chiffré déposé sur filebin, liaison par un code à 6 chiffres.
+     */
+    val tvSync: tv.nextv.app.data.sync.TvSync by lazy {
+        val engine = tv.nextv.core.sync.TvSyncEngine(
+            relay = tv.nextv.app.data.sync.FilebinRelay(httpClients.client(RequestPurpose.METADATA)),
+            local = tv.nextv.app.data.sync.RoomSyncLocal(
+                playlistStore = playlistStore,
+                sources = sourceRepository,
+                favoriteDao = database.favoriteDao(),
+                hiddenGroupDao = hiddenGroupDao,
+                settings = settings,
+                progress = progress,
+                watched = watched,
+                channelDao = channelDao,
+                inTransaction = { block -> database.withTransaction { block() } },
+            ),
+            store = tv.nextv.app.data.sync.EncryptedSyncStateStore(java.io.File(appContext.filesDir, "sync"), cipher::encrypt, cipher::decrypt),
+            deviceName = { deviceName() },
+            appVersion = BuildConfig.VERSION_NAME,
+            logger = logger,
+        )
+        val changes = kotlinx.coroutines.flow.merge(
+            database.invalidationTracker.createFlow("favorites", "hidden_groups", "sources", emitInitialState = false).map { },
+            watchedDatabase.invalidationTracker.createFlow("watched", emitInitialState = false).map { },
+            progressDatabase.invalidationTracker.createFlow("progress", emitInitialState = false).map { },
+            settings.syncedChanges,
+        )
+        tv.nextv.app.data.sync.TvSync(engine, applicationScope, playbackOpen, changes, logger) { id ->
+            // Télé sans playlist : celle venue d'une autre télé est chargée tout de suite.
+            refreshController.refresh(id, background = true)
+        }
+    }
+
+    /** Nom de la télé montré aux autres télés reliées : celui donné dans les paramètres de l'appareil, sinon son modèle. */
+    private fun deviceName(): String {
+        val named = runCatching { android.provider.Settings.Global.getString(appContext.contentResolver, "device_name") }.getOrNull()
+        return named?.takeIf { it.isNotBlank() } ?: listOf(Build.MANUFACTURER, Build.MODEL).filter { it.isNotBlank() }.distinct().joinToString(" ")
+    }
 
     /** Mises à jour de l'application (versions publiées sur GitHub). */
     val updater = AppUpdater(
@@ -438,6 +481,7 @@ class AppContainer(context: Context) {
 
     /** Applique les réglages enregistrés, prépare le masquage des secrets et les actualisations périodiques. */
     fun start() {
+        tvSync.start()
         applicationScope.launch {
             combine(settings.proxySettings, settings.dnsProvider, ::Pair).collect { (proxy, dns) ->
                 proxy.credentials?.let {

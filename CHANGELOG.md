@@ -4,6 +4,11 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.186
+- Nouveau : Réglages › Télés reliées. Reliez vos télés avec un code à 6 chiffres : elles gardent les mêmes favoris, « Déjà vu », reprises de lecture, catégories masquées, réglages et clés des services
+- Une télé neuve reliée reçoit aussi la playlist des autres ; chaque télé garde sinon son propre compte
+- Les changements arrivent même sur une télé éteinte au moment du changement, dès qu'elle se rallume (échange chiffré par Internet)
+
 ## 0.2.185
 - Films et séries : catégories sous un nom propre (« Science-fiction et horreur », « Drame », « Séries coréennes »… au lieu de « SC FICTION | HORREUR » ou « DRAME ( NETFLIX| PRIME | HBO… ) »)
 - Réglage « Contenus français seulement » (anciennement « Chaînes françaises seulement ») : masque aussi les films et séries étrangers (arabes, maghrébins, turcs, polonais)

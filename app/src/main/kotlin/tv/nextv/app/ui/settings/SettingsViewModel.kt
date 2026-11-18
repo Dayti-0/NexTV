@@ -500,6 +500,9 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     /** Contenu du fichier de sauvegarde. */
+    /** Page « Télés reliées ». */
+    val tvLink = TvLinkController(viewModelScope, container.tvSync)
+
     suspend fun exportBackup(): String = container.backup.export()
 
     /** @throws tv.nextv.core.backup.BackupFormatException si ce n'est pas une sauvegarde NexTV. */

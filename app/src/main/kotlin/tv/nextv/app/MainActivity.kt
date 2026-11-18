@@ -46,6 +46,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Retour dans l'appli : ce que les télés reliées ont changé entre-temps arrive tout de suite.
+        (application as NexTvApplication).container.tvSync.request(tv.nextv.app.data.sync.TvSync.RESUME_DELAY_MILLIS)
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         readPlaylistImport(intent)
