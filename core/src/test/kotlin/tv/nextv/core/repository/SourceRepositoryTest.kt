@@ -538,7 +538,9 @@ class SourceRepositoryTest {
             logger = logger,
             clock = { now },
             epgFeed = feed(main),
-            extraEpgFeeds = listOf(feed(null), feed(interleaved)),
+            extraEpgFeeds = listOf(feed(null)),
+            // Guide du fournisseur : le dernier essayé.
+            sourceEpgFeed = { feed(interleaved) },
         )
         val id = withFeeds.add(SourceInput(name = "IPTV", location = SourceLocation.Remote(server.url("/list.m3u").toString())))
 

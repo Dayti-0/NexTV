@@ -275,13 +275,16 @@ class ChannelLineupTest {
         assertEquals(null, channels.single { it.name == "|FR| RTA (RADIO TV ANALAMANGA) HD" }.theme?.takeIf { it == "Radios" })
     }
 
-    /** Radios Internet de l'appli : à la fin de la playlist, rangées avec les radios, après celles de la playlist. */
+    /** Web radios de l'appli : à la fin de la playlist, dans leur propre catégorie, juste après les radios de la playlist. */
     @Test
-    fun `internet radios join the radios of the playlist`() {
+    fun `web radios have their own category after the radios of the playlist`() {
         val channels = load(internetRadios = true, "FR TV HD" to "|FR| TF1 HD", "" to "|FR| NRJ", "BELGES" to "|BE| LA UNE FHD")
         val radios = channels.filter { it.theme == "Radios" }.sortedBy { it.lineup }
-        assertEquals(listOf("NRJ") + InternetRadios.all.map { it.name }, radios.map { it.niceTitle })
-        assertTrue(radios.all { it.french && it.kind == ContentKind.LIVE })
+        assertEquals(listOf("NRJ"), radios.map { it.niceTitle })
+        val web = channels.filter { it.theme == InternetRadios.GROUP }.sortedBy { it.lineup }
+        assertEquals(InternetRadios.all.map { it.name }, web.map { it.niceTitle })
+        assertTrue(web.all { it.french && it.kind == ContentKind.LIVE })
+        assertTrue(web.first().lineup!! > radios.last().lineup!!)
         assertEquals("SomaFM Heavyweight Reggae", channels.single { it.logoUrl != null && it.groupTitle == InternetRadios.GROUP }.name)
     }
 

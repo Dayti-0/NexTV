@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import tv.nextv.app.data.backup.BackupManager
 import tv.nextv.app.data.catalog.MeasuredQualities
@@ -147,6 +148,25 @@ class AppContainer(context: Context) {
         logger = logger,
     )
 
+    /** Guides des fournisseurs (comptes Xtream), un par playlist, gardés pour leur cache et leur verrou. */
+    private val providerGuides = java.util.concurrent.ConcurrentHashMap<String, HttpEpgFeedProvider>()
+
+    /** Guide du fournisseur d'une playlist Xtream (`xmltv.php`, mêmes identifiants que ses chaînes), `null` pour une autre playlist. */
+    private fun providerGuide(source: tv.nextv.core.model.PlaylistSource): HttpEpgFeedProvider? {
+        val url = (source.location as? tv.nextv.core.model.SourceLocation.Remote)?.url
+            ?.let(tv.nextv.core.source.XtreamAccount::parse)?.xmltvUrl()?.toHttpUrlOrNull() ?: return null
+        return providerGuides.getOrPut("${source.id}|$url") {
+            HttpEpgFeedProvider(
+                clients = httpClients,
+                url = url,
+                directory = File(appContext.filesDir, "epg_source_${source.id}"),
+                logger = logger,
+                label = "du fournisseur",
+                userAgent = source.userAgent,
+            )
+        }
+    }
+
     /** Guides d'appoint (Pluto TV, Samsung TV Plus, Plex) pour les chaînes que le guide français ne couvre pas. */
     private val extraEpgFeeds = HttpEpgFeedProvider.EXTRA_GUIDES.map { (folder, url) ->
         HttpEpgFeedProvider(clients = httpClients, url = url.toHttpUrl(), directory = File(appContext.filesDir, "epg_$folder"), logger = logger)
@@ -185,6 +205,7 @@ class AppContainer(context: Context) {
         documentAccess = documentAccess,
         epgFeed = epgFeed,
         extraEpgFeeds = extraEpgFeeds,
+        sourceEpgFeed = ::providerGuide,
         catchupDays = xtreamApi::archiveDays,
     )
 

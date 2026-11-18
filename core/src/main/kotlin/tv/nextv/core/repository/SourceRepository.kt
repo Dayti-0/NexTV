@@ -69,6 +69,11 @@ class SourceRepository(
      * Un guide d'appoint injoignable n'empêche pas l'import des autres.
      */
     private val extraEpgFeeds: List<EpgFeedProvider> = emptyList(),
+    /**
+     * Guide du fournisseur de la playlist (compte Xtream : `xmltv.php`), importé après tous les autres pour les chaînes
+     * qui n'ont toujours pas de programme (chaînes étrangères surtout) ; `null` : pas de guide pour cette source.
+     */
+    private val sourceEpgFeed: (PlaylistSource) -> EpgFeedProvider? = { null },
     /** Jours de replay des chaînes, par identifiant de flux (comptes Xtream) ; `null` : inconnus. */
     private val catchupDays: suspend (PlaylistSource) -> Map<String, Int>? = { null },
     /**
@@ -494,7 +499,7 @@ class SourceRepository(
             return EpgOutcome(previous.copy(lastAttemptAtMillis = attemptAt, error = e.error), failure = e.error)
         }
         // Guides d'appoint : la copie en cache sert quand le serveur ne répond pas ; aucun guide n'est obligatoire.
-        val extras = extraEpgFeeds.mapNotNull { provider ->
+        val extras = (extraEpgFeeds + listOfNotNull(sourceEpgFeed(source))).mapNotNull { provider ->
             try {
                 provider.obtain(force)
             } catch (e: SourceException) {

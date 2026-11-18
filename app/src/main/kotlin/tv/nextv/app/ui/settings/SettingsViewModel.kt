@@ -382,9 +382,17 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
     /** Partage des enregistrements sur le réseau local, tant que le résultat n'est pas fermé ; `null` sans réseau. */
     fun shareAdMusic(): AdRecordings.Share? = container.adRecordings.share(container.adMusic)
 
+    /** Animation des radios (son sans image). */
+    val radioVisual: StateFlow<tv.nextv.app.data.settings.RadioVisual> = settings.radioVisual
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), tv.nextv.app.data.settings.RadioVisual.DEFAULT)
+
+    fun setRadioVisual(visual: tv.nextv.app.data.settings.RadioVisual) {
+        viewModelScope.launch { settings.setRadioVisual(visual) }
+    }
+
     /** Pendant les pubs : mode, radio choisie, morceaux sur l'appareil. */
     val adSound: StateFlow<AdSoundUi> = combine(settings.adSound, settings.adRadio, container.adMusic.count) { mode, radio, tracks ->
-        AdSoundUi(mode, AdRadios.of(radio).name, tracks)
+        AdSoundUi(mode, AdRadios.of(radio).name, tracks, AdRadios.of(radio).key)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AdSoundUi())
 
     /** Son baissé, puis une radio, puis la musique de l'appareil. */
@@ -397,12 +405,9 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
-    /** Radio suivante de la liste. */
-    fun cycleAdRadio() {
-        viewModelScope.launch {
-            val current = AdRadios.all.indexOf(AdRadios.of(settings.adRadio.first()))
-            settings.setAdRadio(AdRadios.all[(current + 1) % AdRadios.all.size].key)
-        }
+    /** Radio choisie dans la liste (Radio France et Web radios). */
+    fun setAdRadio(key: String) {
+        viewModelScope.launch { settings.setAdRadio(AdRadios.of(key).key) }
     }
 
     /** Supprime la musique envoyée depuis le téléphone. */
@@ -592,7 +597,13 @@ fun SettingsViewModel.allFilesAccess(context: android.content.Context): android.
  * Pendant les pubs (Réglages › Son) : son baissé, radio ou musique de l'appareil.
  * @property radio nom de la radio choisie ; @property tracks morceaux de musique sur l'appareil.
  */
-data class AdSoundUi(val mode: String = AdSound.LOWER, val radio: String = AdRadios.all.first().name, val tracks: Int = 0)
+data class AdSoundUi(
+    val mode: String = AdSound.LOWER,
+    val radio: String = AdRadios.all.first().name,
+    val tracks: Int = 0,
+    /** Clé de la radio choisie (voir AdRadios). */
+    val radioKey: String = AdRadios.all.first().key,
+)
 
 /** Envoi des enregistrements d'analyse sur filebin (Réglages › Son). */
 data class AdUploadUi(val bin: String? = null, val status: AdUploads.Status = AdUploads.Status()) {

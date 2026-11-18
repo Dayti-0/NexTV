@@ -71,6 +71,10 @@ class HttpEpgFeedProvider(
     private val logger: Logger = Logger.None,
     private val clock: () -> Long = System::currentTimeMillis,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    /** Nom du guide dans le journal, à la place de son adresse (guide du fournisseur : identifiants dans l'adresse). */
+    private val label: String = url.host,
+    /** Agent présenté au serveur (`null` : celui de l'appli). */
+    private val userAgent: String? = null,
 ) : EpgFeedProvider {
 
     private val dataFile = File(directory, "guide.xmltv")
@@ -100,7 +104,7 @@ class HttpEpgFeedProvider(
                 throw e
             } catch (e: Exception) {
                 val error = (e as? SourceException)?.error ?: NetworkErrorMapper.map(e, url.host, clients.usesProxy(RequestPurpose.EPG))
-                logger.warn(TAG, "Guide $url indisponible : ${error.code}", e)
+                logger.warn(TAG, "Guide $label indisponible : ${error.code}", e)
                 cached?.copy(stale = true, error = error) ?: throw (e as? SourceException ?: SourceException(error, e))
             }
         }
@@ -110,7 +114,7 @@ class HttpEpgFeedProvider(
         val meta = readMeta()
         val request = Request.Builder()
             .url(url)
-            .header("User-Agent", clients.networkSettings.defaultUserAgent)
+            .header("User-Agent", userAgent?.takeIf { it.isNotBlank() } ?: clients.networkSettings.defaultUserAgent)
             .apply {
                 if (cached != null) {
                     meta.getProperty(KEY_ETAG)?.let { header("If-None-Match", it) }
@@ -166,7 +170,7 @@ class HttpEpgFeedProvider(
             meta.putOrRemove(KEY_LAST_MODIFIED, response.header("Last-Modified"))
             writeMeta(meta)
             progress?.onProgress(LoadProgress(LoadStep.EPG_DOWNLOAD, total ?: dataFile.length(), total ?: dataFile.length()))
-            logger.info(TAG, "Guide téléchargé : ${dataFile.length()} octets")
+            logger.info(TAG, "Guide $label téléchargé : ${dataFile.length()} octets")
             return EpgFeed(dataFile, updatedAtMillis = now, fetchedAtMillis = now)
         }
     }
@@ -189,15 +193,18 @@ class HttpEpgFeedProvider(
         const val XMLTV_FR_URL = "https://xmltvfr.fr/xmltv/xmltv.xml.gz"
 
         /**
-         * Guides d'appoint (i.mjh.nz, mis à jour plusieurs fois par jour) pour les chaînes gratuites que le guide français
-         * ne couvre pas, dans l'ordre d'import : Pluto TV, Samsung TV Plus et Plex France. Seulement les éditions
-         * françaises : les autres pays ont d'autres grilles sous les mêmes noms. Nom du dossier de cache → adresse.
-         * Vérifié sur la playlist le 18/11/2026 : 112 des 120 chaînes Pluto TV, une partie des chaînes Rakuten TV.
+         * Guides d'appoint pour les chaînes que le guide français ne couvre pas, dans l'ordre d'import (le premier qui a
+         * une chaîne l'emporte) : Pluto TV, Samsung TV Plus et Plex France (i.mjh.nz, éditions françaises seulement :
+         * les autres pays ont d'autres grilles sous les mêmes noms), puis epgshare01 France et Rakuten TV (toutes
+         * éditions ; les chaînes françaises y sont marquées « FR: »). Nom du dossier de cache → adresse.
+         * Mesuré sur la playlist le 18/11/2026 : 118 chaînes Pluto TV sur ~120, 103 Rakuten TV sur ~112.
          */
         val EXTRA_GUIDES = linkedMapOf(
             "pluto_fr" to "https://i.mjh.nz/PlutoTV/fr.xml.gz",
             "samsung_fr" to "https://i.mjh.nz/SamsungTVPlus/fr.xml.gz",
             "plex_fr" to "https://i.mjh.nz/Plex/fr.xml.gz",
+            "epgshare_fr" to "https://epgshare01.online/epgshare01/epg_ripper_FR1.xml.gz",
+            "epgshare_rakuten" to "https://epgshare01.online/epgshare01/epg_ripper_RAKUTEN1.xml.gz",
         )
         const val DEFAULT_MAX_AGE_MILLIS = 12 * 60 * 60_000L
 

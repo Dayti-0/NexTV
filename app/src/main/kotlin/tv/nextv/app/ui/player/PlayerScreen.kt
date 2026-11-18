@@ -173,6 +173,8 @@ fun PlayerScreen(
     val activePlayer: Player? = vlc?.player ?: player
     val aspect by viewModel.aspectMode.collectAsStateWithLifecycle()
     val qualityTarget by viewModel.qualityTarget.collectAsStateWithLifecycle()
+    val radioVisual by viewModel.radioVisual.collectAsStateWithLifecycle()
+    val lowPower = remember { tv.nextv.app.player.smallMemoryDevice(context) }
     val rootFocus = remember { FocusRequester() }
     // Pendant une pause du direct, chaque seconde (retard sur le direct affiché) ; sinon toutes les 5 s.
     val now by produceState(System.currentTimeMillis(), state.paused) {
@@ -489,6 +491,19 @@ fun PlayerScreen(
                 },
                 onRelease = { layout -> playback.detach(layout) },
                 modifier = Modifier.fillMaxSize(),
+            )
+        }
+
+        // Radio ou Web radio (son sans image) : animation à la place de l'écran noir (réglage « Animation des radios »).
+        if (state.audioOnly && !film && radioVisual != tv.nextv.app.data.settings.RadioVisual.OFF && state.error == null) {
+            RadioVisualizer(
+                visual = radioVisual,
+                analyzer = viewModel.spectrum,
+                name = state.channelName,
+                logoUrl = state.logoUrl,
+                genre = remember(state.channelName) { tv.nextv.core.catalog.InternetRadios.all.firstOrNull { it.name == state.channelName }?.genre },
+                title = state.radioTitle,
+                lowPower = lowPower,
             )
         }
 

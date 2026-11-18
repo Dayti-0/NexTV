@@ -20,6 +20,14 @@ class XtreamAccountTest {
     }
 
     @Test
+    fun `provider guide link is built from the playlist link`() {
+        assertEquals(
+            "http://iptv.example.com:8080/xmltv.php?username=user1&password=secret",
+            XtreamAccount.parse("http://iptv.example.com:8080/get.php?username=user1&password=secret&type=m3u_plus&output=ts")?.xmltvUrl(),
+        )
+    }
+
+    @Test
     fun `pasted path and parameters are dropped from the server, written port kept`() {
         assertEquals(
             "http://iptv.example.com:80/get.php?username=u&password=p&type=m3u_plus&output=ts",

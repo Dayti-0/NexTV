@@ -659,7 +659,7 @@
     <string name="settings_decoder_none">Aucun décodeur proposé par l’appareil</string>
     <string name="settings_decoder_help">OK pour changer de décodeur. Le décodeur choisi est essayé en premier, les autres servent de repli. Les infos de lecture (touche Info ou menu des chaînes) indiquent celui qui est utilisé.</string>
     <string name="settings_guide">Guide TV</string>
-    <string name="settings_guide_help">Téléchargé automatiquement depuis %1$s, complété par les guides de Pluto TV, Samsung TV Plus et Plex (i.mjh.nz) pour les chaînes gratuites, mis en cache sur l’appareil et actualisé toutes les 12 heures.</string>
+    <string name="settings_guide_help">Téléchargé automatiquement depuis %1$s, complété par les guides de Pluto TV, Samsung TV Plus, Plex, Rakuten TV et epgshare01, puis par celui du fournisseur de la playlist (comptes Xtream), mis en cache sur l’appareil et actualisé toutes les 12 heures.</string>
     <string name="settings_guide_downloaded">Dernier téléchargement %1$s</string>
     <string name="settings_guide_never">Pas encore téléchargé.</string>
     <string name="settings_guide_matched">%1$d programmes · %2$d chaînes associées</string>
@@ -837,4 +837,18 @@
     <string name="player_pause">Pause</string>
     <string name="player_play">Lecture</string>
     <string name="settings_license">Logiciel libre sous licence GNU GPL version 3, fourni sans aucune garantie. Code source : github.com/Dayti-0/NexTV. Son décodé par FFmpeg (ffmpeg.org) quand l’appareil ne sait pas le lire.</string>
+    <string name="settings_radio_visual">Animation des radios</string>
+    <string name="settings_radio_visual_help">Remplace l’écran noir des radios et des Web radios par une animation qui suit la musique, avec le nom de la radio et le morceau en cours.</string>
+    <string name="radio_visual_off">Désactivée (écran noir)</string>
+    <string name="radio_visual_spectrum">Spectre</string>
+    <string name="radio_visual_waves">Ondes</string>
+    <string name="radio_visual_aurora">Aurore</string>
+    <string name="radio_visual_particles">Particules</string>
+    <string name="radio_visual_vinyl">Vinyle</string>
+    <string name="radio_visual_mix">Mélange (change toutes les 2 minutes)</string>
+    <string name="radio_visual_spectrum_detail">Barres du spectre en miroir</string>
+    <string name="radio_visual_waves_detail">Anneaux au rythme des basses</string>
+    <string name="radio_visual_aurora_detail">Voiles de couleur lents et lumineux</string>
+    <string name="radio_visual_particles_detail">Étoiles qui jaillissent du centre</string>
+    <string name="radio_visual_vinyl_detail">Disque qui tourne, sillons éclairés</string>
 </resources>

@@ -258,7 +258,7 @@ class EpgImporter(
          * avec une version antérieure est réimporté dès le lancement suivant, sans attendre sa
          * réimportation quotidienne.
          */
-        const val VERSION = 9
+        const val VERSION = 10
 
         /** Nom du guide de la chaîne nationale France 3 ([normalizeName]). */
         private const val FRANCE_3 = "france3"

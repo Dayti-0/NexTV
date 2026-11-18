@@ -24,6 +24,7 @@ import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.hls.HlsManifest
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
+import androidx.media3.extractor.metadata.icy.IcyInfo
 import androidx.media3.extractor.metadata.scte35.SpliceCommand
 import androidx.media3.extractor.metadata.scte35.SpliceInsertCommand
 import androidx.media3.extractor.metadata.scte35.SpliceNullCommand
@@ -228,12 +229,22 @@ internal class PlayerEngine(
         // Repères de pub du flux : liste HLS relue (direct), messages SCTE-35 d'un flux continu.
         override fun onTimelineChanged(timeline: Timeline, reason: Int) = readPlaylistCues()
 
-        override fun onMetadata(metadata: Metadata) = readSpliceCues(metadata)
+        override fun onMetadata(metadata: Metadata) {
+            readSpliceCues(metadata)
+            readRadioTitle(metadata)
+        }
 
         override fun onTracksChanged(tracks: Tracks) {
             unsupportedAudio = null
             val problem = audioProblemOf(tracks)
-            state.update { it.copy(tracks = describeTracks(tracks), audioProblem = problem, unsupportedAudio = unsupportedAudio ?: it.unsupportedAudio.takeIf { problem != null }) }
+            // Son sans image (radio) : animation à la place de l'écran noir.
+            val audioOnly = !tracks.isEmpty && tracks.containsType(C.TRACK_TYPE_AUDIO) && !tracks.containsType(C.TRACK_TYPE_VIDEO)
+            state.update {
+                it.copy(
+                    tracks = describeTracks(tracks), audioProblem = problem, unsupportedAudio = unsupportedAudio ?: it.unsupportedAudio.takeIf { problem != null },
+                    audioOnly = audioOnly,
+                )
+            }
         }
 
         override fun onRenderedFirstFrame() {
@@ -508,7 +519,7 @@ internal class PlayerEngine(
         generation++
         startAdWatch()
         receivedRate.reset()
-        state.update { it.copy(error = null, info = PlaybackInfo(), audioProblem = null, unsupportedAudio = null, receivedMbps = null) }
+        state.update { it.copy(error = null, info = PlaybackInfo(), audioProblem = null, unsupportedAudio = null, receivedMbps = null, audioOnly = false, radioTitle = null) }
         audioGivenUp = false
         player.setPlaybackSpeed(1f)
         player.resetTrackSelection()
@@ -541,7 +552,7 @@ internal class PlayerEngine(
         adVolume = handoff.adVolume
         startAdWatch()
         receivedRate.reset()
-        state.update { it.copy(error = null, info = PlaybackInfo(), audioProblem = null, unsupportedAudio = null, receivedMbps = null) }
+        state.update { it.copy(error = null, info = PlaybackInfo(), audioProblem = null, unsupportedAudio = null, receivedMbps = null, audioOnly = false, radioTitle = null) }
         audioGivenUp = false
         // Mesure du débit et mémoire du direct (retour en arrière) : branchées sur la connexion déjà ouverte.
         handoff.taps.listener = received
@@ -672,6 +683,15 @@ internal class PlayerEngine(
         // Premier morceau de la liste : début de la fenêtre du direct.
         val first = timeline.getWindow(player.currentMediaItemIndex, Timeline.Window()).positionInFirstPeriodMs
         adVolume.cues.hlsPlaylist(playlist.tags, first)
+    }
+
+    /** Titre du morceau annoncé par une radio (métadonnées ICY « StreamTitle »), montré par l'animation des radios. */
+    private fun readRadioTitle(metadata: Metadata) {
+        for (i in 0 until metadata.length()) {
+            val entry = metadata.get(i) as? IcyInfo ?: continue
+            val title = entry.title?.trim()?.takeIf { it.isNotEmpty() && it != "-" }
+            state.update { it.copy(radioTitle = title) }
+        }
     }
 
     /** Messages SCTE-35 d'un flux continu (MPEG-TS) : début ou fin d'une page de pub. */

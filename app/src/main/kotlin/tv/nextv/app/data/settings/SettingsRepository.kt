@@ -258,6 +258,15 @@ class SettingsRepository(
         edit { it[AD_SOUND] = mode }
     }
 
+    /** Animation affichée pendant une radio (son sans image) ; [RadioVisual.OFF] : écran noir. */
+    val radioVisual: Flow<RadioVisual> = preferences.map { prefs ->
+        prefs[RADIO_VISUAL]?.let { name -> RadioVisual.entries.firstOrNull { it.name == name } } ?: RadioVisual.DEFAULT
+    }.distinctUntilChanged()
+
+    suspend fun setRadioVisual(visual: RadioVisual) {
+        edit { it[RADIO_VISUAL] = visual.name }
+    }
+
     /** Radio jouée pendant les pubs (clé de `AdRadios`). */
     val adRadio: Flow<String?> = preferences.map { it[AD_RADIO] }.distinctUntilChanged()
 
@@ -624,6 +633,7 @@ class SettingsRepository(
         val LOWER_AD_VOLUME = booleanKey("lower_ad_volume")
         val AD_SOUND = stringKey("ad_sound")
         val AD_RADIO = stringKey("ad_radio")
+        val RADIO_VISUAL = stringKey("radio_visual")
         val THEME_STYLE = stringKey("theme_style")
         val PREVIOUS_THEME_STYLE = stringKey("previous_theme_style")
         val HOME_LAYOUT = stringKey("home_layout")
@@ -677,6 +687,34 @@ data class GridColumns(
     companion object {
         val PER_ROW = 2..5
         const val DEFAULT_PER_ROW = 4
+    }
+}
+
+/** Animation des radios et Web radios ([SettingsRepository.radioVisual]), à la place de l'écran noir. */
+enum class RadioVisual {
+    OFF,
+
+    /** Barres du spectre en miroir, avec leurs crêtes. */
+    SPECTRUM,
+
+    /** Anneaux qui partent du centre au rythme des basses. */
+    WAVES,
+
+    /** Voiles de couleur lents, comme une aurore boréale, qui s'éclairent avec la musique. */
+    AURORA,
+
+    /** Particules qui jaillissent du centre, plus vite quand la musique monte. */
+    PARTICLES,
+
+    /** Disque vinyle qui tourne, sillons éclairés par le spectre. */
+    VINYL,
+
+    /** Un mode différent à chaque radio, qui change toutes les deux minutes. */
+    MIX,
+    ;
+
+    companion object {
+        val DEFAULT = SPECTRUM
     }
 }
 

@@ -77,6 +77,9 @@ class PlayerFactory(
     private val clients: HttpClientProvider,
 ) {
 
+    /** Spectre du son pour les animations des radios, versé par chaque lecteur créé ici (aperçu compris : il peut passer en plein écran). */
+    val spectrum = tv.nextv.core.audio.SpectrumAnalyzer()
+
     /** Mesure du débit réel des téléchargements des flux (voir [create]). */
     fun newBandwidthMeter(): DefaultBandwidthMeter = DefaultBandwidthMeter.Builder(context).build()
 
@@ -115,7 +118,9 @@ class PlayerFactory(
                 (if (passthrough) DefaultAudioSink.Builder(context) else DefaultAudioSink.Builder().setAudioCapabilities(decodedAudio(context)))
                     .setEnableFloatOutput(enableFloatOutput)
                     .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-                    .setAudioProcessors(listOfNotNull<AudioProcessor>(adVolume?.let(::AdVolumeAudioProcessor)).toTypedArray())
+                    .setAudioProcessors(
+                        listOfNotNull<AudioProcessor>(spectrum?.let(::SpectrumTap), adVolume?.let(::AdVolumeAudioProcessor)).toTypedArray(),
+                    )
                     .build()
 
             // MP2 (couches I et II du MPEG audio) : décodé dans l'appli, en dernier recours (ni l'appareil ni FFmpeg

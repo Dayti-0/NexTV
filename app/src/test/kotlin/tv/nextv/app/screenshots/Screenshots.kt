@@ -102,6 +102,30 @@ abstract class ScreenshotSuite(private val device: String) {
         }
     }
 
+    /** Animations des radios (son simulé : houle de remplacement, quelques secondes déjà jouées). */
+    @Test
+    fun radioVisuals() {
+        listOf(
+            tv.nextv.app.data.settings.RadioVisual.SPECTRUM, tv.nextv.app.data.settings.RadioVisual.WAVES,
+            tv.nextv.app.data.settings.RadioVisual.AURORA, tv.nextv.app.data.settings.RadioVisual.PARTICLES,
+            tv.nextv.app.data.settings.RadioVisual.VINYL,
+        ).forEachIndexed { index, visual ->
+            capture("40${index}_radio_${visual.name.lowercase()}") {
+                tv.nextv.app.ui.player.RadioVisualizer(
+                    visual = visual,
+                    analyzer = tv.nextv.core.audio.SpectrumAnalyzer(),
+                    name = listOf("FIP Hip-Hop", "Mouv'", "Tonic Ska Radio", "FIP Groove", "La Grosse Radio Reggae")[index],
+                    logoUrl = null,
+                    genre = listOf("Hip-hop", "Rap", "Ska", "Groove, funk, soul", "Reggae")[index],
+                    title = "Artiste – Titre du morceau",
+                    lowPower = false,
+                    warmUpSeconds = 4,
+                    animate = false,
+                )
+            }
+        }
+    }
+
     @Test
     fun startup() = capture("01_demarrage") {
         StartupContent(SampleData.startup, onRetry = {}, onContinue = {}, onChoosePlaylist = {}, animate = false)

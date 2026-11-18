@@ -2,6 +2,9 @@ package tv.nextv.app.ui.settings
 
 import androidx.compose.material.icons.filled.Close
 import tv.nextv.app.data.settings.AdSound
+import tv.nextv.app.player.AdRadios
+import tv.nextv.app.ui.player.detailRes
+import tv.nextv.app.ui.player.labelRes
 import tv.nextv.app.player.AdRecordings
 import androidx.compose.runtime.DisposableEffect
 import tv.nextv.app.ui.components.FadingBottom
@@ -139,6 +142,7 @@ fun SettingsScreen(
     val adRecordings by viewModel.adRecordings.collectAsStateWithLifecycle()
     val adPlace by viewModel.adPlace.collectAsStateWithLifecycle()
     val adSound by viewModel.adSound.collectAsStateWithLifecycle()
+    val radioVisual by viewModel.radioVisual.collectAsStateWithLifecycle()
     val adUpload by viewModel.adUpload.collectAsStateWithLifecycle()
     // Clé USB branchée ou retirée, autorisation accordée : emplacements relus à chaque retour sur les réglages.
     val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
@@ -272,7 +276,9 @@ fun SettingsScreen(
         onDeleteAdRecording = viewModel::deleteAdRecording,
         adSound = adSound,
         onCycleAdSound = viewModel::cycleAdSound,
-        onCycleAdRadio = viewModel::cycleAdRadio,
+        onAdRadio = viewModel::setAdRadio,
+        radioVisual = radioVisual,
+        onRadioVisual = viewModel::setRadioVisual,
         onDeleteAdMusic = viewModel::deleteAdMusic,
         onAllowUsb = {
             val opened = viewModel.allFilesAccess(context)?.let { intent -> runCatching { context.startActivity(intent) }.isSuccess } ?: false
@@ -341,7 +347,9 @@ fun SettingsContent(
     /** Pendant les pubs : son baissé, radio ou musique de l'appareil. */
     adSound: AdSoundUi = AdSoundUi(),
     onCycleAdSound: () -> Unit = {},
-    onCycleAdRadio: () -> Unit = {},
+    onAdRadio: (String) -> Unit = {},
+    radioVisual: tv.nextv.app.data.settings.RadioVisual = tv.nextv.app.data.settings.RadioVisual.DEFAULT,
+    onRadioVisual: (tv.nextv.app.data.settings.RadioVisual) -> Unit = {},
     onDeleteAdMusic: () -> Unit = {},
     onAllowUsb: () -> Unit = {},
     onShareAdMusic: () -> AdRecordings.Share? = { null },
@@ -514,6 +522,28 @@ fun SettingsContent(
                     }
                 }
                 SectionCard(stringResource(R.string.settings_group_sound)) {
+                    // Radios et Web radios : animation à la place de l'écran noir, ou rien.
+                    var choosingVisual by remember { mutableStateOf(false) }
+                    ValueRow(
+                        title = stringResource(R.string.settings_radio_visual),
+                        value = stringResource(radioVisual.labelRes()),
+                        onClick = { choosingVisual = true },
+                    )
+                    InfoText(stringResource(R.string.settings_radio_visual_help))
+                    if (choosingVisual) {
+                        ChoiceDialog(
+                            title = stringResource(R.string.settings_radio_visual),
+                            choices = tv.nextv.app.data.settings.RadioVisual.entries.map { visual ->
+                                Choice(visual.name, stringResource(visual.labelRes()), visual.detailRes()?.let { stringResource(it) })
+                            },
+                            selected = radioVisual.name,
+                            onSelect = { key ->
+                                choosingVisual = false
+                                tv.nextv.app.data.settings.RadioVisual.entries.firstOrNull { it.name == key }?.let(onRadioVisual)
+                            },
+                            onDismiss = { choosingVisual = false },
+                        )
+                    }
                     ToggleRow(
                         title = stringResource(R.string.settings_lower_ads),
                         description = stringResource(R.string.settings_lower_ads_help),
@@ -532,7 +562,22 @@ fun SettingsContent(
                             onClick = onCycleAdSound,
                         )
                         when (adSound.mode) {
-                            AdSound.RADIO -> ValueRow(stringResource(R.string.settings_ad_radio), adSound.radio, onClick = onCycleAdRadio)
+                            AdSound.RADIO -> {
+                                var choosingRadio by remember { mutableStateOf(false) }
+                                ValueRow(stringResource(R.string.settings_ad_radio), adSound.radio, onClick = { choosingRadio = true })
+                                if (choosingRadio) {
+                                    ChoiceDialog(
+                                        title = stringResource(R.string.settings_ad_radio),
+                                        choices = AdRadios.all.map { Choice(it.key, it.name, it.genre) },
+                                        selected = adSound.radioKey,
+                                        onSelect = { key ->
+                                            choosingRadio = false
+                                            key?.let(onAdRadio)
+                                        },
+                                        onDismiss = { choosingRadio = false },
+                                    )
+                                }
+                            }
                             AdSound.MUSIC -> {
                                 var addingMusic by remember { mutableStateOf(false) }
                                 ValueRow(
@@ -1040,13 +1085,31 @@ private fun dnsLabel(dns: DnsProvider): String = when (dns) {
     )
 }
 
-/** Nombre réglable : gauche/droite pour diminuer/augmenter, OK passe à la valeur suivante (en boucle). */
+/** Un choix d'une liste ([ChoiceDialog]) : clé (`null` permis), libellé et ligne de précision facultative. */
+internal data class Choice(val key: String?, val label: String, val detail: String? = null)
+
 /** Choix de la région de France 3 : « Toutes les régions » puis chaque édition de la playlist. */
 @Composable
 private fun RegionDialog(
     regions: List<FranceRegions.Region>,
     /** Libellé du choix « aucune région » : toutes les éditions, ou France 3 seule (chaînes rassemblées). */
     noRegion: String,
+    selected: String?,
+    onSelect: (String?) -> Unit,
+    onDismiss: () -> Unit,
+) = ChoiceDialog(
+    title = stringResource(R.string.settings_france3_region),
+    choices = listOf(Choice(null, noRegion)) + regions.map { Choice(it.key, it.label) },
+    selected = selected,
+    onSelect = onSelect,
+    onDismiss = onDismiss,
+)
+
+/** Fenêtre de choix dans une liste qui défile, la sélection posée sur le choix en cours. */
+@Composable
+internal fun ChoiceDialog(
+    title: String,
+    choices: List<Choice>,
     selected: String?,
     onSelect: (String?) -> Unit,
     onDismiss: () -> Unit,
@@ -1060,27 +1123,30 @@ private fun RegionDialog(
             modifier = Modifier.widthIn(max = 520.dp).ignoreHeldOk(),
         ) {
             Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(stringResource(R.string.settings_france3_region), style = MaterialTheme.typography.titleLarge)
-                val choices = listOf<Pair<String?, String>>(null to noRegion) +
-                    regions.map { it.key to it.label }
-                val selectedIndex = choices.indexOfFirst { it.first == selected }.coerceAtLeast(0)
+                Text(title, style = MaterialTheme.typography.titleLarge)
+                val selectedIndex = choices.indexOfFirst { it.key == selected }.coerceAtLeast(0)
                 LazyColumn(
                     Modifier.heightIn(max = 420.dp),
                     state = rememberLazyListState(initialFirstVisibleItemIndex = (selectedIndex - 2).coerceAtLeast(0)),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    itemsIndexed(choices, key = { _, choice -> choice.first ?: "" }) { index, (key, label) ->
+                    itemsIndexed(choices, key = { _, choice -> choice.key ?: "" }) { index, choice ->
                         FocusSurface(
-                            onClick = { onSelect(key) },
+                            onClick = { onSelect(choice.key) },
                             modifier = Modifier.fillMaxWidth().then(if (index == selectedIndex) Modifier.focusRequester(firstFocus) else Modifier),
                             shape = MaterialTheme.shapes.medium,
                             color = Color.Transparent,
-                            selected = key == selected,
+                            selected = choice.key == selected,
                             focusScale = 1f,
                         ) {
                             Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text(label, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                                if (key == selected) Icon(Icons.Filled.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                Column(Modifier.weight(1f)) {
+                                    Text(choice.label, style = MaterialTheme.typography.titleSmall)
+                                    choice.detail?.let {
+                                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                                if (choice.key == selected) Icon(Icons.Filled.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                             }
                         }
                     }

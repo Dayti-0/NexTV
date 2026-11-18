@@ -38,6 +38,7 @@ object ChannelLineup {
         MUSIQUE("Musique"),
         INFO("Info"),
         RADIO("Radios"),
+        WEBRADIO(InternetRadios.GROUP),
         REGIONAL("Régions"),
         OUTREMER("Outre-mer"),
         EVENTS("Matchs en direct"),
@@ -56,7 +57,7 @@ object ChannelLineup {
      * Version des règles de [arrange] : l'augmenter fait recalculer au lancement le rang, la catégorie, le nom et la
      * nationalité des chaînes déjà enregistrées, sans attendre une relecture de la playlist.
      */
-    const val VERSION = 3
+    const val VERSION = 4
 
     /** Place d'une chaîne : sa rubrique, puis son rang dans la rubrique ([UNRANKED] : ordre de la playlist). */
     data class Placement(val section: Section, val rank: Int = UNRANKED) : Comparable<Placement> {
@@ -175,8 +176,8 @@ object ChannelLineup {
         families: Set<String>,
     ): Placement {
         if (LiveVariants.isSeparatorKey(channel.variantKey) || isSeparator(channel.name)) return Placement(Section.OTHER)
-        // Radios Internet ajoutées par l'appli : avec les radios, après celles de la playlist.
-        if (channel.groupTitle == InternetRadios.GROUP) return Placement(Section.RADIO)
+        // Web radios ajoutées par l'appli : leur propre catégorie, après les radios de la playlist.
+        if (channel.groupTitle == InternetRadios.GROUP || channel.groupTitle == InternetRadios.FORMER_GROUP) return Placement(Section.WEBRADIO)
         val french = when (val prefix = names.prefix) {
             // Sans pays : catégorie française, ou chaîne française connue par son nom (« beIN Sports 1 » dans « Sport »).
             null -> channel.groupTitle.orEmpty() in frenchGroups || names.tnt != null || names.glued in KNOWN ||

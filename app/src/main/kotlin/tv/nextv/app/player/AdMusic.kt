@@ -14,13 +14,18 @@ import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import tv.nextv.core.catalog.InternetRadios
 import java.io.File
 
-/** Radios sans pub proposées pendant les pubs de la télé (Radio France). */
+/**
+ * Radios sans pub proposées pendant les pubs de la télé : celles de Radio France, puis les Web radios de l'appli
+ * (rap, hip-hop, groove, ska, reggae… voir [InternetRadios]), sans doublon.
+ */
 object AdRadios {
-    data class Radio(val key: String, val name: String, val url: String)
+    /** @property genre genre affiché sous le nom dans le choix de la radio. */
+    data class Radio(val key: String, val name: String, val url: String, val genre: String = "Radio France")
 
-    val all = listOf(
+    private val radioFrance = listOf(
         Radio("fip", "FIP", "https://icecast.radiofrance.fr/fip-hifi.aac"),
         Radio("fip_rock", "FIP Rock", "https://icecast.radiofrance.fr/fiprock-hifi.aac"),
         Radio("fip_pop", "FIP Pop", "https://icecast.radiofrance.fr/fippop-hifi.aac"),
@@ -32,6 +37,10 @@ object AdRadios {
         Radio("fip_reggae", "FIP Reggae", "https://icecast.radiofrance.fr/fipreggae-hifi.aac"),
         Radio("france_musique", "France Musique", "https://icecast.radiofrance.fr/francemusique-hifi.aac"),
     )
+
+    val all: List<Radio> = radioFrance + InternetRadios.all
+        .filter { web -> radioFrance.none { it.url == web.url } }
+        .map { Radio("web_${it.key}", it.name, it.url, it.genre) }
 
     fun of(key: String?): Radio = all.firstOrNull { it.key == key } ?: all.first()
 }

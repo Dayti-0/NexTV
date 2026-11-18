@@ -158,6 +158,13 @@ class PlayerViewModel(
     val qualityTarget: StateFlow<QualityTarget> = container.settings.qualityTarget
         .stateIn(viewModelScope, SharingStarted.Eagerly, QualityTarget.BEST)
 
+    /** Animation des radios (son sans image), à la place de l'écran noir. */
+    val radioVisual: StateFlow<tv.nextv.app.data.settings.RadioVisual> = container.settings.radioVisual
+        .stateIn(viewModelScope, SharingStarted.Eagerly, tv.nextv.app.data.settings.RadioVisual.DEFAULT)
+
+    /** Spectre du son pour l'animation des radios (commun aux lecteurs de l'appli). */
+    val spectrum: tv.nextv.core.audio.SpectrumAnalyzer get() = container.playerFactory.spectrum
+
     /** Format de l'image (réglage commun à toutes les lectures). */
     val aspectMode: StateFlow<AspectMode> = container.settings.aspectMode
         .stateIn(viewModelScope, SharingStarted.Eagerly, AspectMode.FIT)

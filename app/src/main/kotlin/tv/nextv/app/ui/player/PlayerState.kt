@@ -114,6 +114,10 @@ data class PlayerUiState(
     val autoRecordingChannels: Int? = null,
     /** Le flux n'a pas de son, ou dans un format que l'appareil ne lit pas. */
     val audioProblem: AudioProblem? = null,
+    /** Son sans image (radio, Web radio) : l'animation des radios remplace l'écran noir. */
+    val audioOnly: Boolean = false,
+    /** Morceau en cours annoncé par la radio (« Artiste - Titre »), si elle le donne. */
+    val radioTitle: String? = null,
     /** Lecture par le moteur VLC (son ou image que le lecteur de l'appli ne sait pas lire). */
     val engineVlc: Boolean = false,
     /** Format du son illisible (« MP2 », « DTS-HD »), pour le dire dans le message. */

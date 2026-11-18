@@ -164,10 +164,28 @@ Commandes :
   playlist corrigés par nom (`NAMED_SHOWS`) ; « cinéma » / « film » dans le nom l'emporte sur la rubrique ; rubrique
   `RADIO` (« Radios ») ; à défaut de tout, les mots du nom (« MYSPORTS »). Vérifié sur la vraie playlist le 17/11/2026 :
   plus aucune catégorie de la playlist parmi les chaînes françaises, 5 chaînes dans « Autres chaînes » (KTO, Daystar, NHK).
-- Radios Internet (0.2.176) : `core/catalog/InternetRadios.kt` (liste, catégorie « Radios Internet »), ajoutées à la fin
-  des chaînes en direct par `M3uPlaylistLoader(internetRadios = true)` (seulement l'appli, pas les tests), rubrique
-  `RADIO` après les radios de la playlist. Ajouter une radio : vérifier le flux (curl), puis augmenter
+- Web radios (0.2.176, catégorie à part en 0.2.179) : `core/catalog/InternetRadios.kt` (liste par genre, sans pub,
+  catégorie « Web radios », ancien nom `FORMER_GROUP`), ajoutées à la fin des chaînes en direct par
+  `M3uPlaylistLoader(internetRadios = true)` (seulement l'appli, pas les tests), rubrique `WEBRADIO` après `RADIO`. Elles
+  sont aussi proposées pendant les pubs (`AdRadios.all` = Radio France + Web radios, choix par `ChoiceDialog` des
+  Réglages). Ajouter une radio : vérifier le flux (curl, sans changer d'agent : SomaFM répond 403 d'ici), puis augmenter
   `QualityParser.VERSION` pour que la playlist soit relue au lancement.
+- Animation des radios (0.2.179, réglage `RadioVisual`, Réglages › Son) : `ui/player/RadioVisualizer.kt` (Spectre,
+  Ondes, Aurore, Particules, Vinyle, Mélange ; 30 images/s et moins de particules sur une petite Fire TV), affichée par
+  `PlayerScreen` quand le flux n'a que du son (`PlayerUiState.audioOnly`, pistes vues par `PlayerEngine.onTracksChanged`),
+  avec le morceau en cours (métadonnées ICY, `radioTitle`). Son : `SpectrumTap` (processeur audio de chaque lecteur de
+  `PlayerFactory`, simple copie tant qu'aucune animation n'est affichée) → `core/audio/SpectrumAnalyzer` (FFT 1024,
+  32 bandes). Sans son analysé (VLC, son passé à l'ampli) : houle de remplacement. Captures : `Screenshots.radioVisuals`
+  (`animate = false`, sinon la boucle d'images empêche le test de finir).
+- Guides (0.2.178-0.2.179) : `xmltvfr.fr` d'abord, puis `HttpEpgFeedProvider.EXTRA_GUIDES` (Pluto TV, Samsung TV Plus,
+  Plex France d'i.mjh.nz ; epgshare01 FR1 et RAKUTEN1), puis le guide du fournisseur (`xmltv.php` du compte Xtream,
+  `AppContainer.providerGuide`) ; chacun seulement pour les chaînes encore sans programme (`SourceRepository.importFromFeed`).
+  Guides qui déclarent chaque chaîne juste avant ses programmes (Plex, Samsung) : second passage
+  (`EpgImportResult.lateChannels`, `EpgLoader.importFile`). Mesurer une source sur la vraie playlist : `EpgProbeTool`
+  (test ignoré sans `EPG_PROBE` = TSV des chaînes, `EPG_GUIDES` = guides dans l'ordre ; lancer avec `--rerun`, sinon
+  Gradle reprend l'ancien résultat). Écartés le 18/11/2026 : guides étrangers de Pluto/Plex/Samsung (autres grilles sous
+  les mêmes noms), epgshare01 BE2/CH1 (peu de chaînes, une fausse association), iptv-org (pas de guide prêt à
+  télécharger, seulement un outil à faire tourner soi-même).
 - Rangement recalculé sans relire la playlist : `ChannelFilters.rearrange` (au lancement quand `ChannelLineup.VERSION`
   dépasse le `lineupVersion` des réglages). Toute nouvelle règle de `ChannelLineup` : augmenter `ChannelLineup.VERSION`.
 - « Chaînes françaises seulement » (réglage) : colonne `french` (section autre que `OTHER` dans `ChannelLineup`), masquée
@@ -238,7 +256,9 @@ Commandes :
   détache, `startAdWatch` le rattache au lecteur suivant via `AdVolumeControl.attach`) ; arrêt aussi dans Réglages ;
   moins de 15 min (`AD_RECORDING_MIN_MILLIS`) : pas gardé. Autre qualité de la même chaîne (0.2.163, `channelKey` de
   `PlayerEngine.play` = `variantKey` de la chaîne choisie) : `AdVolumeControl.continueStream` garde la détection (page
-  en cours, logo, horloge) et l'enregistrement ; seuls les repères du flux sont relus. Le rejouer : `AdDeviceReplayTool` (`AD_DEVICE`,
+  en cours, logo, horloge) et l'enregistrement ; seuls les repères du flux sont relus. Pendant un enregistrement (0.2.177,
+  `AppContainer.analysisRecording`) : moins bonne version de la chaîne (`channelStart`, `ChannelStart.analysis`, sans
+  remontée ni « qualité qui a fonctionné »), qualité visée rétablie à l'arrêt (`PlayerViewModel.followAnalysisQuality`). Le rejouer : `AdDeviceReplayTool` (`AD_DEVICE`,
   `AD_PRINTS`, `AD_IMAGES=10` écrit une image par 10 s pour relever les pages de pub à l'œil dans `<nom>.truth.tsv`).
   C'est la seule façon de mesurer TF1, M6 et France Télévisions (pas de flux lisible d'ici, même avec un compte).
   Envoi automatique (0.2.167, réglage « Envoyer les enregistrements sur filebin », `AdUploads`) : chaque enregistrement

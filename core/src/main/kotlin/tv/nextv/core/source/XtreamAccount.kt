@@ -23,6 +23,14 @@ class XtreamAccount(val server: String, val username: String, val password: Stri
         ?.build()
         ?.let { ExplicitPort.text(it, server) }
 
+    /** Guide des programmes du fournisseur (`xmltv.php`), aux identifiants des chaînes de sa playlist ; `null` si l'adresse est invalide. */
+    fun xmltvUrl(): String? = serverUrl(server)?.newBuilder()
+        ?.addPathSegment("xmltv.php")
+        ?.addQueryParameter("username", username)
+        ?.addQueryParameter("password", password)
+        ?.build()
+        ?.let { ExplicitPort.text(it, server) }
+
     override fun equals(other: Any?): Boolean =
         other is XtreamAccount && other.server == server && other.username == username && other.password == password
 

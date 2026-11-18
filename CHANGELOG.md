@@ -4,6 +4,13 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.179
+- Web radios : nouvelle catégorie « Web radios », à part des radios de la playlist
+- Nouvelles Web radios sans pub : rap et hip-hop (Mouv', FIP Hip-Hop, West Coast G-Funk, Sensi Hip Hop), groove (FIP Groove, Dublab), ska (Tonic Ska Radio, Boot Boy Radio), électro, jazz, musiques du monde, rock et metal, en plus du reggae
+- « Pendant les pubs » : toutes les Web radios peuvent maintenant être choisies, dans une liste avec leur genre
+- Animation des radios : les radios et Web radios n'affichent plus un écran noir mais une animation qui suit la musique (Spectre, Ondes, Aurore, Particules, Vinyle, ou Mélange), avec le nom de la radio et le morceau en cours ; à choisir ou désactiver dans Réglages › Son › Animation des radios
+- Guide TV encore enrichi : epgshare01 (France et Rakuten TV : presque toutes les chaînes Rakuten TV ont maintenant leur programme) et le guide du fournisseur de la playlist (surtout les chaînes étrangères : Portugal, Allemagne, États-Unis, Canada, Royaume-Uni, Espagne…)
+
 ## 0.2.178
 - Guide TV enrichi : les programmes de Pluto TV, Samsung TV Plus et Plex complètent le guide habituel pour les chaînes gratuites. Presque toutes les chaînes Pluto TV ont maintenant leur programme, ainsi que les deux tiers des chaînes Rakuten TV et quelques autres (Drive TV, BBC Earth, Masha et Michka, Les Lapins Crétins, Journal du Golf…)
 - Le guide est relu une fois au premier lancement pour les ajouter
