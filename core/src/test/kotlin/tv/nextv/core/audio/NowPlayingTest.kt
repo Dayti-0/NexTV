@@ -75,6 +75,28 @@ class NowPlayingTest {
     }
 
     @Test
+    fun europe2RadiokingAndRtlGiveWhatIsOnAir() {
+        val europe2 = """{"nowplaying":[{"artist":"KAVINSKY","title":"Nightcall","time":"2026-11-18T09:11:07.000Z","imageUrl":"https://cdn.europe2.lanmedia.fr/c.jpg",
+            "status":"playing","raw":{"duration":"00:02:57"}},{"artist":"MASTER KG","title":"Jerusalema","status":"history"}]}"""
+        val e2 = NowPlaying.fromLagardere(europe2)!!
+        assertEquals("KAVINSKY – Nightcall", e2.label)
+        assertEquals(java.time.Instant.parse("2026-11-18T09:14:04Z").toEpochMilli(), e2.untilMillis)
+        assertNull(NowPlaying.fromLagardere("""{"nowplaying":[]}"""))
+
+        val king = """{"artist":"Derrick Parker","title":"Dead Sound","end_at":"2026-11-18T09:31:00+0000",
+            "cover":"https://image.radioking.io/c.jpg","default_cover":false}"""
+        val rk = NowPlaying.fromRadioking(king)!!
+        assertEquals("Derrick Parker – Dead Sound", rk.label)
+        assertEquals("https://image.radioking.io/c.jpg", rk.cover)
+        assertEquals(java.time.Instant.parse("2026-11-18T09:31:00Z").toEpochMilli(), rk.untilMillis)
+
+        val rtl = """{"title":"Ça peut vous arriver","hosts":"Julien Courbet","cover":"https://images.rtl.fr/c.jpg","schedule":{"end":1794997800000}}"""
+        val program = NowPlaying.fromRtlProgram(rtl)!!
+        assertEquals("Ça peut vous arriver – Julien Courbet", program.label)
+        assertEquals(1_794_997_800_000L, program.untilMillis)
+    }
+
+    @Test
     fun theSnippetGivesTheLastSecondsAsWav() {
         val snippet = AudioSnippet(seconds = 10)
         val rate = 44_100

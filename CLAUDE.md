@@ -185,8 +185,12 @@ Commandes :
   Groove 66, Monde 69, Reggae 71, Electro 74 ; FIP Hip-Hop inconnu), Skyrock (`skyrock.fm/api/v3/player/onair/national`,
   titre seul), Nova et ses webradios (`nova.fr/radios-data/www.nova.fr/all.json`, par adresse du flux), Les Indés
   (`POST https://<site>/lite/update_onair` `{"radio_ids":["1"]}` : jazzradio.fr, mradio.fr, generations.fr ; Latina et
-  Alouette ont un autre site, pas trouvé). NRJ / Chérie / Nostalgie / Rire (nrj.fr refuse le cloud) et RTL2 / Fun : pas
-  trouvé, donc reconnaissance. Service muet 3 fois de suite : reconnaissance à la place. L'utilisateur ne veut pas de bouton
+  Alouette ont un autre site, pas trouvé), Europe 2 et RFM (`https://<site>/cetait-quoi-ce-titre/history?idplayer=1&limit=1`,
+  0.2.183), Radioking (`api.radioking.io/widgets/api/v1/radio/<id>/track/current` : Reggae.fr 50473), émission en cours
+  de RTL (`www.rtl.fr/ws/live/live` : titre et animateurs, pas de morceaux ; RTL2 et Fun donnent aussi leur émission mais
+  pas le morceau : `/ws/live/{id}/last-tracks` répond 404). Europe 1 : Cloudflare refuse le cloud. NRJ / Chérie /
+  Nostalgie / Rire (nrj.fr et players.nrjaudio.fm refusent le cloud), RTL2, Fun, Latina, Alouette, FIP Hip-Hop (pas
+  trouvé entre les numéros 1 et 140 de Radio France) : reconnaissance. Service muet 3 fois de suite : reconnaissance à la place. L'utilisateur ne veut pas de bouton
   « Quel est ce titre ? » : tout doit s'afficher seul. Sinon
   reconnaissance AudD (`api.audd.io`, 8 s en WAV mono 11 025 Hz tirés de `AudioSnippet`, rempli par `SpectrumTap` ;
   quelques essais par jour sans clé, vérifié d'ici le 18/11/2026 ; clé : Réglages › Services ou secret CI

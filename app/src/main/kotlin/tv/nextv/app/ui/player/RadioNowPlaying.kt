@@ -26,7 +26,8 @@ import java.io.IOException
  * Morceau en cours d'une radio affichée (animation des radios), quand elle ne l'annonce pas dans son flux :
  * 1. titre du flux (métadonnées ICY, `PlayerUiState.radioTitle`) : rien d'autre à faire ;
  * 2. radios qui publient le morceau en cours sur leur site ([InternetRadios.TitleSource] : Radio France, Skyrock, Nova et
- *    ses webradios, Les Indés Radios) : ce service, relu à la fin du morceau ou toutes les 25 s ;
+ *    ses webradios, Les Indés Radios, Europe 2, RFM, Radioking ; émission en cours de RTL) : ce service, relu à la fin du
+ *    morceau ou toutes les 25 s ;
  * 3. sinon, reconnaissance à l'écoute (comme Shazam) : 8 s du son envoyées à AudD, relancée à la fin du morceau reconnu
  *    (sa durée est connue), plus espacée quand rien n'est reconnu (émission parlée), arrêtée un moment à la limite du jour.
  * Le résultat va dans `PlayerUiState.nowPlaying` / `nowPlayingCover`.
@@ -44,6 +45,9 @@ internal class RadioNowPlaying(
     private val skyrockUrl: String = "https://skyrock.fm/api/v3/player/onair/national/",
     private val novaUrl: String = "https://www.nova.fr/radios-data/www.nova.fr/all.json",
     private val indesUrl: (String) -> String = { site -> "https://$site/lite/update_onair" },
+    private val lagardereUrl: (String) -> String = { site -> "https://$site/cetait-quoi-ce-titre/history?idplayer=1&limit=1" },
+    private val radiokingUrl: (Int) -> String = { id -> "https://api.radioking.io/widgets/api/v1/radio/$id/track/current" },
+    private val rtlUrl: (String) -> String = { site -> "https://$site/ws/live/live" },
     /** Service de reconnaissance (autre adresse : tests). */
     private val recognitionUrl: String = "https://api.audd.io/",
 ) {
@@ -125,6 +129,9 @@ internal class RadioNowPlaying(
                 .post("""{"radio_ids":["${source.radioId}"]}""".toRequestBody("application/json".toMediaType()))
                 .build(),
         )?.let { NowPlaying.fromIndes(it, source.radioId) }
+        is InternetRadios.TitleSource.Lagardere -> call(Request.Builder().url(lagardereUrl(source.site)).build())?.let(NowPlaying::fromLagardere)
+        is InternetRadios.TitleSource.Radioking -> call(Request.Builder().url(radiokingUrl(source.radioId)).build())?.let(NowPlaying::fromRadioking)
+        is InternetRadios.TitleSource.RtlProgram -> call(Request.Builder().url(rtlUrl(source.site)).build())?.let(NowPlaying::fromRtlProgram)
     }
 
     private fun show(playing: NowPlaying?) {

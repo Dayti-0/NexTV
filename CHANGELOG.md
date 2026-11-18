@@ -4,6 +4,10 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.183
+- Radios : le morceau en cours d'Europe 2, de RFM et de Reggae.fr vient maintenant de leur site (avec la pochette), sans passer par la reconnaissance
+- RTL : l'émission en cours et ses animateurs s'affichent
+
 ## 0.2.182
 - Radios : le morceau en cours vient maintenant directement de Skyrock, Radio Nova, Jazz Radio, M Radio et Générations (comme déjà pour Radio France), avec la pochette : plus besoin de la reconnaissance à l'écoute pour ces radios, qui reste pour les autres
 - Nouvelles radios dans « Radios » : Nova Hip-Hop, Nova Reggae et Nova Soul

@@ -135,6 +135,60 @@ data class NowPlaying(
             null
         }
 
+        /**
+         * Réponse d'Europe 2 ou RFM (`/cetait-quoi-ce-titre/history`) : le morceau « playing », sa pochette, et sa fin
+         * (heure de début + durée « 00:02:57 »).
+         */
+        fun fromLagardere(body: String): NowPlaying? = try {
+            val list = JSONObject(body).optJSONArray("nowplaying")
+            val entry = (0 until (list?.length() ?: 0)).map { list!!.getJSONObject(it) }.firstOrNull { it.optString("status") == "playing" }
+            entry?.optString("title")?.trim()?.takeIf { it.isNotEmpty() }?.let { title ->
+                val start = runCatching { java.time.Instant.parse(entry.optString("time")).toEpochMilli() }.getOrNull()
+                val length = clockMillis(entry.optJSONObject("raw")?.optString("duration").orEmpty())
+                NowPlaying(
+                    artist = entry.optString("artist").trim().takeIf { it.isNotEmpty() },
+                    title = title,
+                    cover = entry.optString("imageUrl").takeIf { it.startsWith("http") },
+                    untilMillis = if (start != null && length != null) start + length else null,
+                )
+            }
+        } catch (e: JSONException) {
+            null
+        }
+
+        /** Réponse de Radioking (`/widgets/api/v1/radio/<id>/track/current`) : morceau, pochette et fin. */
+        fun fromRadioking(body: String): NowPlaying? = try {
+            val json = JSONObject(body)
+            json.optString("title").trim().takeIf { it.isNotEmpty() }?.let { title ->
+                NowPlaying(
+                    artist = json.optString("artist").trim().takeIf { it.isNotEmpty() },
+                    title = title,
+                    cover = json.optString("cover").takeIf { it.startsWith("http") && !json.optBoolean("default_cover") },
+                    untilMillis = runCatching {
+                        java.time.OffsetDateTime.parse(json.optString("end_at"), java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssZ"))
+                            .toInstant().toEpochMilli()
+                    }.getOrNull(),
+                )
+            }
+        } catch (e: JSONException) {
+            null
+        }
+
+        /** Réponse du groupe RTL (`/ws/live/live`) : l'émission en cours (« Ça peut vous arriver – Julien Courbet »), son image. */
+        fun fromRtlProgram(body: String): NowPlaying? = try {
+            val json = JSONObject(body)
+            json.optString("title").trim().takeIf { it.isNotEmpty() }?.let { title ->
+                NowPlaying(
+                    artist = null,
+                    title = listOfNotNull(title, json.optString("hosts").trim().takeIf { it.isNotEmpty() && it != "null" }).joinToString(" – "),
+                    cover = json.optString("cover").takeIf { it.startsWith("http") },
+                    untilMillis = json.optJSONObject("schedule")?.optLong("end")?.takeIf { it > 0 },
+                )
+            }
+        } catch (e: JSONException) {
+            null
+        }
+
         /** Adresse de flux comparable (sans protocole ni paramètres). */
         private fun streamKey(url: String): String = url.substringAfter("://").substringBefore('?').trimEnd('/').lowercase()
 

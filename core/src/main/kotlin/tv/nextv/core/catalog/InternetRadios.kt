@@ -41,6 +41,15 @@ object InternetRadios {
 
         /** Les Indés Radios (Jazz Radio, M Radio, Générations…) : `https://<site>/lite/update_onair`, radio [radioId]. */
         data class Indes(val site: String, val radioId: String = "1") : TitleSource
+
+        /** Europe 2, RFM (groupe Lagardère) : `https://<site>/cetait-quoi-ce-titre/history?idplayer=1&limit=1`. */
+        data class Lagardere(val site: String) : TitleSource
+
+        /** Radios hébergées par Radioking (Reggae.fr…) : `api.radioking.io/widgets/api/v1/radio/<id>/track/current`. */
+        data class Radioking(val radioId: Int) : TitleSource
+
+        /** Émission en cours d'une radio du groupe RTL (radio parlée : RTL) : `https://<site>/ws/live/live`. */
+        data class RtlProgram(val site: String) : TitleSource
     }
 
     /**
@@ -83,7 +92,10 @@ object InternetRadios {
         Radio("fip_reggae", "FIP Reggae", "Reggae", "https://icecast.radiofrance.fr/fipreggae-hifi.aac", FIP_LOGO, titles = TitleSource.RadioFrance(71)),
         Radio("soma_reggae", "SomaFM Heavyweight Reggae", "Reggae", "https://ice1.somafm.com/reggae-128-mp3", "https://somafm.com/img3/reggae400.jpg"),
         Radio("grosse_reggae", "La Grosse Radio Reggae", "Reggae", "https://hd.lagrosseradio.info/lagrosseradio-reggae-192.mp3", GROSSE_RADIO_LOGO),
-        Radio("reggae_fr", "Reggae.fr Webradio", "Reggae", "https://listen.radioking.com/radio/50473/stream/87415", "https://www.reggae.fr/apple-touch-icon.png"),
+        Radio(
+            "reggae_fr", "Reggae.fr Webradio", "Reggae", "https://listen.radioking.com/radio/50473/stream/87415", "https://www.reggae.fr/apple-touch-icon.png",
+            titles = TitleSource.Radioking(50473),
+        ),
         Radio("alpha_boys", "Alpha Boys School Radio", "Reggae, ska", "https://alphaboys-live.streamguys1.com/alphaboys.mp3"),
         // Électro, jazz, monde
         Radio("fip_electro", "FIP Electro", "Électro", "https://icecast.radiofrance.fr/fipelectro-hifi.aac", FIP_LOGO, titles = TitleSource.RadioFrance(74)),
@@ -216,7 +228,12 @@ object InternetRadios {
     fun byName(name: String?): Radio? = name?.let { n -> (all + french).firstOrNull { it.name == n } }
 
     /** Services du morceau en cours pour les radios de la playlist (clé [logoKey]). */
-    private val PLAYLIST_TITLES: Map<String, TitleSource> = mapOf("skyrock" to TitleSource.Skyrock)
+    private val PLAYLIST_TITLES: Map<String, TitleSource> = mapOf(
+        "skyrock" to TitleSource.Skyrock,
+        "europe2" to TitleSource.Lagardere("www.europe2.fr"),
+        "rfm" to TitleSource.Lagardere("www.rfm.fr"),
+        "rtl" to TitleSource.RtlProgram("www.rtl.fr"),
+    )
 
     /** Service du morceau en cours d'une radio (de l'appli, ou de la playlist par son nom), `null` : aucun connu. */
     fun titlesFor(name: String?): TitleSource? = name?.let { byName(it)?.titles ?: PLAYLIST_TITLES[logoKey(it)] }
