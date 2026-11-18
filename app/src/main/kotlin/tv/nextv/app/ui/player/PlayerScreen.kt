@@ -521,6 +521,8 @@ fun PlayerScreen(
                         language = "fr",
                         modifier = Modifier.fillMaxSize(),
                         delayMillis = 0,
+                        // Qualité d'un écran 1080p (720p sur une petite Fire TV).
+                        renderScale = if (lowPower) 1.34f else 2f,
                         // Moteur VLC : son de la radio gardé, vidéo muette.
                         muted = state.engineVlc,
                         onShown = { shown -> viewModel.radioVideoShown(shown && !state.engineVlc) },

@@ -67,6 +67,11 @@ internal fun TrailerBackdrop(
      * bandes noires en haut et en bas, qui la faisaient paraître petite. 1 : vidéo entière (plein écran).
      */
     zoom: Float = 1f,
+    /**
+     * Lecteur dessiné en plus grand puis réduit au cadre : YouTube choisit la qualité d'après la taille du lecteur
+     * (en points), et un plein écran de 960 × 540 points recevait une image floue. 2 : qualité d'un écran 1080p.
+     */
+    renderScale: Float = 1f,
 ) {
     // Le lecteur se prépare dès [PRELOAD_AFTER_MILLIS] (caché, muet), pendant le délai : la bande-annonce
     // apparaît au bout du délai si elle est prête (le chargement de YouTube prend plusieurs secondes sur
@@ -94,7 +99,7 @@ internal fun TrailerBackdrop(
         val height = maxHeight.value.roundToInt()
         if (width > 0 && height > 0) {
             androidx.compose.runtime.key(key, width, height) {
-                TrailerPage(key, captions(language), width, height, zoom, muted, delayPassed, onShown, onFinished, onFailed)
+                TrailerPage(key, captions(language), width, height, zoom, renderScale, muted, delayPassed, onShown, onFinished, onFailed)
             }
         }
     }
@@ -209,6 +214,7 @@ private fun TrailerPage(
     width: Int,
     height: Int,
     zoom: Float,
+    renderScale: Float,
     muted: Boolean,
     /** Délai d'attente écoulé : la vidéo peut apparaître (avant, elle se prépare cachée et muette). */
     delayPassed: Boolean,
@@ -251,7 +257,7 @@ private fun TrailerPage(
     AndroidView(
         factory = { context ->
             trailerView(
-                context, key, captions, width, height, zoom, muted || !delayPassed, delayPassed,
+                context, key, captions, width, height, zoom, renderScale, muted || !delayPassed, delayPassed,
                 onVisible = { ready = it },
                 onFinished = { ready = false; shown(false); finished() },
                 onFailed = { failed() },
@@ -280,6 +286,7 @@ private fun trailerView(
     width: Int,
     height: Int,
     zoom: Float,
+    renderScale: Float,
     startMuted: Boolean,
     /** Délai d'attente déjà écoulé : la vidéo apparaît dès qu'elle démarre. */
     startAllowed: Boolean,
@@ -337,15 +344,19 @@ private fun trailerView(
     val playerHeight = (height * zoom).roundToInt()
     val left = (width - playerWidth) / 2
     val top = (height - playerHeight) / 2
+    // Lecteur agrandi de [renderScale] dans la page puis réduit d'autant (même place à l'écran) : meilleure qualité.
+    val scale = renderScale.coerceAtLeast(1f)
+    val drawnWidth = (playerWidth * scale).roundToInt()
+    val drawnHeight = (playerHeight * scale).roundToInt()
     // Page avec le lecteur intégré, à la taille exacte du cadre : son adresse de base sert d'origine
     // (YouTube refuse un lecteur sans). L'API YouTube se branche sur ce lecteur pour le son, la pause,
     // la fin et les sous-titres. Lue une fois (pas de boucle).
     val html = """
         <html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>
         html,body{margin:0;width:${width}px;height:${height}px;background:transparent;overflow:hidden}
-        iframe{position:absolute;top:${top}px;left:${left}px;width:${playerWidth}px;height:${playerHeight}px;border:0;pointer-events:none}
+        iframe{position:absolute;top:${top}px;left:${left}px;width:${drawnWidth}px;height:${drawnHeight}px;border:0;pointer-events:none;transform:scale(${1f / scale});transform-origin:0 0}
         </style></head><body>
-        <iframe id="player" width="$playerWidth" height="$playerHeight" src="https://www.youtube-nocookie.com/embed/$key?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0&playsinline=1&iv_load_policy=3&disablekb=1&fs=0&hl=fr&cc_load_policy=${captions.loadPolicy}${if (captions == Captions.FRENCH) "&cc_lang_pref=fr" else ""}&enablejsapi=1&origin=https%3A%2F%2Fnixtv.app"
+        <iframe id="player" width="$drawnWidth" height="$drawnHeight" src="https://www.youtube-nocookie.com/embed/$key?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0&playsinline=1&iv_load_policy=3&disablekb=1&fs=0&hl=fr&cc_load_policy=${captions.loadPolicy}${if (captions == Captions.FRENCH) "&cc_lang_pref=fr" else ""}&enablejsapi=1&origin=https%3A%2F%2Fnixtv.app"
         allow="autoplay; encrypted-media" referrerpolicy="strict-origin-when-cross-origin"></iframe>
         <script>
         var player=null;

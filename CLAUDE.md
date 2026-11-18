@@ -205,7 +205,7 @@ Commandes :
   « youtube », `external_stream_id` ; relevé pendant Planète Rap le 18/11/2026, lecture intégrée permise) lu par
   `NowPlaying.skyrockLiveVideo`, relu toutes les minutes (`RadioNowPlaying.followLiveVideo`) → `PlayerUiState.radioVideo` ;
   `PlayerScreen` l'affiche par-dessus l'animation avec le lecteur des bandes-annonces (`TrailerBackdrop`, son de la vidéo,
-  son de la radio coupé : `PlayerViewModel.radioVideoShown`). `radiovision/stream` de Skyrock : clips, liste vide, pas le live.
+  son de la radio coupé : `PlayerViewModel.radioVideoShown` ; 0.2.192 : OK ne met plus la radio en pause dessous — le bandeau restait « En pause » —, lecteur YouTube dessiné 2 × plus grand puis réduit, `renderScale`, sinon image floue). `radiovision/stream` de Skyrock : clips, liste vide, pas le live.
 - Logos des radios : `InternetRadios` (logos officiels de Wikipédia ou des sites des radios ; Wikipédia et ses images
   refusent l'agent d'OkHttp par défaut : client `IMAGE` avec l'agent de l'appli, `HttpClientProvider`) ; radios de la
   playlist : `InternetRadios.logoFor` à l'import (0.2.189 : remplace aussi l'image de la playlist pour une radio connue, ex. drapeau

@@ -414,9 +414,18 @@ class PlayerViewModel(
     // --- Moteur VLC ---------------------------------------------------------------------------------
 
     /** « Lire avec le moteur VLC » (options du lecteur). */
-    /** Vidéo du direct d'une radio affichée avec son propre son : celui de la radio est coupé le temps de la vidéo. */
+    /** Vidéo du direct d'une radio affichée (avec son propre son) : la radio, cachée dessous, est en sourdine. */
+    private var radioVideoOn = false
+
+    /**
+     * Vidéo du direct d'une radio affichée avec son propre son : celui de la radio est coupé le temps de la vidéo. La
+     * radio reste au direct : mise en pause dessous (OK), elle gardait le bandeau affiché (« En pause », « Différé »).
+     */
     fun radioVideoShown(shown: Boolean) {
+        if (shown == radioVideoOn) return
+        radioVideoOn = shown
         engine.current?.volume = if (shown) 0f else 1f
+        if (state.value.paused || state.value.liveDelayMs > 0) backToLive()
     }
 
         fun useVlc() {
@@ -1339,6 +1348,8 @@ class PlayerViewModel(
 
     /** Pause / lecture. En direct, la pause crée un différé ; le retard sur le direct est affiché. */
     fun togglePause() {
+        // Vidéo du direct de la radio affichée : rien à mettre en pause dessous (la radio est en sourdine).
+        if (radioVideoOn) return
         vlc?.let { playback ->
             val player = playback.player
             player.playWhenReady = !player.playWhenReady

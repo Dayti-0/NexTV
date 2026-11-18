@@ -382,13 +382,25 @@ private fun NowPlayingText(
                 }
             }
             AccentBar(palette, Modifier.padding(vertical = if (big) 16.dp else 12.dp))
+            // Titre en entier (« Histoire d'un soir (Bye bye les galères) (Version 2001) ») : plus petit s'il est long,
+            // sur 4 lignes au plus.
+            val long = track.song.length > LONG_TITLE
+            val veryLong = track.song.length > VERY_LONG_TITLE
             Text(
                 track.song,
                 color = Color.White,
-                fontSize = if (big) 40.sp else 30.sp,
-                lineHeight = if (big) 46.sp else 35.sp,
+                fontSize = when {
+                    veryLong -> if (big) 28.sp else 22.sp
+                    long -> if (big) 34.sp else 26.sp
+                    else -> if (big) 40.sp else 30.sp
+                },
+                lineHeight = when {
+                    veryLong -> if (big) 34.sp else 27.sp
+                    long -> if (big) 40.sp else 31.sp
+                    else -> if (big) 46.sp else 35.sp
+                },
                 fontWeight = FontWeight.ExtraBold,
-                maxLines = 2,
+                maxLines = 4,
                 overflow = TextOverflow.Ellipsis,
                 style = shadow,
             )
@@ -398,7 +410,7 @@ private fun NowPlayingText(
                     color = Color.White.copy(alpha = 0.75f),
                     fontSize = if (big) 24.sp else 19.sp,
                     fontWeight = FontWeight.Medium,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     style = shadow,
                     modifier = Modifier.padding(top = 6.dp),
@@ -430,6 +442,10 @@ private fun NowPlayingText(
         }
     }
 }
+
+/** Titre du morceau long (en caractères) : écrit plus petit, pour tenir en entier. */
+private const val LONG_TITLE = 32
+private const val VERY_LONG_TITLE = 60
 
 /** Petit trait aux couleurs de la radio entre la ligne du haut et le titre. */
 @Composable
