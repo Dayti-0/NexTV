@@ -200,7 +200,16 @@ class AppContainer(context: Context) {
     val adMarks = AdMarksStore(File(appContext.filesDir, "ad_marks"), applicationScope)
 
     /** Enregistrements pour l'analyse des pubs (options du lecteur), envoyés sur filebin ([adUploads]). */
-    val adRecordings: AdRecordings by lazy {
+    private val adRecordingsLazy = lazy { createAdRecordings() }
+    val adRecordings: AdRecordings by adRecordingsLazy
+
+    /**
+     * Enregistrement pour l'analyse des pubs en cours (il survit à la fermeture du lecteur) : les chaînes s'ouvrent alors
+     * dans leur moins bonne version (voir [tv.nextv.core.stream.QualityTarget.LOWEST]).
+     */
+    val analysisRecording: Boolean get() = adRecordingsLazy.isInitialized() && adRecordings.current != null
+
+    private fun createAdRecordings(): AdRecordings =
         AdRecordings(File(appContext.filesDir, "ad_recordings"), BuildConfig.VERSION_NAME, removable = { removableRecordingPlaces(appContext) }).also { recordings ->
             applicationScope.launch { settings.adRecordingsLocation.collect { recordings.selected = it } }
             // Clés USB lues en arrière-plan : sur la box, créer un dossier sur la clé a bloqué l'appli plus de 5 s (ANR).
@@ -208,7 +217,6 @@ class AppContainer(context: Context) {
             // Chaque enregistrement terminé part sur filebin.
             recordings.onSaved = { adUploads.sendPending() }
         }
-    }
 
     /** Temps déjà enregistré pour l'analyse des pubs, par chaîne : l'enregistrement automatique va aux moins connues. */
     val adTested: AdTestedChannels by lazy { AdTestedChannels(File(appContext.filesDir, "ad_tested.tsv")) }

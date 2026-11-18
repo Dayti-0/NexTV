@@ -6,6 +6,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModelStore
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
@@ -350,6 +351,55 @@ class PlayerViewModelTest {
             // Pas de nouveau départ de la détection : c'est la même chaîne.
             assertEquals(0, recorder.streamChanges)
             viewModel.toggleAdRecording()
+            store.clear()
+        }
+    }
+
+    /**
+     * Enregistrement pour l'analyse des pubs : la chaîne passe à sa moins bonne version (images réduites et son seulement,
+     * pareils dans toutes les qualités), sans repartir de zéro ; les chaînes ouvertes pendant l'enregistrement aussi, et la
+     * qualité visée revient à l'arrêt. La version basse n'est pas retenue comme « dernière qualité qui a fonctionné ».
+     */
+    @Test
+    fun theAdAnalysisRecordingPlaysTheLowestQuality() {
+        java.net.ServerSocket(0).use { server ->
+            runBlocking { container.settings.setLowerAdVolume(true) }
+            val sourceId = runBlocking { container.sourceRepository.add(SourceInput(name = "Test", location = SourceLocation.Remote("http://127.0.0.1:9/list.m3u"))) }
+            fun live(name: String, n: Int): Channel {
+                val parsed = tv.nextv.core.catalog.QualityParser.parse(name)
+                return Channel(
+                    position = n, name = name, stream = StreamDescriptor("http://127.0.0.1:${server.localPort}/live/$n.ts"), kind = ContentKind.LIVE,
+                    title = parsed.baseName, variantKey = tv.nextv.core.catalog.LiveVariants.key(parsed.variantKey), quality = parsed.quality,
+                )
+            }
+            val names = listOf("FR| TMC FHD", "FR| TMC HD", "FR| TMC SD")
+            runBlocking {
+                container.settings.setAutoQuality(true)
+                container.settings.setQualityTarget(tv.nextv.core.stream.QualityTarget.BEST)
+                container.playlistStore.replaceChannels(sourceId, tv.nextv.core.catalog.LiveVariants.unify(names.mapIndexed { n, name -> live(name, n) }))
+            }
+            val key = tv.nextv.core.catalog.LiveVariants.key(tv.nextv.core.catalog.QualityParser.parse(names.first()).variantKey)
+            val versions = runBlocking { container.channelDao.variants(sourceId, key) }
+            val fhd = checkNotNull(runBlocking { container.channelDao.get(versions.first { it.quality == "FHD" }.id) })
+            val sd = versions.first { it.quality == "SD" }.id
+            val (viewModel, store) = open(fhd.id)
+            viewModel.onStart()
+            idle()
+            assertEquals("FHD", viewModel.state.value.quality)
+            viewModel.toggleAdRecording()
+            val deadline = System.nanoTime() + 8_000_000_000L
+            do idle() while (viewModel.state.value.quality != "SD" && System.nanoTime() < deadline)
+            assertEquals("SD", viewModel.state.value.quality)
+            val recorder = checkNotNull(container.adRecordings.current)
+            assertTrue(container.analysisRecording)
+            assertEquals(0, recorder.streamChanges)
+            assertEquals(sd, runBlocking { channelStart(container, fhd, fhd, isLive = true) }.startId)
+            viewModel.toggleAdRecording()
+            val back = System.nanoTime() + 8_000_000_000L
+            do idle() while (viewModel.state.value.quality != "FHD" && System.nanoTime() < back)
+            assertEquals("FHD", viewModel.state.value.quality)
+            assertFalse(container.analysisRecording)
+            assertEquals(fhd.id, runBlocking { channelStart(container, fhd, fhd, isLive = true) }.startId)
             store.clear()
         }
     }

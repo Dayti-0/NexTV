@@ -178,6 +178,7 @@ class AdRecordings(
             if (location.key == null) trim(directory)
             mutableFiles.value = list()
             if (done.isDirectory) onSaved?.invoke(done)
+            if (current === self[0]) current = null
             onStopped(reason)
         }
         self[0] = recorder

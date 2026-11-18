@@ -524,6 +524,21 @@ class PlayerViewModel(
                 },
             )
         }
+        if (recording || started) followAnalysisQuality(started = !recording)
+    }
+
+    /**
+     * Enregistrement d'analyse commencé ([started]) : la chaîne passe à sa moins bonne version (même chaîne : la détection
+     * et l'enregistrement continuent) ; arrêté : elle revient à la qualité visée. Pas pendant une pause, un différé ou un replay.
+     */
+    private fun followAnalysisQuality(started: Boolean) {
+        viewModelScope.launch {
+            if (delayed.recording || delayed.replay != null || state.value.paused || state.value.liveDelayMs > 0) return@launch
+            val primary = session.channel ?: return@launch
+            val playingId = session.playing?.id
+            val reload = if (started) quality.wantsLowest(playingId) else quality.changesVersion(qualityTarget.value, playingId)
+            if (reload) load(primary.id)
+        }
     }
 
     /** Fin d'une heure d'enregistrement d'analyse : ce fichier se ferme, le suivant commence aussitôt. */

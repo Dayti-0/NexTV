@@ -87,7 +87,7 @@ internal class AutoQualityController(
                 enabled = start.autoQuality,
                 clock = System::currentTimeMillis,
                 decoderCeilingRank = decoderCeilingRank,
-                maxRank = start.qualityTarget.maxRank(options),
+                maxRank = if (start.analysis) options.minOf { StreamQuality.rankOf(it.quality) } else start.qualityTarget.maxRank(options),
             )
         } else {
             null
@@ -136,11 +136,23 @@ internal class AutoQualityController(
         return true
     }
 
+    /**
+     * Enregistrement pour l'analyse des pubs qui vient de commencer : vrai si la chaîne en cours ([playingId]) doit être
+     * rouverte dans sa moins bonne version (voir [channelStart]). Rien quand la qualité a été choisie à la main.
+     */
+    fun wantsLowest(playingId: Long?): Boolean {
+        if (options.size <= 1 || lockedQuality != null) return false
+        val lowestRank = options.minOf { StreamQuality.rankOf(it.quality) }
+        val playing = options.firstOrNull { it.channelId == playingId } ?: return false
+        return StreamQuality.rankOf(playing.quality) > lowestRank
+    }
+
     /** Version qui joue sans erreur une minute durant : la chaîne commencera par elle la prochaine fois. */
     fun rememberWhenStable(variant: ChannelEntity) {
         workingQualityJob?.cancel()
         val quality = variant.quality
-        if (switcher == null || lockedQuality != null || quality == null || variant.kind != ContentKind.LIVE.name || variant.variantKey.isEmpty()) return
+        // Version basse de l'enregistrement d'analyse : pas retenue pour les prochaines ouvertures.
+        if (switcher == null || lockedQuality != null || container.analysisRecording || quality == null || variant.kind != ContentKind.LIVE.name || variant.variantKey.isEmpty()) return
         workingQualityJob = scope.launch {
             delay(WORKING_QUALITY_MILLIS)
             if (session.playing?.id == variant.id && state.value.error == null) {
@@ -223,6 +235,8 @@ internal class ChannelStart(
     val sounds: List<Int> = emptyList(),
     /** Qualité choisie à la main pour la chaîne (voir AppContainer.lockedQualities), `null` : automatique. */
     val lockedQuality: String? = null,
+    /** Ouverte pour l'enregistrement d'analyse des pubs : moins bonne version, sans remontée de qualité. */
+    val analysis: Boolean = false,
 )
 
 /** Nom d'une qualité de version dans les choix du lecteur : celui de StreamQuality, "" pour une version sans mention. */
@@ -278,6 +292,13 @@ internal suspend fun channelStart(
     }
     val preferredId = rememberedStart
         ?: if (options.any { it.channelId == requested.id }) requested.id else options.firstOrNull()?.channelId ?: requested.id
+    // Enregistrement pour l'analyse des pubs (il dure même lecteur fermé) : la moins bonne version. La détection ne
+    // regarde que des images réduites (480 × 270) et le son, pareils dans toutes les qualités : moins de débit et de
+    // décodage pour une box ou une Fire TV qui enregistre toute la nuit. Une qualité choisie à la main passe avant.
+    if (options.size > 1 && container.analysisRecording) {
+        val lowest = options.minBy { StreamQuality.rankOf(it.quality) }
+        return ChannelStart(options, lowest.channelId, autoQuality, qualityTarget, sounds, analysis = true)
+    }
     // Qualité visée (réglages) : au plus HD, ou SD pour économiser la connexion.
     val startId = if (options.size > 1) qualityTarget.start(options, preferredId) else preferredId
     return ChannelStart(options, startId, autoQuality, qualityTarget, sounds)
