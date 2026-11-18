@@ -185,7 +185,7 @@ Commandes :
   Groove 66, Monde 69, Reggae 71, Electro 74 ; FIP Hip-Hop inconnu), Skyrock (`skyrock.fm/api/v3/player/onair/national`,
   titre seul), Nova et ses webradios (`nova.fr/radios-data/www.nova.fr/all.json`, par adresse du flux), Les Indés
   (`POST https://<site>/lite/update_onair` `{"radio_ids":["1"]}` : jazzradio.fr, mradio.fr, generations.fr ; Latina et
-  Alouette ont un autre site, pas trouvé), Europe 2 et RFM (`https://<site>/cetait-quoi-ce-titre/history?idplayer=1&limit=1`,
+  Alouette ont un autre site, pas trouvé), Europe 2 (vérifié sur l'appareil le 18/11/2026) et RFM (`https://<site>/cetait-quoi-ce-titre/history?idplayer=1&limit=1`,
   0.2.183), Radioking (`api.radioking.io/widgets/api/v1/radio/<id>/track/current` : Reggae.fr 50473), émission en cours
   de RTL (`www.rtl.fr/ws/live/live` : titre et animateurs, pas de morceaux ; RTL2 et Fun donnent aussi leur émission mais
   pas le morceau : `/ws/live/{id}/last-tracks` répond 404). Europe 1 : Cloudflare refuse le cloud. NRJ / Chérie /
