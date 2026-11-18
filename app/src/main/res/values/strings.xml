@@ -851,4 +851,8 @@
     <string name="radio_visual_aurora_detail">Voiles de couleur lents et lumineux</string>
     <string name="radio_visual_particles_detail">Étoiles qui jaillissent du centre</string>
     <string name="radio_visual_vinyl_detail">Disque qui tourne, sillons éclairés</string>
+    <string name="settings_audd">Reconnaissance des morceaux (AudD)</string>
+    <string name="settings_audd_help">Pour les radios qui n’annoncent pas le morceau en cours, l’appli le reconnaît à l’écoute (8 secondes de son envoyées à AudD, comme Shazam). Sans clé, quelques reconnaissances par jour ; une clé AudD (audd.io) les rend illimitées.</string>
+    <string name="settings_audd_missing">Sans clé : quelques reconnaissances par jour.</string>
+    <string name="settings_audd_key">Clé AudD</string>
 </resources>

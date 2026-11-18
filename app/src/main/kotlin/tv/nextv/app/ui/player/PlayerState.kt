@@ -118,6 +118,12 @@ data class PlayerUiState(
     val audioOnly: Boolean = false,
     /** Morceau en cours annoncé par la radio (« Artiste - Titre »), si elle le donne. */
     val radioTitle: String? = null,
+    /**
+     * Morceau en cours trouvé autrement (service de Radio France, ou reconnu à l'écoute) quand la radio ne l'annonce pas ;
+     * [nowPlayingCover] : sa pochette.
+     */
+    val nowPlaying: String? = null,
+    val nowPlayingCover: String? = null,
     /** Lecture par le moteur VLC (son ou image que le lecteur de l'appli ne sait pas lire). */
     val engineVlc: Boolean = false,
     /** Format du son illisible (« MP2 », « DTS-HD »), pour le dire dans le message. */

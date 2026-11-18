@@ -558,6 +558,22 @@ class SettingsRepository(
         }
     }
 
+    /** Clé AudD (reconnaissance des morceaux des radios) saisie par l'utilisateur (chiffrée sur l'appareil). */
+    val auddApiKey: Flow<String?> = preferences
+        .map { prefs -> prefs[AUDD_KEY]?.let(cipher::decrypt) }
+        .distinctUntilChanged()
+
+    suspend fun setAuddApiKey(key: String?) {
+        val encrypted = key?.trim()?.takeIf { it.isNotEmpty() }?.let(cipher::encrypt)
+        edit { prefs ->
+            if (encrypted != null) {
+                prefs[AUDD_KEY] = encrypted
+            } else {
+                prefs.remove(AUDD_KEY)
+            }
+        }
+    }
+
     /** Clé football-data.org saisie par l'utilisateur (chiffrée sur l'appareil). */
     val footballApiKey: Flow<String?> = preferences
         .map { prefs -> prefs[FOOTBALL_KEY]?.let(cipher::decrypt) }
@@ -614,6 +630,7 @@ class SettingsRepository(
         val AUTO_QUALITY = booleanKey("auto_quality")
         val QUALITY_TARGET = stringKey("quality_target")
         val TMDB_KEY = stringKey("tmdb_key")
+        val AUDD_KEY = stringKey("audd_key")
         val FOOTBALL_KEY = stringKey("football_key")
         val TILES_PER_ROW = intKey("tiles_per_row")
         val DNS_PROVIDER = stringKey("dns_provider")
@@ -657,7 +674,7 @@ class SettingsRepository(
         val OBSOLETE = setOf("reminders", "parental_pin")
 
         /** Secrets chiffrés pour cet appareil, playlist active (numéro local), réglages retirés. */
-        val NOT_PORTABLE = setOf(PROXY_CREDENTIALS, TMDB_KEY, FOOTBALL_KEY, ACTIVE_PLAYLIST, EPG_IMPORT_VERSION, CATALOG_IMPORT_VERSION, LINEUP_VERSION).map { it.name }.toSet() + OBSOLETE
+        val NOT_PORTABLE = setOf(PROXY_CREDENTIALS, TMDB_KEY, FOOTBALL_KEY, AUDD_KEY, ACTIVE_PLAYLIST, EPG_IMPORT_VERSION, CATALOG_IMPORT_VERSION, LINEUP_VERSION).map { it.name }.toSet() + OBSOLETE
         val NOT_PORTABLE_PREFIXES = listOf(DECODER_PREFIX, RECENT_PREFIX, QUALITY_PREFIX, SOUND_PREFIX)
         const val DECODER_PREFIX = "decoder_"
         const val RECENT_PREFIX = "recent_channels_"

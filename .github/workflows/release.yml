@@ -12,6 +12,7 @@ name: Release
 # Sans l'un ni l'autre, l'APK est signé avec la clé de test du dépôt (app/nextv-test.keystore).
 # Fiches films/séries : le secret facultatif NEXTV_TMDB_API_KEY intègre une clé TMDB à l'APK.
 # Section Foot : le secret facultatif NEXTV_FOOTBALL_API_KEY intègre une clé football-data.org.
+# Radios : le secret facultatif NEXTV_AUDD_API_KEY intègre une clé AudD (reconnaissance des morceaux).
 # Mises à jour depuis l'application : elles lisent les versions publiées de ce dépôt (il doit être public).
 # Pour garder le code privé : créer un dépôt public NexTV-releases (avec un README) et le secret
 # NEXTV_RELEASES_TOKEN (jeton d'accès en écriture au contenu de ce dépôt) ; les APK y sont alors aussi
@@ -124,6 +125,8 @@ jobs:
           NEXTV_TMDB_API_KEY: ${{ secrets.NEXTV_TMDB_API_KEY }}
           # Clé football-data.org facultative (section Foot), intégrée de la même façon.
           NEXTV_FOOTBALL_API_KEY: ${{ secrets.NEXTV_FOOTBALL_API_KEY }}
+          # Clé AudD facultative (reconnaissance des morceaux des radios), intégrée de la même façon.
+          NEXTV_AUDD_API_KEY: ${{ secrets.NEXTV_AUDD_API_KEY }}
           # Serveurs du fournisseur King (onglet « King » : identifiant et mot de passe seulement).
           NEXTV_KING_SERVERS: ${{ secrets.NEXTV_KING_SERVERS }}
         run: |

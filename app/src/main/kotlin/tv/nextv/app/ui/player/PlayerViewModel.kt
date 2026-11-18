@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.withContext
 import tv.nextv.app.player.AdTestedChannels
 import tv.nextv.app.player.CodecFailure
@@ -161,6 +162,11 @@ class PlayerViewModel(
     /** Animation des radios (son sans image), à la place de l'écran noir. */
     val radioVisual: StateFlow<tv.nextv.app.data.settings.RadioVisual> = container.settings.radioVisual
         .stateIn(viewModelScope, SharingStarted.Eagerly, tv.nextv.app.data.settings.RadioVisual.DEFAULT)
+
+    /** Animation des radios choisie dans les options du lecteur (enregistrée pour toutes les radios). */
+    fun setRadioVisual(visual: tv.nextv.app.data.settings.RadioVisual) {
+        viewModelScope.launch { container.settings.setRadioVisual(visual) }
+    }
 
     /** Spectre du son pour l'animation des radios (commun aux lecteurs de l'appli). */
     val spectrum: tv.nextv.core.audio.SpectrumAnalyzer get() = container.playerFactory.spectrum
@@ -1495,6 +1501,27 @@ class PlayerViewModel(
         delayed.stopTimeshift()
         engine.release()
         releaseMulticastLock()
+    }
+
+
+    /** Morceau en cours des radios affichées (service de Radio France, reconnaissance à l'écoute). */
+    private val radioNowPlaying = RadioNowPlaying(
+        scope = viewModelScope,
+        state = mutableState,
+        client = { container.httpClients.client(tv.nextv.core.net.RequestPurpose.METADATA) },
+        snippet = container.playerFactory.snippet,
+        // Clé saisie dans les réglages, sinon celle intégrée à l'appli (secret de publication).
+        auddKey = { container.settings.auddApiKey.first() ?: tv.nextv.app.BuildConfig.AUDD_API_KEY.takeIf { it.isNotBlank() } },
+        logger = container.logger,
+    )
+
+    init {
+        // Bloc placé en dernier : tout ce qu'il utilise est déjà créé. Radio affichée avec son animation : son morceau en cours.
+        viewModelScope.launch {
+            combine(mutableState, radioVisual) { current, visual ->
+                (current.audioOnly && visual != tv.nextv.app.data.settings.RadioVisual.OFF && current.error == null) to current.channelName
+            }.distinctUntilChanged().collect { (active, name) -> radioNowPlaying.follow(active, name) }
+        }
     }
 
     companion object {

@@ -456,6 +456,11 @@ class AppContainer(context: Context) {
             settings.footballApiKey.collect { redactor.registerSecret(it) }
         }
         redactor.registerSecret(BuildConfig.FOOTBALL_API_KEY.takeIf { it.isNotBlank() })
+        // Clé AudD (reconnaissance des morceaux des radios) : masquée de même.
+        applicationScope.launch {
+            settings.auddApiKey.collect { redactor.registerSecret(it) }
+        }
+        redactor.registerSecret(BuildConfig.AUDD_API_KEY.takeIf { it.isNotBlank() })
         // Différé resté sur le disque (application fermée pendant une pause du direct) : jusqu'à plusieurs Go.
         applicationScope.launch(Dispatchers.IO) {
             runCatching { File(appContext.cacheDir, TIMESHIFT_FILE).delete() }

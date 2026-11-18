@@ -176,7 +176,22 @@ Commandes :
   avec le morceau en cours (métadonnées ICY, `radioTitle`). Son : `SpectrumTap` (processeur audio de chaque lecteur de
   `PlayerFactory`, simple copie tant qu'aucune animation n'est affichée) → `core/audio/SpectrumAnalyzer` (FFT 1024,
   32 bandes). Sans son analysé (VLC, son passé à l'ampli) : houle de remplacement. Captures : `Screenshots.radioVisuals`
-  (`animate = false`, sinon la boucle d'images empêche le test de finir).
+  (`animate = false`, sinon la boucle d'images empêche le test de finir). Choix aussi dans les options du lecteur (rubrique en
+  tête quand `audioOnly`). Couleurs selon le genre ou la radio (`paletteFor` : reggae vert-jaune-rouge, ska noir-blanc-rouge…).
+- Morceau en cours des radios (0.2.181, `ui/player/RadioNowPlaying.kt`, lancé par le dernier bloc `init` de
+  `PlayerViewModel`) : titre ICY du flux s'il y en a ; sinon radios de Radio France (`InternetRadios.Radio.radioFrance` =
+  numéro de station : FIP 7, Mouv' 6, Inter 1, franceinfo 2, Musique 4, Culture 5, FIP Jazz 65, Groove 66, Monde 69,
+  Reggae 71, Electro 74 ; FIP Hip-Hop inconnu) par `api.radiofrance.fr/livemeta/pull/<n>` (public, avec pochette) ; sinon
+  reconnaissance AudD (`api.audd.io`, 8 s en WAV mono 11 025 Hz tirés de `AudioSnippet`, rempli par `SpectrumTap` ;
+  quelques essais par jour sans clé, vérifié d'ici le 18/11/2026 ; clé : Réglages › Services ou secret CI
+  `NEXTV_AUDD_API_KEY` → `BuildConfig.AUDD_API_KEY`), relancée à la fin du morceau reconnu (`durationInMillis` −
+  `timecode`). Lecture des réponses : `core/audio/NowPlaying.kt`. Pas de Shazam : pas d'accès public autorisé.
+  Flux sans titre ICY (vérifié) : Radio France, NRJ / Chérie / Rire, RTL2, Fun, Nova, Jazz Radio, TSF, Infomaniak (titre vide).
+- Logos des radios : `InternetRadios` (logos officiels de Wikipédia ou des sites des radios ; Wikipédia et ses images
+  refusent l'agent d'OkHttp par défaut : client `IMAGE` avec l'agent de l'appli, `HttpClientProvider`) ; radios de la
+  playlist sans image : `InternetRadios.logoFor` à l'import. Wikimedia limite fortement les requêtes depuis le cloud (429).
+  Radios françaises ajoutées (`InternetRadios.french`, catégorie `FRENCH_GROUP` rangée dans `RADIO`) seulement si la
+  playlist ne les a pas déjà parmi ses radios (`M3uPlaylistLoader`).
 - Guides (0.2.178-0.2.179) : `xmltvfr.fr` d'abord, puis `HttpEpgFeedProvider.EXTRA_GUIDES` (Pluto TV, Samsung TV Plus,
   Plex France d'i.mjh.nz ; epgshare01 FR1 et RAKUTEN1), puis le guide du fournisseur (`xmltv.php` du compte Xtream,
   `AppContainer.providerGuide`) ; chacun seulement pour les chaînes encore sans programme (`SourceRepository.importFromFeed`).

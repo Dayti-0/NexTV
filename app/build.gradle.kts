@@ -31,6 +31,9 @@ android {
         // Clé football-data.org optionnelle (secret CI) pour la section Foot ; elle peut aussi se saisir dans les réglages.
         val footballKey = providers.environmentVariable("NEXTV_FOOTBALL_API_KEY").orNull.orEmpty()
         buildConfigField("String", "FOOTBALL_API_KEY", "\"${footballKey.replace("\"", "")}\"")
+        // Clé AudD optionnelle (secret CI) : reconnaissance des morceaux des radios ; elle peut aussi se saisir dans les réglages.
+        val auddKey = providers.environmentVariable("NEXTV_AUDD_API_KEY").orNull.orEmpty()
+        buildConfigField("String", "AUDD_API_KEY", "\"${auddKey.replace("\"", "")}\"")
 
         // Serveurs du fournisseur King (secret CI, jamais dans le dépôt public) : principal puis secours, séparés par
         // des espaces, virgules ou retours à la ligne. Vide : pas d'onglet « King ».

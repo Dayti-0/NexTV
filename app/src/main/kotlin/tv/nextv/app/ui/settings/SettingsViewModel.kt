@@ -382,6 +382,18 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
     /** Partage des enregistrements sur le réseau local, tant que le résultat n'est pas fermé ; `null` sans réseau. */
     fun shareAdMusic(): AdRecordings.Share? = container.adRecordings.share(container.adMusic)
 
+    /** Clé AudD enregistrée (reconnaissance des morceaux des radios). */
+    val auddKeySaved: StateFlow<Boolean> = settings.auddApiKey.map { it != null }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    fun saveAuddKey(key: String) {
+        viewModelScope.launch { settings.setAuddApiKey(key) }
+    }
+
+    fun clearAuddKey() {
+        viewModelScope.launch { settings.setAuddApiKey(null) }
+    }
+
     /** Animation des radios (son sans image). */
     val radioVisual: StateFlow<tv.nextv.app.data.settings.RadioVisual> = settings.radioVisual
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), tv.nextv.app.data.settings.RadioVisual.DEFAULT)

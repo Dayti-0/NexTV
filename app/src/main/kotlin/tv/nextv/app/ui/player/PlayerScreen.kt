@@ -112,6 +112,7 @@ import org.videolan.libvlc.util.VLCVideoLayout
 import tv.nextv.app.data.db.ChannelListRow
 import tv.nextv.app.data.db.GroupRow
 import tv.nextv.app.data.settings.AspectMode
+import tv.nextv.app.data.settings.RadioVisual
 import tv.nextv.app.ui.common.appViewModel
 import tv.nextv.app.ui.components.edgeFade
 import tv.nextv.app.ui.components.Badge
@@ -495,14 +496,15 @@ fun PlayerScreen(
         }
 
         // Radio ou Web radio (son sans image) : animation à la place de l'écran noir (réglage « Animation des radios »).
-        if (state.audioOnly && !film && radioVisual != tv.nextv.app.data.settings.RadioVisual.OFF && state.error == null) {
+        if (state.audioOnly && !film && radioVisual != RadioVisual.OFF && state.error == null) {
             RadioVisualizer(
                 visual = radioVisual,
                 analyzer = viewModel.spectrum,
                 name = state.channelName,
                 logoUrl = state.logoUrl,
-                genre = remember(state.channelName) { tv.nextv.core.catalog.InternetRadios.all.firstOrNull { it.name == state.channelName }?.genre },
-                title = state.radioTitle,
+                genre = remember(state.channelName) { tv.nextv.core.catalog.InternetRadios.byName(state.channelName)?.genre },
+                title = state.radioTitle ?: state.nowPlaying,
+                cover = state.nowPlayingCover.takeIf { state.radioTitle == null },
                 lowPower = lowPower,
             )
         }
@@ -575,6 +577,8 @@ fun PlayerScreen(
             onAudio = viewModel::selectAudio,
             onSubtitles = viewModel::selectSubtitles,
             onAspect = viewModel::setAspectMode,
+            radioVisual = radioVisual.takeIf { state.audioOnly && !film },
+            onRadioVisual = viewModel::setRadioVisual,
             onPreviousChannel = {
                 optionsVisible = false
                 viewModel.previousChannel()
@@ -756,6 +760,9 @@ fun PlayerOptionsPanel(
     soundVersions: List<Int> = emptyList(),
     soundVersion: Int = 0,
     onSoundVersion: ((Int) -> Unit)? = null,
+    /** Radio ou Web radio (son sans image) : animation affichée, choisie ici ; `null` : pas une radio. */
+    radioVisual: RadioVisual? = null,
+    onRadioVisual: (RadioVisual) -> Unit = {},
 ) {
     AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = modifier) {
         val firstFocus = remember { FocusRequester() }
@@ -794,10 +801,22 @@ fun PlayerOptionsPanel(
                 }
                 // Première ligne qui prend le focus : la première des sections qui proposent un choix.
                 val showSounds = isLive && onSoundVersion != null && soundVersions.size > 1
-                val audioFirst = onBackToLive == null && tracks.audio.size > 1
-                val soundFirst = onBackToLive == null && !audioFirst && showSounds
-                val subtitlesFirst = onBackToLive == null && !audioFirst && !soundFirst && tracks.subtitles.isNotEmpty()
-                val aspectFirst = onBackToLive == null && !audioFirst && !soundFirst && !subtitlesFirst
+                // Radio : l'animation d'abord (le reste sert peu sans image).
+                val visualFirst = onBackToLive == null && radioVisual != null
+                if (radioVisual != null) {
+                    OptionsSection(stringResource(R.string.settings_radio_visual))
+                    RadioVisual.entries.forEach { visual ->
+                        OptionRow(
+                            stringResource(visual.labelRes()),
+                            selected = visual == radioVisual,
+                            modifier = if (visual == radioVisual && visualFirst) Modifier.focusRequester(firstFocus) else Modifier,
+                        ) { onRadioVisual(visual) }
+                    }
+                }
+                val audioFirst = onBackToLive == null && !visualFirst && tracks.audio.size > 1
+                val soundFirst = onBackToLive == null && !visualFirst && !audioFirst && showSounds
+                val subtitlesFirst = onBackToLive == null && !visualFirst && !audioFirst && !soundFirst && tracks.subtitles.isNotEmpty()
+                val aspectFirst = onBackToLive == null && !visualFirst && !audioFirst && !soundFirst && !subtitlesFirst
 
                 OptionsSection(stringResource(R.string.player_audio))
                 if (tracks.audio.size <= 1) {

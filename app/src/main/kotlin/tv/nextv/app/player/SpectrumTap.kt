@@ -6,15 +6,20 @@ import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.BaseAudioProcessor
 import androidx.media3.common.util.UnstableApi
+import tv.nextv.core.audio.AudioSnippet
 import tv.nextv.core.audio.SpectrumAnalyzer
 import java.nio.ByteBuffer
 
 /**
- * Son décodé versé, sans le modifier, au spectre des animations des radios ([SpectrumAnalyzer]) : rien d'autre qu'une
- * copie tant qu'aucune animation n'est affichée.
+ * Son décodé versé, sans le modifier, au spectre des animations des radios ([SpectrumAnalyzer]) et aux dernières secondes
+ * gardées pour reconnaître le morceau ([AudioSnippet]) : rien d'autre qu'une copie tant qu'aucune animation n'est affichée.
  */
 @OptIn(UnstableApi::class)
-class SpectrumTap(private val analyzer: SpectrumAnalyzer) : BaseAudioProcessor() {
+class SpectrumTap(
+    private val analyzer: SpectrumAnalyzer,
+    /** Dernières secondes du son, pour reconnaître le morceau d'une radio qui ne l'annonce pas. */
+    private val snippet: AudioSnippet? = null,
+) : BaseAudioProcessor() {
 
     private var mono = FloatArray(0)
 
@@ -36,6 +41,7 @@ class SpectrumTap(private val analyzer: SpectrumAnalyzer) : BaseAudioProcessor()
             }
             analyzer.sampleRate = inputAudioFormat.sampleRate
             analyzer.write(mono, frames, SystemClock.elapsedRealtimeNanos())
+            snippet?.write(mono, frames, inputAudioFormat.sampleRate)
         }
         val output = replaceOutputBuffer(size)
         output.put(inputBuffer)

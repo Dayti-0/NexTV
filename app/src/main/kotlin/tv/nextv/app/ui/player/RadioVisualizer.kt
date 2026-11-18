@@ -25,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -57,7 +58,7 @@ private val VINYL_LABEL = 96.dp
 private const val MIX_NANOS = 120_000_000_000L
 
 /** Couleurs d'une animation : fond, puis trois teintes vives. Choisies d'après le nom de la radio. */
-private class Palette(val background: Color, val a: Color, val b: Color, val c: Color)
+internal class Palette(val background: Color, val a: Color, val b: Color, val c: Color)
 
 private val PALETTES = listOf(
     Palette(Color(0xFF07060F), Color(0xFFFF3D7F), Color(0xFF7C4DFF), Color(0xFF00E5FF)),
@@ -67,6 +68,31 @@ private val PALETTES = listOf(
     Palette(Color(0xFF020A12), Color(0xFF18FFFF), Color(0xFF2979FF), Color(0xFF64FFDA)),
     Palette(Color(0xFF0C0A02), Color(0xFFC6FF00), Color(0xFF1DE9B6), Color(0xFFFFFF8D)),
 )
+
+/**
+ * Couleurs qui représentent la radio : celles de son genre (vert, jaune, rouge pour le reggae ; noir, blanc, rouge pour
+ * le ska…) ou de la radio elle-même (rose de FIP, vert de Mouv'), sinon une palette tirée de son nom.
+ */
+internal fun paletteFor(name: String, genre: String?): Palette {
+    val text = "$name ${genre.orEmpty()}".lowercase()
+    fun has(vararg words: String) = words.any { it in text }
+    return when {
+        has("reggae", "dub", "rocksteady") && !has("ska") -> Palette(Color(0xFF041207), Color(0xFF00C853), Color(0xFFFFD600), Color(0xFFE53935))
+        has("ska") -> Palette(Color(0xFF0A0A0A), Color(0xFFF5F5F5), Color(0xFFE53935), Color(0xFF9E9E9E))
+        has("mouv") -> Palette(Color(0xFF02110A), Color(0xFF00FB8E), Color(0xFF00BFA5), Color(0xFFFFFFFF))
+        has("rap", "hip-hop", "hip hop", "g-funk", "r&b") -> Palette(Color(0xFF0D0812), Color(0xFFFFC107), Color(0xFF9C27B0), Color(0xFFFF5722))
+        has("groove", "funk", "soul", "disco", "beats") -> Palette(Color(0xFF120612), Color(0xFFFF9100), Color(0xFFFF4081), Color(0xFF7C4DFF))
+        has("jazz", "blues") -> Palette(Color(0xFF050A18), Color(0xFFFFB300), Color(0xFF1E88E5), Color(0xFF26A69A))
+        has("électro", "electro", "house", "dance") -> Palette(Color(0xFF060414), Color(0xFF00E5FF), Color(0xFFD500F9), Color(0xFF651FFF))
+        has("monde", "latin", "afro") -> Palette(Color(0xFF140A02), Color(0xFFFF6D00), Color(0xFF00BFA5), Color(0xFFFFD600))
+        has("classique", "musique") -> Palette(Color(0xFF0F0A05), Color(0xFFD4AF37), Color(0xFFF5E6C8), Color(0xFF8E2430))
+        has("info", "culture", "débat", "economie", "économie", "humour") -> Palette(Color(0xFF050914), Color(0xFF2962FF), Color(0xFFFFFFFF), Color(0xFFE53935))
+        has("fip") -> Palette(Color(0xFF14030C), Color(0xFFE2007A), Color(0xFFFF80AB), Color(0xFF7C4DFF))
+        has("nrj") -> Palette(Color(0xFF120404), Color(0xFFE53935), Color(0xFFFFFFFF), Color(0xFFFF8A80))
+        has("skyrock") -> Palette(Color(0xFF0A0414), Color(0xFF7C4DFF), Color(0xFFE040FB), Color(0xFFFFFFFF))
+        else -> PALETTES[Math.floorMod(name.hashCode(), PALETTES.size)]
+    }
+}
 
 /** État d'une animation, modifié à chaque image (hors Compose : seul [tick] fait redessiner). */
 private class VisualFrame(bandCount: Int, particleCount: Int) {
@@ -106,12 +132,14 @@ fun RadioVisualizer(
     genre: String?,
     title: String?,
     lowPower: Boolean,
+    /** Pochette du morceau en cours, à la place du logo dans la carte. */
+    cover: String? = null,
     modifier: Modifier = Modifier,
     /** Captures d'écran : quelques secondes d'animation déjà jouées, puis image fixe ([animate] faux). */
     warmUpSeconds: Int = 0,
     animate: Boolean = true,
 ) {
-    val palette = remember(name) { PALETTES[Math.floorMod(name.hashCode(), PALETTES.size)] }
+    val palette = remember(name, genre) { paletteFor(name, genre) }
     val frame = remember(lowPower) {
         VisualFrame(analyzer.bandCount, if (lowPower) 70 else 150).also { warm ->
             repeat(warmUpSeconds * 30) { step ->
@@ -179,7 +207,16 @@ fun RadioVisualizer(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            ChannelLogo(url = logoUrl, name = name, modifier = Modifier.size(64.dp), shape = RoundedCornerShape(14.dp), monogramSize = 22.dp)
+            if (cover != null) {
+                coil3.compose.AsyncImage(
+                    model = cover,
+                    contentDescription = null,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    modifier = Modifier.size(84.dp).clip(RoundedCornerShape(14.dp)),
+                )
+            } else {
+                ChannelLogo(url = logoUrl, name = name, modifier = Modifier.size(64.dp), shape = RoundedCornerShape(14.dp), monogramSize = 22.dp)
+            }
             Column(Modifier.widthIn(max = 560.dp)) {
                 Text(name, color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 genre?.let { Text(it, color = palette.c.copy(alpha = 0.9f), fontSize = 15.sp, maxLines = 1) }

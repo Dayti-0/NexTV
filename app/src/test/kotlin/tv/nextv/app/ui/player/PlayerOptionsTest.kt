@@ -146,6 +146,39 @@ class PlayerOptionsTest {
         compose.onNodeWithText("Double audio").assertExists()
     }
 
+    /** Radio (son sans image) : l'animation se choisit en tête des options, la sélection sur celle en cours. */
+    @Test
+    fun `radio animation is chosen from the options`() {
+        var chosen: tv.nextv.app.data.settings.RadioVisual? = null
+        compose.setContent {
+            NexTvTheme(ThemeStyle.NIGHT) {
+                PlayerOptionsPanel(
+                    visible = true,
+                    tracks = PlayerTracks(),
+                    aspect = AspectMode.FIT,
+                    isLive = true,
+                    infoVisible = false,
+                    onAudio = {},
+                    onSubtitles = {},
+                    onAspect = {},
+                    onPreviousChannel = {},
+                    onToggleInfo = {},
+                    onDismiss = {},
+                    radioVisual = tv.nextv.app.data.settings.RadioVisual.SPECTRUM,
+                    onRadioVisual = { chosen = it },
+                )
+            }
+        }
+        compose.mainClock.advanceTimeBy(500)
+        compose.waitForIdle()
+        compose.onNodeWithText("Animation des radios").assertExists()
+        assertEquals("Spectre", focusedText())
+        press(Key.DirectionDown)
+        assertEquals("Ondes", focusedText())
+        press(Key.DirectionCenter)
+        assertEquals(tv.nextv.app.data.settings.RadioVisual.WAVES, chosen)
+    }
+
     /** Une seule version du son (chaînes non rassemblées) : pas de choix proposé. */
     @Test
     fun `no sound version choice for a single version`() {

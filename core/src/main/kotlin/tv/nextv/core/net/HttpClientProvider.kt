@@ -72,6 +72,15 @@ class HttpClientProvider(
             .authenticator(ScopedCredentialsAuthenticator())
             .addInterceptor(RedirectInterceptor(network.maxRedirects))
             .dns(resolver())
+        // Logos et images : l'agent de l'appli quand la requête n'en donne pas (Wikimedia, qui sert les logos des radios,
+        // refuse celui d'OkHttp par défaut).
+        if (purpose == RequestPurpose.IMAGE) {
+            val agent = network.defaultUserAgent
+            builder.addInterceptor { chain ->
+                val request = chain.request()
+                chain.proceed(if (request.header("User-Agent") == null) request.newBuilder().header("User-Agent", agent).build() else request)
+            }
+        }
 
         if (proxy.appliesTo(purpose)) {
             builder.proxySelector(ConfiguredProxySelector.from(proxy))

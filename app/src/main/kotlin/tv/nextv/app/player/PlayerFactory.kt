@@ -80,6 +80,9 @@ class PlayerFactory(
     /** Spectre du son pour les animations des radios, versé par chaque lecteur créé ici (aperçu compris : il peut passer en plein écran). */
     val spectrum = tv.nextv.core.audio.SpectrumAnalyzer()
 
+    /** Dernières secondes du son d'une radio affichée, pour reconnaître le morceau en cours. */
+    val snippet = tv.nextv.core.audio.AudioSnippet()
+
     /** Mesure du débit réel des téléchargements des flux (voir [create]). */
     fun newBandwidthMeter(): DefaultBandwidthMeter = DefaultBandwidthMeter.Builder(context).build()
 
@@ -119,7 +122,7 @@ class PlayerFactory(
                     .setEnableFloatOutput(enableFloatOutput)
                     .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
                     .setAudioProcessors(
-                        listOfNotNull<AudioProcessor>(spectrum?.let(::SpectrumTap), adVolume?.let(::AdVolumeAudioProcessor)).toTypedArray(),
+                        listOfNotNull<AudioProcessor>(SpectrumTap(spectrum, snippet), adVolume?.let(::AdVolumeAudioProcessor)).toTypedArray(),
                     )
                     .build()
 

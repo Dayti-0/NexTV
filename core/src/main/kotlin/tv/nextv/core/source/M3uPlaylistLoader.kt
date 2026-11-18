@@ -148,7 +148,20 @@ class M3uPlaylistLoader(
         if (channels.isEmpty()) {
             throw SourceException(if (playlist.hasHeader) SourceError.NoChannels else SourceError.NotAPlaylist)
         }
-        if (internetRadios && channels.any { it.kind == ModelContentKind.LIVE }) channels += InternetRadios.channels(channels.size)
+        if (internetRadios && channels.any { it.kind == ModelContentKind.LIVE }) {
+            // Radios de la playlist (sans catégorie, ou dans une catégorie de radios) : leurs noms écartent les radios
+            // françaises qu'elle a déjà ; et celles sans image reçoivent leur logo.
+            val radios = channels.filter { channel ->
+                channel.kind == ModelContentKind.LIVE &&
+                    (channel.groupTitle.isNullOrBlank() || channel.groupTitle!!.contains("radio", ignoreCase = true) || RADIO_NAME.containsMatchIn(channel.name))
+            }
+            for (index in channels.indices) {
+                val channel = channels[index]
+                if (channel.kind != ModelContentKind.LIVE || !channel.logoUrl.isNullOrBlank()) continue
+                InternetRadios.logoFor(channel.name)?.let { channels[index] = channel.copy(logoUrl = it) }
+            }
+            channels += InternetRadios.channels(channels.size, radios.map { it.name })
+        }
         channels.trimToSize()
 
         val warnings = buildSet {
@@ -249,3 +262,6 @@ class M3uPlaylistLoader(
         }
     }
 }
+
+/** Nom d'une radio de la playlist (« RFM RADIO », « SkyRock FM »). */
+private val RADIO_NAME = Regex("""\b(radio|fm)\b""", RegexOption.IGNORE_CASE)

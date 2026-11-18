@@ -27,7 +27,6 @@ object AdRadios {
 
     private val radioFrance = listOf(
         Radio("fip", "FIP", "https://icecast.radiofrance.fr/fip-hifi.aac"),
-        Radio("fip_rock", "FIP Rock", "https://icecast.radiofrance.fr/fiprock-hifi.aac"),
         Radio("fip_pop", "FIP Pop", "https://icecast.radiofrance.fr/fippop-hifi.aac"),
         Radio("fip_jazz", "FIP Jazz", "https://icecast.radiofrance.fr/fipjazz-hifi.aac"),
         Radio("fip_groove", "FIP Groove", "https://icecast.radiofrance.fr/fipgroove-hifi.aac"),

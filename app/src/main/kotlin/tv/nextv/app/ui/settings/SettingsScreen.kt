@@ -143,6 +143,7 @@ fun SettingsScreen(
     val adPlace by viewModel.adPlace.collectAsStateWithLifecycle()
     val adSound by viewModel.adSound.collectAsStateWithLifecycle()
     val radioVisual by viewModel.radioVisual.collectAsStateWithLifecycle()
+    val auddKeySaved by viewModel.auddKeySaved.collectAsStateWithLifecycle()
     val adUpload by viewModel.adUpload.collectAsStateWithLifecycle()
     // Clé USB branchée ou retirée, autorisation accordée : emplacements relus à chaque retour sur les réglages.
     val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
@@ -239,6 +240,9 @@ fun SettingsScreen(
         onClearTmdbKey = viewModel::clearTmdbKey,
         onSaveFootballKey = viewModel::saveFootballKey,
         onClearFootballKey = viewModel::clearFootballKey,
+        auddKeySaved = auddKeySaved,
+        onSaveAuddKey = viewModel::saveAuddKey,
+        onClearAuddKey = viewModel::clearAuddKey,
         onProxy = onProxy,
         onGroups = onGroups,
         onBackup = {
@@ -327,6 +331,9 @@ fun SettingsContent(
     onProxy: () -> Unit,
     onSaveFootballKey: (String) -> Unit = {},
     onClearFootballKey: () -> Unit = {},
+    auddKeySaved: Boolean = false,
+    onSaveAuddKey: (String) -> Unit = {},
+    onClearAuddKey: () -> Unit = {},
     onGroups: (ContentKind) -> Unit = {},
     onCycleDecoder: (String) -> Unit = {},
     onChannelPreview: (Boolean) -> Unit = {},
@@ -783,6 +790,22 @@ fun SettingsContent(
                     saved = state.footballKeySaved,
                     onSave = onSaveFootballKey,
                     onClear = onClearFootballKey,
+                )
+                // Morceau en cours des radios qui ne l'annoncent pas : reconnu à l'écoute (quelques essais par jour sans clé).
+                KeyCard(
+                    title = stringResource(R.string.settings_audd),
+                    subtitle = stringResource(R.string.settings_audd_help),
+                    status = stringResource(
+                        when {
+                            auddKeySaved -> R.string.settings_tmdb_saved
+                            tv.nextv.app.BuildConfig.AUDD_API_KEY.isNotBlank() -> R.string.settings_tmdb_builtin
+                            else -> R.string.settings_audd_missing
+                        },
+                    ),
+                    label = stringResource(R.string.settings_audd_key),
+                    saved = auddKeySaved,
+                    onSave = onSaveAuddKey,
+                    onClear = onClearAuddKey,
                 )
             }
 

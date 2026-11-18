@@ -3,68 +3,203 @@ package tv.nextv.core.catalog
 import tv.nextv.core.model.Channel
 import tv.nextv.core.model.ContentKind
 import tv.nextv.core.stream.StreamUrlInspector
+import java.text.Normalizer
 
 /**
- * Web radios ajoutées par l'appli aux chaînes en direct de la playlist, dans leur propre catégorie « Web radios » (à part
- * des radios de la playlist) : radios sans publicité (service public, radios financées par leurs auditeurs, associatives
- * ou de passionnés), rangées par genre. Elles servent aussi de musique pendant les pubs (réglage « Pendant les pubs »).
- * Flux vérifiés le 17/11/2026 (reggae) et le 18/11/2026 (autres genres).
+ * Radios ajoutées par l'appli aux chaînes en direct de la playlist :
+ * - les **Web radios** ([all]), dans leur propre catégorie « Web radios » : radios sans publicité (service public, radios
+ *   financées par leurs auditeurs, associatives ou de passionnés), rangées par genre. Elles servent aussi de musique pendant
+ *   les pubs (réglage « Pendant les pubs ») ;
+ * - les **grandes radios françaises** ([french]) absentes de la playlist, rangées avec ses radios (catégorie « Radios »).
+ *
+ * Chaque radio a son logo (logos officiels de Wikipédia ou des sites des radios) ; les radios de la playlist sans image
+ * reçoivent le leur par [logoFor]. Flux vérifiés le 17/11/2026 (reggae) et le 18/11/2026 (le reste).
  */
 object InternetRadios {
 
-    /** Catégorie de ces radios ; [ChannelLineup] en fait la rubrique « Web radios », après les radios de la playlist. */
+    /** Catégorie des Web radios ; [ChannelLineup] en fait la rubrique « Web radios », après les radios de la playlist. */
     const val GROUP = "Web radios"
 
     /** Ancien nom de la catégorie (0.2.176 à 0.2.178) : chaînes enregistrées avant la relecture de la playlist. */
     const val FORMER_GROUP = "Radios Internet"
 
+    /** Catégorie des radios françaises ajoutées ; [ChannelLineup] les range avec les radios de la playlist. */
+    const val FRENCH_GROUP = "Radios françaises"
+
     /**
      * @property key identifiant stable (réglage « radio pendant les pubs »).
-     * @property genre genre affiché sous le nom (animations des radios, choix de la radio des pubs).
+     * @property genre genre affiché sous le nom (animations des radios, choix de la radio des pubs) ; il donne aussi les
+     * couleurs de l'animation.
+     * @property radioFrance numéro de la radio chez Radio France : le morceau en cours est lu sur son service public
+     * (leurs flux ne l'annoncent pas).
      */
-    data class Radio(val key: String, val name: String, val genre: String, val url: String, val logo: String? = null)
+    data class Radio(
+        val key: String,
+        val name: String,
+        val genre: String,
+        val url: String,
+        val logo: String? = null,
+        val radioFrance: Int? = null,
+    )
 
+    private const val FIP_LOGO = "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/16/FIP_logo_2021.svg/330px-FIP_logo_2021.svg.png"
+    private const val MOUV_LOGO = "https://charte.radiofrance.fr/images/mouv/mouv-avatar.png"
+    private const val GROSSE_RADIO_LOGO = "https://upload.wikimedia.org/wikipedia/fr/3/31/Logo_GrosseRadio_300dpi.png"
+
+    /** Web radios sans pub, par genre (rock et metal retirés le 18/11/2026 : pas du goût de l'utilisateur). */
     val all: List<Radio> = listOf(
         // Rap et hip-hop
-        Radio("mouv", "Mouv'", "Rap", "https://icecast.radiofrance.fr/mouv-hifi.aac"),
-        Radio("fip_hiphop", "FIP Hip-Hop", "Hip-hop", "https://icecast.radiofrance.fr/fiphiphop-hifi.aac"),
+        Radio("mouv", "Mouv'", "Rap", "https://icecast.radiofrance.fr/mouv-hifi.aac", MOUV_LOGO, radioFrance = 6),
+        Radio("fip_hiphop", "FIP Hip-Hop", "Hip-hop", "https://icecast.radiofrance.fr/fiphiphop-hifi.aac", FIP_LOGO),
         Radio("west_coast", "West Coast G-Funk", "Hip-hop", "https://r.bgp.rodeo/listen/west_coast/radio.mp3"),
         Radio("sensi_hiphop", "Sensi Hip Hop", "Hip-hop", "https://sensihiphop.radioca.st/stream"),
         // Groove, funk, soul
-        Radio("fip_groove", "FIP Groove", "Groove, funk, soul", "https://icecast.radiofrance.fr/fipgroove-hifi.aac"),
+        Radio("fip_groove", "FIP Groove", "Groove, funk, soul", "https://icecast.radiofrance.fr/fipgroove-hifi.aac", FIP_LOGO, radioFrance = 66),
         Radio("dublab", "Dublab", "Groove, beats", "https://dublab.out.airtime.pro/dublab_a"),
         // Ska
         Radio("tonic_ska", "Tonic Ska Radio", "Ska", "https://eu10.fastcast4u.com/tonicska"),
-        Radio("boot_boy", "Boot Boy Radio", "Ska, rocksteady, soul", "https://streaming04.liveboxstream.uk/proxy/dwain?mp=/stream"),
+        Radio(
+            "boot_boy", "Boot Boy Radio", "Ska, rocksteady, soul", "https://streaming04.liveboxstream.uk/proxy/dwain?mp=/stream",
+            "https://bootboyradio.net/wp-content/uploads/2021/02/cropped-900logosquare-192x192.jpg",
+        ),
         // Reggae
-        Radio("fip_reggae", "FIP Reggae", "Reggae", "https://icecast.radiofrance.fr/fipreggae-hifi.aac"),
+        Radio("fip_reggae", "FIP Reggae", "Reggae", "https://icecast.radiofrance.fr/fipreggae-hifi.aac", FIP_LOGO, radioFrance = 71),
         Radio("soma_reggae", "SomaFM Heavyweight Reggae", "Reggae", "https://ice1.somafm.com/reggae-128-mp3", "https://somafm.com/img3/reggae400.jpg"),
-        Radio("grosse_reggae", "La Grosse Radio Reggae", "Reggae", "https://hd.lagrosseradio.info/lagrosseradio-reggae-192.mp3"),
-        Radio("reggae_fr", "Reggae.fr Webradio", "Reggae", "https://listen.radioking.com/radio/50473/stream/87415"),
+        Radio("grosse_reggae", "La Grosse Radio Reggae", "Reggae", "https://hd.lagrosseradio.info/lagrosseradio-reggae-192.mp3", GROSSE_RADIO_LOGO),
+        Radio("reggae_fr", "Reggae.fr Webradio", "Reggae", "https://listen.radioking.com/radio/50473/stream/87415", "https://www.reggae.fr/apple-touch-icon.png"),
         Radio("alpha_boys", "Alpha Boys School Radio", "Reggae, ska", "https://alphaboys-live.streamguys1.com/alphaboys.mp3"),
-        // Électro, jazz, rock, monde
-        Radio("fip_electro", "FIP Electro", "Électro", "https://icecast.radiofrance.fr/fipelectro-hifi.aac"),
-        Radio("fip_jazz", "FIP Jazz", "Jazz", "https://icecast.radiofrance.fr/fipjazz-hifi.aac"),
-        Radio("fip_world", "FIP Monde", "Musiques du monde", "https://icecast.radiofrance.fr/fipworld-hifi.aac"),
-        Radio("fip_rock", "FIP Rock", "Rock", "https://icecast.radiofrance.fr/fiprock-hifi.aac"),
-        Radio("grosse_rock", "La Grosse Radio Rock", "Rock", "https://hd.lagrosseradio.info/lagrosseradio-rock-192.mp3"),
-        Radio("grosse_metal", "La Grosse Radio Metal", "Metal", "https://hd.lagrosseradio.info/lagrosseradio-metal-192.mp3"),
+        // Électro, jazz, monde
+        Radio("fip_electro", "FIP Electro", "Électro", "https://icecast.radiofrance.fr/fipelectro-hifi.aac", FIP_LOGO, radioFrance = 74),
+        Radio("fip_jazz", "FIP Jazz", "Jazz", "https://icecast.radiofrance.fr/fipjazz-hifi.aac", FIP_LOGO, radioFrance = 65),
+        Radio("fip_world", "FIP Monde", "Musiques du monde", "https://icecast.radiofrance.fr/fipworld-hifi.aac", FIP_LOGO, radioFrance = 69),
     )
 
-    /** Radio de cette liste lue à cette adresse (genre affiché par les animations), `null` sinon. */
-    fun byUrl(url: String?): Radio? = url?.let { address -> all.firstOrNull { it.url == address } }
+    /**
+     * Grandes radios françaises, ajoutées à la catégorie « Radios » quand la playlist ne les a pas déjà (NRJ, RTL, RFM,
+     * RMC, Skyrock, Nostalgie, Europe 1 et 2… y sont). Flux officiels des radios.
+     */
+    val french: List<Radio> = listOf(
+        Radio("rtl2", "RTL2", "Pop-rock", "https://icecast.rtl2.fr/rtl2-1-44-128", "https://www.rtl2.fr/apple-touch-icon.png"),
+        Radio("fun", "Fun Radio", "Dance, hits", "https://icecast.funradio.fr/fun-1-44-128", "https://www.funradio.fr/apple-touch-icon.png"),
+        Radio(
+            "cherie", "Chérie FM", "Pop, love songs", "https://streaming.nrjaudio.fm/oubqggj25zuw",
+            "https://upload.wikimedia.org/wikipedia/commons/e/ec/Ch%C3%A9rie_FM_logo_2012.png",
+        ),
+        Radio(
+            "rire", "Rire & Chansons", "Humour", "https://streaming.nrjaudio.fm/ousguym4z85f",
+            "https://players.nrjaudio.fm/live-metadata/player/img/player-files/rire/logos/640x640/RIRE-WR-Sketches.jpg",
+        ),
+        Radio(
+            "generations", "Générations", "Rap, R&B", "https://generationfm.ice.infomaniak.ch/generationfm-high.mp3",
+            "https://generations.fr/apple-touch-icon-120x120.png",
+        ),
+        Radio(
+            "nova", "Radio Nova", "Groove, électro", "https://novazz.ice.infomaniak.ch/novazz-128.mp3",
+            "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/ba/Radio_Nova_2024.svg/330px-Radio_Nova_2024.svg.png",
+        ),
+        Radio(
+            "fg", "Radio FG", "Électro, house", "http://radiofg.impek.com/fg",
+            "https://thumb.wikimedia.org/wikipedia/fr/thumb/1/10/Logo_radio-fg-2019.svg/330px-Logo_radio-fg-2019.svg.png",
+        ),
+        Radio(
+            "latina", "Latina", "Musiques latines", "https://start-latina.ice.infomaniak.ch/start-latina-high.mp3",
+            "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/fd/Logo_Latina.png/330px-Logo_Latina.png",
+        ),
+        Radio("mradio", "M Radio", "Chanson française", "https://mfm.ice.infomaniak.ch/mfm-128.mp3", "https://mradio.fr/apple-touch-icon-120x120.png"),
+        Radio(
+            "alouette", "Alouette", "Pop, hits", "https://alouette.ice.infomaniak.ch/alouette-high.mp3",
+            "https://thumb.wikimedia.org/wikipedia/fr/thumb/a/a4/Logo_station_Alouette.jpeg/330px-Logo_station_Alouette.jpeg",
+        ),
+        Radio("jazz", "Jazz Radio", "Jazz", "https://jazzradio.ice.infomaniak.ch/jazzradio-high.aac", "https://www.jazzradio.fr/apple-touch-icon-120x120.png"),
+        Radio(
+            "tsf", "TSF Jazz", "Jazz", "https://tsfjazz.ice.infomaniak.ch/tsfjazz-high.mp3",
+            "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/cd/TSFJazz-2017.jpg/330px-TSFJazz-2017.jpg",
+        ),
+        Radio("fip", "FIP", "Éclectique", "https://icecast.radiofrance.fr/fip-hifi.aac", FIP_LOGO, radioFrance = 7),
+        Radio(
+            "inter", "France Inter", "Info, culture", "https://icecast.radiofrance.fr/franceinter-hifi.aac",
+            "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a0/France_Inter_logo_2021.svg/330px-France_Inter_logo_2021.svg.png",
+            radioFrance = 1,
+        ),
+        Radio(
+            "franceinfo", "franceinfo", "Info", "https://icecast.radiofrance.fr/franceinfo-hifi.aac",
+            "https://www.francetvinfo.fr/assets/common/images/pwa/ios/120-0cfbd6d4.png", radioFrance = 2,
+        ),
+        Radio(
+            "culture", "France Culture", "Culture", "https://icecast.radiofrance.fr/franceculture-hifi.aac",
+            "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d6/France_Culture_logo_2021.svg/330px-France_Culture_logo_2021.svg.png",
+            radioFrance = 5,
+        ),
+        Radio(
+            "musique", "France Musique", "Classique", "https://icecast.radiofrance.fr/francemusique-hifi.aac",
+            "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6c/France_Musique_logo_2021.svg/330px-France_Musique_logo_2021.svg.png",
+            radioFrance = 4,
+        ),
+        Radio(
+            "classique", "Radio Classique", "Classique", "https://radioclassique.ice.infomaniak.ch/radioclassique-high.mp3",
+            "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/8f/Logo_Radio_Classique.svg/330px-Logo_Radio_Classique.svg.png",
+        ),
+        Radio(
+            "sud", "Sud Radio", "Info, débats", "https://live.sudradio.fr/sudradio-mp3-128",
+            "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/03/Logo_Sud_Radio_2014.svg/330px-Logo_Sud_Radio_2014.svg.png",
+        ),
+        Radio("bfm_business", "BFM Business", "Économie", "https://audio.bfmtv.com/bfmbusiness_128.mp3", "https://www.bfmtv.com/android-icon-192x192.png"),
+    )
 
-    /** Ces radios en chaînes en direct, aux places qui suivent [firstPosition]. */
-    fun channels(firstPosition: Int): List<Channel> = all.mapIndexed { index, radio ->
-        Channel(
-            position = firstPosition + index,
-            name = radio.name,
-            stream = StreamUrlInspector.inspect(radio.url, baseUrl = null),
-            groupTitle = GROUP,
-            logoUrl = radio.logo,
-            kind = ContentKind.LIVE,
-            title = radio.name,
-            variantKey = LiveVariants.key(QualityParser.parse(radio.name).variantKey),
-        )
+    /** Logos des radios de la playlist qui n'en ont pas (nom ramené par [logoKey]). */
+    private val PLAYLIST_LOGOS: Map<String, String> by lazy {
+        mapOf(
+        "nrj" to "https://cdn.uc.assets.prezly.com/b1be11c1-7593-48e0-b0d3-dfedd93ef5a2/-/preview/512x512/-/format/png/Newsroom%20Icon-NRJ.png",
+        "rtl" to "https://www.rtl.fr/apple-touch-icon.png",
+        "rfm" to "https://cdn-rfm.lanmedia.fr/apple-touch-icon-120x120.png",
+        "rmc" to "https://rmc.bfmtv.com/apple-icon-228x228.png",
+        "nostalgie" to "https://players.nrjaudio.fm/live-metadata/player/img/player-files/nosta/logos/640x640/P_Nostalgie_Premium_Logo_2023.png",
+        "skyrock" to "https://thumb.wikimedia.org/wikipedia/fr/thumb/a/a4/Logo_Skyrock_FM_%281997%29.svg/330px-Logo_Skyrock_FM_%281997%29.svg.png",
+        "europe1" to "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ae/Europe1_FLAT.png/330px-Europe1_FLAT.png",
+        "europe2" to "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/47/Europe_2_noir_2024.png/330px-Europe_2_noir_2024.png",
+        "vibration" to "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e0/Logo_Vibration2018.png/330px-Logo_Vibration2018.png",
+        ) + (all + french).mapNotNull { radio -> radio.logo?.let { logoKey(radio.name) to it } }
+    }
+
+    /** Mots qui ne changent pas la radio : « |FR| RFM RADIO », « SkyRock FM », « RADIO NOSTALGIE ». */
+    private val RADIO_WORDS = Regex("""\b(radio|fm|hd|fhd|sd)\b""")
+    private val PREFIX = Regex("""^\s*[|\[(]?\s*[A-Z]{2,3}\s*[|\])]\s*""")
+    private val DIACRITICS = Regex("\\p{Mn}+")
+    private val NON_ALPHANUMERIC = Regex("[^a-z0-9]+")
+
+    /** Nom ramené à une clé de logo : sans pays, sans « radio » / « FM », sans accents ni séparateurs. */
+    fun logoKey(name: String): String {
+        val plain = Normalizer.normalize(PREFIX.replace(name, "").lowercase(), Normalizer.Form.NFD).let { DIACRITICS.replace(it, "") }
+        return NON_ALPHANUMERIC.replace(RADIO_WORDS.replace(plain, " "), "")
+    }
+
+    /** Logo d'une radio de la playlist d'après son nom, `null` si elle n'est pas connue. */
+    fun logoFor(name: String): String? = PLAYLIST_LOGOS[logoKey(name)]
+
+    /** Radio de l'appli de ce nom (genre, logo, numéro Radio France), `null` sinon. */
+    fun byName(name: String?): Radio? = name?.let { n -> (all + french).firstOrNull { it.name == n } }
+
+    /** Radio de cette liste lue à cette adresse, `null` sinon. */
+    fun byUrl(url: String?): Radio? = url?.let { address -> (all + french).firstOrNull { it.url == address } }
+
+    /**
+     * Ces radios en chaînes en direct, aux places qui suivent [firstPosition] : les Web radios, puis les radios françaises
+     * dont le nom ([logoKey]) n'est pas déjà parmi les chaînes de la playlist ([existingNames]).
+     */
+    fun channels(firstPosition: Int, existingNames: Collection<String> = emptyList()): List<Channel> {
+        val existing = existingNames.mapTo(HashSet(), ::logoKey)
+        val radios = all.map { it to GROUP } + french.filter { logoKey(it.name) !in existing }.map { it to FRENCH_GROUP }
+        return radios.mapIndexed { index, (radio, group) ->
+            Channel(
+                position = firstPosition + index,
+                name = radio.name,
+                stream = StreamUrlInspector.inspect(radio.url, baseUrl = null),
+                groupTitle = group,
+                logoUrl = radio.logo,
+                kind = ContentKind.LIVE,
+                title = radio.name,
+                variantKey = LiveVariants.key(QualityParser.parse(radio.name).variantKey),
+            )
+        }
     }
 }

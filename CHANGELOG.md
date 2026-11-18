@@ -4,6 +4,14 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.181
+- Radios : le morceau en cours s'affiche à l'écran, même quand la radio ne l'annonce pas : pris sur le service de Radio France (FIP, Mouv', France Inter…, avec la pochette de l'album), sinon reconnu à l'écoute comme Shazam (quelques reconnaissances par jour sans clé, illimitées avec une clé AudD dans Réglages › Services)
+- Radios : l'animation se change directement depuis les options du lecteur (touche Menu), rubrique « Animation des radios » en tête
+- Les couleurs de l'animation représentent la radio : vert, jaune et rouge pour le reggae, noir, blanc et rouge pour le ska, or et violet pour le rap…
+- Logos pour les Web radios et les radios de la playlist qui n'en avaient pas (NRJ, RTL, RFM, RMC, Nostalgie, Skyrock, Europe 1 et 2…)
+- Nouvelles radios françaises dans « Radios » : RTL2, Fun Radio, Chérie FM, Rire & Chansons, Générations, Radio Nova, Radio FG, Latina, M Radio, Alouette, Jazz Radio, TSF Jazz, FIP, France Inter, franceinfo, France Culture, France Musique, Radio Classique, Sud Radio, BFM Business
+- Web radios : FIP Rock, La Grosse Radio Rock et La Grosse Radio Metal retirées
+
 ## 0.2.180
 - Enregistrements d'analyse : après 2 heures sur la même chaîne, l'enregistrement se découpait en fichiers d'une seconde (26 d'affilée sur TF1 le 17 novembre) ; chaque fichier mesure maintenant sa propre durée
 - « Baisser le son des pubs » : plus rien n'est baissé sur les chaînes « 24/24 » de M6+ (Les Marseillais, Incroyables Transformations, Turbo…), qui n'ont pas de pubs (le son baissait parfois après l'écran « M6+ revient dans un instant »)

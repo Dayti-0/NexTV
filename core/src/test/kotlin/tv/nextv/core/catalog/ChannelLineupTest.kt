@@ -280,12 +280,30 @@ class ChannelLineupTest {
     fun `web radios have their own category after the radios of the playlist`() {
         val channels = load(internetRadios = true, "FR TV HD" to "|FR| TF1 HD", "" to "|FR| NRJ", "BELGES" to "|BE| LA UNE FHD")
         val radios = channels.filter { it.theme == "Radios" }.sortedBy { it.lineup }
-        assertEquals(listOf("NRJ"), radios.map { it.niceTitle })
+        assertEquals(listOf("NRJ") + InternetRadios.french.map { it.name }, radios.map { it.niceTitle })
         val web = channels.filter { it.theme == InternetRadios.GROUP }.sortedBy { it.lineup }
         assertEquals(InternetRadios.all.map { it.name }, web.map { it.niceTitle })
         assertTrue(web.all { it.french && it.kind == ContentKind.LIVE })
         assertTrue(web.first().lineup!! > radios.last().lineup!!)
-        assertEquals("SomaFM Heavyweight Reggae", channels.single { it.logoUrl != null && it.groupTitle == InternetRadios.GROUP }.name)
+        assertEquals("SomaFM Heavyweight Reggae", channels.first { it.groupTitle == InternetRadios.GROUP && it.name.startsWith("SomaFM") }.name)
+    }
+
+    /**
+     * Radios françaises de l'appli : avec les radios de la playlist (« Radios »), sans celles qu'elle a déjà ; les radios
+     * de la playlist sans image reçoivent leur logo.
+     */
+    @Test
+    fun `french radios join the radios of the playlist, without doubles, and playlist radios get a logo`() {
+        val channels = load(internetRadios = true, "FR TV HD" to "|FR| TF1 HD", "" to "|FR| NRJ", "" to "|FR| FUN RADIO")
+        val radios = channels.filter { it.theme == "Radios" }
+        assertTrue(radios.any { it.niceTitle == "RTL2" && it.logoUrl != null })
+        assertTrue(radios.none { it.groupTitle == InternetRadios.FRENCH_GROUP && it.name == "Fun Radio" })
+        assertEquals(InternetRadios.logoFor("NRJ"), channels.single { it.name == "|FR| NRJ" }.logoUrl)
+        assertTrue(channels.single { it.name == "|FR| NRJ" }.logoUrl != null)
+        // Les Web radios restent à part.
+        assertTrue(radios.none { it.groupTitle == InternetRadios.GROUP })
+        assertEquals("rfm", InternetRadios.logoKey("|FR| RFM RADIO"))
+        assertEquals("skyrock", InternetRadios.logoKey("|FR| SkyRock FM"))
     }
 
     @Test
