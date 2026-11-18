@@ -62,6 +62,82 @@ data class NowPlaying(
             null
         }
 
+        /**
+         * Réponse de Skyrock (`skyrock.fm/api/v3/player/onair/national`) : le morceau de la liste « schedule » qui passe à
+         * [nowSeconds] (heure Unix), sinon le dernier commencé ; titre seul (l'artiste n'y est pas), pochette.
+         */
+        fun fromSkyrock(body: String, nowSeconds: Long): NowPlaying? = try {
+            val schedule = JSONObject(body).optJSONArray("schedule")
+            var playing: JSONObject? = null
+            var latest: JSONObject? = null
+            for (i in 0 until (schedule?.length() ?: 0)) {
+                val entry = schedule!!.getJSONObject(i)
+                if (entry.optString("type") != "record") continue
+                val info = entry.optJSONObject("info") ?: continue
+                val start = info.optString("start_ts").toLongOrNull() ?: continue
+                val end = info.optString("end_ts").toLongOrNull() ?: continue
+                if (start <= nowSeconds && (latest == null || start > (latest.optString("start_ts").toLongOrNull() ?: 0))) latest = info
+                if (nowSeconds in start until end) playing = info
+            }
+            (playing ?: latest)?.let { info ->
+                info.optString("title").trim().takeIf { it.isNotEmpty() }?.let { title ->
+                    NowPlaying(
+                        artist = info.optJSONArray("artists")?.let { a -> (0 until a.length()).joinToString(", ") { a.optJSONObject(it)?.optString("name") ?: a.optString(it) } }
+                            ?.takeIf { it.isNotBlank() },
+                        title = title,
+                        cover = info.optString("cover_mid_uri").takeIf { it.startsWith("http") },
+                        untilMillis = info.optString("end_ts").toLongOrNull()?.times(1_000)?.takeIf { playing === info },
+                    )
+                }
+            }
+        } catch (e: JSONException) {
+            null
+        }
+
+        /**
+         * Réponse de Nova (`nova.fr/radios-data/www.nova.fr/all.json`) : morceau en cours de la radio lue à l'adresse
+         * [stream] (Radio Nova ou une de ses webradios).
+         */
+        fun fromNova(body: String, stream: String): NowPlaying? = try {
+            val radios = org.json.JSONArray(body)
+            val wanted = streamKey(stream)
+            (0 until radios.length()).map { radios.getJSONObject(it) }
+                .firstOrNull { streamKey(it.optJSONObject("radio")?.optString("stream_url").orEmpty()) == wanted }
+                ?.optJSONObject("currentTrack")
+                ?.let { track ->
+                    track.optString("title").trim().takeIf { it.isNotEmpty() }?.let { title ->
+                        NowPlaying(
+                            artist = track.optString("artist").trim().takeIf { it.isNotEmpty() },
+                            title = title,
+                            cover = track.optString("media_url").takeIf { it.startsWith("http") },
+                        )
+                    }
+                }
+        } catch (e: JSONException) {
+            null
+        }
+
+        /**
+         * Réponse des Indés Radios (`https://<site>/lite/update_onair`, Jazz Radio, M Radio, Générations…) : morceau en
+         * cours de la radio [radioId], avec sa pochette.
+         */
+        fun fromIndes(body: String, radioId: String): NowPlaying? = try {
+            JSONObject(body).optJSONObject(radioId)?.let { radio ->
+                radio.optString("title").trim().takeIf { it.isNotEmpty() }?.let { title ->
+                    NowPlaying(
+                        artist = radio.optString("artist").trim().takeIf { it.isNotEmpty() },
+                        title = title,
+                        cover = radio.optString("cover").takeIf { it.startsWith("http") && "pochette" !in it },
+                    )
+                }
+            }
+        } catch (e: JSONException) {
+            null
+        }
+
+        /** Adresse de flux comparable (sans protocole ni paramètres). */
+        private fun streamKey(url: String): String = url.substringAfter("://").substringBefore('?').trimEnd('/').lowercase()
+
         /** Code d'erreur d'une réponse AudD (`null` : pas d'erreur) : 900 et suivants pour la clé, la limite du jour… */
         fun recognitionError(body: String): Int? = try {
             JSONObject(body).takeIf { it.optString("status") == "error" }?.optJSONObject("error")?.optInt("error_code")

@@ -4,6 +4,10 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.182
+- Radios : le morceau en cours vient maintenant directement de Skyrock, Radio Nova, Jazz Radio, M Radio et Générations (comme déjà pour Radio France), avec la pochette : plus besoin de la reconnaissance à l'écoute pour ces radios, qui reste pour les autres
+- Nouvelles radios dans « Radios » : Nova Hip-Hop, Nova Reggae et Nova Soul
+
 ## 0.2.181
 - Radios : le morceau en cours s'affiche à l'écran, même quand la radio ne l'annonce pas : pris sur le service de Radio France (FIP, Mouv', France Inter…, avec la pochette de l'album), sinon reconnu à l'écoute comme Shazam (quelques reconnaissances par jour sans clé, illimitées avec une clé AudD dans Réglages › Services)
 - Radios : l'animation se change directement depuis les options du lecteur (touche Menu), rubrique « Animation des radios » en tête

@@ -25,7 +25,7 @@ object QualityParser {
      * des chaînes et versions de son gardées pour le réglage « Rassembler les chaînes » ; 11 : catégories par thème et
      * noms propres des chaînes rassemblées ; 12 : radios Internet ajoutées aux chaînes en direct).
      */
-    const val VERSION = 14
+    const val VERSION = 15
 
     data class Result(
         /** Nom sans les mentions de qualité ni de codec. */

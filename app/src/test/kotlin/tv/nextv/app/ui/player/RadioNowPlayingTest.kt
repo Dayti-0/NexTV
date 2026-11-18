@@ -54,6 +54,13 @@ class RadioNowPlayingTest {
                         "levels":[{"items":["s"],"position":0}]}""",
                     ).build()
                 }
+                "/skyrock" -> MockResponse.Builder().body(
+                    """{"schedule":[{"type":"record","info":{"title":"Sicario","start_ts":"0","end_ts":"9999999999",
+                    "cover_mid_uri":"https://media.skyrock.fm/b.jpg"}}]}""",
+                ).build()
+                "/indes/www.jazzradio.fr" -> MockResponse.Builder().body(
+                    """{"1":{"artist":"MADELEINE PEYROUX","title":"Walkin' after midnight","cover":"https://covers.eg-ad.fr/m.jpg"}}""",
+                ).build()
                 "/audd" -> {
                     recognitions.incrementAndGet()
                     MockResponse.Builder().body(
@@ -81,6 +88,8 @@ class RadioNowPlayingTest {
         auddKey = { null },
         logger = Logger.None,
         radioFranceUrl = { server.url("/livemeta/$it").toString() },
+        skyrockUrl = server.url("/skyrock").toString(),
+        indesUrl = { site -> server.url("/indes/$site").toString() },
         recognitionUrl = server.url("/audd").toString(),
     )
 
@@ -95,6 +104,20 @@ class RadioNowPlayingTest {
         waitFor { state.value.nowPlaying != null }
         assertEquals("Dj Nu-Mark – Tonight", state.value.nowPlaying)
         assertEquals("https://example.com/c.jpg", state.value.nowPlayingCover)
+        assertEquals(0, recognitions.get())
+    }
+
+    /** Radios qui publient leur morceau en cours : Skyrock (radio de la playlist, par son nom), Jazz Radio (Les Indés). */
+    @Test
+    fun skyrockAndLesIndesShowTheirSongWithoutRecognition() {
+        val follower = nowPlaying()
+        follower.follow(active = true, channelName = "|FR| SkyRock FM")
+        waitFor { state.value.nowPlaying != null }
+        assertEquals("Sicario", state.value.nowPlaying)
+        follower.follow(active = true, channelName = "Jazz Radio")
+        waitFor { state.value.nowPlaying?.contains("PEYROUX") == true }
+        assertEquals("MADELEINE PEYROUX – Walkin' after midnight", state.value.nowPlaying)
+        assertEquals("https://covers.eg-ad.fr/m.jpg", state.value.nowPlayingCover)
         assertEquals(0, recognitions.get())
     }
 

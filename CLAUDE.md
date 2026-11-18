@@ -178,10 +178,16 @@ Commandes :
   32 bandes). Sans son analysé (VLC, son passé à l'ampli) : houle de remplacement. Captures : `Screenshots.radioVisuals`
   (`animate = false`, sinon la boucle d'images empêche le test de finir). Choix aussi dans les options du lecteur (rubrique en
   tête quand `audioOnly`). Couleurs selon le genre ou la radio (`paletteFor` : reggae vert-jaune-rouge, ska noir-blanc-rouge…).
-- Morceau en cours des radios (0.2.181, `ui/player/RadioNowPlaying.kt`, lancé par le dernier bloc `init` de
-  `PlayerViewModel`) : titre ICY du flux s'il y en a ; sinon radios de Radio France (`InternetRadios.Radio.radioFrance` =
-  numéro de station : FIP 7, Mouv' 6, Inter 1, franceinfo 2, Musique 4, Culture 5, FIP Jazz 65, Groove 66, Monde 69,
-  Reggae 71, Electro 74 ; FIP Hip-Hop inconnu) par `api.radiofrance.fr/livemeta/pull/<n>` (public, avec pochette) ; sinon
+- Morceau en cours des radios (0.2.181-0.2.182, `ui/player/RadioNowPlaying.kt`, lancé par le dernier bloc `init` de
+  `PlayerViewModel`) : titre ICY du flux s'il y en a ; sinon le service de la radio (`InternetRadios.TitleSource`,
+  `titlesFor` : radios de l'appli par leur nom, Skyrock de la playlist par `logoKey`) : Radio France
+  (`api.radiofrance.fr/livemeta/pull/<n>` : FIP 7, Mouv' 6, Inter 1, franceinfo 2, Musique 4, Culture 5, FIP Jazz 65,
+  Groove 66, Monde 69, Reggae 71, Electro 74 ; FIP Hip-Hop inconnu), Skyrock (`skyrock.fm/api/v3/player/onair/national`,
+  titre seul), Nova et ses webradios (`nova.fr/radios-data/www.nova.fr/all.json`, par adresse du flux), Les Indés
+  (`POST https://<site>/lite/update_onair` `{"radio_ids":["1"]}` : jazzradio.fr, mradio.fr, generations.fr ; Latina et
+  Alouette ont un autre site, pas trouvé). NRJ / Chérie / Nostalgie / Rire (nrj.fr refuse le cloud) et RTL2 / Fun : pas
+  trouvé, donc reconnaissance. Service muet 3 fois de suite : reconnaissance à la place. L'utilisateur ne veut pas de bouton
+  « Quel est ce titre ? » : tout doit s'afficher seul. Sinon
   reconnaissance AudD (`api.audd.io`, 8 s en WAV mono 11 025 Hz tirés de `AudioSnippet`, rempli par `SpectrumTap` ;
   quelques essais par jour sans clé, vérifié d'ici le 18/11/2026 ; clé : Réglages › Services ou secret CI
   `NEXTV_AUDD_API_KEY` → `BuildConfig.AUDD_API_KEY`), relancée à la fin du morceau reconnu (`durationInMillis` −

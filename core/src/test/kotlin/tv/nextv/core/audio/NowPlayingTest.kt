@@ -43,6 +43,38 @@ class NowPlayingTest {
     }
 
     @Test
+    fun skyrockNovaAndLesIndesGiveTheirSong() {
+        val skyrock = """
+            {"schedule":[
+             {"type":"record","info":{"title":"Fille à Papa","start_ts":"100","end_ts":"200","cover_mid_uri":"https://media.skyrock.fm/a.jpg"}},
+             {"type":"record","info":{"title":"Sicario","start_ts":"200","end_ts":"350","cover_mid_uri":"https://media.skyrock.fm/b.jpg"}},
+             {"type":"program","info":{"title":"Rap & RnB Non Stop"}}]}
+        """.trimIndent()
+        val sky = NowPlaying.fromSkyrock(skyrock, nowSeconds = 250)!!
+        assertEquals("Sicario", sky.label)
+        assertEquals("https://media.skyrock.fm/b.jpg", sky.cover)
+        assertEquals(350_000L, sky.untilMillis)
+        // Entre deux morceaux : le dernier commencé, sans heure de fin.
+        assertEquals("Sicario", NowPlaying.fromSkyrock(skyrock, nowSeconds = 400)!!.label)
+
+        val nova = """
+            [{"radio":{"name":"Radio Nova","stream_url":"https:\/\/novazz.ice.infomaniak.ch\/novazz-128.mp3"},
+              "currentTrack":{"title":"THE GHETTO","artist":"DONNY HATHAWAY","media_url":"https://www.lesinrocks.com/c.jpeg"}},
+             {"radio":{"name":"Nova Reggae","stream_url":"https:\/\/nova-reggae.ice.infomaniak.ch\/nova-reggae-128.mp3"},
+              "currentTrack":{"title":"ANOTHER NIGHT","artist":"PUPAJIM","media_url":""}}]
+        """.trimIndent()
+        assertEquals("PUPAJIM – ANOTHER NIGHT", NowPlaying.fromNova(nova, "https://nova-reggae.ice.infomaniak.ch/nova-reggae-128.mp3")!!.label)
+        assertEquals("https://www.lesinrocks.com/c.jpeg", NowPlaying.fromNova(nova, "http://novazz.ice.infomaniak.ch/novazz-128.mp3")!!.cover)
+        assertNull(NowPlaying.fromNova(nova, "https://ailleurs.example/flux"))
+
+        val indes = """{"1":{"artist":"MADELEINE PEYROUX","title":"Walkin' after midnight","cover":"https:\/\/covers.eg-ad.fr\/m.jpg"}}"""
+        val jazz = NowPlaying.fromIndes(indes, "1")!!
+        assertEquals("MADELEINE PEYROUX – Walkin' after midnight", jazz.label)
+        assertEquals("https://covers.eg-ad.fr/m.jpg", jazz.cover)
+        assertNull(NowPlaying.fromIndes(indes, "2"))
+    }
+
+    @Test
     fun theSnippetGivesTheLastSecondsAsWav() {
         val snippet = AudioSnippet(seconds = 10)
         val rate = 44_100
