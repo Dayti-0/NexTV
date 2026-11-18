@@ -345,12 +345,14 @@ internal class PlayerEngine(
          * garde la détection des pubs en cours (page de pubs, logo appris) et l'enregistrement d'analyse.
          */
         channelKey: String? = null,
+        /** Chaîne sans pubs (voir AdFreeChannels) : pas de détection des pubs, rien n'y est jamais baissé. */
+        adFree: Boolean = false,
     ): PreviewStart? {
         this.film = film
         saveAdMarks()
         val sameChannel = !film && !replay && channelKey != null && channelKey == adChannelKey && adVolume.enabled
         adChannelKey = channelKey.takeIf { !film && !replay }
-        adBreaks = !film || replay
+        adBreaks = (!film || replay) && !adFree
         // Repères gardés pour le direct seulement : l'adresse d'un replay change à chaque programme.
         adMarksKey = request.stream.url.takeIf { !film }
         if (sameChannel) {

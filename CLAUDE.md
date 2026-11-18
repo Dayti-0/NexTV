@@ -302,6 +302,13 @@ Commandes :
   seulement cet écran fixe (pas compté comme pub). `AdRecorder.newStream` ne notait pas le retour du son à un changement de
   flux : la baisse semblait continuer sur la chaîne suivante (40 s « à tort » qui n'existaient pas). Corrigé en 0.2.173 ;
   `AdDeviceReplayTool` et `ad_sheets.py` lisent aussi « flux » comme son remonté pour les anciens fichiers.
+- 16 au 18/11/2026 (box en automatique 0.2.169 → 0.2.176, 26 fichiers, 15 h 30, relevés dans `tools/ad_truth/`) : appareil
+  88 % des secondes de pub baissées (93 % sans un bloc de bandes-annonces de France 5, indétectable), 329 s de programme à
+  tort, délai moyen 28 s. Le rejeu (« ici », 81 %) ouvre plus tard : il ne sait pas ce que la box a appris avant. Corrigés en
+  0.2.180 : découpage en fichiers d'une seconde après 2 h sur une chaîne (`AdRecorder.recordedMillis` lisait l'horloge de la
+  détection, qui compte depuis l'ouverture de la chaîne) ; chaînes « 24/24 » de M6+ sans détection (`AdFreeChannels`).
+  Restent : courts programmes parrainés entre deux pubs (« Petits plats » de Laurent Mariotte sur TF1), documentaire de T18
+  repris après une page (logo inconnu), premières secondes d'une page après un changement de chaîne.
 
 ## Essais sur de vrais flux
 

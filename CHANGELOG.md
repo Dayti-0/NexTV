@@ -4,6 +4,11 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.180
+- Enregistrements d'analyse : après 2 heures sur la même chaîne, l'enregistrement se découpait en fichiers d'une seconde (26 d'affilée sur TF1 le 17 novembre) ; chaque fichier mesure maintenant sa propre durée
+- « Baisser le son des pubs » : plus rien n'est baissé sur les chaînes « 24/24 » de M6+ (Les Marseillais, Incroyables Transformations, Turbo…), qui n'ont pas de pubs (le son baissait parfois après l'écran « M6+ revient dans un instant »)
+- Enregistrement automatique : les chaînes analysées le 18 novembre (TF1, W9, CStar, 6ter, T18, Novo19, TF1 Séries Films, L'Équipe, France 5) passent après les moins connues
+
 ## 0.2.179
 - Web radios : nouvelle catégorie « Web radios », à part des radios de la playlist
 - Nouvelles Web radios sans pub : rap et hip-hop (Mouv', FIP Hip-Hop, West Coast G-Funk, Sensi Hip Hop), groove (FIP Groove, Dublab), ska (Tonic Ska Radio, Boot Boy Radio), électro, jazz, musiques du monde, rock et metal, en plus du reggae
