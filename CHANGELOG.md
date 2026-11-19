@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.202
+- Lecteur : badge « Rediffusion » dans le bandeau quand un match est rediffusé (déjà passé plus tôt dans le guide, ou annoncé comme tel), et jamais de score final sur une rediffusion
+
 ## 0.2.201
 - Vidéo du direct de Skyrock : plus d'icône de pause au milieu de l'image, et la radio repart bien quand la vidéo s'arrête
 - Vidéo du direct de Skyrock : la meilleure qualité est demandée à YouTube, et la qualité reçue s'affiche dans les infos de lecture (« Vidéo YouTube »)

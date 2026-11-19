@@ -1183,7 +1183,10 @@ private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Mo
         state.now?.let { programme ->
             // En différé (pause, « Depuis le début ») et en replay : la progression de ce qui est à l'écran.
             val watched = state.watchedAt ?: if (state.isLive) now - liveDelay(state, now) else now
-            Text(programme.title, style = MaterialTheme.typography.titleLarge, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (programme.rebroadcast) StatusPill(stringResource(R.string.player_rebroadcast), NexTvColors.Warning)
+                Text(programme.title, style = MaterialTheme.typography.titleLarge, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
             state.match?.let { MatchScore(it) }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.widthIn(max = 640.dp)) {
                 Text(timeOf(programme.startMillis), style = MaterialTheme.typography.labelLarge, color = Color.White)

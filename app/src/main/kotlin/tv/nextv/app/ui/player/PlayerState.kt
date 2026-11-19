@@ -16,7 +16,13 @@ data class PlayerTracks(val audio: List<TrackChoice> = emptyList(), val subtitle
 }
 
 /** Programme affiché dans le bandeau du lecteur. */
-data class PlayerProgramme(val title: String, val startMillis: Long, val stopMillis: Long)
+data class PlayerProgramme(
+    val title: String,
+    val startMillis: Long,
+    val stopMillis: Long,
+    /** Rediffusion (match déjà passé dans le guide, ou annoncée) : badge « Rediffusion », pas de score. */
+    val rebroadcast: Boolean = false,
+)
 
 /** Match diffusé par le programme en cours (football-data.org) : affiche et score dans le bandeau. */
 data class PlayerMatch(

@@ -53,6 +53,7 @@ import tv.nextv.app.player.toStream
 import tv.nextv.app.player.describePlaybackError
 import tv.nextv.app.ui.common.describe
 import tv.nextv.app.ui.home.Category
+import tv.nextv.core.epg.Rebroadcast
 import tv.nextv.core.football.Broadcast
 import tv.nextv.core.football.BroadcastFinder
 import tv.nextv.core.football.FootballDataResult
@@ -1029,12 +1030,32 @@ class PlayerViewModel(
         // Autre chaîne ouverte pendant la lecture de la base : ce programme n'est plus le sien.
         if (session.channel?.id != current.id) return
         val upcoming = programmes.map { PlayerProgramme(it.title, it.startMillis, it.stopMillis) }
-        val live = upcoming.firstOrNull()?.takeIf { it.startMillis <= now }
-        mutableState.update { it.copy(now = live, next = upcoming.firstOrNull { p -> p != live }) }
+        val live = upcoming.firstOrNull()?.takeIf { it.startMillis <= now }?.let { it.copy(rebroadcast = isRebroadcast(programmes.first())) }
+        if (session.channel?.id != current.id) return
+        mutableState.update { it.copy(now = live, next = upcoming.firstOrNull { p -> p.startMillis != live?.startMillis }) }
         // Chaîne « événement » (LALIGA 2 LIVE MATCH…) sans programme du guide : le match qu'elle diffuse.
         val match = (if (live != null) matchOnAir(programmes.first(), now) else null)
+            // Rediffusion : jamais le score final (il gâcherait le match).
+            ?.let { if (live?.rebroadcast == true) it.copy(score = null, live = false, clock = null, halfTime = false) else it }
             ?: eventMatchOnAir(container, current.sourceId, current.name, now)?.let(::playerMatchOf)
         if (session.channel?.id == current.id) mutableState.update { it.copy(match = match) }
+    }
+
+    /** Réponse gardée pour le programme en cours (la base n'est relue qu'à chaque nouveau programme). */
+    private var rebroadcastChecked: Pair<ProgrammeKey, Boolean>? = null
+
+    private data class ProgrammeKey(val sourceId: Long, val title: String, val startMillis: Long)
+
+    /** Rediffusion : annoncée par le guide, ou match dont le même titre est déjà passé plus tôt (`Rebroadcast`). */
+    private suspend fun isRebroadcast(programme: ProgrammeEntity): Boolean {
+        val key = ProgrammeKey(programme.sourceId, programme.title, programme.startMillis)
+        rebroadcastChecked?.takeIf { it.first == key }?.let { return it.second }
+        val window = Rebroadcast.earlierWindow(programme.startMillis)
+        val answer = Rebroadcast.isRebroadcast(programme.title, programme.subtitle) {
+            container.programmeDao.airedBetween(programme.sourceId, programme.title, window.first, window.last)
+        }
+        rebroadcastChecked = key to answer
+        return answer
     }
 
     /**

@@ -19,6 +19,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import tv.nextv.app.AppContainer
+import tv.nextv.app.data.db.ProgrammeEntity
 import tv.nextv.app.player.ChannelPreviewPlayer
 import tv.nextv.app.ui.home.Category
 import tv.nextv.core.model.Channel
@@ -75,6 +76,32 @@ class PlayerViewModelTest {
         // Fermeture de l'écran : comme le fait la navigation.
         val store = ViewModelStore().apply { put("player", viewModel) }
         return viewModel to store
+    }
+
+    /** Match déjà passé dans le guide : badge « Rediffusion » dans le bandeau ; un journal qui repasse n'en a pas. */
+    @Test
+    fun aMatchShownEarlierIsMarkedAsARebroadcast() {
+        val (live, _) = playlist()
+        val now = System.currentTimeMillis()
+        val hour = 60 * 60_000L
+        val match = "Football : Süper Lig | Galatasaray / Fenerbahçe"
+        runBlocking {
+            container.channelDao.setEpg(live, "tf1.fr")
+            val sourceId = checkNotNull(container.channelDao.get(live)).sourceId
+            fun programme(title: String, start: Long) =
+                ProgrammeEntity(sourceId = sourceId, generation = 0, epgChannelId = "tf1.fr", startMillis = start, stopMillis = start + 2 * hour, title = title, subtitle = null, description = null, category = null)
+            container.programmeDao.insertAll(listOf(programme(match, now - 20 * hour), programme(match, now - 30 * 60_000L), programme("Journal", now + 90 * 60_000L)))
+        }
+        val (viewModel, store) = open(live)
+        viewModel.onStart()
+        val deadline = System.nanoTime() + 8_000_000_000L
+        do idle() while (viewModel.state.value.now == null && System.nanoTime() < deadline)
+        val shown = checkNotNull(viewModel.state.value.now)
+        assertEquals(match, shown.title)
+        assertTrue(shown.rebroadcast)
+        assertEquals("Journal", viewModel.state.value.next?.title)
+        store.clear()
+        idle()
     }
 
     @Test

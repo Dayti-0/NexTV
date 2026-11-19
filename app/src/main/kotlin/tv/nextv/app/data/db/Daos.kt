@@ -1359,6 +1359,18 @@ interface ProgrammeDao {
     )
     suspend fun upcoming(channelId: Long, from: Long, limit: Int): List<ProgrammeEntity>
 
+    /** Le guide en vigueur d'une source a-t-il un programme de ce titre commencé entre [from] et [to] (rediffusions) ? */
+    @Query(
+        """
+        SELECT EXISTS(
+            SELECT 1 FROM programmes p
+            JOIN sources s ON s.id = p.sourceId AND p.generation = s.epgGeneration
+            WHERE p.sourceId = :sourceId AND p.title = :title AND p.startMillis BETWEEN :from AND :to
+        )
+        """,
+    )
+    suspend fun airedBetween(sourceId: Long, title: String, from: Long, to: Long): Boolean
+
     /** Programmes visibles d'une source dans la fenêtre [from, to[. */
     @Query(
         """

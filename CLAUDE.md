@@ -238,6 +238,11 @@ Commandes :
 - « Déjà vu » en fin de liste (0.2.199) : table `seen_titles` de la base des chaînes (version 15), copie tenue par
   `AppContainer` (`SeenTitles.of` : films vus et séries dont un épisode est vu, moins les reprises) ; tri `SEEN_LAST` /
   `SERIES_SEEN_LAST` dans `pageMovies`, `pageSeries`, `movieRow`, `seriesRow` (le « Déjà vu » lui-même est dans une base à part).
+- Rediffusions (0.2.202, badge « Rediffusion » du bandeau du lecteur) : les guides ne les marquent pas (xmltvfr : aucune
+  balise `previously-shown` sur beIN) ; `core/epg/Rebroadcast.kt` : annoncée dans le titre / sous-titre, ou rencontre
+  (« A / B » dans le titre) dont le même titre a commencé 1 h à 7 jours plus tôt dans le guide (`ProgrammeDao.airedBetween`),
+  vu dans `PlayerViewModel.isRebroadcast` ; sur une rediffusion, pas de score dans le bandeau. Score « comme en direct »
+  d'une rediffusion écarté : l'heure du coup d'envoi dans la rediffusion est inconnue (risque d'annoncer un but en avance).
 - Année de sortie dans la fiche programme : celle du guide (`<date>`, la moitié des films de xmltvfr), sinon celle de la
   fiche TMDB du même titre (`rememberProgrammeYear`, `sameTitleYear` dans `ProgrammeArt.kt`, même cache que l'image).
 - Fun Radio / RTL2 : `icecast.funradio.fr` redirige vers `streaming-ice.audiomeans.fr` (paramètres AdsWizz `aw_…` : pubs

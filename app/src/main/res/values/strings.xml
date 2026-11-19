@@ -334,6 +334,7 @@
     <string name="player_ad_music_own">votre musique</string>
     <string name="player_not_an_ad">Ce n’est pas une pub : remettre le son</string>
     <string name="player_replay">Replay</string>
+    <string name="player_rebroadcast">Rediffusion</string>
     <string name="player_replay_unavailable">Ce programme n’est pas disponible en replay.</string>
     <string name="player_backup_server">Serveur principal injoignable : lecture par un serveur de secours</string>
     <string name="player_channel_list">Chaînes</string>
