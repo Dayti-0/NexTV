@@ -130,6 +130,10 @@ data class PlayerUiState(
     val nowPlayingSong: String? = null,
     /** Vidéo YouTube du direct filmé de la radio (Skyrock, Planète Rap), `null` hors direct. */
     val radioVideo: String? = null,
+    /** Vidéo [radioVideo] affichée à l'écran (la radio est alors en sourdine dessous, parfois mise en pause par Android). */
+    val radioVideoOnScreen: Boolean = false,
+    /** Qualité choisie par YouTube pour [radioVideo] (« 1080p »), pour les infos de lecture. */
+    val radioVideoQuality: String? = null,
     /** Lecture par le moteur VLC (son ou image que le lecteur de l'appli ne sait pas lire). */
     val engineVlc: Boolean = false,
     /** Format du son illisible (« MP2 », « DTS-HD »), pour le dire dans le message. */

@@ -369,6 +369,7 @@
     <string name="player_info_preview_no_layer">rouvert : l’appareil refuse la couche vidéo</string>
     <string name="player_info_dropped">Images perdues</string>
     <string name="player_info_version">Version</string>
+    <string name="player_info_radio_video">Vidéo YouTube</string>
     <string name="player_info_ads">Pubs</string>
     <string name="player_info_ads_no_sound">son envoyé tel quel à l’ampli : rien n’est détecté ni baissé</string>
     <string name="player_info_ads_no_picture">image illisible sur cet appareil : détection au son seul</string>

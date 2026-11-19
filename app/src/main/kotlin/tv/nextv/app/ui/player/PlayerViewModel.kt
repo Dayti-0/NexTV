@@ -424,8 +424,23 @@ class PlayerViewModel(
     fun radioVideoShown(shown: Boolean) {
         if (shown == radioVideoOn) return
         radioVideoOn = shown
-        engine.current?.volume = if (shown) 0f else 1f
-        if (state.value.paused || state.value.liveDelayMs > 0) backToLive()
+        mutableState.update { it.copy(radioVideoOnScreen = shown, radioVideoQuality = it.radioVideoQuality.takeIf { shown }) }
+        val player = engine.current
+        player?.volume = if (shown) 0f else 1f
+        if (state.value.paused || state.value.liveDelayMs > 0) {
+            backToLive()
+        } else if (!shown && player != null && !player.playWhenReady) {
+            // Le son de la vidéo (page YouTube) prend la main sur le son : Android met alors la radio en pause
+            // (icône de pause au milieu de la vidéo). Vidéo partie : la radio repart, au direct.
+            player.seekToDefaultPosition()
+            player.playWhenReady = true
+        }
+    }
+
+    /** Qualité de la vidéo du direct de la radio, lue dans la page YouTube (« hd1080 »). */
+    fun radioVideoQuality(quality: String) {
+        val label = youtubeQualityLabel(quality) ?: return
+        if (label != state.value.radioVideoQuality) mutableState.update { it.copy(radioVideoQuality = label) }
     }
 
         fun useVlc() {
@@ -1663,4 +1678,18 @@ class PlayerViewModel(
             PlaybackException.ERROR_CODE_TIMEOUT,
         )
     }
+}
+
+/** « hd1080 » → « 1080p » ; `null` pour une qualité encore inconnue. */
+internal fun youtubeQualityLabel(quality: String): String? = when (quality) {
+    "tiny" -> "144p"
+    "small" -> "240p"
+    "medium" -> "360p"
+    "large" -> "480p"
+    "hd720" -> "720p"
+    "hd1080" -> "1080p"
+    "hd1440" -> "1440p"
+    "hd2160", "highres" -> "2160p"
+    "", "unknown", "auto" -> null
+    else -> quality
 }

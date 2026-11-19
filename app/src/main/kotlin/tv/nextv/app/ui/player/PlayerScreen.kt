@@ -528,6 +528,7 @@ fun PlayerScreen(
                         onShown = { shown -> viewModel.radioVideoShown(shown && !state.engineVlc) },
                         onFinished = { endedVideo = video },
                         onFailed = { endedVideo = video },
+                        onQuality = viewModel::radioVideoQuality,
                     )
                     DisposableEffect(video) { onDispose { viewModel.radioVideoShown(false) } }
                 }
@@ -571,7 +572,10 @@ fun PlayerScreen(
         CenterIndicator(
             jumpSeconds = state.pendingJumpSeconds + filmJump,
             fastSeek = state.fastSeek,
-            paused = (state.paused || !playWhenReady) && state.error == null && state.resumePrompt == null && !filmControlsShown && state.upNext == null,
+            // Vidéo du direct de la radio affichée : la radio en sourdine dessous peut être mise en pause par Android
+            // (la page YouTube prend le son) ; ce n'est pas une pause à montrer.
+            paused = (state.paused || !playWhenReady) && state.error == null && state.resumePrompt == null && !filmControlsShown &&
+                state.upNext == null && !state.radioVideoOnScreen,
             visible = !menu.open,
             modifier = Modifier.align(Alignment.Center),
         )
@@ -1667,6 +1671,10 @@ fun PlaybackInfoPanel(state: PlayerUiState, visible: Boolean, modifier: Modifier
                 state.bandwidthMbps?.let { InfoLine(stringResource(R.string.player_info_bitrate), stringResource(R.string.player_speed, formatDecimal(it))) }
                 InfoLine(stringResource(R.string.player_info_dropped), info.droppedFrames.toString(), warning = info.droppedFrames > 0)
                 InfoLine(stringResource(R.string.player_info_version), state.quality ?: unknown)
+                // Vidéo du direct de la radio (YouTube) : qualité qu'elle a choisie.
+                if (state.radioVideoOnScreen) {
+                    InfoLine(stringResource(R.string.player_info_radio_video), state.radioVideoQuality ?: unknown)
+                }
                 // « Baisser le son des pubs » : ce que la détection arrive à observer sur cet appareil.
                 state.adWatch?.let { watch ->
                     val text = stringResource(

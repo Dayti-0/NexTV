@@ -72,6 +72,8 @@ internal fun TrailerBackdrop(
      * (en points), et un plein écran de 960 × 540 points recevait une image floue. 2 : qualité d'un écran 1080p.
      */
     renderScale: Float = 1f,
+    /** Qualité choisie par YouTube (« hd720 », « hd1080 »), redonnée à chaque changement. */
+    onQuality: (String) -> Unit = {},
 ) {
     // Le lecteur se prépare dès [PRELOAD_AFTER_MILLIS] (caché, muet), pendant le délai : la bande-annonce
     // apparaît au bout du délai si elle est prête (le chargement de YouTube prend plusieurs secondes sur
@@ -99,7 +101,7 @@ internal fun TrailerBackdrop(
         val height = maxHeight.value.roundToInt()
         if (width > 0 && height > 0) {
             androidx.compose.runtime.key(key, width, height) {
-                TrailerPage(key, captions(language), width, height, zoom, renderScale, muted, delayPassed, onShown, onFinished, onFailed)
+                TrailerPage(key, captions(language), width, height, zoom, renderScale, muted, delayPassed, onShown, onFinished, onFailed, onQuality)
             }
         }
     }
@@ -221,6 +223,7 @@ private fun TrailerPage(
     onShown: (Boolean) -> Unit,
     onFinished: () -> Unit,
     onFailed: () -> Unit,
+    onQuality: (String) -> Unit,
 ) {
     var view by remember { mutableStateOf<WebView?>(null) }
     // Moteur de la page arrêté par le système (mémoire) : la vue n'est plus utilisable, elle est retirée.
@@ -234,6 +237,7 @@ private fun TrailerPage(
     val shown by rememberUpdatedState(onShown)
     val finished by rememberUpdatedState(onFinished)
     val failed by rememberUpdatedState(onFailed)
+    val quality by rememberUpdatedState(onQuality)
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle, view) {
         val web = view
@@ -261,6 +265,7 @@ private fun TrailerPage(
                 onVisible = { ready = it },
                 onFinished = { ready = false; shown(false); finished() },
                 onFailed = { failed() },
+                onQuality = { quality(it) },
                 onGone = { crashed ->
                     gone = true
                     view = null
@@ -293,6 +298,7 @@ private fun trailerView(
     onVisible: (Boolean) -> Unit,
     onFinished: () -> Unit,
     onFailed: () -> Unit,
+    onQuality: (String) -> Unit,
     /** Moteur de la page arrêté (vrai : planté ; faux : fermé par le système pour libérer de la mémoire). */
     onGone: (Boolean) -> Unit,
 ): WebView = WebView(context).apply {
@@ -327,6 +333,11 @@ private fun trailerView(
             fun failed() {
                 web.post { onFailed() }
             }
+
+            @JavascriptInterface
+            fun quality(value: String) {
+                web.post { onQuality(value) }
+            }
         },
         "NixTv",
     )
@@ -356,7 +367,7 @@ private fun trailerView(
         html,body{margin:0;width:${width}px;height:${height}px;background:transparent;overflow:hidden}
         iframe{position:absolute;top:${top}px;left:${left}px;width:${drawnWidth}px;height:${drawnHeight}px;border:0;pointer-events:none;transform:scale(${1f / scale});transform-origin:0 0}
         </style></head><body>
-        <iframe id="player" width="$drawnWidth" height="$drawnHeight" src="https://www.youtube-nocookie.com/embed/$key?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0&playsinline=1&iv_load_policy=3&disablekb=1&fs=0&hl=fr&cc_load_policy=${captions.loadPolicy}${if (captions == Captions.FRENCH) "&cc_lang_pref=fr" else ""}&enablejsapi=1&origin=https%3A%2F%2Fnixtv.app"
+        <iframe id="player" width="$drawnWidth" height="$drawnHeight" src="https://www.youtube-nocookie.com/embed/$key?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0&playsinline=1&iv_load_policy=3&vq=hd1080&disablekb=1&fs=0&hl=fr&cc_load_policy=${captions.loadPolicy}${if (captions == Captions.FRENCH) "&cc_lang_pref=fr" else ""}&enablejsapi=1&origin=https%3A%2F%2Fnixtv.app"
         allow="autoplay; encrypted-media" referrerpolicy="strict-origin-when-cross-origin"></iframe>
         <script>
         var player=null;
@@ -385,6 +396,12 @@ private fun trailerView(
           if(primed)call(function(){player.seekTo(0,true);player.playVideo();});
         }
         function pause(){call(function(){player.pauseVideo();});}
+        // Meilleure qualité proposée demandée (YouTube peut l'ignorer : il choisit d'après la taille du lecteur et
+        // le débit), puis qualité en cours redonnée à l'appli à chaque changement (infos de lecture).
+        var lastQuality='';
+        function askBest(p){call(function(){var l=p.getAvailableQualityLevels()||[];var best=l.filter(function(q){return q!='auto';})[0];if(best)p.setPlaybackQuality(best);});}
+        function reportQuality(p){call(function(){var q=p.getPlaybackQuality();if(q&&q!=lastQuality){lastQuality=q;NixTv.quality(q);}});}
+        function watchQuality(p){setInterval(function(){reportQuality(p);},5000);}
         function resume(){if(done||!allowed)return;call(function(){player.playVideo();});}
         var captions='${captions.name}';
         // Sous-titres en français posés (piste française, ou traduction) ; en attendant, l'anglais.
@@ -421,11 +438,13 @@ private fun trailerView(
         function onYouTubeIframeAPIReady(){
           player=new YT.Player('player',{
             events:{
-              onReady:function(e){applyCaptions(e.target);watchCaptions(e.target);},
+              onReady:function(e){applyCaptions(e.target);watchCaptions(e.target);watchQuality(e.target);},
+              onPlaybackQualityChange:function(e){reportQuality(e.target);},
               onApiChange:function(e){applyCaptions(e.target);},
               // Lecture (1) : avant la fin du délai, arrêt sur la première image (prête) ; après, la vidéo apparaît.
               // Fin (0) : terminée.
               onStateChange:function(e){
+                if(e.data==1){askBest(e.target);reportQuality(e.target);}
                 if(e.data==1&&hidden){
                   if(allowed){reveal();}
                   else{primed=true;clearTimeout(startTimer);call(function(){e.target.pauseVideo();e.target.seekTo(0,true);});}

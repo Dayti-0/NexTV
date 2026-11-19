@@ -641,6 +641,33 @@ class PlayerViewModelTest {
     }
 
     /**
+     * Vidéo du direct d'une radio (Skyrock) : la page YouTube prend le son et Android met la radio en pause dessous.
+     * Pas d'icône de pause à montrer pendant la vidéo ; la radio repart quand la vidéo s'en va.
+     */
+    @Test
+    fun theRadioPausedUnderItsLiveVideoPlaysAgainAfterIt() {
+        val (live, _) = playlist()
+        val (viewModel, store) = open(live)
+        viewModel.onStart()
+        idle()
+        val player = checkNotNull(viewModel.player.value)
+        viewModel.radioVideoShown(true)
+        assertTrue(viewModel.state.value.radioVideoOnScreen)
+        viewModel.radioVideoQuality("hd1080")
+        assertEquals("1080p", viewModel.state.value.radioVideoQuality)
+        // Son pris par la vidéo : Android met la radio en pause.
+        player.playWhenReady = false
+        idle()
+        viewModel.radioVideoShown(false)
+        idle()
+        assertTrue(!viewModel.state.value.radioVideoOnScreen)
+        assertNull(viewModel.state.value.radioVideoQuality)
+        assertTrue("radio pas repartie", checkNotNull(viewModel.player.value).playWhenReady)
+        assertEquals(1f, checkNotNull(viewModel.player.value).volume)
+        store.clear()
+    }
+
+    /**
      * Chaîne ouverte depuis les favoris : haut/bas zappe dans les favoris (dans leur ordre, en boucle) et « Retour »
      * ouvre le menu sur les favoris ; ouverte d'ailleurs, le menu reste sur sa catégorie.
      */

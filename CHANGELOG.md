@@ -4,6 +4,10 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.201
+- Vidéo du direct de Skyrock : plus d'icône de pause au milieu de l'image, et la radio repart bien quand la vidéo s'arrête
+- Vidéo du direct de Skyrock : la meilleure qualité est demandée à YouTube, et la qualité reçue s'affiche dans les infos de lecture (« Vidéo YouTube »)
+
 ## 0.2.200
 - Baisser le son des pubs : les bandes-annonces enchaînées sans silence entre elles (CNews, TMC, France 5) restent baissées au lieu de remonter au bout de 30 s
 
