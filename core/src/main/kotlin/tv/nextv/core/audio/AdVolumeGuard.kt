@@ -36,6 +36,8 @@ enum class LogoState {
  * - Sinon : deux jonctions montrant le même carton ([separator], ensuite reconnu dès la première), deux jonctions
  *   juste après le départ du logo, ou quatre jonctions espacées comme des spots (durées de 5 en 5 secondes).
  * - Sortie : dès que le logo revient ; sinon quand plus aucune jonction n'arrive ([HOLD_MILLIS]).
+ *   Page ouverte par le seul départ du logo : refermée sans jonction en 30 s, sauf si l'image change de plan comme
+ *   des bandes-annonces enchaînées ([TRAILER_CUTS]).
  * - Sans image du tout (appareil qui ne laisse pas lire l'écran) : le son seul, avec prudence — quatre silences
  *   espacés comme des spots. Mieux vaut alors manquer une page de pubs que baisser le son d'un programme.
  *
@@ -63,6 +65,12 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
 
     private val scenes = SceneMemory()
     private var lastPicture = NEVER
+
+    /** Changements de plan récents (une image par seconde au plus comparée à la précédente) : heures, en anneau. */
+    private val cuts = LongArray(CUTS_KEPT) { NEVER }
+    private var nextCut = 0
+    private val cutFrame = ByteArray(SmallFrame.SIZE)
+    private var cutFrameAt = NEVER
 
     /** Jonctions récentes qui se suivent à moins de [MAX_INTERVAL_MILLIS]. */
     private val chain = ArrayList<Junction>()
@@ -175,7 +183,18 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
         if (small.size < SmallFrame.SIZE) return
         scenes.add(elapsed, small)
         lastPicture = elapsed
+        if (cutFrameAt == NEVER || elapsed - cutFrameAt >= CUT_SPACING_MILLIS) {
+            if (cutFrameAt != NEVER && SmallFrame.changedShare(cutFrame, small) >= CUT_SHARE) {
+                cuts[nextCut] = elapsed
+                nextCut = (nextCut + 1) % CUTS_KEPT
+            }
+            small.copyInto(cutFrame, 0, 0, SmallFrame.SIZE)
+            cutFrameAt = elapsed
+        }
     }
+
+    /** Changements de plan depuis [since]. */
+    private fun cutsSince(since: Long): Int = cuts.count { it != NEVER && it > since }
 
     @Synchronized
     fun process(meanSquare: Double, durationMillis: Long): Double {
@@ -443,6 +462,10 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
         val away = logo == LogoState.HIDDEN && logoSeen && !logoMissing
         var logoBack = false
         var reason = "logo revenu"
+        // Page ouverte par le seul départ du logo, et l'image qui change de plan comme des bandes-annonces enchaînées
+        // (sans silence entre elles) : elle reste ouverte sans jonction, mais pas indéfiniment.
+        val trailers = opening == Opening.LOGO_ONLY && elapsed - breakStart <= TRAILERS_MAX_MILLIS &&
+            cutsSince(elapsed - LOGO_ONLY_HOLD_MILLIS) >= TRAILER_CUTS
         val over = when {
             // Le logo est revenu (et resté) : le programme a repris. Parti pendant la page et revenu à sa fin, il suit les coupures.
             programmeBack() -> {
@@ -452,12 +475,12 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
             }
             // Page ouverte par le seul départ du logo, et toujours aucune jonction : le logo s'est caché sur le programme
             // (météo, générique, logo qui change), pas pour des pubs.
-            opening == Opening.LOGO_ONLY && lastJunction <= breakStart && elapsed - breakStart > LOGO_ONLY_HOLD_MILLIS -> {
+            opening == Opening.LOGO_ONLY && lastJunction <= breakStart && elapsed - breakStart > LOGO_ONLY_HOLD_MILLIS && !trailers -> {
                 reason = "logo parti mais aucune jonction"
                 logoOnlyFailedAt = elapsed
                 true
             }
-            elapsed - lastJunction > (if (away) HOLD_LOGO_HIDDEN_MILLIS else if (pictures()) HOLD_MILLIS else HOLD_BLIND_MILLIS) -> {
+            !trailers && elapsed - lastJunction > (if (away) HOLD_LOGO_HIDDEN_MILLIS else if (pictures()) HOLD_MILLIS else HOLD_BLIND_MILLIS) -> {
                 reason = if (away) "logo toujours absent, plus de jonction" else "plus de jonction"
                 // Plus de jonction depuis longtemps et toujours pas de logo : il ne revient pas avec ce programme.
                 if (away) logoMissing = true
@@ -584,6 +607,19 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
 
         /** Page ouverte par le seul départ du logo : refermée si aucune jonction ne vient dans ce délai. */
         const val LOGO_ONLY_HOLD_MILLIS = 30_000L
+
+        /**
+         * Changements de plan dans les [LOGO_ONLY_HOLD_MILLIS] dernières secondes à partir desquels une telle page reste
+         * ouverte : bandes-annonces enchaînées (15 à 26 relevés le 19/11/2026), contre 1 à 3 pour une météo ou un générique.
+         */
+        const val TRAILER_CUTS = 12
+
+        /** Page gardée ouverte par les seuls changements de plan ([TRAILER_CUTS]) : au plus ce temps après son ouverture. */
+        const val TRAILERS_MAX_MILLIS = 150_000L
+
+        /** Une image comparée à la précédente au plus toutes les [CUT_SPACING_MILLIS] pour compter les changements de plan. */
+        const val CUT_SPACING_MILLIS = 900L
+        const val CUTS_KEPT = 64
 
         /** Après une telle erreur, le départ du logo seul n'ouvre plus de page pendant ce temps. */
         const val LOGO_ONLY_PAUSE_MILLIS = 15 * 60_000L

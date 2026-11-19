@@ -400,6 +400,14 @@ Commandes :
   détection, qui compte depuis l'ouverture de la chaîne) ; chaînes « 24/24 » de M6+ sans détection (`AdFreeChannels`).
   Restent : courts programmes parrainés entre deux pubs (« Petits plats » de Laurent Mariotte sur TF1), documentaire de T18
   repris après une page (logo inconnu), premières secondes d'une page après un changement de chaîne.
+- 18 et 19/11/2026 (box en automatique, 0.2.176 → 0.2.185 le 18, 0.2.197 la nuit du 19 ; 15 fichiers, 12 h, relevés dans
+  `tools/ad_truth/`) : la nuit, peu de pubs (appareil 46 % des secondes de pub baissées, 61 s de programme à tort) ; le 18,
+  78 %. Pages ouvertes au départ du logo (« logo parti depuis 20 s ») refermées faute de jonction en pleines bandes-annonces
+  enchaînées sans silence (CNews : bandes-annonces Canal+ ; TMC) : 0.2.200 les garde ouvertes tant que l'image change de plan
+  comme elles (`TRAILER_CUTS` = 12 changements en 30 s, au plus 2 min 30 : `TRAILERS_MAX_MILLIS` ; météo ou générique : 1 à
+  3, bandes-annonces : 14 à 26). Rejeu des 52 fichiers : 74,5 → 77,7 % baissées, programme à tort 1046 → 1251 s, dont 174 s
+  sur T18 où le rejeu lit mal le logo (la box le voyait). Restent : bandes-annonces de LCP (logo affiché dessus), page
+  France TV de nuit sur France 3, « Petits plats » de TF1, premières secondes de chaque page.
 
 ## Essais sur de vrais flux
 

@@ -171,6 +171,24 @@ class AdVolumeGuardTest {
     }
 
     @Test
+    fun `trailers one after the other without a silence keep the break open after 30 s`() {
+        // CNews, 19/11/2026 à 4 h : deux minutes de bandes-annonces sans silence entre elles ; la page ouverte au départ
+        // du logo était refermée au bout de 30 s, faute de jonction.
+        guard.logoFollowsBreaks = true
+        guard.logo = LogoState.VISIBLE
+        play(130.0)
+        guard.logo = LogoState.HIDDEN
+        repeat(60) {
+            picture = scene()
+            play(1.5)
+        }
+        assertTrue("l'image change de plan sans arrêt : toujours la page de pubs", guard.attenuating)
+        guard.logo = LogoState.VISIBLE
+        play(4.0)
+        assertFalse("logo revenu : le programme", guard.attenuating)
+    }
+
+    @Test
     fun `the pauses of a talk show are not ad breaks`() {
         // L'Équipe, « les grands live » : onze silences complets en sept minutes, l'image ne change pas.
         for ((at, millis) in L_EQUIPE_PAUSES) {

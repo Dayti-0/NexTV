@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.200
+- Baisser le son des pubs : les bandes-annonces enchaînées sans silence entre elles (CNews, TMC, France 5) restent baissées au lieu de remonter au bout de 30 s
+
 ## 0.2.199
 - Films et séries : ceux déjà vus passent à la fin des listes et des rangées (pas ceux en cours, qui gardent leur place)
 
