@@ -249,7 +249,9 @@ private fun mergeParts(group: List<Pair<BroadcastRow, MmaPromotion>>): List<MmaC
 
 /** Chaînes de la playlist qui diffusent le gala (françaises d'abord, puis la première à commencer). */
 private fun withChannels(card: MmaCard, shows: List<BroadcastRow>): MmaCard {
-    val ranked = shows.sortedWith(compareBy({ BroadcastLanguage.rank(it.channelName) }, { it.startMillis }))
+    // Grille française d'abord (« CANAL+ SPORT 3 » relié au guide de Canal+ Sport Afrique passe après Canal+ Sport 360),
+    // puis chaîne française, puis la première à commencer.
+    val ranked = shows.sortedWith(compareBy({ !it.epgChannelId.endsWith(".fr") }, { BroadcastLanguage.rank(it.channelName) }, { it.startMillis }))
     val inPlaylist = ranked.filter { it.channelId != null }.distinctBy { it.channelId }
     val preferred = inPlaylist.firstOrNull() ?: ranked.firstOrNull()
     return card.copy(

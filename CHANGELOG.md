@@ -4,6 +4,15 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.208
+- MMA : la fiche d’un gala prend presque tout l’écran et montre toute la carte des combats d’un coup (carte principale et préliminaires côte à côte)
+- MMA : noms et palmarès des combattants en entier, un combat par ligne avec portraits, drapeaux, catégorie et résultat
+- MMA : silhouette à la place d’un portrait manquant
+- MMA : plus de description du programme ni de « Choisir la chaîne » dans la fiche
+- MMA : « en différé » quand la chaîne diffuse le gala plus tard que l’heure de la carte (RMC Sport)
+- MMA : la chaîne française passe avant celle d’un autre pays (Canal+ Sport 360 avant Canal+ Sport Afrique pour l’ARES), noms de chaînes sans le pays en tête (« VOO WORLD 2 »)
+- MMA : le nom d’un gala trouvé dans le guide n’est plus écrit deux fois sur sa carte
+
 ## 0.2.207
 - MMA : vrais logos des organisations (UFC, PFL, Cage Warriors, KSW, ARES, ONE)
 - MMA : carte plus claire, noms des combattants en entier, un combattant par ligne avec son drapeau et son palmarès

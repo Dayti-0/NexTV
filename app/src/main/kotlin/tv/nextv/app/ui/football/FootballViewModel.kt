@@ -401,6 +401,9 @@ internal class BroadcastRow(channel: EpgChannelRow?, guideName: String?, program
 
     /** Chaîne de la playlist, ou à défaut, nom de la chaîne du guide (une ligne par chaîne). */
     val channelKey: Any = channelId ?: channelName
+
+    /** Identifiant du guide (« canalplussport3.af ») : la grille d'un autre pays passe après la française (section MMA). */
+    val epgChannelId: String = programme.epgChannelId
     val title = programme.title
     val subtitle = programme.subtitle
     val description = programme.description

@@ -50,4 +50,16 @@ class MmaCardsTest {
         assertEquals(7L, card.channel?.id)
         assertEquals(true, card.usualChannel)
     }
+
+    @Test
+    fun theFrenchGuideGridComesBeforeAnotherCountrysOne() {
+        val canalAfrica = EpgChannelRow("canalplussport3.af", 21, "FR| CANAL+ SPORT 3", "CANAL+ SPORT 3", null)
+        val canal360 = EpgChannelRow("canalplussport360.fr", 22, "FR| CANAL+ SPORT 360", "Canal+ Sport 360", null)
+        val rows = listOf(
+            row(canalAfrica, "ARES 45. 1re partie", now + 2 * hour, length = 2 * hour, subtitle = "ARES Fighting Championship"),
+            row(canal360, "MMA : ARES Fighting Championship", now + 2 * hour, length = 2 * hour),
+        )
+        val card = mmaCards(emptyList(), rows, now).single()
+        assertEquals(listOf(22L, 21L), card.channels.map { it.id })
+    }
 }
