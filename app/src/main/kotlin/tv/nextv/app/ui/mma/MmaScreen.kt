@@ -596,7 +596,8 @@ private fun FightRow(fight: MmaFight, highlighted: Boolean) {
                 val result = fight.result
                 when {
                     fight.live -> StatusPill(stringResource(R.string.mma_live), NexTvColors.Live)
-                    result != null -> Text(
+                    // Résultat sans reprise connue (site de l'ARES) : la coche du vainqueur suffit.
+                    result != null && (result.decision || result.round > 0) -> Text(
                         if (result.decision) stringResource(R.string.mma_decision) else stringResource(R.string.mma_finish_at, result.round, result.clock),
                         style = MaterialTheme.typography.labelMedium,
                         maxLines = 1,

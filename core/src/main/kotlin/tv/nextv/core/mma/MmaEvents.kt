@@ -36,12 +36,16 @@ data class MmaFighter(
     val flagUrl: String? = null,
     val record: String? = null,
     val espnId: String? = null,
+    /** Surnom (« Le Fauve »), donné par le site de l'ARES. */
+    val nickname: String? = null,
+    /** Photo donnée telle quelle par la source (site de l'ARES), à la place du portrait d'ESPN. */
+    val photo: String? = null,
 ) {
     /**
      * Portrait du combattant (fond transparent), réduit par le serveur d'images d'ESPN à [width] pixels de large (l'original
      * fait 600 × 436, ~200 Ko) ; absent pour certains combattants (l'image ne charge pas).
      */
-    fun photoUrl(width: Int = 240): String? = espnId?.let {
+    fun photoUrl(width: Int = 240): String? = photo ?: espnId?.let {
         "https://a.espncdn.com/combiner/i?img=/i/headshots/mma/players/full/$it.png&w=$width&h=${width * 436 / 600}"
     }
 }

@@ -62,4 +62,17 @@ class MmaCardsTest {
         val card = mmaCards(emptyList(), rows, now).single()
         assertEquals(listOf(22L, 21L), card.channels.map { it.id })
     }
+
+    @Test
+    fun anAresEventFromItsSiteTakesTheGuideBroadcastWithoutDuplicate() {
+        val ares = MmaEvent("ares-3368", MmaPromotion.ARES, "ARES 45: Jordan Zebo vs. Baissangour Chamsoudinov 2", now + 2 * hour, null, emptyList())
+        val canal360 = EpgChannelRow("canalplussport360.fr", 22, "FR| CANAL+ SPORT 360", "Canal+ Sport 360", null)
+        val rows = listOf(
+            row(canal360, "MMA : ARES Fighting Championship", now + 3 * hour, length = 2 * hour),
+            row(canal360, "MMA : ARES Fighting Championship", now + 5 * hour, length = 2 * hour),
+        )
+        val card = mmaCards(listOf(ares), rows, now).single()
+        assertEquals(ares, card.event)
+        assertEquals(22L, card.channel?.id)
+    }
 }

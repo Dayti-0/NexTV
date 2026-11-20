@@ -161,6 +161,10 @@ Commandes :
   UFC / PFL, Wikimedia pour Cage Warriors, sites de KSW, ARES, ONE ; Hexagone sans logo trouvé), chaîne habituelle quand le
   guide ne couvre pas la date (`MmaPromotion.usualGuideIds` : RMC Sport 1 / 2, Canal+ Sport 360 pour l'ARES ;
   `MmaCard.usualChannel`), portraits ESPN (`MmaFighter.photoUrl`, serveur `combiner` réduit à 120-300 px).
+  ARES (0.2.210, `core/mma/Ares.kt`) : site officiel `aresfighting.com` — `wp-json/wp/v2/competition` (galas, `acf.event_date`
+  heure de Paris, `acf.main_event`) puis la page `events/?competition=<id>` (blocs `fighter-line` : catégorie, photo 300 px,
+  nom, surnom, drapeau SVG → `flagcdn.com` en PNG, palmarès, « Winner » après le gala ; pas de préliminaires séparés) ; les
+  pages `competition/…` et `combat/…` renvoient à l'accueil. Ajouté au calendrier par `MmaScheduleClient(ares = …)`.
 - Identifiant de guide (`tvg-id`) recopié par erreur par le fournisseur (0.2.207, `ChannelNames.contradicts`, appelé par
   `EpgImporter.match`) : ignoré quand le nom n'a ni numéro ni vrai mot en commun avec la chaîne du guide (noms de groupe
   « RMC », « Canal+ »… ne comptent pas ; noms collés acceptés). Mesuré sur la vraie playlist le 20/11/2026 : 7 refus sur

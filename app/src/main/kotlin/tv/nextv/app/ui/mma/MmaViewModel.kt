@@ -206,8 +206,9 @@ internal fun mmaCards(
     val guideOnly = classified
         .filter { (row, promotion) ->
             row !in used && row.stopMillis > now - MmaViewModel.HISTORY_MILLIS && !rerun(row) &&
-                // UFC et PFL : ESPN fait foi (un programme hors de ses galas est une rediffusion ou un différé).
-                (promotion.espnLeague == null || promotion == MmaPromotion.CAGE_WARRIORS && promotion !in espnCovered)
+                // UFC et PFL : ESPN fait foi (un programme hors de ses galas est une rediffusion ou un différé). Cage
+                // Warriors (ESPN incomplet) et ARES (site officiel) : le guide seul tant que leur calendrier n'a aucun gala.
+                (promotion.espnLeague == null || promotion == MmaPromotion.CAGE_WARRIORS) && promotion !in espnCovered
         }
         // Une émission en plusieurs parties (« 1re partie », « Partie 2 ») ou sur plusieurs chaînes : un seul gala.
         .groupBy { (_, promotion) -> promotion }
