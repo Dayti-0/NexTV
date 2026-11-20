@@ -1,5 +1,6 @@
 package tv.nextv.app.ui.player
 
+import tv.nextv.app.ui.common.noProgrammeText
 import android.os.SystemClock
 import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
@@ -1474,7 +1475,7 @@ fun MenuProgrammePanel(info: MenuProgramme, now: Long, modifier: Modifier = Modi
         }
         val current = info.now
         if (current == null) {
-            Text(stringResource(R.string.channels_no_epg), style = MaterialTheme.typography.bodyLarge, color = Color.White.copy(alpha = 0.7f))
+            noProgrammeText(channel.name, channel.groupTitle).takeIf { it.isNotEmpty() }?.let { Text(it, style = MaterialTheme.typography.bodyLarge, color = Color.White.copy(alpha = 0.7f)) }
         } else {
             // Image du programme (guide, sinon TMDB pour un film ou une série) ; sans image, le texte prend toute la place.
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {

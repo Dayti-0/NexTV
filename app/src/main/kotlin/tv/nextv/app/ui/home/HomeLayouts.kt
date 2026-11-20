@@ -1,5 +1,6 @@
 package tv.nextv.app.ui.home
 
+import tv.nextv.app.ui.common.noProgrammeText
 import tv.nextv.app.ui.components.PillStyle
 import tv.nextv.app.ui.components.PillButton
 import androidx.compose.material.icons.filled.Info
@@ -1136,7 +1137,7 @@ internal fun ChannelBillboard(preview: ChannelPreview?, player: Player?, now: Lo
             }
             val current = preview.current
             if (current == null) {
-                Text(stringResource(R.string.channels_no_epg), style = MaterialTheme.typography.bodyLarge, color = NexTvColors.TextMuted)
+                noProgrammeText(channel.name, channel.groupTitle).takeIf { it.isNotEmpty() }?.let { Text(it, style = MaterialTheme.typography.bodyLarge, color = NexTvColors.TextMuted, maxLines = 2, overflow = TextOverflow.Ellipsis) }
                 return@Column
             }
             ScrollingText(current.title, if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.headlineSmall, Modifier.fillMaxWidth())

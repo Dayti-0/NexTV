@@ -51,6 +51,7 @@ internal class RadioNowPlaying(
     /** Service de reconnaissance (autre adresse : tests). */
     private val recognitionUrl: String = "https://api.audd.io/",
 ) {
+    private val titles = RadioTitleService(client, logger, radioFranceUrl, skyrockUrl, novaUrl, indesUrl, lagardereUrl, radiokingUrl, rtlUrl)
     private var job: Job? = null
     private var videoJob: Job? = null
     private var following: Pair<Boolean, String>? = null
@@ -124,7 +125,7 @@ internal class RadioNowPlaying(
 
     private suspend fun followLiveVideo() {
         while (true) {
-            val body = call(Request.Builder().url(skyrockUrl).build())
+            val body = titles.call(Request.Builder().url(skyrockUrl).build())
             // Réponse manquée (réseau) : la vidéo en cours reste.
             if (body != null) {
                 val video = NowPlaying.skyrockLiveVideo(body)
@@ -135,21 +136,7 @@ internal class RadioNowPlaying(
     }
 
     /** Morceau en cours lu sur le service de la radio, `null` s'il ne répond pas ou ne le donne pas. */
-    private suspend fun fromSource(source: InternetRadios.TitleSource): NowPlaying? = when (source) {
-        is InternetRadios.TitleSource.RadioFrance -> call(Request.Builder().url(radioFranceUrl(source.station)).build())
-            ?.let(NowPlaying::fromRadioFrance)
-        InternetRadios.TitleSource.Skyrock -> call(Request.Builder().url(skyrockUrl).build())
-            ?.let { NowPlaying.fromSkyrock(it, System.currentTimeMillis() / 1_000) }
-        is InternetRadios.TitleSource.Nova -> call(Request.Builder().url(novaUrl).build())?.let { NowPlaying.fromNova(it, source.stream) }
-        is InternetRadios.TitleSource.Indes -> call(
-            Request.Builder().url(indesUrl(source.site))
-                .post("""{"radio_ids":["${source.radioId}"]}""".toRequestBody("application/json".toMediaType()))
-                .build(),
-        )?.let { NowPlaying.fromIndes(it, source.radioId) }
-        is InternetRadios.TitleSource.Lagardere -> call(Request.Builder().url(lagardereUrl(source.site)).build())?.let(NowPlaying::fromLagardere)
-        is InternetRadios.TitleSource.Radioking -> call(Request.Builder().url(radiokingUrl(source.radioId)).build())?.let(NowPlaying::fromRadioking)
-        is InternetRadios.TitleSource.RtlProgram -> call(Request.Builder().url(rtlUrl(source.site)).build())?.let(NowPlaying::fromRtlProgram)
-    }
+    private suspend fun fromSource(source: InternetRadios.TitleSource): NowPlaying? = titles.current(source)
 
     private fun show(playing: NowPlaying?) {
         state.update {
@@ -177,16 +164,7 @@ internal class RadioNowPlaying(
         return NowPlaying.fromAudd(answer)
     }
 
-    private suspend fun call(request: Request): String? = withContext(Dispatchers.IO) {
-        try {
-            client().newCall(request).await().use { response -> if (response.isSuccessful) response.body.string() else null }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: IOException) {
-            logger.warn(TAG, "Morceau en cours indisponible : ${e.javaClass.simpleName}")
-            null
-        }
-    }
+    private suspend fun call(request: Request): String? = titles.call(request)
 
     private companion object {
         const val TAG = "RadioNowPlaying"
@@ -211,5 +189,68 @@ internal class RadioNowPlaying(
 
         /** Reconnaissance refusée (limite du jour) : pause. */
         const val PAUSE_AFTER_REFUSAL_MILLIS = 30 * 60_000L
+    }
+}
+
+/**
+ * Services des radios qui publient leur morceau (ou émission) en cours : partagé par le lecteur ([RadioNowPlaying]) et
+ * par l'accueil, qui l'affiche à la place du programme pour la radio sélectionnée ([current] garde chaque réponse 20 s :
+ * passer d'une radio à l'autre ne relit pas un service à chaque fois).
+ */
+class RadioTitleService(
+    private val client: () -> OkHttpClient,
+    private val logger: Logger,
+    private val radioFranceUrl: (Int) -> String = { "https://api.radiofrance.fr/livemeta/pull/$it" },
+    private val skyrockUrl: String = "https://skyrock.fm/api/v3/player/onair/national/",
+    private val novaUrl: String = "https://www.nova.fr/radios-data/www.nova.fr/all.json",
+    private val indesUrl: (String) -> String = { site -> "https://$site/lite/update_onair" },
+    private val lagardereUrl: (String) -> String = { site -> "https://$site/cetait-quoi-ce-titre/history?idplayer=1&limit=1" },
+    private val radiokingUrl: (Int) -> String = { id -> "https://api.radioking.io/widgets/api/v1/radio/$id/track/current" },
+    private val rtlUrl: (String) -> String = { site -> "https://$site/ws/live/live" },
+) {
+    private class Cached(val atMillis: Long, val playing: NowPlaying?)
+
+    private val cache = java.util.concurrent.ConcurrentHashMap<InternetRadios.TitleSource, Cached>()
+
+    /** Morceau en cours, relu au plus toutes les 20 s par service (accueil). */
+    suspend fun cached(source: InternetRadios.TitleSource): NowPlaying? {
+        val now = SystemClock.elapsedRealtime()
+        cache[source]?.takeIf { now - it.atMillis < CACHE_MILLIS }?.let { return it.playing }
+        val playing = current(source)
+        cache[source] = Cached(now, playing)
+        return playing
+    }
+
+    /** Morceau en cours lu sur le service de la radio, `null` s'il ne répond pas ou ne le donne pas. */
+    suspend fun current(source: InternetRadios.TitleSource): NowPlaying? = when (source) {
+        is InternetRadios.TitleSource.RadioFrance -> call(Request.Builder().url(radioFranceUrl(source.station)).build())
+            ?.let(NowPlaying::fromRadioFrance)
+        InternetRadios.TitleSource.Skyrock -> call(Request.Builder().url(skyrockUrl).build())
+            ?.let { NowPlaying.fromSkyrock(it, System.currentTimeMillis() / 1_000) }
+        is InternetRadios.TitleSource.Nova -> call(Request.Builder().url(novaUrl).build())?.let { NowPlaying.fromNova(it, source.stream) }
+        is InternetRadios.TitleSource.Indes -> call(
+            Request.Builder().url(indesUrl(source.site))
+                .post("""{"radio_ids":["${source.radioId}"]}""".toRequestBody("application/json".toMediaType()))
+                .build(),
+        )?.let { NowPlaying.fromIndes(it, source.radioId) }
+        is InternetRadios.TitleSource.Lagardere -> call(Request.Builder().url(lagardereUrl(source.site)).build())?.let(NowPlaying::fromLagardere)
+        is InternetRadios.TitleSource.Radioking -> call(Request.Builder().url(radiokingUrl(source.radioId)).build())?.let(NowPlaying::fromRadioking)
+        is InternetRadios.TitleSource.RtlProgram -> call(Request.Builder().url(rtlUrl(source.site)).build())?.let(NowPlaying::fromRtlProgram)
+    }
+
+    internal suspend fun call(request: Request): String? = withContext(Dispatchers.IO) {
+        try {
+            client().newCall(request).await().use { response -> if (response.isSuccessful) response.body.string() else null }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: IOException) {
+            logger.warn(TAG, "Morceau en cours indisponible : ${e.javaClass.simpleName}")
+            null
+        }
+    }
+
+    private companion object {
+        const val TAG = "RadioNowPlaying"
+        const val CACHE_MILLIS = 20_000L
     }
 }

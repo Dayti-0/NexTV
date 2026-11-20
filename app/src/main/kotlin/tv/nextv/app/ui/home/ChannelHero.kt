@@ -1,5 +1,6 @@
 package tv.nextv.app.ui.home
 
+import tv.nextv.app.ui.common.noProgrammeText
 import android.view.ViewGroup
 import androidx.annotation.OptIn as AndroidXOptIn
 import androidx.compose.animation.AnimatedContent
@@ -137,7 +138,7 @@ private fun HeroDetails(preview: ChannelPreview, now: Long) {
         }
         val current = preview.current
         if (current == null) {
-            Text(stringResource(R.string.channels_no_epg), style = MaterialTheme.typography.bodyLarge, color = NexTvColors.TextMuted)
+            noProgrammeText(channel.name, channel.groupTitle).takeIf { it.isNotEmpty() }?.let { Text(it, style = MaterialTheme.typography.bodyLarge, color = NexTvColors.TextMuted, maxLines = 2, overflow = TextOverflow.Ellipsis) }
         } else {
             ProgrammeLine(current, now)
             current.description?.let {

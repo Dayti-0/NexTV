@@ -1,5 +1,6 @@
 package tv.nextv.app.ui.home
 
+import tv.nextv.app.ui.common.noProgrammeText
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
@@ -192,7 +193,7 @@ fun ChannelCard(
                 }
                 // Programme en cours, quelle que soit la taille de la vignette.
                 ScrollingText(
-                    channel.nowTitle ?: stringResource(R.string.channels_no_epg),
+                    channel.nowTitle ?: noProgrammeText(channel.name, channel.groupTitle, fetch = focused),
                     if (small) MaterialTheme.typography.labelSmall else MaterialTheme.typography.bodySmall,
                     color = if (channel.nowTitle != null) MaterialTheme.colorScheme.onSurfaceVariant else NexTvColors.TextMuted,
                     scrolling = focused,

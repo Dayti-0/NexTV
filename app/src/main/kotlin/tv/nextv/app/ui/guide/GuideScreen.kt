@@ -1,5 +1,6 @@
 package tv.nextv.app.ui.guide
 
+import tv.nextv.app.ui.common.noProgrammeText
 import tv.nextv.app.ui.common.frenchText
 import tv.nextv.app.ui.components.FadingBottom
 import android.widget.Toast
@@ -835,7 +836,7 @@ fun ProgrammeSheetContent(
                 }
             }
             if (programme == null) {
-                Text(stringResource(R.string.channels_no_epg), style = MaterialTheme.typography.headlineSmall)
+                noProgrammeText(channel.name, null).takeIf { it.isNotEmpty() }?.let { Text(it, style = MaterialTheme.typography.headlineSmall) }
             } else {
                 // Fiche plus haute que l'écran : ce bloc défile (description entière), les boutons restent visibles en bas.
                 Column(

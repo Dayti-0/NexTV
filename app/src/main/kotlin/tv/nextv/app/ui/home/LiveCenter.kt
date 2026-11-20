@@ -1,5 +1,6 @@
 package tv.nextv.app.ui.home
 
+import tv.nextv.app.ui.common.noProgrammeText
 import android.os.Build
 
 import androidx.compose.animation.Crossfade
@@ -276,7 +277,7 @@ internal fun LiveBanner(preview: ChannelPreview?, player: Player?, now: Long, mo
             }
             val current = preview.current
             if (current == null) {
-                Text(stringResource(R.string.channels_no_epg), style = MaterialTheme.typography.bodyLarge, color = NexTvColors.TextMuted)
+                noProgrammeText(channel.name, channel.groupTitle).takeIf { it.isNotEmpty() }?.let { Text(it, style = MaterialTheme.typography.bodyLarge, color = NexTvColors.TextMuted, maxLines = 2, overflow = TextOverflow.Ellipsis) }
             } else {
                 Text(current.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -328,7 +329,7 @@ internal fun LivePane(
         }
         val current = preview.current
         if (current == null) {
-            Text(stringResource(R.string.channels_no_epg), style = MaterialTheme.typography.bodyLarge, color = NexTvColors.TextMuted)
+            noProgrammeText(channel.name, channel.groupTitle).takeIf { it.isNotEmpty() }?.let { Text(it, style = MaterialTheme.typography.bodyLarge, color = NexTvColors.TextMuted, maxLines = 2, overflow = TextOverflow.Ellipsis) }
         } else {
             Text(current.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
             // Horaires et temps restant, puis la progression sur toute la largeur (lisible même si le volet est étroit).

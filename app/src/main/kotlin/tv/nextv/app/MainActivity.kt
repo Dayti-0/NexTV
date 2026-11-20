@@ -9,7 +9,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.material3.Surface
 import tv.nextv.app.ui.NexTvNavHost
+import tv.nextv.app.ui.common.LocalRadioTitles
 import tv.nextv.app.ui.common.LocalTranslator
+import tv.nextv.app.ui.player.RadioTitleService
 import tv.nextv.app.ui.theme.NexTvTheme
 import tv.nextv.app.ui.update.LaunchUpdatePrompt
 import tv.nextv.app.ui.theme.ThemeStyle
@@ -31,11 +33,13 @@ class MainActivity : ComponentActivity() {
         val container = (application as NexTvApplication).container
         val settings = container.settings
         val translate: suspend (String) -> String? = container.translator::toFrench
+        // Morceau en cours des radios sélectionnées à l'accueil (à la place du programme, qu'elles n'ont pas).
+        val radioTitles = RadioTitleService({ container.httpClients.client(tv.nextv.core.net.RequestPurpose.METADATA) }, container.logger)
         setContent {
             val theme by settings.themeStyle.collectAsState(initial = ThemeStyle.NIGHT)
             NexTvTheme(theme) {
                 // Descriptions du guide dans une autre langue : traduites en français.
-                CompositionLocalProvider(LocalTranslator provides translate) {
+                CompositionLocalProvider(LocalTranslator provides translate, LocalRadioTitles provides radioTitles) {
                     Surface {
                         NexTvNavHost()
                         // Nouvelle version publiée : proposée au lancement.
