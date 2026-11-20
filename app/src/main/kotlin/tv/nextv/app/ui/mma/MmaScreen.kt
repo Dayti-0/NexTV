@@ -317,7 +317,7 @@ private fun EventRow(card: MmaCard, now: Long, compact: Boolean) {
             }
             val mainEvent = card.event?.mainEvent
             if (mainEvent != null) {
-                FighterLines(mainEvent, large = !compact)
+                MatchUpLine(mainEvent, large = !compact)
                 mainEvent.weightClass?.let {
                     Text(stringResource(R.string.mma_main_event, it), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                 }
@@ -338,28 +338,29 @@ private fun EventRow(card: MmaCard, now: Long, compact: Boolean) {
 }
 
 /**
- * Les deux combattants l'un sous l'autre : drapeau, nom en entier, palmarès à droite ; une fois le combat terminé, une
- * coche devant le vainqueur et le perdant en grisé.
+ * Combat principal sur une ligne, comme l'affiche d'un match : « [drapeau] Jiří Procházka – [drapeau] Navajo Stirling ».
+ * Un nom trop long passe à la ligne entre les deux combattants, jamais au milieu d'un nom ; vainqueur coché, perdant grisé.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun FighterLines(fight: MmaFight, large: Boolean) {
-    val style = if (large) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleMedium
+private fun MatchUpLine(fight: MmaFight, large: Boolean) {
+    val style = if (large) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium
     val winner = fight.result?.winner
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp), itemVerticalAlignment = Alignment.CenterVertically) {
         fight.fighters.forEachIndexed { index, fighter ->
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Flag(fighter, if (large) 26.dp else 20.dp)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Le tiret part avec le second combattant si l'affiche doit passer à la ligne.
+                if (index == 1) Text("–", style = style, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Flag(fighter, if (large) 22.dp else 18.dp)
                 Text(
                     fighter.name,
                     style = style,
                     fontWeight = if (winner == index) FontWeight.Bold else FontWeight.SemiBold,
                     color = if (winner != null && winner != index) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified,
-                    modifier = Modifier.weight(1f, fill = false),
+                    maxLines = 1,
+                    softWrap = false,
                 )
                 if (winner == index) WinnerMark()
-                fighter.record?.let {
-                    Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                }
             }
         }
     }
@@ -462,24 +463,28 @@ private fun EventSheet(card: MmaCard, now: Long, onWatch: (Long) -> Unit, onDism
                     return@Column
                 }
                 val (main, prelims) = fights.partition { it.mainCard }
-                // Deux colonnes : carte principale | préliminaires (sans préliminaires, la carte coupée en deux).
-                val columns = when {
-                    !window.isWide -> listOf(stringResource(R.string.mma_main_card) to main, stringResource(R.string.mma_prelims) to prelims)
-                    prelims.isNotEmpty() -> listOf(stringResource(R.string.mma_main_card) to main, stringResource(R.string.mma_prelims) to prelims)
-                    else -> main.chunked((main.size + 1) / 2).mapIndexed { index, part -> (if (index == 0) stringResource(R.string.mma_main_card) else "") to part }
-                }.filter { it.second.isNotEmpty() }
-                if (window.isWide) {
-                    Row(Modifier.weight(1f, fill = false), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                        columns.forEach { (title, list) -> FightColumn(title, list, mainEvent = fights.first(), Modifier.weight(1f)) }
-                    }
-                } else {
-                    Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        columns.forEach { (title, list) -> FightColumn(title, list, mainEvent = fights.first(), Modifier.fillMaxWidth(), scroll = false) }
+                // Une seule liste, combat principal en tête, puis préliminaires ; chaque combat se sélectionne : la
+                // télécommande fait défiler la liste.
+                LazyColumn(
+                    Modifier.weight(1f, fill = false),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(vertical = 4.dp),
+                ) {
+                    if (prelims.isNotEmpty()) item(key = "main-title") { SheetHeading(stringResource(R.string.mma_main_card)) }
+                    items(main, key = { "main-" + it.label }) { FaceOffRow(it, highlighted = it === fights.first(), compact = !window.isWide) }
+                    if (prelims.isNotEmpty()) {
+                        item(key = "prelims-title") { SheetHeading(stringResource(R.string.mma_prelims)) }
+                        items(prelims, key = { "prelim-" + it.label }) { FaceOffRow(it, highlighted = false, compact = !window.isWide) }
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun SheetHeading(text: String) {
+    Text(text, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 6.dp))
 }
 
 /** En-tête de la fiche : logo, nom du gala, date · lieu · horaires, puis les chaînes et « Fermer ». */
@@ -552,46 +557,32 @@ private fun SheetHeader(card: MmaCard, now: Long, onWatch: (Long) -> Unit, onDis
     }
 }
 
-/** Colonne de combats (titre, puis un combat par ligne) ; elle défile seule si elle ne tient pas. */
-@Composable
-private fun FightColumn(title: String, fights: List<MmaFight>, mainEvent: MmaFight, modifier: Modifier, scroll: Boolean = true) {
-    Column(modifier.then(if (scroll) Modifier.verticalScroll(rememberScrollState()) else Modifier), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        // Même hauteur de titre dans les deux colonnes, même vide : les lignes restent alignées.
-        Text(title.ifEmpty { " " }, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-        fights.forEach { FightRow(it, highlighted = it === mainEvent) }
-    }
-}
-
 /**
- * Un combat : les deux combattants l'un sous l'autre (portrait, drapeau, nom en entier, palmarès, coche du vainqueur), la
- * catégorie et « contre » ou le résultat à droite. Le combat principal est entouré. Chaque ligne se sélectionne : la
- * télécommande fait défiler une colonne qui ne tiendrait pas (petit écran).
+ * Un combat en face à face, en grand : portrait, nom en entier, drapeau et palmarès de chaque combattant, avec au milieu
+ * la catégorie et « contre » ou le résultat. Le combat principal est entouré, ses portraits et ses noms plus grands.
  */
 @Composable
-private fun FightRow(fight: MmaFight, highlighted: Boolean) {
+private fun FaceOffRow(fight: MmaFight, highlighted: Boolean, compact: Boolean) {
     val winner = fight.result?.winner
     FocusSurface(
         onClick = {},
         modifier = Modifier.fillMaxWidth().then(
-            if (highlighted) Modifier.border(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.7f), MaterialTheme.shapes.small) else Modifier,
+            if (highlighted) Modifier.border(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.7f), MaterialTheme.shapes.medium) else Modifier,
         ),
-        shape = MaterialTheme.shapes.small,
+        shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surfaceContainer,
         focusScale = 1.01f,
     ) {
-        Row(Modifier.padding(horizontal = 10.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                fight.fighters.forEachIndexed { index, fighter -> FighterLine(fighter, won = winner == index, lost = winner != null && winner != index) }
-            }
-            Column(Modifier.width(96.dp), horizontalAlignment = Alignment.End) {
+        val photo = when {
+            compact -> if (highlighted) 64.dp else 52.dp
+            highlighted -> 96.dp
+            else -> 76.dp
+        }
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            FaceOffSide(fight.fighters[0], winner, 0, photo, highlighted, Modifier.weight(1f), start = true)
+            Column(Modifier.width(if (compact) 84.dp else 132.dp).padding(horizontal = 6.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 fight.weightClass?.let {
-                    Text(
-                        it.removePrefix("Poids ").replaceFirstChar { c -> c.titlecase() },
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        textAlign = TextAlign.End,
-                        maxLines = 1,
-                    )
+                    Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Center, maxLines = 2)
                 }
                 val result = fight.result
                 when {
@@ -599,35 +590,47 @@ private fun FightRow(fight: MmaFight, highlighted: Boolean) {
                     // Résultat sans reprise connue (site de l'ARES) : la coche du vainqueur suffit.
                     result != null && (result.decision || result.round > 0) -> Text(
                         if (result.decision) stringResource(R.string.mma_decision) else stringResource(R.string.mma_finish_at, result.round, result.clock),
-                        style = MaterialTheme.typography.labelMedium,
-                        maxLines = 1,
+                        style = MaterialTheme.typography.titleSmall,
+                        textAlign = TextAlign.Center,
                     )
+                    result == null -> Text(stringResource(R.string.mma_versus), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
+            FaceOffSide(fight.fighters[1], winner, 1, photo, highlighted, Modifier.weight(1f), start = false)
         }
     }
 }
 
-/** Un combattant sur une ligne : portrait, drapeau, nom (en entier, une ligne), palmarès, coche s'il a gagné. */
+/** Un côté du face à face : portrait au bord, nom en entier (deux lignes au besoin), drapeau et palmarès dessous. */
 @Composable
-private fun FighterLine(fighter: MmaFighter, won: Boolean, lost: Boolean) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        FighterPhoto(fighter, 20.dp)
-        Flag(fighter, 12.dp)
-        Text(
-            fighter.name,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = if (won) FontWeight.Bold else FontWeight.Medium,
-            color = if (lost) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified,
-            maxLines = 1,
-            softWrap = false,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false),
-        )
-        fighter.record?.let {
-            Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, softWrap = false)
+private fun FaceOffSide(fighter: MmaFighter, winner: Int?, index: Int, photo: Dp, large: Boolean, modifier: Modifier, start: Boolean) {
+    val won = winner == index
+    val lost = winner != null && !won
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (start) FighterPhoto(fighter, photo)
+        Column(Modifier.weight(1f), horizontalAlignment = if (start) Alignment.Start else Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (!start && won) WinnerMark()
+                Text(
+                    fighter.name,
+                    style = if (large) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium,
+                    fontWeight = if (won) FontWeight.Bold else FontWeight.SemiBold,
+                    color = if (lost) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified,
+                    textAlign = if (start) TextAlign.Start else TextAlign.End,
+                    maxLines = 2,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (start && won) WinnerMark()
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (start) Flag(fighter, 16.dp)
+                fighter.record?.let {
+                    Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, softWrap = false)
+                }
+                if (!start) Flag(fighter, 16.dp)
+            }
         }
-        if (won) WinnerMark()
+        if (!start) FighterPhoto(fighter, photo)
     }
 }
 
