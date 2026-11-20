@@ -4,6 +4,11 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.205
+- Réglages : barre de chargement pendant la mise à jour de la playlist, avec l’étape en cours (téléchargement, enregistrement des chaînes, guide TV) et le pourcentage
+- Radios : NRJ, Nostalgie, Chérie FM… reconnues comme radios : plus de « Pas d’information de programme » (ni « Pas de programme » dans le guide)
+- Aperçu des radios et web radios : le logo reste affiché avec une petite animation qui suit la musique
+
 ## 0.2.204
 - Radios : à la place de « Pas d’information de programme », l’accueil et le menu des chaînes affichent le titre en cours des radios qui le publient (Radio France, Skyrock, Nova, RFM, Europe 2, Jazz Radio…), sinon le genre de la radio, ou rien
 

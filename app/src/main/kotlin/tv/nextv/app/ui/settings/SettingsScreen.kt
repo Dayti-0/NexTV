@@ -1,5 +1,10 @@
 package tv.nextv.app.ui.settings
 
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.height
+import android.text.format.Formatter
+import tv.nextv.core.io.LoadStep
+import tv.nextv.core.io.LoadProgress
 import androidx.compose.material.icons.filled.Close
 import tv.nextv.app.data.settings.AdSound
 import tv.nextv.app.player.AdRadios
@@ -142,6 +147,7 @@ fun SettingsScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val update by viewModel.update.collectAsStateWithLifecycle()
     val account by viewModel.account.collectAsStateWithLifecycle()
+    val refreshProgress by viewModel.refreshProgress.collectAsStateWithLifecycle()
     val adRecordings by viewModel.adRecordings.collectAsStateWithLifecycle()
     val adPlace by viewModel.adPlace.collectAsStateWithLifecycle()
     val adSound by viewModel.adSound.collectAsStateWithLifecycle()
@@ -236,6 +242,7 @@ fun SettingsScreen(
     SettingsContent(
         state = state,
         account = account,
+        refreshProgress = refreshProgress,
         snackbarHostState = snackbar,
         onBack = onBack,
         onPlaylists = onPlaylists,
@@ -401,6 +408,8 @@ fun SettingsContent(
     tvLink: TvLinkUi = TvLinkUi(),
     tvLinkActions: TvLinkActions = TvLinkActions(),
     account: AccountState? = null,
+    /** Avancement de la mise à jour de la playlist en cours (`null` : pas encore d'étape signalée). */
+    refreshProgress: LoadProgress? = null,
     now: Long = System.currentTimeMillis(),
     onQuickSetup: () -> Unit = {},
     /** Configuration à distance : envoyer à une autre télé, afficher le code de celle-ci. */
@@ -453,7 +462,7 @@ fun SettingsContent(
                         )
                         status.error?.let { ErrorText(resources.describe(it)) }
                         account?.let { AccountText(it, now) }
-                        if (state.refreshing) LinearProgressIndicator(Modifier.fillMaxWidth(), color = NexTvColors.Live)
+                        if (state.refreshing) RefreshProgressBar(refreshProgress)
                         // Fréquence de mise à jour automatique (le guide TV, lui, se met à jour chaque jour).
                         ValueRow(
                             title = stringResource(R.string.settings_playlist_refresh),
@@ -1419,4 +1428,40 @@ private fun InfoText(text: String) {
 @Composable
 private fun ErrorText(text: String) {
     Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+}
+
+/**
+ * Barre de chargement de la mise à jour de la playlist : étape en cours (téléchargement, enregistrement des chaînes,
+ * guide TV) avec sa part faite quand le total est connu, sinon les octets reçus et une barre qui défile.
+ */
+@Composable
+private fun RefreshProgressBar(progress: LoadProgress?) {
+    val context = LocalContext.current
+    val step = when (progress?.step) {
+        null -> R.string.startup_step_preparing
+        LoadStep.PLAYLIST -> R.string.startup_step_playlist
+        LoadStep.SAVING -> R.string.startup_step_saving
+        LoadStep.EPG_DOWNLOAD -> R.string.startup_step_epg_download
+        LoadStep.EPG_IMPORT -> R.string.startup_step_epg_import
+    }
+    val fraction = progress?.fraction
+    val detail = when {
+        fraction != null -> "${(fraction * 100).toInt()} %"
+        progress != null && progress.done > 0 && (progress.step == LoadStep.PLAYLIST || progress.step == LoadStep.EPG_DOWNLOAD) ->
+            stringResource(R.string.startup_bytes_received, Formatter.formatShortFileSize(context, progress.done))
+        else -> null
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            listOfNotNull(stringResource(step), detail).joinToString("  ·  "),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        val barModifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp))
+        if (fraction != null) {
+            LinearProgressIndicator(progress = { fraction }, modifier = barModifier, color = NexTvColors.Live, gapSize = 0.dp, drawStopIndicator = {})
+        } else {
+            LinearProgressIndicator(barModifier, color = NexTvColors.Live, gapSize = 0.dp)
+        }
+    }
 }

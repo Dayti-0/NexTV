@@ -163,6 +163,18 @@ class SourceRepositoryTest {
         assertEquals(2, status.epg.matchedChannelCount)
         assertEquals(setOf("tf1.fr", "france2.fr"), store.epgMapping.getValue(id).values.toSet())
         assertFalse(repository.refreshing.value.contains(id))
+        assertFalse(repository.progress.value.containsKey(id))
+    }
+
+    @Test
+    fun `refresh publishes its progress while it runs`() = runBlocking {
+        route("/list.m3u", playlistWithEpg("/none.xml"))
+        val id = repository.add(SourceInput(name = "IPTV", location = SourceLocation.Remote(server.url("/list.m3u").toString())))
+        val seen = mutableListOf<tv.nextv.core.io.LoadStep>()
+        repository.refresh(id, includeEpg = false) { _ -> repository.progress.value[id]?.let { seen += it.step } }
+
+        assertTrue(tv.nextv.core.io.LoadStep.SAVING in seen)
+        assertFalse(repository.progress.value.containsKey(id))
     }
 
     @Test

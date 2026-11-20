@@ -1,6 +1,12 @@
 package tv.nextv.app.ui.home
 
 import tv.nextv.app.ui.common.noProgrammeText
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.DisposableEffect
 import android.view.ViewGroup
 import androidx.annotation.OptIn as AndroidXOptIn
 import androidx.compose.animation.AnimatedContent
@@ -218,6 +224,19 @@ internal fun PreviewVideo(player: Player, modifier: Modifier = Modifier, zoom: B
             player.removeListener(listener)
         }
     }
+    // Radio (son sans image) : la vue vidéo reste cachée, le logo dessous reste visible ; une petite animation qui suit
+    // le son montre que l'aperçu joue.
+    var audioOnly by remember(player) { mutableStateOf(player.isAudioOnly()) }
+    DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                audioOnly = player.isAudioOnly()
+            }
+        }
+        player.addListener(listener)
+        onDispose { player.removeListener(listener) }
+    }
+    Box(modifier) {
     AndroidView(
         factory = { context ->
             VideoViews.create(context, hideWithoutImage = true).apply {
@@ -245,9 +264,84 @@ internal fun PreviewVideo(player: Player, modifier: Modifier = Modifier, zoom: B
             }
         },
         onRelease = { view -> VideoViews.release(view) },
-        modifier = modifier,
+        modifier = Modifier.fillMaxSize(),
     )
+    if (audioOnly) RadioPreviewBars(Modifier.align(Alignment.BottomCenter).fillMaxWidth(0.6f).fillMaxHeight(0.22f).padding(bottom = 8.dp))
+    }
 }
+
+/** Flux qui n'a que du son (radio, web radio). */
+private fun Player.isAudioOnly(): Boolean =
+    currentTracks.containsType(androidx.media3.common.C.TRACK_TYPE_AUDIO) && !currentTracks.containsType(androidx.media3.common.C.TRACK_TYPE_VIDEO)
+
+/**
+ * Barres de l'aperçu d'une radio : bandes du spectre du son (celui des animations des radios, [SpectrumAnalyzer]) ;
+ * sans son analysé (son passé à l'ampli, aperçus des tests), une houle douce. 20 images/s sur une petite Fire TV.
+ */
+@Composable
+private fun RadioPreviewBars(modifier: Modifier) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val analyzer = remember { (context.applicationContext as? tv.nextv.app.NexTvApplication)?.container?.playerFactory?.spectrum }
+    val lowPower = remember { tv.nextv.app.player.smallMemoryDevice(context) }
+    val inspection = androidx.compose.ui.platform.LocalInspectionMode.current
+    val bands = remember { FloatArray(analyzer?.bandCount ?: 32) }
+    val heights = remember { FloatArray(PREVIEW_BARS) }
+    var tick by remember { mutableIntStateOf(0) }
+    if (analyzer != null) {
+        DisposableEffect(analyzer) {
+            val stop = analyzer.watch()
+            onDispose { stop() }
+        }
+    }
+    LaunchedEffect(analyzer) {
+        if (inspection) {
+            for (i in heights.indices) heights[i] = 0.35f + 0.5f * kotlin.math.abs(kotlin.math.sin(i * 0.9f))
+            tick++
+            return@LaunchedEffect
+        }
+        val start = System.nanoTime()
+        var last = start
+        while (true) {
+            delay(if (lowPower) 50L else 33L)
+            val now = System.nanoTime()
+            val elapsed = ((now - last) / 1e9f).coerceIn(0.001f, 0.25f)
+            last = now
+            val seconds = (now - start) / 1e9f
+            val sound = analyzer?.hasSound(now) == true
+            if (sound) analyzer!!.read(bands, elapsed, now)
+            val perBar = bands.size / PREVIEW_BARS
+            for (i in 0 until PREVIEW_BARS) {
+                val target = if (sound) {
+                    var peak = 0f
+                    for (b in i * perBar until (i + 1) * perBar) peak = maxOf(peak, bands[b])
+                    peak.coerceIn(0f, 1f)
+                } else {
+                    0.25f + 0.2f * kotlin.math.sin(seconds * 3f + i * 0.8f)
+                }
+                heights[i] += (target - heights[i]) * (elapsed * 12f).coerceAtMost(1f)
+            }
+            tick++
+        }
+    }
+    val color = MaterialTheme.colorScheme.primary
+    androidx.compose.foundation.Canvas(modifier) {
+        @Suppress("UNUSED_EXPRESSION")
+        tick // relu ici : seule l'image est redessinée.
+        val gap = size.width / PREVIEW_BARS * 0.35f
+        val barWidth = (size.width - gap * (PREVIEW_BARS - 1)) / PREVIEW_BARS
+        for (i in 0 until PREVIEW_BARS) {
+            val h = size.height * (0.12f + 0.88f * heights[i].coerceIn(0f, 1f))
+            drawRoundRect(
+                color = color,
+                topLeft = androidx.compose.ui.geometry.Offset(i * (barWidth + gap), size.height - h),
+                size = androidx.compose.ui.geometry.Size(barWidth, h),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth / 2),
+            )
+        }
+    }
+}
+
+private const val PREVIEW_BARS = 8
 
 /** Surveillance de l'image de l'aperçu : fréquence, son sans image toléré, reprises au direct au plus. */
 private const val PREVIEW_FRAME_CHECK_MILLIS = 500L

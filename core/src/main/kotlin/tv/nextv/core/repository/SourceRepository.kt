@@ -90,6 +90,17 @@ class SourceRepository(
     /** Sources en cours d'actualisation. */
     val refreshing: StateFlow<Set<Long>> = refreshingIds.asStateFlow()
 
+    private val progressById = MutableStateFlow<Map<Long, LoadProgress>>(emptyMap())
+
+    /** Dernière étape signalée de chaque actualisation en cours (barre de chargement des réglages). */
+    val progress: StateFlow<Map<Long, LoadProgress>> = progressById.asStateFlow()
+
+    /** [progress] transmis à l'appelant et retenu pour [progress]. */
+    private fun tracked(id: Long, progress: ProgressListener?) = ProgressListener { step ->
+        progressById.update { it + (id to step) }
+        progress?.onProgress(step)
+    }
+
     private val locks = ConcurrentHashMap<Long, Mutex>()
 
     /** Déclare au [Redactor] les identifiants déjà enregistrés (à appeler au démarrage). */
@@ -207,7 +218,7 @@ class SourceRepository(
      * @param progress avancement réel de chaque étape (octets reçus, chaînes enregistrées…).
      */
     suspend fun refresh(id: Long, includeEpg: Boolean = true, progress: ProgressListener? = null): RefreshResult =
-        withRefreshLock(id) { guarded(id) { refreshLocked(id, includeEpg, progress) } }
+        withRefreshLock(id) { guarded(id) { refreshLocked(id, includeEpg, tracked(id, progress)) } }
 
     /**
      * Une actualisation ne fait jamais planter l'application : une erreur inattendue (stockage plein, base
@@ -346,7 +357,7 @@ class SourceRepository(
      * trop ancien (ou si [force]) et réimporté seulement s'il a changé depuis le dernier import.
      */
     suspend fun refreshEpg(id: Long, force: Boolean = false, progress: ProgressListener? = null): RefreshResult =
-        withRefreshLock(id) { guarded(id) { refreshEpgLocked(id, force, progress) } }
+        withRefreshLock(id) { guarded(id) { refreshEpgLocked(id, force, tracked(id, progress)) } }
 
     private suspend fun refreshEpgLocked(id: Long, force: Boolean, progress: ProgressListener?): RefreshResult {
         val source = store.getSource(id) ?: return RefreshResult.NotFound
@@ -604,6 +615,7 @@ class SourceRepository(
                 block()
             } finally {
                 refreshingIds.update { it - id }
+                progressById.update { it - id }
             }
         }
 

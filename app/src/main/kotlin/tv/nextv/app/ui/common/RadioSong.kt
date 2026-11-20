@@ -9,6 +9,7 @@ import kotlinx.coroutines.delay
 import tv.nextv.app.R
 import tv.nextv.app.ui.player.RadioTitleService
 import tv.nextv.core.audio.NowPlaying
+import tv.nextv.core.catalog.ChannelLineup
 import tv.nextv.core.catalog.InternetRadios
 
 /** Services des radios qui donnent leur morceau en cours, fournis par l'activité ; sans eux (aperçus, tests) : rien n'est lu. */
@@ -16,9 +17,9 @@ val LocalRadioTitles = staticCompositionLocalOf<RadioTitleService?> { null }
 
 private val RADIO_GROUP = Regex("""(?i)\b(web )?radios?\b""")
 
-/** Chaîne qui est une radio : radio connue de l'appli, ou rangée dans une catégorie de radios de la playlist. */
+/** Chaîne qui est une radio : radio connue de l'appli, nom de radio (règle de la rubrique Radios), ou catégorie de radios. */
 fun isRadio(name: String, groupTitle: String?): Boolean =
-    InternetRadios.byName(name) != null || InternetRadios.titlesFor(name) != null ||
+    InternetRadios.byName(name) != null || InternetRadios.titlesFor(name) != null || ChannelLineup.isRadioName(name) ||
         groupTitle?.let { RADIO_GROUP.containsMatchIn(it) } == true
 
 /**

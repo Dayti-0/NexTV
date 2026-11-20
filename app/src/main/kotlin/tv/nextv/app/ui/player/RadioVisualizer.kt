@@ -176,8 +176,8 @@ fun RadioVisualizer(
     var drawn by remember(visual, name) { mutableStateOf(firstMode(visual, name)) }
 
     DisposableEffect(analyzer) {
-        analyzer.active = true
-        onDispose { analyzer.active = false }
+        val stop = analyzer.watch()
+        onDispose { stop() }
     }
     LaunchedEffect(analyzer, lowPower, visual, name, animate) {
         if (!animate) return@LaunchedEffect

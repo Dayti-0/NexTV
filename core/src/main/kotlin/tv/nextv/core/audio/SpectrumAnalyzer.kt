@@ -27,6 +27,22 @@ class SpectrumAnalyzer(val bandCount: Int = DEFAULT_BANDS, private val size: Int
     @Volatile
     var active: Boolean = false
 
+    private val watchers = java.util.concurrent.atomic.AtomicInteger()
+
+    /**
+     * Une animation de plus regarde le son ([active] tant qu'il en reste une) ; renvoie l'arrêt. Deux animations peuvent
+     * se chevaucher (aperçu de l'accueil qui part pendant que le plein écran arrive) : la première qui s'en va ne coupe
+     * pas l'autre.
+     */
+    fun watch(): () -> Unit {
+        watchers.incrementAndGet()
+        active = true
+        val stopped = java.util.concurrent.atomic.AtomicBoolean()
+        return {
+            if (stopped.compareAndSet(false, true)) active = watchers.decrementAndGet() > 0
+        }
+    }
+
     /** Fréquence d'échantillonnage du son versé. */
     @Volatile
     var sampleRate: Int = 44_100

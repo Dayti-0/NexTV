@@ -1,5 +1,6 @@
 package tv.nextv.app.ui.guide
 
+import tv.nextv.app.ui.common.isRadio
 import tv.nextv.app.ui.common.noProgrammeText
 import tv.nextv.app.ui.common.frenchText
 import tv.nextv.app.ui.components.FadingBottom
@@ -656,8 +657,9 @@ private fun GuideRow(
             Box(Modifier.fillMaxHeight().horizontalScroll(scroll)) {
                 Box(Modifier.width(totalWidth).fillMaxHeight()) {
                     if (channel.programmes.isEmpty()) {
+                        // Radio (jamais dans le guide) : son genre ou rien, plutôt que « Pas de programme ».
                         Text(
-                            stringResource(R.string.guide_no_programme),
+                            if (isRadio(channel.name, null)) noProgrammeText(channel.name, null, fetch = false) else stringResource(R.string.guide_no_programme),
                             style = MaterialTheme.typography.bodySmall,
                             color = NexTvColors.TextMuted,
                             modifier = Modifier.align(Alignment.CenterStart).padding(start = 12.dp),

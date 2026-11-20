@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.launch
@@ -297,6 +298,14 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             previewHandoff = extra.previewHandoff,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
+
+    /** Avancement de la mise à jour de la playlist active (étape, part faite), `null` hors mise à jour ; lu 4 fois par seconde. */
+    @OptIn(kotlinx.coroutines.FlowPreview::class)
+    val refreshProgress: StateFlow<tv.nextv.core.io.LoadProgress?> = combine(activePlaylist, repository.progress) { (playlist, _, _), progress ->
+        playlist?.let { progress[it.id] }
+    }
+        .sample(250)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /** Abonnement de la playlist active si c'est un compte Xtream, demandé au serveur à l'ouverture des réglages. */
     val account: StateFlow<AccountState?> = activePlaylist

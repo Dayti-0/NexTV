@@ -222,6 +222,25 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
+    fun settingsPlaylistRefresh() = capture("16m_reglages_mise_a_jour_playlist") {
+        SettingsContent(
+            state = SampleData.settings.copy(refreshing = true),
+            snackbarHostState = remember { SnackbarHostState() },
+            onBack = {},
+            onPlaylists = {},
+            onRefreshPlaylist = {},
+            onRefreshGuide = {},
+            onAutoQuality = {},
+            onSaveTmdbKey = {},
+            onClearTmdbKey = {},
+            onProxy = {},
+            refreshProgress = tv.nextv.core.io.LoadProgress(tv.nextv.core.io.LoadStep.SAVING, 6_200, 14_000),
+            now = SampleData.NOW,
+            initialPage = SettingsPage.PLAYLIST,
+        )
+    }
+
+    @Test
     fun settingsRemote() = capture("16l_reglages_configuration_a_distance") {
         SettingsContent(
             state = SampleData.settings,

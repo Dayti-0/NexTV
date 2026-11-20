@@ -254,6 +254,9 @@ object ChannelLineup {
         return groups
     }
 
+    /** Nom de chaîne qui est celui d'une radio (« |FR| RFM RADIO », « |FR| NRJ ») : même règle que la rubrique Radios. */
+    fun isRadioName(name: String): Boolean = isRadio(Names(name))
+
     /** Radio (« |FR| RFM RADIO », « |FR| SkyRock FM », « |FR| NRJ ») : rubrique Radios, avant tout autre classement. */
     private fun isRadio(names: Names): Boolean =
         names.words.any { it in RADIO_WORDS } || names.glued in RADIOS || names.glued.startsWith("hotmixradio")
