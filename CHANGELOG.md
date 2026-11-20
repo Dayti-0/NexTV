@@ -4,6 +4,10 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.209
+- MMA : la fiche d’un gala trouvé seulement dans le guide (ARES, KSW…) n’occupe plus tout l’écran et liste ses diffusions (horaires, chaîne, partie)
+- MMA : la ligne des horaires de la fiche ne se coupe plus au milieu d’un horaire (« carte principale à 19:00 » reste entier)
+
 ## 0.2.208
 - MMA : la fiche d’un gala prend presque tout l’écran et montre toute la carte des combats d’un coup (carte principale et préliminaires côte à côte)
 - MMA : noms et palmarès des combattants en entier, un combat par ligne avec portraits, drapeaux, catégorie et résultat

@@ -435,6 +435,8 @@ private fun EventSheet(card: MmaCard, now: Long, onWatch: (Long) -> Unit, onDism
     val firstFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { firstFocus.requestFocus() } }
     val window = rememberWindowInfo()
+    // Gala du guide seul (pas de carte des combats) : fiche à la hauteur de son contenu.
+    val hasFights = card.event?.fights.orEmpty().isNotEmpty()
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(
             shape = MaterialTheme.shapes.extraLarge,
@@ -442,16 +444,20 @@ private fun EventSheet(card: MmaCard, now: Long, onWatch: (Long) -> Unit, onDism
             modifier = Modifier
                 .fillMaxWidth(if (window.isWide) 0.94f else 0.96f)
                 .widthIn(max = 1400.dp)
-                .fillMaxHeight(0.94f)
+                .then(if (hasFights) Modifier.fillMaxHeight(0.94f) else Modifier)
                 .ignoreHeldOk(),
         ) {
             Column(Modifier.padding(horizontal = 24.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 SheetHeader(card, now, onWatch, onDismiss, firstFocus, wide = window.isWide)
                 val fights = card.event?.fights.orEmpty()
                 if (fights.isEmpty()) {
-                    // Gala du guide seul : les combattants quand le guide les donne (pas de description).
+                    // Gala du guide seul : les combattants quand le guide les donne, puis chaque diffusion (pas de description).
                     card.programme?.subtitle?.takeIf { it.isNotBlank() && !it.equals(card.name, ignoreCase = true) }?.let {
                         Text(it, style = MaterialTheme.typography.titleLarge)
+                    }
+                    if (card.airings.isNotEmpty()) {
+                        Text(stringResource(R.string.mma_airings), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                        card.airings.take(MAX_AIRINGS).forEach { AiringLine(it) }
                     }
                     return@Column
                 }
@@ -526,7 +532,9 @@ private fun SheetHeader(card: MmaCard, now: Long, onWatch: (Long) -> Unit, onDis
     val info: @Composable (Modifier) -> Unit = { modifier ->
         Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
-                listOfNotNull(dayLabel(dayStart(card.startMillis), now), card.event?.venue, times).joinToString("  ·  "),
+                // Espaces insécables dans chaque partie : la ligne ne se coupe qu'entre deux parties (« carte principale à 19:00 » entier).
+                (listOfNotNull(dayLabel(dayStart(card.startMillis), now), card.event?.venue) + times.split(" · "))
+                    .joinToString("  ·  ") { it.replace(' ', '\u00A0') },
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -665,6 +673,19 @@ private fun headerName(card: MmaCard): String? {
 /** Texte en grand d'un gala du guide seul : sous-titre du programme (souvent les combattants), sinon son nom. */
 private fun guideHeadline(card: MmaCard): String =
     card.programme?.subtitle?.takeIf { it.isNotBlank() && !it.equals(card.name, ignoreCase = true) } ?: card.name
+
+/** Une diffusion du guide : horaires, chaîne, titre du programme (« 1re partie »). */
+@Composable
+private fun AiringLine(airing: MmaAiring) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        Text("${timeOf(airing.startMillis)} – ${timeOf(airing.stopMillis)}", style = MaterialTheme.typography.titleSmall, modifier = Modifier.width(120.dp))
+        Text(channelLabel(airing.channelName), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        Text(airing.title, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/** Diffusions montrées dans la fiche d'un gala du guide seul. */
+private const val MAX_AIRINGS = 8
 
 /** Chaînes proposées en boutons dans la fiche d'un gala. */
 private const val MAX_SHEET_CHANNELS = 2

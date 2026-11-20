@@ -540,7 +540,13 @@ object SampleData {
             ),
             tv.nextv.app.ui.mma.MmaCard(
                 tv.nextv.core.mma.MmaPromotion.ARES, "ARES 45", NOW + 52 * 60 * MINUTE, null, NOW + 55 * 60 * MINUTE,
-                guideChannel = "Canal+ Sport 360",
+                channels = listOf(GuideChannel(401L, "Canal+ Sport 360", null, null, emptyList()), GuideChannel(402L, "CANAL+ SPORT 3", null, null, emptyList())),
+                airings = listOf(
+                    tv.nextv.app.ui.mma.MmaAiring("Canal+ Sport 360", NOW + 52 * 60 * MINUTE, NOW + 53 * 60 * MINUTE + 45 * MINUTE, "MMA : ARES Fighting Championship"),
+                    tv.nextv.app.ui.mma.MmaAiring("Canal+ Sport 360", NOW + 53 * 60 * MINUTE + 45 * MINUTE, NOW + 55 * 60 * MINUTE, "MMA : ARES Fighting Championship"),
+                    tv.nextv.app.ui.mma.MmaAiring("CANAL+ SPORT 3", NOW + 52 * 60 * MINUTE, NOW + 53 * 60 * MINUTE + 45 * MINUTE, "ARES 45. 1re partie"),
+                    tv.nextv.app.ui.mma.MmaAiring("CANAL+ SPORT 3", NOW + 53 * 60 * MINUTE + 45 * MINUTE, NOW + 55 * 60 * MINUTE, "Partie 2"),
+                ),
                 programme = tv.nextv.app.ui.guide.GuideProgramme("ARES 45. 1re partie", NOW + 52 * 60 * MINUTE, NOW + 55 * 60 * MINUTE, "ARES Fighting Championship", null, null, null),
             ),
         ),

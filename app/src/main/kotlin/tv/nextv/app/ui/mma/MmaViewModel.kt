@@ -51,6 +51,8 @@ data class MmaCard(
      * la date du gala, ou ne l'annonce pas.
      */
     val usualChannel: Boolean = false,
+    /** Diffusions trouvées dans le guide (chaîne, horaires, titre), dans l'ordre des chaînes proposées puis des horaires. */
+    val airings: List<MmaAiring> = emptyList(),
 ) {
     val channel: GuideChannel? get() = channels.firstOrNull()
 
@@ -61,6 +63,10 @@ data class MmaCard(
     /** Gala terminé (résultats connus), la diffusion pouvant continuer. */
     val finished: Boolean get() = event?.finished == true
 }
+
+/** Une diffusion d'un gala dans le guide : « Canal+ Sport 360 · 20:30 – 22:15 · ARES 45. 1re partie ». */
+@Immutable
+data class MmaAiring(val channelName: String, val startMillis: Long, val stopMillis: Long, val title: String)
 
 data class MmaUiState(
     val loading: Boolean = true,
@@ -256,6 +262,10 @@ private fun withChannels(card: MmaCard, shows: List<BroadcastRow>): MmaCard {
     val preferred = inPlaylist.firstOrNull() ?: ranked.firstOrNull()
     return card.copy(
         channels = inPlaylist.map { GuideChannel(it.channelId!!, it.channelName, null, it.logoUrl, emptyList()) },
+        // Chaînes de la playlist d'abord (dans l'ordre proposé), chaque partie à son heure.
+        airings = ranked.sortedWith(compareBy({ it.channelId == null }, { row -> inPlaylist.indexOfFirst { it.channelKey == row.channelKey }.let { i -> if (i < 0) Int.MAX_VALUE else i } }, { it.startMillis }))
+            .distinctBy { it.channelKey to it.startMillis }
+            .map { MmaAiring(it.channelName, it.startMillis, it.stopMillis, it.title) },
         programme = preferred?.let { GuideProgramme(it.title, it.startMillis, it.stopMillis, it.subtitle, it.description, it.category, it.year) },
         guideChannel = if (inPlaylist.isEmpty()) ranked.firstOrNull()?.channelName?.takeIf { it.isNotBlank() } else null,
     )

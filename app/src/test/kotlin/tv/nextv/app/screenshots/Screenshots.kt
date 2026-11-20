@@ -461,6 +461,11 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
+    fun mmaGuideEvent() = capture("09k_mma_fiche_guide") {
+        tv.nextv.app.ui.mma.MmaContent(SampleData.mma, promotion = null, onPromotion = {}, onPlay = {}, initialDetails = SampleData.mma.cards.last())
+    }
+
+    @Test
     fun mmaEvent() {
         // Portrait factice (silhouette) : les vrais viennent d'ESPN, pas dans le dépôt.
         val portrait = android.graphics.Bitmap.createBitmap(240, 174, android.graphics.Bitmap.Config.ARGB_8888).also { bitmap ->
