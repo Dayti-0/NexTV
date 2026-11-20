@@ -4,6 +4,11 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.203
+- Baisser le son des pubs : plus de page de pub en plein programme après un changement de qualité de la chaîne (le logo est d'abord revu sur la nouvelle qualité, ou réappris s'il n'y est pas à la même place)
+- Baisser le son des pubs : une musique déjà entendue dans une pub n'ouvre plus de page de pub tant que le logo de la chaîne est à l'image
+- Infos de lecture : la ligne « Pubs » dit ce qui a ouvert la page de pub en cours
+
 ## 0.2.202
 - Lecteur : badge « Rediffusion » dans le bandeau quand un match est rediffusé (déjà passé plus tôt dans le guide, ou annoncé comme tel), et jamais de score final sur une rediffusion
 

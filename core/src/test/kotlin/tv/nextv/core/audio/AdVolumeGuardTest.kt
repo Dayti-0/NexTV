@@ -145,6 +145,43 @@ class AdVolumeGuardTest {
     }
 
     @Test
+    fun `after a change of quality the logo must be seen again before its absence opens a break`() {
+        // TF1, 20/11/2026 à 10 h 13 (box) : page de pubs ouverte en plein « Bonjour ! », logo pourtant à l'image. Une autre
+        // version de la chaîne peut être cadrée autrement : le logo appris sur la précédente ne s'y retrouve pas.
+        guard.logoFollowsBreaks = true
+        guard.logo = LogoState.VISIBLE
+        play(130.0)
+        guard.logo = LogoState.HIDDEN
+        guard.versionChanged()
+        play(60.0)
+        assertFalse("logo pas revu sur cette version : son absence ne dit rien", guard.attenuating)
+        // Revu sur cette version : son départ compte de nouveau.
+        guard.logo = LogoState.VISIBLE
+        play(60.0)
+        guard.logo = LogoState.HIDDEN
+        play(21.0)
+        assertTrue(guard.attenuating)
+    }
+
+    @Test
+    fun `an ad already heard is ignored under the logo of a channel whose logo leaves during its ads`() {
+        // Musique d'une émission (jingle, fond sonore du plateau) qui est aussi celle d'une pub apprise.
+        guard.logoFollowsBreaks = true
+        guard.logo = LogoState.VISIBLE
+        play(130.0)
+        assertFalse(guard.adPrint(confirmed = true, sustained = true))
+        play(5.0)
+        assertFalse(guard.attenuating)
+        // Chaîne dont le logo n'a jamais été vu partir pendant les pubs : une pub sûre, reconnue deux fois, ouvre la page.
+        val other = AdVolumeGuard()
+        other.logo = LogoState.VISIBLE
+        repeat(130 * 50) { other.process(10.0.pow(PROGRAMME / 10), 20) }
+        assertTrue(other.adPrint(confirmed = true, sustained = true))
+        assertTrue(other.attenuating)
+        assertEquals(AdOpening.PRINT, other.openedBy)
+    }
+
+    @Test
     fun `the logo gone without any spot change is the programme after 30 s, and then only spot changes open a break`() {
         // France 2, 16/11/2026 à 12 h 52 : logo caché pendant la météo, puis sur « Tout le monde veut prendre sa place » ;
         // le son restait baissé plus d'une minute sans aucune jonction.

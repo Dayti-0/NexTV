@@ -413,6 +413,11 @@ Commandes :
   3, bandes-annonces : 14 à 26). Rejeu des 52 fichiers : 74,5 → 77,7 % baissées, programme à tort 1046 → 1251 s, dont 174 s
   sur T18 où le rejeu lit mal le logo (la box le voyait). Restent : bandes-annonces de LCP (logo affiché dessus), page
   France TV de nuit sur France 3, « Petits plats » de TF1, premières secondes de chaque page.
+- 20/11/2026 (box, TF1, « Bonjour ! » vers 10 h 13) : page de pub ouverte en plein programme, logo « TF1 DIRECT » à l'image,
+  cause exacte inconnue (pas d'enregistrement). 0.2.203 : autre qualité de la même chaîne (`continueStream`) → logo à revoir
+  (`LogoWatcher.recheck` : dit absent jusqu'à être revu, réappris s'il ne l'est pas en 2 min ; `AdVolumeGuard.versionChanged` :
+  son absence ne compte pas avant) ; pub déjà entendue jamais retenue sous le logo d'une chaîne où il suit les coupures ; ligne
+  « Pubs » des infos de lecture avec ce qui a ouvert la page (`AdDetails.openedBy`, `AdOpening`) : la demander en photo.
 
 ## Essais sur de vrais flux
 

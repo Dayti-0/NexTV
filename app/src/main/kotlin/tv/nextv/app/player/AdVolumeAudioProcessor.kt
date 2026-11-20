@@ -7,6 +7,7 @@ import androidx.media3.common.audio.BaseAudioProcessor
 import androidx.media3.common.util.UnstableApi
 import tv.nextv.core.audio.AdCues
 import tv.nextv.core.audio.AdMarks
+import tv.nextv.core.audio.AdOpening
 import tv.nextv.core.audio.AdPrintWatch
 import tv.nextv.core.audio.AdVolumeGuard
 import tv.nextv.core.audio.CueState
@@ -43,6 +44,7 @@ enum class AdWatch {
  * @property knownSeconds durée des pubs déjà apprises (toutes chaînes).
  * @property recognized une pub connue passe en ce moment.
  * @property recognizedCount pubs connues reconnues depuis l'ouverture de la chaîne.
+ * @property openedBy ce qui a ouvert la page de pubs en cours ([AdOpening.NONE] hors d'une page).
  */
 data class AdDetails(
     val cues: Int,
@@ -51,6 +53,7 @@ data class AdDetails(
     val knownSeconds: Int,
     val recognized: Boolean,
     val recognizedCount: Int,
+    val openedBy: AdOpening = AdOpening.NONE,
 )
 
 /** Option « baisser le son des pubs », partagée entre le lecteur et le traitement du son. */
@@ -231,6 +234,14 @@ class AdVolumeControl {
         cues = AdCues()
         guard.cue = CueState.NONE
         recordedCue = null
+        // L'image de cette version peut être cadrée autrement : le logo appris est à y revoir avant que son absence
+        // compte (sinon page de pubs ouverte en plein programme, logo pourtant à l'image).
+        synchronized(logoWatcher) {
+            logoWatcher.recheck()
+            logo = logoWatcher.state
+            guard.logo = logo
+            guard.versionChanged()
+        }
         recorder?.takeIf { it.active }?.event(guard.now, "version", "autre qualite de la meme chaine")
     }
 
@@ -257,6 +268,7 @@ class AdVolumeControl {
             knownSeconds = prints?.library?.seconds ?: 0,
             recognized = watch?.recognized == true,
             recognizedCount = watch?.matches ?: 0,
+            openedBy = guard.openedBy,
         )
     }
 

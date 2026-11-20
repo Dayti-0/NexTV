@@ -132,6 +132,7 @@ import tv.nextv.app.ui.home.qualityLabel
 import tv.nextv.app.ui.settings.qualityTargetLabel
 import tv.nextv.app.ui.theme.NexTvColors
 import tv.nextv.app.ui.theme.NexTvIcons
+import tv.nextv.core.audio.AdOpening
 import tv.nextv.core.catalog.QualityParser
 import tv.nextv.core.model.StreamQuality
 import tv.nextv.core.stream.QualityTarget
@@ -1680,16 +1681,22 @@ fun PlaybackInfoPanel(state: PlayerUiState, visible: Boolean, modifier: Modifier
                 }
                 // « Baisser le son des pubs » : ce que la détection arrive à observer sur cet appareil.
                 state.adWatch?.let { watch ->
-                    val text = stringResource(
-                        when (watch) {
-                            AdWatch.NO_SOUND -> R.string.player_info_ads_no_sound
-                            AdWatch.NO_PICTURE -> R.string.player_info_ads_no_picture
-                            AdWatch.LEARNING -> R.string.player_info_ads_learning
-                            AdWatch.LOGO_VISIBLE -> R.string.player_info_ads_logo_visible
-                            AdWatch.LOGO_HIDDEN -> R.string.player_info_ads_logo_hidden
-                            AdWatch.LOWERED -> R.string.player_info_ads_lowered
-                        },
-                    )
+                    // Page de pub : ce qui l'a ouverte (à demander en photo quand elle se trompe).
+                    val openedBy = state.adDetails?.openedBy?.let { adOpeningText(it) }
+                    val text = if (watch == AdWatch.LOWERED && openedBy != null) {
+                        stringResource(R.string.player_info_ads_lowered_by, openedBy)
+                    } else {
+                        stringResource(
+                            when (watch) {
+                                AdWatch.NO_SOUND -> R.string.player_info_ads_no_sound
+                                AdWatch.NO_PICTURE -> R.string.player_info_ads_no_picture
+                                AdWatch.LEARNING -> R.string.player_info_ads_learning
+                                AdWatch.LOGO_VISIBLE -> R.string.player_info_ads_logo_visible
+                                AdWatch.LOGO_HIDDEN -> R.string.player_info_ads_logo_hidden
+                                AdWatch.LOWERED -> R.string.player_info_ads_lowered
+                            },
+                        )
+                    }
                     InfoLine(stringResource(R.string.player_info_ads), text, warning = watch == AdWatch.NO_SOUND || watch == AdWatch.NO_PICTURE)
                 }
                 // Renforts : repères de pub du flux (vérité de la régie, quand le fournisseur les laisse), pubs déjà apprises.
@@ -1930,3 +1937,16 @@ private const val LIVE_REWIND_SECONDS = 10
 
 /** ← maintenu en direct : 10 s de plus toutes les … répétitions de la touche (environ une demi-seconde). */
 private const val LIVE_REWIND_REPEATS = 10
+
+/** Ce qui a ouvert la page de pubs, en clair ; `null` hors d'une page. */
+@Composable
+private fun adOpeningText(opening: AdOpening): String? = when (opening) {
+    AdOpening.NONE -> null
+    AdOpening.CUE -> stringResource(R.string.player_info_ads_by_cue)
+    AdOpening.CARD -> stringResource(R.string.player_info_ads_by_card)
+    AdOpening.LOGO -> stringResource(R.string.player_info_ads_by_logo)
+    AdOpening.PRINT -> stringResource(R.string.player_info_ads_by_print)
+    AdOpening.LOGO_ONLY -> stringResource(R.string.player_info_ads_by_logo_only)
+    AdOpening.LOGO_AGAIN -> stringResource(R.string.player_info_ads_by_logo_again)
+    AdOpening.SPOTS -> stringResource(R.string.player_info_ads_by_spots)
+}

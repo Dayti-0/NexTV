@@ -378,6 +378,14 @@
     <string name="player_info_ads_logo_visible">logo de la chaîne à l’image : programme</string>
     <string name="player_info_ads_logo_hidden">logo de la chaîne absent de l’image</string>
     <string name="player_info_ads_lowered">page de pub : son baissé</string>
+    <string name="player_info_ads_lowered_by">page de pub : son baissé (%1$s)</string>
+    <string name="player_info_ads_by_cue">annoncée par le flux</string>
+    <string name="player_info_ads_by_card">carton de la chaîne</string>
+    <string name="player_info_ads_by_logo">logo parti, coupure</string>
+    <string name="player_info_ads_by_print">pub déjà entendue</string>
+    <string name="player_info_ads_by_logo_only">logo parti depuis 20 s</string>
+    <string name="player_info_ads_by_logo_again">logo reparti juste après son retour</string>
+    <string name="player_info_ads_by_spots">coupures espacées comme des pubs</string>
     <string name="player_auto_recording_start">Essai : enregistrement automatique (change de chaîne toutes les 30 min)</string>
     <string name="player_auto_recording_stop">Arrêter l’enregistrement automatique (%1$d chaîne(s) parcourue(s))</string>
     <string name="player_ad_recording_start">Enregistrer pour l’analyse des pubs</string>

@@ -13,6 +13,18 @@ enum class LogoState {
     HIDDEN,
 }
 
+/** Ce qui a ouvert la page de pubs en cours ([AdVolumeGuard.openedBy]) ; [label] est noté dans l'enregistrement d'analyse. */
+enum class AdOpening(val label: String) {
+    NONE(""),
+    CUE("reperes du flux"),
+    CARD("carton de la chaine"),
+    LOGO("logo parti"),
+    PRINT("pub deja entendue"),
+    LOGO_ONLY("logo parti depuis 20 s"),
+    LOGO_AGAIN("logo reparti juste apres son retour"),
+    SPOTS("jonctions espacees comme des spots"),
+}
+
 /**
  * Baisse le son pendant les pages de publicité.
  *
@@ -107,7 +119,11 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
 
     /** Début de la page de pubs en cours (horloge du son), et ce qui l'a ouverte. */
     private var breakStart = 0L
-    private var opening = Opening.NONE
+    private var opening = AdOpening.NONE
+
+    /** Ce qui a ouvert la page de pubs en cours ([AdOpening.NONE] hors d'une page) : affiché dans les infos de lecture. */
+    val openedBy: AdOpening
+        @Synchronized get() = opening
 
     /** Dernière preuve de pub (jonction ou pub reconnue) de la page en cours. */
     private var lastEvidence = 0L
@@ -221,12 +237,12 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
         } else if (logo == LogoState.HIDDEN && closedByLogoAt != NEVER && elapsed - closedByLogoAt <= REOPEN_MILLIS && !dismissed()) {
             // Logo revenu quelques secondes puis reparti : c'était une pub qui lui ressemblait, la page continue.
             closedByLogoAt = NEVER
-            open(Opening.LOGO_AGAIN)
+            open(AdOpening.LOGO_AGAIN)
         } else if (logoLeftForAds()) {
             // Logo parti et toujours absent, sur une chaîne où il suit les coupures : la page de pubs a commencé, même
             // sans silence repéré entre deux pubs (bandes-annonces enchaînées…).
             logoOnlyFor = logoSince
-            open(Opening.LOGO_ONLY)
+            open(AdOpening.LOGO_ONLY)
         }
 
         // Gain lissé : baisse en une demi-seconde, retour en une seconde (pas de claquement).
@@ -240,13 +256,13 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
     private fun followCues() {
         val inBreak = cue == CueState.BREAK
         if (inBreak && !attenuating) {
-            open(Opening.CUE)
+            open(AdOpening.CUE)
         } else if (attenuating) {
             if (logo == LogoState.HIDDEN) awayInBreak = true
             if (!inBreak) {
                 // Logo parti pendant la page annoncée et revenu avec le programme : il suit les coupures.
                 if (awayInBreak && showsProgramme()) logoFollowsBreaks = true
-                close(learn = opening == Opening.CUE, end = elapsed, confirmed = true, reason = "reperes du flux")
+                close(learn = opening == AdOpening.CUE, end = elapsed, confirmed = true, reason = "reperes du flux")
             }
         }
     }
@@ -265,9 +281,11 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
             CueState.PROGRAMME -> return false.also { notePrint("$kind, ignoree (reperes du flux : programme)") }
             CueState.NONE -> Unit
         }
-        // Sous le logo : seulement une pub sûre, reconnue deux fois de suite (une chanson de pub dans une émission…).
+        // Sous le logo : seulement une pub sûre, reconnue deux fois de suite (une chanson de pub dans une émission…), et
+        // jamais sur une chaîne dont le logo part pendant ses pubs : une musique d'émission (jingle, fond sonore d'un
+        // plateau) peut être celle d'une pub, le logo resté à l'image dit que c'est le programme.
         if (programmeBack()) {
-            if (!(confirmed && sustained)) return false.also { notePrint("$kind, ignoree (logo a l'image)") }
+            if (!(confirmed && sustained) || logoFollowsBreaks) return false.also { notePrint("$kind, ignoree (logo a l'image)") }
             // Pub sûre sous le logo : la chaîne le garde pendant ses pubs, il ne dit plus rien jusqu'à son départ.
             logoStays = true
         }
@@ -277,9 +295,20 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
         lastJunction = elapsed
         if (!attenuating && !dismissed()) {
             trace?.invoke("pub reconnue à $elapsed ms (${if (confirmed) "sûre" else "à l'essai"})")
-            open(Opening.PRINT)
+            open(AdOpening.PRINT)
         }
         return true
+    }
+
+    /**
+     * Autre version de la même chaîne (qualité, serveur de secours) : son image peut être cadrée autrement, et le logo
+     * appris sur l'autre version ne pas s'y retrouver. Son absence ne dit rien tant qu'il n'a pas été revu sur cette
+     * version (sinon : page de pubs ouverte en plein programme par « logo parti depuis 20 s », logo pourtant à l'image).
+     */
+    @Synchronized
+    fun versionChanged() {
+        logoSeen = false
+        closedByLogoAt = NEVER
     }
 
     /**
@@ -301,7 +330,7 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
         onEvent?.invoke(elapsed, "empreinte", detail)
     }
 
-    private fun open(by: Opening) {
+    private fun open(by: AdOpening) {
         attenuating = true
         opening = by
         breakStart = elapsed
@@ -318,7 +347,7 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
         attenuating = false
         awayInBreak = false
         val start = breakStart
-        opening = Opening.NONE
+        opening = AdOpening.NONE
         // Les jonctions de cette page ne comptent pas pour la suivante.
         chain.clear()
         trace?.invoke("son remis à $elapsed ms")
@@ -419,12 +448,12 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
         onEvent?.invoke(junction.time, "jonction", "$kind, ${chain.size} de suite")
         if (!attenuating && cue == CueState.NONE && !dismissed()) {
             val by = opens(junction, repeated != null)
-            if (by != Opening.NONE) open(by)
+            if (by != AdOpening.NONE) open(by)
         }
     }
 
     /** La jonction qui vient d'être vue ouvre-t-elle une page de pubs ? Et par quel indice. */
-    private fun opens(junction: Junction, repeatedCard: Boolean): Opening {
+    private fun opens(junction: Junction, repeatedCard: Boolean): AdOpening {
         val card = junction.card
         val channelCard = card != null && (repeatedCard || separator?.let { SmallFrame.sameSignature(it, card) } == true)
         if (showsProgramme()) {
@@ -432,10 +461,10 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
             // (chaîne qui garde son logo pendant les publicités) : il n'est alors plus écouté.
             val keepsLogo = channelCard && chain.takeLastWhile { it.underLogo }.size >= LOGO_STAYS_CHAIN
             if (keepsLogo) logoStays = true
-            return if (keepsLogo) Opening.CARD else Opening.NONE
+            return if (keepsLogo) AdOpening.CARD else AdOpening.NONE
         }
         if (!junction.blind) {
-            if (channelCard) return Opening.CARD
+            if (channelCard) return AdOpening.CARD
             if (logo == LogoState.HIDDEN && logoSeen && !logoMissing) {
                 val hiddenFor = junction.time - logoSince
                 val justHidden = hiddenFor <= LOGO_JUST_HIDDEN_MILLIS
@@ -446,11 +475,11 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
                     // Logo pas encore vu revenir d'une page de pubs : il vient de partir et deux jonctions se suivent.
                     justHidden && chain.size >= 2
                 }
-                if (opened) return Opening.LOGO
+                if (opened) return AdOpening.LOGO
             }
         }
         // Logo inconnu, ou pas d'image du tout : des jonctions espacées comme des spots.
-        return if (spotsInARow()) Opening.SPOTS else Opening.NONE
+        return if (spotsInARow()) AdOpening.SPOTS else AdOpening.NONE
     }
 
     /** Les dernières jonctions se suivent comme des spots : [SPOT_CHAIN] de suite, aux durées de 5 en 5 secondes. */
@@ -464,7 +493,7 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
         var reason = "logo revenu"
         // Page ouverte par le seul départ du logo, et l'image qui change de plan comme des bandes-annonces enchaînées
         // (sans silence entre elles) : elle reste ouverte sans jonction, mais pas indéfiniment.
-        val trailers = opening == Opening.LOGO_ONLY && elapsed - breakStart <= TRAILERS_MAX_MILLIS &&
+        val trailers = opening == AdOpening.LOGO_ONLY && elapsed - breakStart <= TRAILERS_MAX_MILLIS &&
             cutsSince(elapsed - LOGO_ONLY_HOLD_MILLIS) >= TRAILER_CUTS
         val over = when {
             // Le logo est revenu (et resté) : le programme a repris. Parti pendant la page et revenu à sa fin, il suit les coupures.
@@ -475,7 +504,7 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
             }
             // Page ouverte par le seul départ du logo, et toujours aucune jonction : le logo s'est caché sur le programme
             // (météo, générique, logo qui change), pas pour des pubs.
-            opening == Opening.LOGO_ONLY && lastJunction <= breakStart && elapsed - breakStart > LOGO_ONLY_HOLD_MILLIS && !trailers -> {
+            opening == AdOpening.LOGO_ONLY && lastJunction <= breakStart && elapsed - breakStart > LOGO_ONLY_HOLD_MILLIS && !trailers -> {
                 reason = "logo parti mais aucune jonction"
                 logoOnlyFailedAt = elapsed
                 true
@@ -491,7 +520,7 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
         if (!over) return
         // Page ouverte par un indice sûr (logo, carton, pub connue) et refermée par le retour du logo : son son est
         // appris, à l'essai, jusqu'à la dernière preuve de pub (la suite peut déjà être le programme).
-        close(learn = logoBack && opening != Opening.SPOTS, end = lastEvidence, confirmed = false, reason = reason)
+        close(learn = logoBack && opening != AdOpening.SPOTS, end = lastEvidence, confirmed = false, reason = reason)
         closedByLogoAt = if (logoBack) elapsed else NEVER
     }
 
@@ -511,18 +540,6 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
     private fun decibels(energy: Double) = 10 * log10(energy + 1e-12)
 
     private class Junction(val time: Long, var card: ByteArray?, val blind: Boolean, val underLogo: Boolean)
-
-    /** Ce qui a ouvert la page de pubs en cours. */
-    private enum class Opening(val label: String) {
-        NONE(""),
-        CUE("reperes du flux"),
-        CARD("carton de la chaine"),
-        LOGO("logo parti"),
-        PRINT("pub deja entendue"),
-        LOGO_ONLY("logo parti depuis 20 s"),
-        LOGO_AGAIN("logo reparti juste apres son retour"),
-        SPOTS("jonctions espacees comme des spots"),
-    }
 
     /** Les dernières images réduites reçues, avec l'instant de leur arrivée. */
     private class SceneMemory {

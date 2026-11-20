@@ -117,6 +117,22 @@ class LogoWatcherTest {
     }
 
     @Test
+    fun `another version of the stream must show the logo again, or it is learned again where this version puts it`() {
+        show(45) { scene().withLogo() }
+        assertEquals(LogoState.VISIBLE, watcher.state)
+        // Même cadrage : le logo est revu en deux images.
+        watcher.recheck(frames = 30)
+        assertEquals("à revoir sur cette version", LogoState.HIDDEN, watcher.state)
+        assertEquals(LogoState.VISIBLE, show(2) { scene().withLogo() })
+        // Autre cadrage : logo ailleurs. Jamais revu en 30 images : oublié, puis appris à sa nouvelle place.
+        watcher.recheck(frames = 30)
+        assertEquals(LogoState.HIDDEN, show(29) { scene().withLogo(left = WIDTH - 90, top = 40) })
+        assertEquals(LogoState.UNKNOWN, show(1) { scene().withLogo(left = WIDTH - 90, top = 40) })
+        assertEquals(LogoState.VISIBLE, show(45) { scene().withLogo(left = WIDTH - 90, top = 40) })
+        assertEquals(LogoState.HIDDEN, show(5) { scene() })
+    }
+
+    @Test
     fun `a logo kept from a previous viewing is known at once, and absent until seen again`() {
         show(45) { scene().withLogo() }
         val kept = watcher.export()!!

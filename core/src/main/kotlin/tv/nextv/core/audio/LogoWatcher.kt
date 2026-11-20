@@ -56,6 +56,22 @@ class LogoWatcher(
     fun reset() {
         corners.forEach(Corner::reset)
         state = LogoState.UNKNOWN
+        recheckLeft = 0
+    }
+
+    /** Images restantes pour revoir le logo sur une autre version du flux ([recheck]) ; 0 hors de cette attente. */
+    private var recheckLeft = 0
+
+    /**
+     * Autre version du même flux (qualité, serveur de secours) : son image peut être cadrée autrement. Le logo connu
+     * est dit absent jusqu'à ce qu'il soit revu ; s'il ne l'est pas en [frames] images, il n'est pas à la même place
+     * sur cette version et il est réappris. Les apprentissages en cours (qui mêleraient les deux versions) repartent.
+     */
+    fun recheck(frames: Int = RECHECK_FRAMES) {
+        corners.forEach(Corner::recheck)
+        val known = corners.any { it.proven }
+        state = if (known) LogoState.HIDDEN else LogoState.UNKNOWN
+        recheckLeft = if (known) frames else 0
     }
 
     /** Image suivante ([gray] : luminance de chaque pixel, ligne par ligne). */
@@ -67,6 +83,14 @@ class LogoWatcher(
             known.isEmpty() -> LogoState.UNKNOWN
             known.any { it.present } -> LogoState.VISIBLE
             else -> LogoState.HIDDEN
+        }
+        if (recheckLeft > 0) {
+            if (state == LogoState.VISIBLE) {
+                recheckLeft = 0
+            } else if (--recheckLeft == 0) {
+                // Jamais revu sur cette version : ce n'est pas le même cadrage, on apprend son logo à elle.
+                reset()
+            }
         }
         return state
     }
@@ -193,6 +217,14 @@ class LogoWatcher(
             marked.fill(0)
             learned = 0
             moving = 0
+        }
+
+        /** Autre version du flux : logo connu à revoir ; apprentissage ou mise à l'épreuve en cours repris de zéro. */
+        fun recheck() {
+            if (!proven) return reset()
+            present = false
+            contrary = 0
+            hidden = 0
         }
 
         /** Gabarit repris d'une lecture précédente de la chaîne : connu, à revoir avant de le dire à l'image. */
@@ -476,6 +508,9 @@ class LogoWatcher(
         /** Logo pâli par un fond clair : le sens du dessin compte, pas sa force. */
         const val FAINT = 0.25f
         const val KEPT_AGREEMENT = 0.4f
+
+        /** Autre version du flux : images (une par seconde) pour y revoir le logo avant de le réapprendre. */
+        const val RECHECK_FRAMES = 120
 
         const val FORMAT: Byte = 1
         const val HEADER_BYTES = 6
