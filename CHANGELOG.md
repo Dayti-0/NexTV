@@ -4,6 +4,11 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.212
+- MMA : carte des combats de Cage Warriors, KSW, Hexagone et ONE (photos, palmarès, catégories, ceinture en jeu, résultats)
+- MMA : l’heure de ces galas vient de leur diffusion dans le guide, sinon « Heure à venir »
+- MMA : catégories à poids convenu traduites (« Poids intermédiaire (79 kg) »)
+
 ## 0.2.211
 - MMA : la carte des combats de la fiche revient en liste, en grand : grands portraits, noms en entier, drapeau et palmarès, à faire défiler à la télécommande
 - MMA : sur la liste des galas, le combat principal s’écrit sur une ligne comme un match (« Procházka – Stirling »)

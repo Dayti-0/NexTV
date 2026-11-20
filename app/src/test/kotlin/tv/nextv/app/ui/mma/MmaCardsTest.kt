@@ -75,4 +75,24 @@ class MmaCardsTest {
         assertEquals(ares, card.event)
         assertEquals(22L, card.channel?.id)
     }
+
+    @Test
+    fun aDayOnlyEventTakesTheTimeOfItsGuideBroadcast() {
+        // Jour du gala à minuit UTC + 20 h (heure provisoire de Sherdog).
+        val day = (now / (24 * hour)) * (24 * hour) + 24 * hour
+        val ksw = MmaEvent("sherdog-1", MmaPromotion.KSW, "KSW 123: Mircea vs. Held", day + 20 * hour, null, emptyList(), timeKnown = false)
+        val later = MmaEvent("sherdog-2", MmaPromotion.KSW, "KSW 124: Pawlak vs. Kuberski", day + 28 * 24 * hour + 20 * hour, null, emptyList(), timeKnown = false)
+        val rows = listOf(
+            row(rmc, "MMA : KSW", day + 22 * hour + 30 * 60_000L, length = 3 * hour, subtitle = "Mircea / Held"),
+            // Rediffusion de la même nuit : pas l'heure du gala.
+            row(rmc, "MMA : KSW", day + 26 * hour, length = 3 * hour, subtitle = "Mircea / Held"),
+        )
+        val cards = mmaCards(listOf(ksw, later), rows, now)
+        val first = cards.first { it.event == ksw }
+        assertEquals(day + 22 * hour + 30 * 60_000L, first.startMillis)
+        assertEquals(true, first.timeKnown)
+        assertEquals(7L, first.channel?.id)
+        assertEquals(false, cards.first { it.event == later }.timeKnown)
+        assertEquals(2, cards.size)
+    }
 }

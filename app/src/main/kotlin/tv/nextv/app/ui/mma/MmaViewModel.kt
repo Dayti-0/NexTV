@@ -53,12 +53,18 @@ data class MmaCard(
     val usualChannel: Boolean = false,
     /** Diffusions trouvées dans le guide (chaîne, horaires, titre), dans l'ordre des chaînes proposées puis des horaires. */
     val airings: List<MmaAiring> = emptyList(),
+    /** Heure connue (calendrier ou guide) ; faux : seul le jour est connu (« Heure à venir »). */
+    val timeKnown: Boolean = true,
 ) {
     val channel: GuideChannel? get() = channels.firstOrNull()
 
     val key: String get() = "${promotion.name}-$startMillis-$name"
 
-    fun isLive(now: Long): Boolean = event?.isLive(now) ?: (startMillis <= now && endMillis > now)
+    fun isLive(now: Long): Boolean = when {
+        !timeKnown -> false
+        event != null && event.timeKnown -> event.isLive(now)
+        else -> !finished && startMillis <= now && endMillis > now
+    }
 
     /** Gala terminé (résultats connus), la diffusion pouvant continuer. */
     val finished: Boolean get() = event?.finished == true
@@ -168,6 +174,10 @@ class MmaViewModel(private val container: AppContainer, private val sourceId: Lo
 /** Marge avant le début d'un gala où un programme du guide peut encore être sa diffusion (avant-programme). */
 private const val EARLY_MILLIS = 60 * 60_000L
 
+/** Gala dont seul le jour est connu : programmes du guide cherchés de 6 h (UTC) ce jour-là à 8 h le lendemain. */
+private const val UNKNOWN_TIME_BEFORE_MILLIS = 14 * 60 * 60_000L
+private const val UNKNOWN_TIME_AFTER_MILLIS = 12 * 60 * 60_000L
+
 /** Fin d'un gala trouvé seulement dans le guide, sans horaire de fin. */
 private const val GUIDE_EVENT_MILLIS = 3 * 60 * 60_000L
 
@@ -186,21 +196,30 @@ internal fun mmaCards(
     val classified = rows.mapNotNull { row -> MmaGuide.promotionOf(row.title, row.subtitle, row.category)?.let { row to it } }
     val used = HashSet<BroadcastRow>()
     val cards = ArrayList<MmaCard>()
-    for (event in events) {
-        val window = (event.startMillis - EARLY_MILLIS)..event.endMillis
-        val shows = classified.filter { (row, promotion) ->
-            promotion == event.promotion && row.startMillis < window.last && row.stopMillis > window.first
-        }.map { it.first }
-        used += shows
-        cards += withChannels(
-            MmaCard(event.promotion, event.name, event.startMillis, event.mainCardMillis, event.endMillis, event = event),
-            shows,
-        )
-    }
     // Rediffusion : même chaîne, même titre et même sous-titre déjà commencés entre 1 h et 7 jours plus tôt.
     fun rerun(row: BroadcastRow): Boolean = rows.any { other ->
         other !== row && other.channelKey == row.channelKey && other.title == row.title && other.subtitle == row.subtitle &&
             other.startMillis in (row.startMillis - MmaViewModel.RERUN_MEMORY_MILLIS)..(row.startMillis - 60 * 60_000L)
+    }
+    for (event in events) {
+        // Heure inconnue (Sherdog : le jour seulement) : toute la journée du gala et la nuit qui suit, sans les rediffusions.
+        val window = if (event.timeKnown) {
+            (event.startMillis - EARLY_MILLIS)..event.endMillis
+        } else {
+            (event.startMillis - UNKNOWN_TIME_BEFORE_MILLIS)..(event.startMillis + UNKNOWN_TIME_AFTER_MILLIS)
+        }
+        val shows = classified.filter { (row, promotion) ->
+            promotion == event.promotion && row.startMillis < window.last && row.stopMillis > window.first && (event.timeKnown || !rerun(row))
+        }.map { it.first }
+        used += shows
+        val card = if (event.timeKnown || shows.isEmpty()) {
+            MmaCard(event.promotion, event.name, event.startMillis, event.mainCardMillis, event.endMillis, event = event, timeKnown = event.timeKnown)
+        } else {
+            // L'heure du gala est celle de sa diffusion dans le guide.
+            val start = shows.minOf { it.startMillis }
+            MmaCard(event.promotion, event.name, start, null, maxOf(shows.maxOf { it.stopMillis }, start + GUIDE_EVENT_MILLIS / 2), event = event)
+        }
+        cards += withChannels(card, shows)
     }
     val espnCovered = events.map { it.promotion }.toSet()
     val guideOnly = classified

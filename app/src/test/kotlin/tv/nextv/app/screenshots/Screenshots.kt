@@ -461,6 +461,11 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
+    fun mmaKsw() = capture("09l_mma_ksw") {
+        tv.nextv.app.ui.mma.MmaContent(SampleData.mma, promotion = tv.nextv.core.mma.MmaPromotion.KSW, onPromotion = {}, onPlay = {})
+    }
+
+    @Test
     fun mmaGuideEvent() = capture("09k_mma_fiche_guide") {
         tv.nextv.app.ui.mma.MmaContent(SampleData.mma, promotion = null, onPromotion = {}, onPlay = {}, initialDetails = SampleData.mma.cards.last())
     }

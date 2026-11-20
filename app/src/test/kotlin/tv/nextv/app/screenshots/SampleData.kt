@@ -539,6 +539,17 @@ object SampleData {
                 usualChannel = true,
             ),
             tv.nextv.app.ui.mma.MmaCard(
+                tv.nextv.core.mma.MmaPromotion.KSW, "KSW 124: Pawlak vs. Kuberski", NOW + 51 * 60 * MINUTE, null, NOW + 57 * 60 * MINUTE,
+                event = tv.nextv.core.mma.MmaEvent(
+                    "3", tv.nextv.core.mma.MmaPromotion.KSW, "KSW 124: Pawlak vs. Kuberski", NOW + 51 * 60 * MINUTE, null,
+                    listOf(mmaFight("Pawel Pawlak", "Pologne", "Piotr Kuberski", "Pologne", "Poids moyens · ceinture", NOW + 51 * 60 * MINUTE, true)),
+                    timeKnown = false,
+                ),
+                channels = listOf(GuideChannel(301L, "RMC Sport 1", null, null, emptyList())),
+                usualChannel = true,
+                timeKnown = false,
+            ),
+            tv.nextv.app.ui.mma.MmaCard(
                 tv.nextv.core.mma.MmaPromotion.ARES, "ARES 45", NOW + 52 * 60 * MINUTE, null, NOW + 55 * 60 * MINUTE,
                 channels = listOf(GuideChannel(401L, "Canal+ Sport 360", null, null, emptyList()), GuideChannel(402L, "CANAL+ SPORT 3", null, null, emptyList())),
                 airings = listOf(

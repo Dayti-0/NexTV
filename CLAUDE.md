@@ -165,6 +165,12 @@ Commandes :
   heure de Paris, `acf.main_event`) puis la page `events/?competition=<id>` (blocs `fighter-line` : catégorie, photo 300 px,
   nom, surnom, drapeau SVG → `flagcdn.com` en PNG, palmarès, « Winner » après le gala ; pas de préliminaires séparés) ; les
   pages `competition/…` et `combat/…` renvoient à l'accueil. Ajouté au calendrier par `MmaScheduleClient(ares = …)`.
+  Cage Warriors, KSW, Hexagone, ONE (0.2.212, `core/mma/Sherdog.kt`) : Sherdog — page de l'organisation
+  (`SherdogScheduleClient.ORGANIZATIONS`, blocs `single_tab` « upcoming » / « recent ») puis page du gala (`fight_card` du
+  combat principal + tableau des autres, résultats méthode / reprise / temps ; photos `image_crop/200/200`). Le jour seul est
+  connu (`MmaEvent.timeKnown` faux, 20 h UTC provisoire) : `mmaCards` prend l'heure de la diffusion du guide ce jour-là (hors
+  rediffusions), sinon « Heure à venir ». ONE : sans les « Friday Fights » (boxe thaï), au moins 3 combats de MMA. ESPN
+  n'est plus utilisé pour Cage Warriors (presque vide). Sites de KSW (combat principal seul), Cage Warriors (403) : écartés.
 - Identifiant de guide (`tvg-id`) recopié par erreur par le fournisseur (0.2.207, `ChannelNames.contradicts`, appelé par
   `EpgImporter.match`) : ignoré quand le nom n'a ni numéro ni vrai mot en commun avec la chaîne du guide (noms de groupe
   « RMC », « Canal+ »… ne comptent pas ; noms collés acceptés). Mesuré sur la vraie playlist le 20/11/2026 : 7 refus sur

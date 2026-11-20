@@ -22,8 +22,8 @@ import java.util.TimeZone
 import java.util.concurrent.TimeUnit
 
 /**
- * Calendrier des galas de MMA d'après les données publiques d'ESPN (sans clé) : UFC, PFL, Cage Warriors ; et l'ARES
- * d'après son site ([AresScheduleClient]). Chaque
+ * Calendrier des galas de MMA d'après les données publiques d'ESPN (sans clé) : UFC, PFL ; l'ARES d'après son site
+ * ([AresScheduleClient]) ; Cage Warriors, KSW, Hexagone et ONE d'après Sherdog ([SherdogScheduleClient]). Chaque
  * organisation est gardée [cacheMillis] (moins pendant un gala, [liveCacheMillis]) ; en cas d'échec, la réponse
  * précédente reste utilisée.
  */
@@ -37,6 +37,8 @@ class MmaScheduleClient(
     private val callTimeoutMillis: Long = 10_000,
     /** Galas de l'ARES (site officiel : ESPN ne les suit pas) ; `null` : pas d'ARES (tests). */
     private val ares: AresScheduleClient? = AresScheduleClient(clients, logger = logger, clock = clock),
+    /** Cage Warriors, KSW, Hexagone, ONE (Sherdog) ; `null` : pas de Sherdog (tests). */
+    private val sherdog: SherdogScheduleClient? = SherdogScheduleClient(clients, logger = logger, clock = clock),
 ) {
     private val mutex = Mutex()
     private val cached = HashMap<MmaPromotion, Pair<Long, List<MmaEvent>>>()
@@ -44,9 +46,10 @@ class MmaScheduleClient(
     /** Galas de [from] à [to] de chaque organisation suivie (ESPN, site de l'ARES), `null` si aucune source n'a répondu. */
     suspend fun events(from: Long, to: Long): List<MmaEvent>? = coroutineScope {
         val aresEvents = ares?.let { async { it.events(from, to) } }
+        val sherdogEvents = sherdog?.let { async { it.events(from, to) } }
         val results = MmaPromotion.entries.filter { it.espnLeague != null }.map { promotion -> async { events(promotion, from, to) } }.awaitAll() +
-            listOfNotNull(aresEvents?.await())
-        if (results.all { it == null }) null else results.filterNotNull().flatten().filter { it.endMillis > from && it.startMillis < to }
+            listOf(aresEvents?.await(), sherdogEvents?.await()).filter { it != null }
+        if (results.all { it == null }) null else results.filterNotNull().flatten().filter { !it.timeKnown || it.endMillis > from && it.startMillis < to }
     }
 
     private suspend fun events(promotion: MmaPromotion, from: Long, to: Long): List<MmaEvent>? {

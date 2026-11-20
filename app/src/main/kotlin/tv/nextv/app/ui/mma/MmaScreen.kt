@@ -289,7 +289,12 @@ private fun EventRow(card: MmaCard, now: Long, compact: Boolean) {
         horizontalArrangement = Arrangement.spacedBy(if (compact) 12.dp else 20.dp),
     ) {
         Column(Modifier.width(if (compact) 76.dp else 110.dp).padding(top = 2.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(timeOf(main), style = if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            if (card.timeKnown) {
+                Text(timeOf(main), style = if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            } else {
+                // Jour connu, heure pas encore (ni dans le calendrier, ni dans le guide).
+                Text(stringResource(R.string.mma_time_unknown), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             if (card.mainCardMillis != null && card.mainCardMillis > card.startMillis) {
                 Text(
                     stringResource(R.string.mma_prelims_at, timeOf(card.startMillis)),
@@ -492,7 +497,9 @@ private fun SheetHeading(text: String) {
 @Composable
 private fun SheetHeader(card: MmaCard, now: Long, onWatch: (Long) -> Unit, onDismiss: () -> Unit, firstFocus: FocusRequester, wide: Boolean) {
     val mainCard = card.mainCardMillis
-    val times = if (mainCard != null && mainCard > card.startMillis) {
+    val times = if (!card.timeKnown) {
+        stringResource(R.string.mma_time_unknown)
+    } else if (mainCard != null && mainCard > card.startMillis) {
         stringResource(R.string.mma_card_times, timeOf(card.startMillis), timeOf(mainCard))
     } else {
         stringResource(R.string.mma_start_time, timeOf(card.startMillis))

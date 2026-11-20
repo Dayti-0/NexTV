@@ -4,6 +4,7 @@ import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import java.text.Normalizer
+import kotlin.math.roundToInt
 import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -17,7 +18,8 @@ import java.util.TimeZone
 enum class MmaPromotion(val label: String, val espnLeague: String?, val guideWords: List<String>, val usualGuideIds: List<String> = emptyList()) {
     UFC("UFC", "ufc", listOf("ufc"), RMC_SPORT),
     PFL("PFL", "pfl", listOf("pfl", "bellator"), RMC_SPORT),
-    CAGE_WARRIORS("Cage Warriors", "cage-warriors", listOf("cage warriors"), RMC_SPORT),
+    // ESPN n'a presque plus de galas de Cage Warriors : carte par Sherdog (SherdogScheduleClient).
+    CAGE_WARRIORS("Cage Warriors", null, listOf("cage warriors"), RMC_SPORT),
     KSW("KSW", null, listOf("ksw"), RMC_SPORT),
     ARES("ARES", null, listOf("ares fighting", "ares"), listOf("canalplussport360.fr", "canalplussport.fr")),
     HEXAGONE("Hexagone", null, listOf("hexagone"), RMC_SPORT),
@@ -78,6 +80,11 @@ data class MmaEvent(
     val fights: List<MmaFight>,
     val finished: Boolean = false,
     val venue: String? = null,
+    /**
+     * Heure du gala connue (ESPN, site de l'ARES) ; faux pour Sherdog, qui ne donne que le jour : [startMillis] n'est
+     * alors qu'une heure provisoire, remplacée par celle de la diffusion du guide.
+     */
+    val timeKnown: Boolean = true,
 ) {
     /** Combat principal (le dernier de la soirée). */
     val mainEvent: MmaFight? get() = fights.firstOrNull()
@@ -173,11 +180,15 @@ object MmaEspn {
 
     /** Catégories de poids en français. */
     fun frenchWeightClass(name: String): String {
+        // « 174lb Catchweight » (Sherdog) : poids convenu entre les deux combattants, en kilos.
+        CATCHWEIGHT.find(name)?.let { return "Poids intermédiaire (${(it.groupValues[1].toInt() * 0.4536).roundToInt()} kg)" }
         val women = name.startsWith("Women's ", ignoreCase = true)
         val base = name.removePrefix("Women's ").removePrefix("women's ").trim()
         val french = WEIGHT_CLASSES[base.lowercase(Locale.ROOT)] ?: return name
         return if (women) "$french (femmes)" else french
     }
+
+    private val CATCHWEIGHT = Regex("""(\d{3})\s*lbs?\s*Catchweight""", RegexOption.IGNORE_CASE)
 
     private val WEIGHT_CLASSES = mapOf(
         "strawweight" to "Poids pailles",
