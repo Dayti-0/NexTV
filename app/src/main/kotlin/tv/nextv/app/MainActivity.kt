@@ -18,6 +18,7 @@ import tv.nextv.app.ui.theme.ThemeStyle
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 
 class MainActivity : ComponentActivity() {
 
@@ -37,9 +38,14 @@ class MainActivity : ComponentActivity() {
         val radioTitles = RadioTitleService({ container.httpClients.client(tv.nextv.core.net.RequestPurpose.METADATA) }, container.logger)
         setContent {
             val theme by settings.themeStyle.collectAsState(initial = ThemeStyle.NIGHT)
+            val football by settings.footballSection.collectAsState(initial = true)
+            val mma by settings.mmaSection.collectAsState(initial = true)
+            val hiddenSections = remember(football, mma) {
+                setOfNotNull(tv.nextv.app.ui.home.HomeSection.FOOTBALL.takeIf { !football }, tv.nextv.app.ui.home.HomeSection.MMA.takeIf { !mma })
+            }
             NexTvTheme(theme) {
                 // Descriptions du guide dans une autre langue : traduites en français.
-                CompositionLocalProvider(LocalTranslator provides translate, LocalRadioTitles provides radioTitles) {
+                CompositionLocalProvider(LocalTranslator provides translate, LocalRadioTitles provides radioTitles, tv.nextv.app.ui.home.LocalHiddenSections provides hiddenSections) {
                     Surface {
                         NexTvNavHost()
                         // Nouvelle version publiée : proposée au lancement.

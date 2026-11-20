@@ -363,6 +363,18 @@ class SettingsRepository(
         edit { it[START_ON_LAST_CHANNEL] = enabled }
     }
 
+    /** Rubriques Foot et MMA de l'accueil affichées (Réglages › Affichage). */
+    val footballSection: Flow<Boolean> = preferences.map { it[FOOTBALL_SECTION] ?: true }.distinctUntilChanged()
+    val mmaSection: Flow<Boolean> = preferences.map { it[MMA_SECTION] ?: true }.distinctUntilChanged()
+
+    suspend fun setFootballSection(enabled: Boolean) {
+        edit { it[FOOTBALL_SECTION] = enabled }
+    }
+
+    suspend fun setMmaSection(enabled: Boolean) {
+        edit { it[MMA_SECTION] = enabled }
+    }
+
     /** Aperçu vidéo (sans le son) de la chaîne sélectionnée à l'accueil. */
     val channelPreview: Flow<Boolean> = preferences.map { it[CHANNEL_PREVIEW] ?: true }.distinctUntilChanged()
 
@@ -709,6 +721,8 @@ class SettingsRepository(
         val TILES_PER_ROW = intKey("tiles_per_row")
         val DNS_PROVIDER = stringKey("dns_provider")
         val CHANNEL_PREVIEW = booleanKey("channel_preview")
+        val FOOTBALL_SECTION = booleanKey("section_football")
+        val MMA_SECTION = booleanKey("section_mma")
         val PREVIEW_HANDOFF = booleanKey("preview_handoff")
         val TRAILER_AUTOPLAY = booleanKey("trailer_autoplay")
         val TRAILER_SOUND = booleanKey("trailer_sound")

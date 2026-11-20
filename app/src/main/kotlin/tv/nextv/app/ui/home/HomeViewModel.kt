@@ -62,7 +62,10 @@ import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.first
 import androidx.compose.runtime.Immutable
 
-enum class HomeSection { TV, MOVIES, SERIES, GUIDE, FOOTBALL }
+enum class HomeSection { TV, MOVIES, SERIES, GUIDE, FOOTBALL, MMA }
+
+/** Rubriques désactivées dans les réglages (Foot, MMA), fournies par l'activité : absentes des onglets et menus. */
+val LocalHiddenSections = androidx.compose.runtime.staticCompositionLocalOf<Set<HomeSection>> { emptySet() }
 
 /** Catégorie affichée dans une section. */
 sealed interface Category {
@@ -205,7 +208,7 @@ fun HomeSection.kind(): ContentKind? = when (this) {
     HomeSection.TV -> ContentKind.LIVE
     HomeSection.MOVIES -> ContentKind.MOVIE
     HomeSection.SERIES -> ContentKind.SERIES
-    HomeSection.GUIDE, HomeSection.FOOTBALL -> null
+    HomeSection.GUIDE, HomeSection.FOOTBALL, HomeSection.MMA -> null
 }
 
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)

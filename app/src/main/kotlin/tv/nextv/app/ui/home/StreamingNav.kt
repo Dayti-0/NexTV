@@ -116,7 +116,7 @@ internal fun StreamingNav(
         ) {
             onSearch?.let { NavItem(Icons.Filled.Search, stringResource(R.string.search_everywhere), open, selected = false, onClick = it) }
             Spacer(Modifier.height(6.dp))
-            HomeSection.entries.forEach { target ->
+            HomeSection.entries.filterNot { it in LocalHiddenSections.current }.forEach { target ->
                 NavItem(
                     icon = sectionIcon(target),
                     label = sectionLabel(target),

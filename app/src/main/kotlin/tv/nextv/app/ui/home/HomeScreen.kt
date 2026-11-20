@@ -184,6 +184,9 @@ fun HomeScreen(
     val resources = LocalContext.current.resources
     val viewModel = appViewModel { container, _ -> HomeViewModel(container, resources) }
     val section by viewModel.section.collectAsStateWithLifecycle()
+    // Rubrique désactivée dans les réglages pendant qu'elle était affichée : retour aux chaînes.
+    val hiddenSections = LocalHiddenSections.current
+    LaunchedEffect(section, hiddenSections) { if (section in hiddenSections) viewModel.selectSection(HomeSection.TV) }
     val sourceId by viewModel.sourceId.collectAsStateWithLifecycle()
     val groups by viewModel.groups.collectAsStateWithLifecycle()
     val category by viewModel.category.collectAsStateWithLifecycle()
@@ -423,6 +426,7 @@ fun HomeScreen(
                 }
             },
             football = { modifier -> sourceId?.let { FootballScreen(it, playChannel, modifier) } },
+            mma = { modifier -> sourceId?.let { tv.nextv.app.ui.mma.MmaScreen(it, playChannel, modifier) } },
             continueMovies = continueMovies,
             continueSeries = continueSeries,
             gridColumns = gridColumns,
@@ -481,6 +485,8 @@ fun HomeContent(
     guide: @Composable (Modifier) -> Unit,
     /** Section « Foot » : matchs à venir, d'après le guide. */
     football: @Composable (Modifier) -> Unit = {},
+    /** Section « MMA » : galas à venir (ESPN) et leurs chaînes (guide). */
+    mma: @Composable (Modifier) -> Unit = {},
     continueMovies: List<ProgressEntity> = emptyList(),
     continueSeries: List<ProgressEntity> = emptyList(),
     gridColumns: GridColumns = GridColumns(),
@@ -670,6 +676,7 @@ fun HomeContent(
                 when {
                     section == HomeSection.GUIDE -> guide(Modifier.weight(1f))
                     section == HomeSection.FOOTBALL -> football(Modifier.weight(1f))
+                    section == HomeSection.MMA -> mma(Modifier.weight(1f))
                     layout == HomeLayout.STREAMING && category == Category.All && !liveList -> CategoryDrawer(
                         drawerRail,
                         Modifier.weight(1f),
@@ -968,6 +975,7 @@ private fun HomeTopBar(
         // Place laissée dans la rangée défilante (ci-dessous) à l'onglet agrandi : retirée ici.
         val tabRoom = if (minimal) PREMIUM_TAB_FOCUS_ROOM else TAB_FOCUS_ROOM
         Spacer(Modifier.width((if (window.isWide) 32.dp else 12.dp) - tabRoom))
+        val tabs = HomeSection.entries.filterNot { it in LocalHiddenSections.current }
         Row(
             Modifier
                 .weight(1f)
@@ -985,15 +993,17 @@ private fun HomeTopBar(
                 .horizontalScroll(rememberScrollState())
                 // Le premier et le dernier onglet, agrandis au focus, ne sont pas coupés par le bord de la rangée.
                 .padding(horizontal = tabRoom),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(if (tabs.size > 5) 2.dp else 6.dp),
         ) {
-            HomeSection.entries.forEach { target ->
+            tabs.forEach { target ->
                 SectionTab(
                     icon = sectionIcon(target).takeUnless { (minimal || underlined) && window.isWide },
                     label = sectionLabel(target),
                     showLabel = window.isWide || target == section,
                     selected = target == section,
                     underlined = underlined,
+                    // Six onglets (Foot et MMA affichés) : plus serrés, pour tenir à côté de l'heure.
+                    tight = tabs.size > 5,
                     onClick = { actions.onSection(target) },
                     // Télécommande : la section s'affiche dès que l'onglet est sélectionné, sans OK ni attente.
                     onFocused = { actions.onSection(target) },
@@ -1095,6 +1105,8 @@ private fun SectionTab(
     modifier: Modifier = Modifier,
     /** Streaming : sélection en texte appuyé souligné de la couleur d'accent, sans pastille. */
     underlined: Boolean = false,
+    /** Marges réduites (beaucoup d'onglets). */
+    tight: Boolean = false,
 ) {
     // La section s'affiche dès que l'onglet reçoit le focus (sans attente : la télécommande répond aussitôt).
     val currentSelected by rememberUpdatedState(selected)
@@ -1113,7 +1125,7 @@ private fun SectionTab(
         focusScale = 1.06f,
     ) {
         Column(
-            Modifier.padding(horizontal = if (showLabel) 18.dp else 12.dp, vertical = if (underlined) 8.dp else 10.dp),
+            Modifier.padding(horizontal = if (showLabel && !tight) 18.dp else 12.dp, vertical = if (underlined) 8.dp else 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1148,6 +1160,7 @@ internal fun sectionLabel(section: HomeSection) = stringResource(
         HomeSection.SERIES -> R.string.home_series
         HomeSection.GUIDE -> R.string.home_guide
         HomeSection.FOOTBALL -> R.string.home_football
+        HomeSection.MMA -> R.string.home_mma
     },
 )
 
@@ -1157,6 +1170,7 @@ internal fun sectionIcon(section: HomeSection): ImageVector = when (section) {
     HomeSection.SERIES -> NexTvIcons.Series
     HomeSection.GUIDE -> NexTvIcons.Guide
     HomeSection.FOOTBALL -> NexTvIcons.Football
+    HomeSection.MMA -> NexTvIcons.Mma
 }
 
 @Composable

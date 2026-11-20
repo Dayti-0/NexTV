@@ -484,6 +484,56 @@ object SampleData {
         ),
     )
 
+    private fun mmaFight(a: String, aCountry: String, b: String, bCountry: String, weight: String, start: Long, main: Boolean, winner: Int? = null) =
+        tv.nextv.core.mma.MmaFight(
+            weightClass = weight,
+            fighters = listOf(
+                tv.nextv.core.mma.MmaFighter(a, country = aCountry, record = "19-3-0"),
+                tv.nextv.core.mma.MmaFighter(b, country = bCountry, record = "14-2-0"),
+            ),
+            startMillis = start,
+            mainCard = main,
+            result = winner?.let { tv.nextv.core.mma.MmaResult(it, 3, "5:00", decision = true) },
+        )
+
+    val mma = tv.nextv.app.ui.mma.MmaUiState(
+        loading = false,
+        now = NOW,
+        cards = listOf(
+            tv.nextv.app.ui.mma.MmaCard(
+                tv.nextv.core.mma.MmaPromotion.UFC, "UFC Fight Night : Dupont – Silva", NOW - 2 * 60 * MINUTE, NOW - 30 * MINUTE, NOW + 3 * 60 * MINUTE,
+                event = tv.nextv.core.mma.MmaEvent(
+                    "1", tv.nextv.core.mma.MmaPromotion.UFC, "UFC Fight Night : Dupont – Silva", NOW - 2 * 60 * MINUTE, NOW - 30 * MINUTE,
+                    listOf(
+                        mmaFight("Marc Dupont", "France", "Rafael Silva", "Brésil", "Poids moyens", NOW - 30 * MINUTE, true),
+                        mmaFight("Jan Novak", "Tchéquie", "Tom Reed", "États-Unis", "Poids légers", NOW - 30 * MINUTE, true, winner = 0),
+                        mmaFight("Ali Kaya", "Turquie", "Ben Ford", "Angleterre", "Poids plumes", NOW - 2 * 60 * MINUTE, false, winner = 1),
+                    ),
+                    venue = "Paris, Accor Arena",
+                ),
+                channels = listOf(GuideChannel(301L, "RMC Sport 1", null, null, emptyList()), GuideChannel(302L, "RMC Sport 1 FHD", null, null, emptyList())),
+                programme = tv.nextv.app.ui.guide.GuideProgramme("MMA : UFC", NOW - 30 * MINUTE, NOW + 2 * 60 * MINUTE, "Dupont / Silva", null, "Sports de combat", null),
+            ),
+            tv.nextv.app.ui.mma.MmaCard(
+                tv.nextv.core.mma.MmaPromotion.CAGE_WARRIORS, "Cage Warriors", NOW + 26 * 60 * MINUTE, null, NOW + 29 * 60 * MINUTE,
+                channels = listOf(GuideChannel(301L, "RMC Sport 1", null, null, emptyList())),
+                programme = tv.nextv.app.ui.guide.GuideProgramme("MMA : Cage Warriors", NOW + 26 * 60 * MINUTE, NOW + 29 * 60 * MINUTE, null, null, null, null),
+            ),
+            tv.nextv.app.ui.mma.MmaCard(
+                tv.nextv.core.mma.MmaPromotion.PFL, "PFL Lyon : Lapilus – McKee", NOW + 50 * 60 * MINUTE, NOW + 54 * 60 * MINUTE, NOW + 58 * 60 * MINUTE,
+                event = tv.nextv.core.mma.MmaEvent(
+                    "2", tv.nextv.core.mma.MmaPromotion.PFL, "PFL Lyon : Lapilus – McKee", NOW + 50 * 60 * MINUTE, NOW + 54 * 60 * MINUTE,
+                    listOf(mmaFight("Taylor Lapilus", "France", "Mitch McKee", "États-Unis", "Poids coqs", NOW + 54 * 60 * MINUTE, true)),
+                ),
+            ),
+            tv.nextv.app.ui.mma.MmaCard(
+                tv.nextv.core.mma.MmaPromotion.ARES, "ARES 45", NOW + 52 * 60 * MINUTE, null, NOW + 55 * 60 * MINUTE,
+                guideChannel = "Canal+ Sport 360",
+                programme = tv.nextv.app.ui.guide.GuideProgramme("ARES 45. 1re partie", NOW + 52 * 60 * MINUTE, NOW + 55 * 60 * MINUTE, "ARES Fighting Championship", null, null, null),
+            ),
+        ),
+    )
+
     val football = FootballUiState(
         loading = false,
         now = NOW,

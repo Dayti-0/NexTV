@@ -148,6 +148,7 @@ fun SettingsScreen(
     val update by viewModel.update.collectAsStateWithLifecycle()
     val account by viewModel.account.collectAsStateWithLifecycle()
     val refreshProgress by viewModel.refreshProgress.collectAsStateWithLifecycle()
+    val sportSections by viewModel.sportSections.collectAsStateWithLifecycle()
     val adRecordings by viewModel.adRecordings.collectAsStateWithLifecycle()
     val adPlace by viewModel.adPlace.collectAsStateWithLifecycle()
     val adSound by viewModel.adSound.collectAsStateWithLifecycle()
@@ -243,6 +244,9 @@ fun SettingsScreen(
         state = state,
         account = account,
         refreshProgress = refreshProgress,
+        sportSections = sportSections,
+        onFootballSection = viewModel::setFootballSection,
+        onMmaSection = viewModel::setMmaSection,
         snackbarHostState = snackbar,
         onBack = onBack,
         onPlaylists = onPlaylists,
@@ -410,6 +414,10 @@ fun SettingsContent(
     account: AccountState? = null,
     /** Avancement de la mise à jour de la playlist en cours (`null` : pas encore d'étape signalée). */
     refreshProgress: LoadProgress? = null,
+    /** Rubriques Foot et MMA de l'accueil (Affichage). */
+    sportSections: SportSections = SportSections(),
+    onFootballSection: (Boolean) -> Unit = {},
+    onMmaSection: (Boolean) -> Unit = {},
     now: Long = System.currentTimeMillis(),
     onQuickSetup: () -> Unit = {},
     /** Configuration à distance : envoyer à une autre télé, afficher le code de celle-ci. */
@@ -756,6 +764,21 @@ fun SettingsContent(
                         title = stringResource(R.string.appearance_open),
                         value = "${homeLayoutLabel(state.homeLayout)}  ·  ${themeLabel(state.theme)}",
                         onClick = onAppearance,
+                    )
+                }
+                // Rubriques de sport de l'accueil : masquées si on ne les regarde pas.
+                SectionCard(stringResource(R.string.settings_group_sections)) {
+                    ToggleRow(
+                        title = stringResource(R.string.settings_section_football),
+                        description = stringResource(R.string.settings_section_football_help),
+                        checked = sportSections.football,
+                        onChange = onFootballSection,
+                    )
+                    ToggleRow(
+                        title = stringResource(R.string.settings_section_mma),
+                        description = stringResource(R.string.settings_section_mma_help),
+                        checked = sportSections.mma,
+                        onChange = onMmaSection,
                     )
                 }
                 SectionCard(stringResource(R.string.settings_group_preview)) {

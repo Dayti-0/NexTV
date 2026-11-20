@@ -356,6 +356,9 @@ class AppContainer(context: Context) {
     /** Scores et minute de jeu en direct (tableau des scores public d'ESPN), partagés par la section Foot et le lecteur. */
     val liveScores = LiveScoreClient(httpClients, logger = logger)
 
+    /** Galas de la section MMA (calendrier public d'ESPN : UFC, PFL, Cage Warriors). */
+    val mmaSchedule = tv.nextv.core.mma.MmaScheduleClient(httpClients, logger = logger)
+
     /** Matchs à venir de la section Foot (football-data.org, résultats gardés 30 min). */
     val footballData = FootballDataClient(
         clients = httpClients,

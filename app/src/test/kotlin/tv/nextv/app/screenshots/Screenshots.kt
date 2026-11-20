@@ -456,6 +456,11 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
+    fun mma() = capture("09i_mma") {
+        Home(HomeSection.MMA, Category.All)
+    }
+
+    @Test
     fun guideStreaming() = capture("09f_guide_streaming") {
         Home(HomeSection.GUIDE, Category.All, layout = HomeLayout.STREAMING)
     }
@@ -1160,6 +1165,9 @@ abstract class ScreenshotSuite(private val device: String) {
             },
             football = { modifier ->
                 FootballContent(SampleData.football, competition = null, onCompetition = {}, onPlay = {}, modifier = modifier)
+            },
+            mma = { modifier ->
+                tv.nextv.app.ui.mma.MmaContent(SampleData.mma, promotion = null, onPromotion = {}, onPlay = {}, modifier = modifier)
             },
             recentChannels = SampleData.channels.take(3),
             showPreview = preview,

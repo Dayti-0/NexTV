@@ -83,6 +83,13 @@ object NexTvIcons {
             "M18.06,17.21l-1.14,-0.1 -0.79,-1.37 1.46,-4.34 1.39,-0.47 1,0.73c0.01,0.11 0.02,0.22 0.02,0.34 0,1.99 -0.73,3.81 -1.94,5.21z",
     )
 
+    /** Gant de combat (section MMA, tracé « sports_mma » de Material). */
+    val Mma: ImageVector = icon(
+        "Mma",
+        "M7,20c0,0.55 0.45,1 1,1h8c0.55,0 1,-0.45 1,-1v-3H7V20zM18,7c-0.55,0 -1,0.45 -1,1V5c0,-1.1 -0.9,-2 -2,-2H7C5.9,3 5,3.9 5,5v5.8" +
+            "c0,0.69 0.36,1.34 0.95,1.71L7,13.14V16h10v-2.86l1.05,-0.63C18.64,12.14 19,11.5 19,10.81V8C19,7.45 18.55,7 18,7zM15,10H7V8h8V10z",
+    )
+
     val Pause: ImageVector = icon("Pause", "M6,19h4L10,5L6,5v14zM14,5v14h4L18,5h-4z")
 
     val FastForward: ImageVector = icon("FastForward", "M4,18l8.5,-6L4,6v12zM13,6v12l8.5,-6L13,6z")

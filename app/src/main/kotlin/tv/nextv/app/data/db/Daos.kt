@@ -1426,6 +1426,26 @@ interface ProgrammeDao {
         """,
     )
     suspend fun footballCandidates(sourceId: Long, from: Long, to: Long): List<FootballProgrammeRow>
+
+    /**
+     * Programmes qui peuvent être des galas de MMA entre [from] et [to] (organisation ou « MMA » cités) ; le tri fin
+     * (magazines, résumés, autres disciplines) est fait par [tv.nextv.core.mma.MmaGuide].
+     */
+    @Query(
+        """
+        SELECT p.epgChannelId, p.title, p.subtitle, p.description, p.category, p.year, p.startMillis, p.stopMillis
+        FROM programmes p
+        JOIN sources s ON s.id = p.sourceId AND p.generation = s.epgGeneration
+        WHERE p.sourceId = :sourceId AND p.stopMillis > :from AND p.startMillis < :to
+          AND (p.title LIKE '%mma%' OR p.title LIKE '%ufc%' OR p.title LIKE '%pfl%' OR p.title LIKE '%cage warriors%'
+            OR p.title LIKE '%ksw%' OR p.title LIKE '%ares%' OR p.title LIKE '%hexagone%' OR p.title LIKE '%bellator%'
+            OR p.title LIKE '%one championship%' OR p.title LIKE '%arts martiaux mixtes%'
+            OR p.subtitle LIKE '%ufc%' OR p.subtitle LIKE '%pfl%' OR p.subtitle LIKE '%cage warriors%' OR p.subtitle LIKE '%ksw%'
+            OR p.subtitle LIKE '%ares fighting%' OR p.subtitle LIKE '%hexagone%')
+        ORDER BY p.startMillis
+        """,
+    )
+    suspend fun mmaCandidates(sourceId: Long, from: Long, to: Long): List<FootballProgrammeRow>
 }
 
 @Dao

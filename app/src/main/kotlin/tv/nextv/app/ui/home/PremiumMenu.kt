@@ -91,9 +91,10 @@ fun PremiumMenu(
                 CurrentTime()
             }
             // Tuiles : en une rangée sur la télé, deux par ligne sur un écran étroit.
-            val perRow = if (window.isWide) MENU_ORDER.size else 2
+            val order = MENU_ORDER.filterNot { it in LocalHiddenSections.current }
+            val perRow = if (window.isWide) order.size else 2
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                MENU_ORDER.chunked(perRow).forEach { row ->
+                order.chunked(perRow).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(if (window.isWide) 20.dp else 12.dp)) {
                         row.forEach { section ->
                             MenuTile(section, counts[section], onClick = { onSection(section) }, modifier = Modifier.weight(1f).focusRequester(focus.getValue(section)))
@@ -113,7 +114,7 @@ fun PremiumMenu(
 }
 
 /** Ordre des tuiles : le direct et son guide, puis films, séries et foot. */
-private val MENU_ORDER = listOf(HomeSection.TV, HomeSection.GUIDE, HomeSection.MOVIES, HomeSection.SERIES, HomeSection.FOOTBALL)
+private val MENU_ORDER = listOf(HomeSection.TV, HomeSection.GUIDE, HomeSection.MOVIES, HomeSection.SERIES, HomeSection.FOOTBALL, HomeSection.MMA)
 
 @Composable
 private fun MenuTile(section: HomeSection, count: Int?, onClick: () -> Unit, modifier: Modifier = Modifier) {

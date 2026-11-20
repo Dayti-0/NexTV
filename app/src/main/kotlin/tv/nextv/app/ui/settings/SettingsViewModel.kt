@@ -54,6 +54,9 @@ import tv.nextv.core.source.XtreamAccount
 import tv.nextv.core.source.XtreamAccountInfo
 import tv.nextv.core.update.AppRelease
 
+/** Rubriques de sport de l'accueil affichées. */
+data class SportSections(val football: Boolean = true, val mma: Boolean = true)
+
 data class SettingsUiState(
     val loaded: Boolean = false,
     /** Playlist affichée à l'accueil. */
@@ -555,6 +558,18 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     fun setStartOnLastChannel(enabled: Boolean) {
         viewModelScope.launch { settings.setStartOnLastChannel(enabled) }
+    }
+
+    /** Rubriques Foot et MMA affichées à l'accueil. */
+    val sportSections: StateFlow<SportSections> = combine(settings.footballSection, settings.mmaSection, ::SportSections)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SportSections())
+
+    fun setFootballSection(enabled: Boolean) {
+        viewModelScope.launch { settings.setFootballSection(enabled) }
+    }
+
+    fun setMmaSection(enabled: Boolean) {
+        viewModelScope.launch { settings.setMmaSection(enabled) }
     }
 
     fun setChannelPreview(enabled: Boolean) {

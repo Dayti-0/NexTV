@@ -151,6 +151,13 @@ Commandes :
 - Accueil : `ui/home/` (interfaces Live Center, Streaming, Classique) ; composants communs dans
   `ui/components/Components.kt` (fondus `bottomFade`, `FadingRow` / `edgeFade`).
 - Guide TV et fiche programme : `ui/guide/`.
+- Section MMA (0.2.206, `HomeSection.MMA`, `ui/mma/`) : galas de l'UFC, du PFL et de Cage Warriors par le calendrier public
+  d'ESPN (`core/mma/MmaScheduleClient`, `MmaEspn` : cartes, horaires préliminaires / carte principale, résultats ; Cage
+  Warriors y est très incomplet), chaînes par le guide (`ProgrammeDao.mmaCandidates`, `MmaGuide.promotionOf` écarte
+  magazines « Format », temps forts, classiques, BJJ). KSW, ARES (Canal+ Sport), Hexagone, ONE : guide seul (`mmaCards` :
+  rediffusion = même chaîne, titre et sous-titre déjà passés 1 h à 7 jours plus tôt ; parties d'un gala regroupées). Site de
+  Cage Warriors, Tapology : refusés d'ici. Foot et MMA désactivables (Réglages › Affichage, `footballSection` /
+  `mmaSection`, `LocalHiddenSections`).
 - Chaînes reliées au guide : `core/epg/EpgImporter.match` puis `ChannelNames.kt` (noms « collés », table des autres
   appellations `ALIASES`). Toute nouvelle règle : augmenter `EpgImporter.VERSION` (le guide est relu au lancement).
 - France 3 régionales : `core/catalog/FranceRegions.kt` ramène toutes les écritures d'une région au nom de son antenne

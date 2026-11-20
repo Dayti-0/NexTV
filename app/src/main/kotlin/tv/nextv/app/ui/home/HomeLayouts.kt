@@ -407,7 +407,7 @@ internal fun shelfList(content: ShelfContent): List<ShelfSpec> = buildList {
             if (discover.newest.isNotEmpty()) add(ShelfSpec.Posters("newest", R.string.home_rows_newest, discover.newest))
             if (discover.recommended.isNotEmpty()) add(ShelfSpec.Posters("recommended", R.string.home_rows_recommended, discover.recommended, discover.recommendedFrom))
         }
-        HomeSection.GUIDE, HomeSection.FOOTBALL -> Unit
+        HomeSection.GUIDE, HomeSection.FOOTBALL, HomeSection.MMA -> Unit
     }
     content.groups.forEach { add(ShelfSpec.Group("group:" + (it.title ?: NO_GROUP_KEY), it)) }
 }

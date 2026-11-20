@@ -4,6 +4,10 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.206
+- Nouvelle rubrique MMA : galas de l’UFC, du PFL et de Cage Warriors (carte des combats, heures des préliminaires et de la carte principale, résultats), plus KSW, ARES et Hexagone trouvés dans le guide, avec la chaîne qui les diffuse
+- Réglages › Affichage : les rubriques Foot et MMA peuvent être désactivées
+
 ## 0.2.205
 - Réglages : barre de chargement pendant la mise à jour de la playlist, avec l’étape en cours (téléchargement, enregistrement des chaînes, guide TV) et le pourcentage
 - Radios : NRJ, Nostalgie, Chérie FM… reconnues comme radios : plus de « Pas d’information de programme » (ni « Pas de programme » dans le guide)
