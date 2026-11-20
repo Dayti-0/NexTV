@@ -488,8 +488,8 @@ object SampleData {
         tv.nextv.core.mma.MmaFight(
             weightClass = weight,
             fighters = listOf(
-                tv.nextv.core.mma.MmaFighter(a, country = aCountry, record = "19-3-0"),
-                tv.nextv.core.mma.MmaFighter(b, country = bCountry, record = "14-2-0"),
+                tv.nextv.core.mma.MmaFighter(a, country = aCountry, record = "19-3-0", espnId = "1"),
+                tv.nextv.core.mma.MmaFighter(b, country = bCountry, record = "14-2-0", espnId = "2"),
             ),
             startMillis = start,
             mainCard = main,
@@ -501,12 +501,12 @@ object SampleData {
         now = NOW,
         cards = listOf(
             tv.nextv.app.ui.mma.MmaCard(
-                tv.nextv.core.mma.MmaPromotion.UFC, "UFC Fight Night : Dupont – Silva", NOW - 2 * 60 * MINUTE, NOW - 30 * MINUTE, NOW + 3 * 60 * MINUTE,
+                tv.nextv.core.mma.MmaPromotion.UFC, "UFC Fight Night: Adesanya vs Magomedov", NOW - 2 * 60 * MINUTE, NOW - 30 * MINUTE, NOW + 3 * 60 * MINUTE,
                 event = tv.nextv.core.mma.MmaEvent(
-                    "1", tv.nextv.core.mma.MmaPromotion.UFC, "UFC Fight Night : Dupont – Silva", NOW - 2 * 60 * MINUTE, NOW - 30 * MINUTE,
+                    "1", tv.nextv.core.mma.MmaPromotion.UFC, "UFC Fight Night: Adesanya vs Magomedov", NOW - 2 * 60 * MINUTE, NOW - 30 * MINUTE,
                     listOf(
-                        mmaFight("Marc Dupont", "France", "Rafael Silva", "Brésil", "Poids moyens", NOW - 30 * MINUTE, true),
-                        mmaFight("Jan Novak", "Tchéquie", "Tom Reed", "États-Unis", "Poids légers", NOW - 30 * MINUTE, true, winner = 0),
+                        mmaFight("Israel Adesanya", "Nigeria", "Shara Magomedov", "Russie", "Poids moyens", NOW - 30 * MINUTE, true),
+                        mmaFight("Ian Machado Garry", "Irlande", "Yaroslav Amosov", "Ukraine", "Poids mi-moyens", NOW - 30 * MINUTE, true, winner = 0),
                         mmaFight("Ali Kaya", "Turquie", "Ben Ford", "Angleterre", "Poids plumes", NOW - 2 * 60 * MINUTE, false, winner = 1),
                     ),
                     venue = "Paris, Accor Arena",
@@ -525,6 +525,8 @@ object SampleData {
                     "2", tv.nextv.core.mma.MmaPromotion.PFL, "PFL Lyon : Lapilus – McKee", NOW + 50 * 60 * MINUTE, NOW + 54 * 60 * MINUTE,
                     listOf(mmaFight("Taylor Lapilus", "France", "Mitch McKee", "États-Unis", "Poids coqs", NOW + 54 * 60 * MINUTE, true)),
                 ),
+                channels = listOf(GuideChannel(301L, "RMC Sport 1", null, null, emptyList())),
+                usualChannel = true,
             ),
             tv.nextv.app.ui.mma.MmaCard(
                 tv.nextv.core.mma.MmaPromotion.ARES, "ARES 45", NOW + 52 * 60 * MINUTE, null, NOW + 55 * 60 * MINUTE,

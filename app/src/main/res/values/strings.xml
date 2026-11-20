@@ -212,6 +212,12 @@
     <string name="mma_finish_at">R%1$d · %2$s</string>
     <string name="mma_no_channel">Diffusion inconnue dans le guide</string>
     <string name="mma_yesterday">Hier</string>
+    <string name="mma_main_event">Combat principal · %1$s</string>
+    <string name="mma_winner">Vainqueur</string>
+    <string name="mma_main_event_title">Combat principal</string>
+    <string name="mma_versus">contre</string>
+    <string name="mma_usual_channel">chaîne habituelle</string>
+    <string name="mma_usual_channel_help">Pas encore dans le guide : chaîne qui diffuse d’habitude ces galas</string>
     <string name="home_football">Foot</string>
     <string name="menu_subscription">Abonnement jusqu’au %1$s</string>
     <string name="menu_back">Menu</string>

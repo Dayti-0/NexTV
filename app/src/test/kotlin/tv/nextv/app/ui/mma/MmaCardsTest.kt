@@ -41,4 +41,13 @@ class MmaCardsTest {
         assertEquals("ARES 45", cards[2].name)
         assertEquals(now + 54 * hour, cards[2].endMillis)
     }
+
+    @Test
+    fun aDistantEventGetsTheUsualChannelOfItsPromotion() {
+        val far = MmaEvent("2", MmaPromotion.UFC, "UFC 335: Oliveira vs. Lopes", now + 22 * 24 * hour, now + 22 * 24 * hour + 2 * hour, emptyList())
+        val rmc = tv.nextv.app.ui.guide.GuideChannel(7, "RMC Sport 1", null, null, emptyList())
+        val card = mmaCards(listOf(far), emptyList(), now, mapOf("rmcsport1.fr" to rmc)).single()
+        assertEquals(7L, card.channel?.id)
+        assertEquals(true, card.usualChannel)
+    }
 }

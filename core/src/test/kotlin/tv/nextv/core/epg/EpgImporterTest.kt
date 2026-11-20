@@ -72,6 +72,34 @@ class EpgImporterTest {
     }
 
     @Test
+    fun `a guide id copied by mistake by the provider is ignored, a renamed or abbreviated channel keeps it`() {
+        val guide = listOf(
+            XmltvChannel("RMCSport1.fr", listOf("RMC Sport 1")),
+            XmltvChannel("RMCSport2.fr", listOf("RMC Sport 2")),
+            XmltvChannel("RTSUn.ch", listOf("RTS 1")),
+            XmltvChannel("CanalZ.be", listOf("CANALZ")),
+            XmltvChannel("IDF1.fr", listOf("20 Minutes TV")),
+            XmltvChannel("CStarHitsFrance.fr", listOf("CStar Hits France")),
+        )
+        val channels = listOf(
+            EpgChannelRef(1, tvgId = "RMCSport2.fr", tvgName = "|FR| RMC ALERTE SECOURS FHD", name = "|FR| RMC ALERTE SECOURS FHD"),
+            EpgChannelRef(2, tvgId = "RMCSport1.fr", tvgName = null, name = "|LIGUE 1| DAZN LE MAG DIMANCHE SOIR HD (PAS DE MATCH)"),
+            EpgChannelRef(3, tvgId = "RMCSport1.fr", tvgName = null, name = "|FR| RMC SPORT 1 FHD BKP"),
+            EpgChannelRef(4, tvgId = "RTSUn.ch", tvgName = null, name = "|CH| RTS Un HD"),
+            EpgChannelRef(5, tvgId = "CanalZ.be", tvgName = null, name = "|BE| CANAL Z FHD"),
+            EpgChannelRef(6, tvgId = "IDF1.fr", tvgName = null, name = "|FR| IDF 1 HD"),
+            EpgChannelRef(7, tvgId = "CStarHitsFrance.fr", tvgName = null, name = "|FR| EUROPE 2 POP TV SD"),
+        )
+
+        val mapping = EpgImporter(parserFactory = { KXmlParser() }).match(channels, guide, emptySet())
+
+        assertEquals(
+            mapOf(3L to "rmcsport1.fr", 4L to "rtsun.ch", 5L to "canalz.be", 6L to "idf1.fr", 7L to "cstarhitsfrance.fr"),
+            mapping,
+        )
+    }
+
+    @Test
     fun `a channel from another country never takes the French programme of the same name`() {
         val guide = listOf(
             XmltvChannel("DAZN.fr", listOf("DAZN 1")),

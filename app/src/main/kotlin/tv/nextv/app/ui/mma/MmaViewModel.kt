@@ -46,6 +46,11 @@ data class MmaCard(
     val programme: GuideProgramme? = null,
     /** Chaîne du guide qui le diffuse quand aucune chaîne de la playlist ne lui est associée. */
     val guideChannel: String? = null,
+    /**
+     * [channels] n'est que la chaîne habituelle de l'organisation (RMC Sport pour l'UFC) : le guide ne couvre pas encore
+     * la date du gala, ou ne l'annonce pas.
+     */
+    val usualChannel: Boolean = false,
 ) {
     val channel: GuideChannel? get() = channels.firstOrNull()
 
@@ -74,7 +79,10 @@ class MmaViewModel(private val container: AppContainer, private val sourceId: Lo
     /** `null` : toutes les organisations. */
     val promotion = MutableStateFlow<MmaPromotion?>(null)
 
-    private var cachedGuide: Pair<Any, List<BroadcastRow>>? = null
+    /** Programmes MMA du guide, et chaînes de la playlist par identifiant du guide (chaînes habituelles). */
+    private class GuideData(val rows: List<BroadcastRow>, val usual: Map<String, GuideChannel>)
+
+    private var cachedGuide: Pair<Any, GuideData>? = null
 
     /** Playlist ou guide rechargés, catégories masquées : seuls changements qui relancent la lecture du guide. */
     private val guideVersion: Flow<Any> = combine(
@@ -84,7 +92,7 @@ class MmaViewModel(private val container: AppContainer, private val sourceId: Lo
         container.hiddenGroupDao.observeTitles(sourceId, ContentKind.LIVE.name),
     ) { version, hidden -> version to hidden }
 
-    private val guide: Flow<List<BroadcastRow>> = guideVersion
+    private val guide: Flow<GuideData> = guideVersion
         .conflate()
         .map { version -> cachedGuide?.takeIf { it.first == version }?.second ?: loadGuide().also { cachedGuide = version to it } }
 
@@ -106,18 +114,18 @@ class MmaViewModel(private val container: AppContainer, private val sourceId: Lo
         }
     }
 
-    val state: StateFlow<MmaUiState> = combine(guide, schedule, clock) { rows, events, now ->
+    val state: StateFlow<MmaUiState> = combine(guide, schedule, clock) { guide, events, now ->
         MmaUiState(
             loading = false,
             now = now,
-            cards = mmaCards(events.orEmpty(), rows, now),
+            cards = mmaCards(events.orEmpty(), guide.rows, now, guide.usual),
             scheduleUnavailable = events == null,
         )
     }
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MmaUiState())
 
-    private suspend fun loadGuide(): List<BroadcastRow> {
+    private suspend fun loadGuide(): GuideData {
         val now = System.currentTimeMillis()
         val channels = HashMap<String, EpgChannelRow>()
         for (channel in container.channelDao.epgChannels(sourceId)) {
@@ -126,10 +134,14 @@ class MmaViewModel(private val container: AppContainer, private val sourceId: Lo
         }
         val guideOnly = container.guideOnlyChannelDao.list(sourceId).associate { it.epgChannelId to it.name }
         // Depuis une semaine : un programme déjà passé sous le même titre est une rediffusion.
-        return container.programmeDao.mmaCandidates(sourceId, now - RERUN_MEMORY_MILLIS, now + WINDOW_MILLIS).mapNotNull { programme ->
+        val rows = container.programmeDao.mmaCandidates(sourceId, now - RERUN_MEMORY_MILLIS, now + WINDOW_MILLIS).mapNotNull { programme ->
             channels[programme.epgChannelId]?.let { BroadcastRow(it, null, programme) }
                 ?: guideOnly[programme.epgChannelId]?.let { BroadcastRow(null, it, programme) }
         }
+        val usualIds = MmaPromotion.entries.flatMap { it.usualGuideIds }.toSet()
+        val usual = channels.filterKeys { it in usualIds }
+            .mapValues { (_, channel) -> GuideChannel(channel.id, channel.title.ifBlank { channel.name }, null, channel.logoUrl, emptyList()) }
+        return GuideData(rows, usual)
     }
 
     companion object {
@@ -158,7 +170,13 @@ private const val GUIDE_EVENT_MILLIS = 3 * 60 * 60_000L
  * guide seul (organisations absentes d'ESPN, ou gala inconnu d'ESPN), sans rediffusion (même titre et sous-titre déjà
  * passés sur la même chaîne dans la semaine) ni doublon. Galas terminés depuis plus de [HISTORY][MmaViewModel.HISTORY_MILLIS] retirés.
  */
-internal fun mmaCards(events: List<MmaEvent>, rows: List<BroadcastRow>, now: Long): List<MmaCard> {
+internal fun mmaCards(
+    events: List<MmaEvent>,
+    rows: List<BroadcastRow>,
+    now: Long,
+    /** Chaînes de la playlist par identifiant du guide, pour la chaîne habituelle d'une organisation. */
+    usual: Map<String, GuideChannel> = emptyMap(),
+): List<MmaCard> {
     val classified = rows.mapNotNull { row -> MmaGuide.promotionOf(row.title, row.subtitle, row.category)?.let { row to it } }
     val used = HashSet<BroadcastRow>()
     val cards = ArrayList<MmaCard>()
@@ -189,6 +207,13 @@ internal fun mmaCards(events: List<MmaEvent>, rows: List<BroadcastRow>, now: Lon
         .groupBy { (_, promotion) -> promotion }
         .values.flatMap { group -> mergeParts(group) }
     cards += guideOnly
+    // Rien dans le guide (gala trop lointain, ou non annoncé) : la chaîne habituelle de l'organisation.
+    for (index in cards.indices) {
+        val card = cards[index]
+        if (card.channels.isNotEmpty()) continue
+        val channel = card.promotion.usualGuideIds.firstNotNullOfOrNull { usual[it] } ?: continue
+        cards[index] = card.copy(channels = listOf(channel), guideChannel = null, usualChannel = true)
+    }
     return cards.filter { it.endMillis > now - MmaViewModel.HISTORY_MILLIS && (it.event == null || !it.finished || it.endMillis > now - MmaViewModel.HISTORY_MILLIS) }
         .sortedWith(compareBy({ it.startMillis }, { it.promotion.ordinal }))
 }

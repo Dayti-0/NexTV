@@ -461,6 +461,25 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
+    fun mmaEvent() {
+        // Portrait factice (silhouette) : les vrais viennent d'ESPN, pas dans le dépôt.
+        val portrait = android.graphics.Bitmap.createBitmap(240, 174, android.graphics.Bitmap.Config.ARGB_8888).also { bitmap ->
+            val canvas = android.graphics.Canvas(bitmap)
+            val paint = android.graphics.Paint().apply { color = 0xFF8D6E63.toInt(); isAntiAlias = true }
+            canvas.drawCircle(120f, 62f, 38f, paint)
+            canvas.drawOval(android.graphics.RectF(40f, 110f, 200f, 260f), paint)
+        }
+        capture("09j_mma_fiche") {
+            androidx.compose.runtime.CompositionLocalProvider(
+                androidx.compose.ui.platform.LocalInspectionMode provides true,
+                coil3.compose.LocalAsyncImagePreviewHandler provides coil3.compose.AsyncImagePreviewHandler { portrait.asImage() },
+            ) {
+                tv.nextv.app.ui.mma.MmaContent(SampleData.mma, promotion = null, onPromotion = {}, onPlay = {}, initialDetails = SampleData.mma.cards.first())
+            }
+        }
+    }
+
+    @Test
     fun guideStreaming() = capture("09f_guide_streaming") {
         Home(HomeSection.GUIDE, Category.All, layout = HomeLayout.STREAMING)
     }

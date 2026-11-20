@@ -197,11 +197,14 @@ class EpgImporter(
         }
         val ids = HashSet<String>()
         val byName = HashMap<String, String>()
+        // Noms de chaque chaîne du guide (et son identifiant sans domaine) : contrôle des identifiants de la playlist.
+        val guideNames = HashMap<String, MutableList<String>>()
         // Même nom dans plusieurs pays (« Canal+ » français et suisse) : la chaîne française d'abord.
         for (xmltv in xmltvChannels.sortedBy { !it.id.endsWith(".fr", ignoreCase = true) }) {
             val id = normalizeId(xmltv.id)
             if (id in excluded) continue
             ids += id
+            guideNames.getOrPut(id) { mutableListOf() }.apply { addAll(xmltv.displayNames); add(xmltv.id.substringBeforeLast('.')) }
             // Identifiant avec et sans domaine (« Ligue1Plus5.fr » → « Ligue1Plus5 »).
             for (name in xmltv.displayNames + xmltv.id + xmltv.id.substringBeforeLast('.')) {
                 byName.putIfAbsent(normalizeName(name), id)
@@ -237,7 +240,9 @@ class EpgImporter(
             val domains = names.firstNotNullOfOrNull(::countryDomains)
             if (domains != null && domains.isEmpty()) continue
             val allowed = { id: String? -> id?.takeIf { domains == null || it.substringAfterLast('.', "") in domains } }
+            // Identifiant recopié par erreur (« RMC ALERTE SECOURS » avec celui de RMC Sport 2) : ignoré, le nom décide.
             val byId = allowed(channel.tvgId?.let(::normalizeId)?.takeIf { it in ids })
+                ?.takeUnless { id -> names.all { ChannelNames.contradicts(it, guideNames[id].orEmpty()) } }
             val region = lazy(LazyThreadSafetyMode.NONE) { names.firstNotNullOfOrNull(FranceRegions::regionOf) }
             // Nom exact, puis sans préfixe de langue ni mention de qualité (« FR| LIGUE 1+ 5 FHD » → « Ligue 1+ 5 »).
             val matched = byId
@@ -258,7 +263,7 @@ class EpgImporter(
          * avec une version antérieure est réimporté dès le lancement suivant, sans attendre sa
          * réimportation quotidienne.
          */
-        const val VERSION = 10
+        const val VERSION = 11
 
         /** Nom du guide de la chaîne nationale France 3 ([normalizeName]). */
         private const val FRANCE_3 = "france3"

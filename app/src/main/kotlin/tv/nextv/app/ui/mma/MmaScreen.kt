@@ -1,6 +1,14 @@
 package tv.nextv.app.ui.mma
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.height
+import tv.nextv.core.mma.MmaFighter
+import androidx.compose.material.icons.filled.CheckCircle
+import coil3.compose.AsyncImage
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -99,9 +107,11 @@ fun MmaContent(
     onPromotion: (MmaPromotion?) -> Unit,
     onPlay: (Long) -> Unit,
     modifier: Modifier = Modifier,
+    /** Fiche ouverte d'emblée (captures). */
+    initialDetails: MmaCard? = null,
 ) {
     val window = rememberWindowInfo()
-    var details by remember { mutableStateOf<MmaCard?>(null) }
+    var details by remember { mutableStateOf(initialDetails) }
     val shown = state.cards.filter { promotion == null || it.promotion == promotion }
     fun count(choice: MmaPromotion?) = state.cards.count { choice == null || it.promotion == choice }
     // Organisations sans gala à venir cachées (sauf celle choisie) : la liste reste courte.
@@ -263,20 +273,20 @@ private fun EventList(
 }
 
 /**
- * Un gala : heure de la carte principale à gauche (préliminaires dessous) ; à droite l'organisation, le nom du gala,
- * le combat principal avec les drapeaux, puis la chaîne.
+ * Un gala : heure de la carte principale à gauche (préliminaires dessous) ; à droite le logo de l'organisation et le nom
+ * du gala, puis le combat principal, un combattant par ligne (drapeau, nom en entier, palmarès), et la chaîne.
  */
 @Composable
 private fun EventRow(card: MmaCard, now: Long, compact: Boolean) {
     val live = card.isLive(now)
     val main = card.mainCardMillis ?: card.startMillis
     Row(
-        Modifier.padding(horizontal = if (compact) 14.dp else 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(if (compact) 12.dp else 16.dp),
+        Modifier.padding(horizontal = if (compact) 14.dp else 18.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(if (compact) 12.dp else 20.dp),
     ) {
-        Column(Modifier.width(if (compact) 72.dp else 104.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(timeOf(main), style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge)
+        Column(Modifier.width(if (compact) 76.dp else 110.dp).padding(top = 2.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(timeOf(main), style = if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             if (card.mainCardMillis != null && card.mainCardMillis > card.startMillis) {
                 Text(
                     stringResource(R.string.mma_prelims_at, timeOf(card.startMillis)),
@@ -289,33 +299,29 @@ private fun EventRow(card: MmaCard, now: Long, compact: Boolean) {
                 live -> StatusPill(stringResource(R.string.mma_live), NexTvColors.Live)
             }
         }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                PromotionBadge(card.promotion)
-                // Gala du guide seul : son nom est déjà écrit en grand dessous.
-                if (card.event != null) {
-                    Text(
-                        card.name,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                PromotionLogo(card.promotion, height = if (compact) 26.dp else 30.dp)
+                Text(
+                    card.name,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    modifier = Modifier.weight(1f),
+                )
             }
             val mainEvent = card.event?.mainEvent
             if (mainEvent != null) {
-                FightLine(mainEvent, large = !compact)
+                FighterLines(mainEvent, large = !compact)
                 mainEvent.weightClass?.let {
-                    Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.mma_main_event, it), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                 }
             } else {
                 // Gala du guide seul : sous-titre du programme (souvent les combattants), sinon son nom en grand.
                 Text(
                     card.programme?.subtitle?.takeIf { it.isNotBlank() && !it.equals(card.name, ignoreCase = true) } ?: card.name,
                     style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
+                    fontWeight = FontWeight.SemiBold,
                 )
             }
             if (live) LiveProgress(card.startMillis, card.endMillis, now, Modifier.widthIn(max = 480.dp))
@@ -326,30 +332,52 @@ private fun EventRow(card: MmaCard, now: Long, compact: Boolean) {
     }
 }
 
-/** « Procházka – Stirling » avec les drapeaux ; le vainqueur en gras une fois le combat terminé. */
+/**
+ * Les deux combattants l'un sous l'autre : drapeau, nom en entier, palmarès à droite ; une fois le combat terminé, une
+ * coche devant le vainqueur et le perdant en grisé.
+ */
 @Composable
-private fun FightLine(fight: MmaFight, large: Boolean) {
-    val flag = if (large) 22.dp else 18.dp
-    val style = if (large) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+private fun FighterLines(fight: MmaFight, large: Boolean) {
+    val style = if (large) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleMedium
+    val winner = fight.result?.winner
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         fight.fighters.forEachIndexed { index, fighter ->
-            if (index == 1) Text("–", style = style, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            fighter.flagUrl?.let { ChannelLogo(it, fighter.country ?: fighter.name, Modifier.size(width = flag * 1.4f, height = flag), monogramSize = 8.dp) }
-            val winner = fight.result?.winner
-            Text(
-                fighter.name,
-                style = style,
-                fontWeight = if (winner == index) FontWeight.Bold else null,
-                color = if (winner != null && winner != index) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false),
-            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Flag(fighter, if (large) 26.dp else 20.dp)
+                Text(
+                    fighter.name,
+                    style = style,
+                    fontWeight = if (winner == index) FontWeight.Bold else FontWeight.SemiBold,
+                    color = if (winner != null && winner != index) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (winner == index) WinnerMark()
+                fighter.record?.let {
+                    Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                }
+            }
         }
     }
 }
 
-/** Chaîne de la playlist qui diffuse le gala (et combien d'autres), celle du guide, ou rien de connu. */
+/** Drapeau du pays du combattant (ESPN), aux proportions d'un drapeau ; rien s'il n'est pas connu. */
+@Composable
+private fun Flag(fighter: MmaFighter, height: Dp) {
+    val url = fighter.flagUrl ?: return
+    AsyncImage(
+        model = url,
+        contentDescription = fighter.country,
+        contentScale = ContentScale.Crop,
+        modifier = Modifier.size(width = height * 1.5f, height = height).clip(RoundedCornerShape(3.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest),
+    )
+}
+
+@Composable
+private fun WinnerMark() {
+    Icon(Icons.Filled.CheckCircle, contentDescription = stringResource(R.string.mma_winner), tint = NexTvColors.Live, modifier = Modifier.size(20.dp))
+}
+
+/** Chaîne de la playlist qui diffuse le gala (et combien d'autres), sa chaîne habituelle, celle du guide, ou rien. */
 @Composable
 private fun androidx.compose.foundation.layout.RowScope.ChannelLine(card: MmaCard) {
     val channel = card.channel
@@ -362,15 +390,19 @@ private fun androidx.compose.foundation.layout.RowScope.ChannelLine(card: MmaCar
         )
         return
     }
-    ChannelLogo(channel.logoUrl, channel.name, Modifier.size(width = 44.dp, height = 30.dp), monogramSize = 12.dp)
-    Text(channel.name, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-    card.programme?.let {
-        Text(
-            "${timeOf(it.startMillis)} – ${timeOf(it.stopMillis)}",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-        )
+    ChannelLogo(channel.logoUrl, channel.name, Modifier.size(width = 48.dp, height = 32.dp), monogramSize = 12.dp)
+    Text(channel.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+    if (card.usualChannel) {
+        Text(stringResource(R.string.mma_usual_channel), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+    } else {
+        card.programme?.let {
+            Text(
+                "${timeOf(it.startMillis)} – ${timeOf(it.stopMillis)}",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+        }
     }
     val others = card.channels.size - 1
     if (others > 0) {
@@ -401,7 +433,7 @@ private fun EventSheet(card: MmaCard, now: Long, onWatch: (Long) -> Unit, onDism
         ) {
             Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    PromotionBadge(card.promotion)
+                    PromotionLogo(card.promotion, height = 32.dp)
                     Text(
                         listOfNotNull(dayLabel(dayStart(card.startMillis), now), card.event?.venue).joinToString("  ·  "),
                         style = MaterialTheme.typography.labelLarge,
@@ -414,7 +446,7 @@ private fun EventSheet(card: MmaCard, now: Long, onWatch: (Long) -> Unit, onDism
                         card.isLive(now) -> StatusPill(stringResource(R.string.mma_live), NexTvColors.Live)
                     }
                 }
-                Text(card.name, style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(card.name, style = MaterialTheme.typography.headlineSmall)
                 val mainCard = card.mainCardMillis
                 Text(
                     if (mainCard != null && mainCard > card.startMillis) {
@@ -425,16 +457,49 @@ private fun EventSheet(card: MmaCard, now: Long, onWatch: (Long) -> Unit, onDism
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                // Chaînes et « Fermer » en haut : toujours visibles, la carte des combats défile dessous.
+                if (card.channels.isNotEmpty()) {
+                    Text(
+                        stringResource(if (card.usualChannel) R.string.mma_usual_channel_help else R.string.football_choose_channel),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    Text(
+                        card.guideChannel?.let { stringResource(R.string.football_guide_only_channel, it) } ?: stringResource(R.string.mma_no_channel),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (card.guideChannel != null) NexTvColors.Warning else NexTvColors.TextMuted,
+                    )
+                }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    card.channels.take(MAX_SHEET_CHANNELS).forEachIndexed { index, channel ->
+                        PillButton(
+                            channel.name,
+                            { onWatch(channel.id) },
+                            icon = Icons.Filled.PlayArrow,
+                            style = if (index == 0) PillStyle.Primary else PillStyle.Secondary,
+                            modifier = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier,
+                        )
+                    }
+                    PillButton(
+                        stringResource(R.string.action_close),
+                        onDismiss,
+                        style = PillStyle.Ghost,
+                        modifier = if (card.channels.isEmpty()) Modifier.focusRequester(firstFocus) else Modifier,
+                    )
+                }
                 val fights = card.event?.fights.orEmpty()
-                val scroll = rememberScrollState()
+                // Chaque combat se sélectionne : la télécommande fait défiler la carte, même longue (12 combats).
                 Column(
-                    Modifier.heightIn(max = if (window.isWide) 320.dp else 360.dp).verticalScroll(scroll),
+                    Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     if (fights.isNotEmpty()) {
                         val (main, prelims) = fights.partition { it.mainCard }
+                        // Combat principal en tête, avec les portraits en grand.
+                        fights.first().let { MainEventFaceOff(it) }
                         if (main.isNotEmpty() && prelims.isNotEmpty()) SheetHeading(stringResource(R.string.mma_main_card))
-                        main.forEach { FightRow(it) }
+                        main.drop(1).forEach { FightRow(it) }
                         if (prelims.isNotEmpty()) {
                             SheetHeading(stringResource(R.string.mma_prelims))
                             prelims.forEach { FightRow(it) }
@@ -448,81 +513,159 @@ private fun EventSheet(card: MmaCard, now: Long, onWatch: (Long) -> Unit, onDism
                         }
                     }
                 }
-                if (card.channels.isNotEmpty()) {
-                    Text(
-                        stringResource(R.string.football_choose_channel),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Column(Modifier.heightIn(max = 176.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        card.channels.forEachIndexed { index, channel ->
-                            ChannelChoice(channel, index == 0, { onWatch(channel.id) }, if (index == 0) Modifier.focusRequester(firstFocus) else Modifier)
-                        }
-                    }
-                } else {
-                    Text(
-                        card.guideChannel?.let { stringResource(R.string.football_guide_only_channel, it) } ?: stringResource(R.string.mma_no_channel),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = if (card.guideChannel != null) NexTvColors.Warning else NexTvColors.TextMuted,
-                    )
-                }
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    PillButton(
-                        stringResource(R.string.action_close),
-                        onDismiss,
-                        style = PillStyle.Ghost,
-                        modifier = if (card.channels.isEmpty()) Modifier.focusRequester(firstFocus) else Modifier,
-                    )
-                }
             }
         }
     }
 }
+
+/** Chaînes proposées en boutons dans la fiche d'un gala. */
+private const val MAX_SHEET_CHANNELS = 3
 
 @Composable
 private fun SheetHeading(text: String) {
     Text(text, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 6.dp))
 }
 
-/** Combat de la fiche : catégorie, combattants (palmarès), et le résultat (« R1 3:23 », « Décision »). */
+/**
+ * Combat de la fiche, en face à face : combattant de gauche aligné à droite, « contre » (ou le résultat) au milieu,
+ * combattant de droite ; noms en entier (sur deux lignes au besoin), palmarès dessous, catégorie au-dessus.
+ */
 @Composable
 private fun FightRow(fight: MmaFight) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            FightLine(fight, large = false)
-            val records = fight.fighters.mapNotNull { it.record }.takeIf { it.size == 2 }?.joinToString(" / ")
-            Text(
-                listOfNotNull(fight.weightClass, records).joinToString("  ·  "),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-            )
+    val winner = fight.result?.winner
+    FocusSurface(
+        onClick = {},
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        focusScale = 1.01f,
+    ) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        fight.weightClass?.let {
+            Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.align(Alignment.CenterHorizontally))
         }
-        val result = fight.result
-        when {
-            fight.live -> StatusPill(stringResource(R.string.mma_live), NexTvColors.Live)
-            result != null -> Text(
-                if (result.decision) stringResource(R.string.mma_decision) else stringResource(R.string.mma_finish_at, result.round, result.clock),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            FighterSide(fight.fighters[0], winner, 0, Modifier.weight(1f), end = true)
+            Column(Modifier.width(96.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                val result = fight.result
+                when {
+                    fight.live -> StatusPill(stringResource(R.string.mma_live), NexTvColors.Live)
+                    result != null -> Text(
+                        if (result.decision) stringResource(R.string.mma_decision) else stringResource(R.string.mma_finish_at, result.round, result.clock),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    else -> Text(stringResource(R.string.mma_versus), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            FighterSide(fight.fighters[1], winner, 1, Modifier.weight(1f), end = false)
+        }
+    }
+    }
+}
+
+@Composable
+private fun FighterSide(fighter: MmaFighter, winner: Int?, index: Int, modifier: Modifier, end: Boolean) {
+    val lost = winner != null && winner != index
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp, if (end) Alignment.End else Alignment.Start)) {
+        if (!end) FighterPhoto(fighter, 56.dp)
+        if (!end) Flag(fighter, 20.dp)
+        Column(horizontalAlignment = if (end) Alignment.End else Alignment.Start, modifier = Modifier.weight(1f, fill = false)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (end && winner == index) WinnerMark()
+                Text(
+                    fighter.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = if (winner == index) FontWeight.Bold else FontWeight.Medium,
+                    color = if (lost) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified,
+                    textAlign = if (end) TextAlign.End else TextAlign.Start,
+                    maxLines = 2,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (!end && winner == index) WinnerMark()
+            }
+            fighter.record?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+        if (end) Flag(fighter, 20.dp)
+        if (end) FighterPhoto(fighter, 56.dp)
+    }
+}
+
+/**
+ * Combat principal de la fiche : les deux portraits en grand face à face, noms en entier, drapeau et palmarès, la
+ * catégorie et le résultat au milieu.
+ */
+@Composable
+private fun MainEventFaceOff(fight: MmaFight) {
+    val winner = fight.result?.winner
+    FocusSurface(
+        onClick = {},
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        focusScale = 1.01f,
+    ) {
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            fight.fighters.getOrNull(0)?.let { FaceOffSide(it, winner == 0, winner == 1, Modifier.weight(1f)) }
+            Column(Modifier.width(132.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(stringResource(R.string.mma_main_event_title), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                fight.weightClass?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center) }
+                val result = fight.result
+                when {
+                    fight.live -> StatusPill(stringResource(R.string.mma_live), NexTvColors.Live)
+                    result != null -> Text(
+                        if (result.decision) stringResource(R.string.mma_decision) else stringResource(R.string.mma_finish_at, result.round, result.clock),
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    else -> Text(stringResource(R.string.mma_versus), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            fight.fighters.getOrNull(1)?.let { FaceOffSide(it, winner == 1, winner == 0, Modifier.weight(1f)) }
         }
     }
 }
 
 @Composable
-private fun ChannelChoice(channel: GuideChannel, preferred: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    FocusSurface(
-        onClick = onClick,
-        modifier = modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.medium,
-        color = if (preferred) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surfaceContainer,
-        focusScale = 1.02f,
+private fun FaceOffSide(fighter: MmaFighter, won: Boolean, lost: Boolean, modifier: Modifier) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        FighterPhoto(fighter, 150.dp)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Flag(fighter, 18.dp)
+            Text(
+                fighter.name,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = if (won) FontWeight.Bold else FontWeight.SemiBold,
+                color = if (lost) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            if (won) WinnerMark()
+        }
+        fighter.record?.let { Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    }
+}
+
+/**
+ * Portrait du combattant (ESPN, fond transparent) dans un cadre arrondi aux proportions de la photo ; tant qu'il charge,
+ * ou s'il n'existe pas, le cadre reste vide (même place, la ligne ne bouge pas).
+ */
+@Composable
+private fun FighterPhoto(fighter: MmaFighter, width: Dp) {
+    val url = fighter.photoUrl(if (width > 100.dp) 300 else 120)
+    Box(
+        Modifier
+            .size(width = width, height = width * 0.727f)
+            .clip(RoundedCornerShape(width * 0.08f))
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
     ) {
-        Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            ChannelLogo(channel.logoUrl, channel.name, Modifier.size(width = 48.dp, height = 32.dp), monogramSize = 11.dp)
-            Text(channel.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            Icon(Icons.Filled.PlayArrow, contentDescription = stringResource(R.string.guide_watch), modifier = Modifier.size(20.dp))
+        if (url != null) {
+            AsyncImage(
+                model = url,
+                contentDescription = fighter.name,
+                contentScale = ContentScale.Crop,
+                alignment = Alignment.TopCenter,
+                modifier = Modifier.fillMaxSize(),
+            )
         }
     }
 }
@@ -536,8 +679,12 @@ private fun PromotionItem(name: String, count: Int, promotion: MmaPromotion?, se
         color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
         focusScale = 1f,
     ) {
-        Row(Modifier.padding(horizontal = 14.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (promotion != null) PromotionBadge(promotion, short = true) else Icon(NexTvIcons.Mma, contentDescription = null, modifier = Modifier.size(22.dp))
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (promotion != null) {
+                Box(Modifier.width(72.dp), contentAlignment = Alignment.CenterStart) { PromotionLogo(promotion, height = 30.dp) }
+            } else {
+                Icon(NexTvIcons.Mma, contentDescription = null, modifier = Modifier.size(24.dp))
+            }
             Text(name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             Text(count.toString(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -554,52 +701,67 @@ private fun PromotionChip(name: String, selected: Boolean, promotion: MmaPromoti
         contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
         focusScale = 1.05f,
     ) {
-        Row(Modifier.padding(horizontal = 14.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.padding(start = if (promotion?.logo != null) 6.dp else 14.dp, end = 14.dp, top = 5.dp, bottom = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (promotion?.logo != null) PromotionLogo(promotion, height = 24.dp)
             Text(promotion?.label ?: name, style = MaterialTheme.typography.labelLarge, maxLines = 1)
         }
     }
 }
 
-/** Pastille de l'organisation, à sa couleur (« UFC » rouge, « PFL » bleu…). [short] : sigle seul, largeur fixe. */
+/**
+ * Logo officiel de l'organisation sur une pastille claire (les logos sont faits pour un fond blanc), comme les logos des
+ * compétitions de la section Foot ; sans logo connu (Hexagone, autres galas), une pastille à sa couleur avec son nom.
+ */
 @Composable
-private fun PromotionBadge(promotion: MmaPromotion, short: Boolean = false) {
-    val color = promotionColor(promotion)
+private fun PromotionLogo(promotion: MmaPromotion, height: Dp) {
+    val logo = promotion.logo
+    if (logo == null) {
+        Box(
+            Modifier.height(height).clip(RoundedCornerShape(height * 0.22f)).background(promotionColor(promotion)).padding(horizontal = 8.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(promotion.short, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1)
+        }
+        return
+    }
     Box(
-        Modifier
-            .then(if (short) Modifier.width(46.dp) else Modifier)
-            .clip(RoundedCornerShape(6.dp))
-            .background(color)
-            .padding(horizontal = 7.dp, vertical = 2.dp),
+        Modifier.height(height).clip(RoundedCornerShape(height * 0.22f)).background(LOGO_TILE).padding(horizontal = height * 0.22f, vertical = height * 0.14f),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            if (short) promotion.short else promotion.label,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Bold,
-            color = Color.White,
-            maxLines = 1,
-        )
+        Image(painterResource(logo), contentDescription = promotion.label, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxHeight())
     }
 }
 
-/** Sigle de la colonne des organisations. */
+/** Pastille des logos (même teinte que celle des compétitions de foot). */
+private val LOGO_TILE = Color(0xFFF2F4F8)
+
+/** Logo officiel embarqué dans l'appli (sites des organisations, ESPN), `null` : pas de logo. */
+private val MmaPromotion.logo: Int?
+    get() = when (this) {
+        MmaPromotion.UFC -> R.drawable.mma_ufc
+        MmaPromotion.PFL -> R.drawable.mma_pfl
+        MmaPromotion.CAGE_WARRIORS -> R.drawable.mma_cage_warriors
+        MmaPromotion.KSW -> R.drawable.mma_ksw
+        MmaPromotion.ARES -> R.drawable.mma_ares
+        MmaPromotion.ONE -> R.drawable.mma_one
+        MmaPromotion.HEXAGONE, MmaPromotion.OTHER -> null
+    }
+
+/** Nom court de la pastille sans logo. */
 private val MmaPromotion.short: String
     get() = when (this) {
-        MmaPromotion.CAGE_WARRIORS -> "CW"
-        MmaPromotion.HEXAGONE -> "HEX"
+        MmaPromotion.HEXAGONE -> "HEXAGONE"
         MmaPromotion.OTHER -> "MMA"
         else -> label
     }
 
 private fun promotionColor(promotion: MmaPromotion): Color = when (promotion) {
-    MmaPromotion.UFC -> Color(0xFFD20A0A)
-    MmaPromotion.PFL -> Color(0xFF1F5FD6)
-    MmaPromotion.CAGE_WARRIORS -> Color(0xFF8E24AA)
-    MmaPromotion.KSW -> Color(0xFFB8860B)
-    MmaPromotion.ARES -> Color(0xFF00897B)
     MmaPromotion.HEXAGONE -> Color(0xFF3949AB)
-    MmaPromotion.ONE -> Color(0xFFE65100)
-    MmaPromotion.OTHER -> Color(0xFF546E7A)
+    else -> Color(0xFF546E7A)
 }
 
 private fun timeOf(millis: Long): String = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(millis))

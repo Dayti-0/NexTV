@@ -11,21 +11,40 @@ import java.util.TimeZone
 
 /**
  * Organisations de la section « MMA ». [espnLeague] : calendrier complet d'ESPN (cartes, horaires, résultats) ; les
- * autres ne sont trouvées que dans le guide des programmes, par les mots de [guideWords].
+ * autres ne sont trouvées que dans le guide des programmes, par les mots de [guideWords]. [usualGuideIds] : chaînes du
+ * guide qui diffusent ses galas en France (RMC Sport pour l'UFC…), proposées quand le guide ne couvre pas encore la date.
  */
-enum class MmaPromotion(val label: String, val espnLeague: String?, val guideWords: List<String>) {
-    UFC("UFC", "ufc", listOf("ufc")),
-    PFL("PFL", "pfl", listOf("pfl", "bellator")),
-    CAGE_WARRIORS("Cage Warriors", "cage-warriors", listOf("cage warriors")),
-    KSW("KSW", null, listOf("ksw")),
-    ARES("ARES", null, listOf("ares fighting", "ares")),
-    HEXAGONE("Hexagone", null, listOf("hexagone")),
+enum class MmaPromotion(val label: String, val espnLeague: String?, val guideWords: List<String>, val usualGuideIds: List<String> = emptyList()) {
+    UFC("UFC", "ufc", listOf("ufc"), RMC_SPORT),
+    PFL("PFL", "pfl", listOf("pfl", "bellator"), RMC_SPORT),
+    CAGE_WARRIORS("Cage Warriors", "cage-warriors", listOf("cage warriors"), RMC_SPORT),
+    KSW("KSW", null, listOf("ksw"), RMC_SPORT),
+    ARES("ARES", null, listOf("ares fighting", "ares"), listOf("canalplussport360.fr", "canalplussport.fr")),
+    HEXAGONE("Hexagone", null, listOf("hexagone"), RMC_SPORT),
     ONE("ONE", null, listOf("one championship", "one fight night")),
     OTHER("Autres galas", null, emptyList()),
 }
 
-/** Combattant : nom, pays, drapeau et palmarès (« 32-6-1 ») quand ESPN les donne. */
-data class MmaFighter(val name: String, val shortName: String = name, val country: String? = null, val flagUrl: String? = null, val record: String? = null)
+/** RMC Sport 1, puis 2 : chaînes du MMA en France (UFC, PFL, Cage Warriors, KSW, Hexagone ; guide du 20/11/2026). */
+private val RMC_SPORT = listOf("rmcsport1.fr", "rmcsport2.fr")
+
+/** Combattant : nom, pays, drapeau, palmarès (« 32-6-1 ») et identifiant ESPN (portrait) quand ESPN les donne. */
+data class MmaFighter(
+    val name: String,
+    val shortName: String = name,
+    val country: String? = null,
+    val flagUrl: String? = null,
+    val record: String? = null,
+    val espnId: String? = null,
+) {
+    /**
+     * Portrait du combattant (fond transparent), réduit par le serveur d'images d'ESPN à [width] pixels de large (l'original
+     * fait 600 × 436, ~200 Ko) ; absent pour certains combattants (l'image ne charge pas).
+     */
+    fun photoUrl(width: Int = 240): String? = espnId?.let {
+        "https://a.espncdn.com/combiner/i?img=/i/headshots/mma/players/full/$it.png&w=$width&h=${width * 436 / 600}"
+    }
+}
 
 /** Fin d'un combat : vainqueur ([winner] 0 ou 1), reprise et temps, ou décision des juges. */
 data class MmaResult(val winner: Int?, val round: Int, val clock: String, val decision: Boolean)
@@ -121,6 +140,7 @@ object MmaEspn {
                 country = athlete.optJSONObject("flag")?.optString("alt")?.takeIf { it.isNotBlank() },
                 flagUrl = athlete.optJSONObject("flag")?.optString("href")?.takeIf { it.startsWith("http") },
                 record = c.optJSONArray("records")?.optJSONObject(0)?.optString("summary")?.takeIf { it.isNotBlank() },
+                espnId = c.optString("id").takeIf { it.isNotBlank() && it.all(Char::isDigit) },
             )
         }
         if (fighters.size != 2 || fighters.any { it.name.isBlank() }) return null

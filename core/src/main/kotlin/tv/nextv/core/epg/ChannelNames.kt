@@ -47,6 +47,46 @@ object ChannelNames {
     }
 
     /**
+     * Le nom d'une chaîne contredit-il tous les noms d'une chaîne du guide ([guideNames], identifiant sans domaine
+     * compris) ? Oui quand ils n'ont en commun ni numéro, ni vrai mot (un nom de groupe comme « RMC », « Canal+ » ou
+     * « beIN » ne suffit pas), et qu'aucun n'est l'autre écrit collé (« CANAL Z » / « CANALZ », « AMI-TV » / « AMITV »).
+     * « RMC ALERTE SECOURS FHD » n'est pas « RMC Sport 2 », « DAZN LE MAG (PAS DE MATCH) » n'est pas « RMC Sport 1 » :
+     * sert à écarter l'identifiant de guide recopié par erreur par un fournisseur.
+     */
+    fun contradicts(channelName: String, guideNames: Collection<String>): Boolean {
+        val own = identityWords(COUNTRY_TAG.replace(channelName, " "))
+        if (own.isEmpty() || guideNames.isEmpty()) return false
+        val ownJoined = own.joinToString("")
+        return guideNames.all { guideName ->
+            val guide = identityWords(CAMEL_CASE.replace(guideName, " "))
+            if (guide.isEmpty()) return@all false
+            val guideJoined = guide.joinToString("")
+            val shared = own.intersect(guide.toSet())
+            val sameWord = shared.any { it.all(Char::isDigit) || it !in GROUP_WORDS }
+            val glued = minOf(ownJoined.length, guideJoined.length) >= 2 && (ownJoined in guideJoined || guideJoined in ownJoined)
+            !sameWord && !glued
+        }
+    }
+
+    /** Mots qui font l'identité d'une chaîne : sans mentions de qualité ni mots passe-partout, numéros écrits en chiffres. */
+    private fun identityWords(name: String): List<String> =
+        tokens(name).map { NUMBER_WORDS[it] ?: it }.filterNot { it in NOISE || it in GENERIC || it in TECHNICAL }
+
+    /** Pays ou rubrique en tête de nom (« |BE| », « |LIGUE 1| »), pays en fin (« UK ») : rien sur la chaîne elle-même. */
+    private val COUNTRY_TAG = Regex("""^\s*\|[^|]{1,24}\||^[\s|\[(]*[A-Z]{2,3}\s*[|:\])]|\b(UK|BE|CH|PT|CA|DE|FR)\s*$""")
+
+    /** Mentions techniques en plus de [NOISE] (« FHD DOLBY DIGITAL », « 4K HDR »). */
+    private val TECHNICAL = setOf("dolby", "digital", "atmo", "4", "k", "hdr", "uhd", "resolution", "tre", "haute", "exclu", "pt", "uk", "be", "ch", "ca", "de")
+
+    /** Noms de groupe portés par plusieurs chaînes différentes : en commun, ils ne prouvent rien. */
+    private val GROUP_WORDS = setOf(
+        "rmc", "canal", "plus", "bein", "sport", "france", "tf1", "m6", "cine", "rts", "voo", "bbc", "dazn", "eurosport",
+        "rtl", "tele", "c", "w9", "paramount", "disney", "national", "pluto", "samsung", "rakuten", "planete", "ocs", "multisport",
+    )
+
+    private val NUMBER_WORDS = mapOf("un" to "1", "une" to "1", "deux" to "2", "zwei" to "2", "trois" to "3", "drei" to "3", "one" to "1", "two" to "2", "three" to "3", "four" to "4")
+
+    /**
      * Index des chaînes du guide ([names] : identifiant → noms affichés ; [formerNames] : identifiant →
      * autres noms sûrs, comme l'identifiant sans son domaine, qui garde souvent l'ancien nom de la
      * chaîne). [find] rend, dans l'ordre :
@@ -149,6 +189,9 @@ object ChannelNames {
         "LCP AN" to listOf("LaChaineParlementaire", "LCP"),
         "LCP Public Senat" to listOf("LaChaineParlementaire", "LCP"),
         "CStar Hits" to listOf("CStar Hits France"),
+        // Nouveau nom de CStar Hits France (le guide garde l'ancien).
+        "Europe 2 Pop" to listOf("CStar Hits France"),
+        "Europe 2 Pop TV" to listOf("CStar Hits France"),
         "Cine+ OCS" to listOf("CinePlusPremier", "OCS"),
         "Ginx Esports" to listOf("Ginx"),
         "ABXplore" to listOf("ABXploreFR", "ABX"),

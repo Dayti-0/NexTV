@@ -4,6 +4,14 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.207
+- MMA : vrais logos des organisations (UFC, PFL, Cage Warriors, KSW, ARES, ONE)
+- MMA : carte plus claire, noms des combattants en entier, un combattant par ligne avec son drapeau et son palmarès
+- MMA : portraits des combattants dans la fiche du gala (en grand pour le combat principal)
+- MMA : RMC Sport proposée pour les galas pas encore dans le guide (chaîne habituelle de l’UFC, du PFL, de Cage Warriors…)
+- MMA : dans la fiche, les chaînes sont en haut et la carte des combats défile à la télécommande
+- Guide TV : une chaîne à laquelle le fournisseur a donné le guide d’une autre (« RMC Alerte Secours » avec celui de RMC Sport 2) n’affiche plus ses programmes
+
 ## 0.2.206
 - Nouvelle rubrique MMA : galas de l’UFC, du PFL et de Cage Warriors (carte des combats, heures des préliminaires et de la carte principale, résultats), plus KSW, ARES et Hexagone trouvés dans le guide, avec la chaîne qui les diffuse
 - Réglages › Affichage : les rubriques Foot et MMA peuvent être désactivées

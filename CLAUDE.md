@@ -157,7 +157,14 @@ Commandes :
   magazines « Format », temps forts, classiques, BJJ). KSW, ARES (Canal+ Sport), Hexagone, ONE : guide seul (`mmaCards` :
   rediffusion = même chaîne, titre et sous-titre déjà passés 1 h à 7 jours plus tôt ; parties d'un gala regroupées). Site de
   Cage Warriors, Tapology : refusés d'ici. Foot et MMA désactivables (Réglages › Affichage, `footballSection` /
-  `mmaSection`, `LocalHiddenSections`).
+  `mmaSection`, `LocalHiddenSections`). 0.2.207 : logos officiels embarqués (`res/drawable-nodpi/mma_*.png` : ESPN pour
+  UFC / PFL, Wikimedia pour Cage Warriors, sites de KSW, ARES, ONE ; Hexagone sans logo trouvé), chaîne habituelle quand le
+  guide ne couvre pas la date (`MmaPromotion.usualGuideIds` : RMC Sport 1 / 2, Canal+ Sport 360 pour l'ARES ;
+  `MmaCard.usualChannel`), portraits ESPN (`MmaFighter.photoUrl`, serveur `combiner` réduit à 120-300 px).
+- Identifiant de guide (`tvg-id`) recopié par erreur par le fournisseur (0.2.207, `ChannelNames.contradicts`, appelé par
+  `EpgImporter.match`) : ignoré quand le nom n'a ni numéro ni vrai mot en commun avec la chaîne du guide (noms de groupe
+  « RMC », « Canal+ »… ne comptent pas ; noms collés acceptés). Mesuré sur la vraie playlist le 20/11/2026 : 7 refus sur
+  448 (RMC Alerte Secours → RMC Sport 2, Sqool TV → Histoire, TV7 Bordeaux → IDF1…), Europe 2 Pop TV retrouvée par `ALIASES`.
 - Chaînes reliées au guide : `core/epg/EpgImporter.match` puis `ChannelNames.kt` (noms « collés », table des autres
   appellations `ALIASES`). Toute nouvelle règle : augmenter `EpgImporter.VERSION` (le guide est relu au lancement).
 - France 3 régionales : `core/catalog/FranceRegions.kt` ramène toutes les écritures d'une région au nom de son antenne

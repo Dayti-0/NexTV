@@ -12,7 +12,7 @@ class MmaEventsTest {
         {"date": "$date", "type": {"abbreviation": "Light Heavyweight"}, "format": {"regulation": {"periods": 3}},
          "status": {"period": $period, "displayClock": "$clock", "type": {"state": "$state"}},
          "competitors": [
-           {"order": 1, "winner": ${winner == 0}, "athlete": {"displayName": "$a", "flag": {"alt": "Czechia", "href": "https://x/cze.png"}}, "records": [{"summary": "32-6-1"}]},
+           {"order": 1, "id": "3156612", "winner": ${winner == 0}, "athlete": {"displayName": "$a", "flag": {"alt": "Czechia", "href": "https://x/cze.png"}}, "records": [{"summary": "32-6-1"}]},
            {"order": 2, "winner": ${winner == 1}, "athlete": {"displayName": "$b"}}
          ]}
     """
@@ -38,6 +38,8 @@ class MmaEventsTest {
         assertEquals("Jiří Procházka – Navajo Stirling", main.label)
         assertEquals("Poids mi-lourds", main.weightClass)
         assertEquals("32-6-1", main.fighters[0].record)
+        assertEquals("https://a.espncdn.com/combiner/i?img=/i/headshots/mma/players/full/3156612.png&w=240&h=174", main.fighters[0].photoUrl())
+        assertNull(main.fighters[1].photoUrl())
         assertTrue(main.mainCard)
         assertNull(main.result)
         val decision = event.fights[1].result!!
