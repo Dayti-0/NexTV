@@ -268,6 +268,13 @@ class SettingsRepository(
         edit { it[RADIO_VISUAL] = visual.name }
     }
 
+    /** Volume de la musique des pubs (radio ou morceaux), en fond sonore par défaut (voir [AdMusicLevel]). */
+    val adMusicLevel: Flow<Int> = preferences.map { AdMusicLevel.of(it[AD_MUSIC_LEVEL]) }.distinctUntilChanged()
+
+    suspend fun setAdMusicLevel(percent: Int) {
+        edit { it[AD_MUSIC_LEVEL] = AdMusicLevel.of(percent) }
+    }
+
     /** Radio jouée pendant les pubs (clé de `AdRadios`). */
     val adRadio: Flow<String?> = preferences.map { it[AD_RADIO] }.distinctUntilChanged()
 
@@ -738,6 +745,7 @@ class SettingsRepository(
         val LOWER_AD_VOLUME = booleanKey("lower_ad_volume")
         val AD_SOUND = stringKey("ad_sound")
         val AD_RADIO = stringKey("ad_radio")
+        val AD_MUSIC_LEVEL = intKey("ad_music_level")
         val RADIO_VISUAL = stringKey("radio_visual")
         val THEME_STYLE = stringKey("theme_style")
         val PREVIOUS_THEME_STYLE = stringKey("previous_theme_style")
@@ -838,4 +846,17 @@ object AdSound {
     const val LOWER = "lower"
     const val RADIO = "radio"
     const val MUSIC = "music"
+}
+
+/**
+ * Volume de la musique des pubs, en pourcentage du volume du lecteur : un fond sonore, pas une seconde télé (à 80 %, la
+ * radio couvrait tout, 21/11/2026). OK dans les réglages passe au niveau suivant.
+ */
+object AdMusicLevel {
+    val LEVELS = listOf(10, 20, 35, 60)
+    const val DEFAULT = 20
+
+    fun of(percent: Int?): Int = percent?.takeIf { it in LEVELS } ?: DEFAULT
+
+    fun next(percent: Int): Int = LEVELS[(LEVELS.indexOf(of(percent)) + 1) % LEVELS.size]
 }

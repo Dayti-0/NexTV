@@ -435,6 +435,11 @@
     <string name="settings_ad_sound_music">Mettre ma musique à la place (%1$d morceau(x))</string>
     <string name="settings_ad_sound_help">OK passe au choix suivant. Avec la radio ou votre musique, le son de la chaîne est coupé pendant la pub et la musique monte en fondu, puis s’efface au retour du programme. Si la pub est mal repérée : options du lecteur › « Ce n’est pas une pub ».</string>
     <string name="settings_ad_radio">Radio</string>
+    <string name="settings_ad_music_level">Volume de la musique</string>
+    <string name="settings_ad_music_level_10">Très bas (fond sonore discret)</string>
+    <string name="settings_ad_music_level_20">Bas (fond sonore)</string>
+    <string name="settings_ad_music_level_35">Moyen</string>
+    <string name="settings_ad_music_level_60">Fort</string>
     <string name="settings_ad_music">Ma musique</string>
     <string name="settings_ad_music_value">%1$d morceau(x) : en ajouter depuis le téléphone</string>
     <string name="settings_ad_music_help">Sur un téléphone ou un ordinateur relié au même réseau (Wi-Fi de la maison), ouvrez cette adresse dans le navigateur, choisissez vos morceaux (MP3, M4A…) puis « Envoyer vers la télé ». Sur une clé USB, un dossier « NixTV/musique » est lu aussi. L’adresse marche tant que cette fenêtre est ouverte.</string>

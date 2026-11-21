@@ -283,6 +283,7 @@ class PlayerViewModel(
         // Pendant les pubs : son baissé, radio ou musique de l'appareil (réglages, suivis pendant la lecture).
         viewModelScope.launch { container.settings.adSound.collect { adSoundMode = it } }
         viewModelScope.launch { container.settings.adRadio.collect { adRadioKey = it } }
+        viewModelScope.launch { container.settings.adMusicLevel.collect { adMusic.level = it / 100f } }
         // Lecteur ouvert : les actualisations automatiques de la playlist et du guide attendent sa fermeture.
         container.playerOpened()
         // Chaîne ouverte depuis l'accueil : aucune catégorie choisie dans le menu des chaînes pour l'instant.

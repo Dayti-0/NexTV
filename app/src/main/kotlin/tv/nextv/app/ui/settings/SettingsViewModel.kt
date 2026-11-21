@@ -415,8 +415,8 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     /** Pendant les pubs : mode, radio choisie, morceaux sur l'appareil. */
-    val adSound: StateFlow<AdSoundUi> = combine(settings.adSound, settings.adRadio, container.adMusic.count) { mode, radio, tracks ->
-        AdSoundUi(mode, AdRadios.of(radio).name, tracks, AdRadios.of(radio).key)
+    val adSound: StateFlow<AdSoundUi> = combine(settings.adSound, settings.adRadio, container.adMusic.count, settings.adMusicLevel) { mode, radio, tracks, level ->
+        AdSoundUi(mode, AdRadios.of(radio).name, tracks, AdRadios.of(radio).key, level)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AdSoundUi())
 
     /** Son baissé, puis une radio, puis la musique de l'appareil. */
@@ -427,6 +427,11 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
             settings.setAdSound(next)
             withContext(Dispatchers.IO) { container.adMusic.refresh() }
         }
+    }
+
+    /** Volume de la musique des pubs : niveau suivant (10, 20, 35, 60 %, puis 10 %). */
+    fun cycleAdMusicLevel() {
+        viewModelScope.launch { settings.setAdMusicLevel(tv.nextv.app.data.settings.AdMusicLevel.next(settings.adMusicLevel.first())) }
     }
 
     /** Radio choisie dans la liste (Radio France et Web radios). */
@@ -642,6 +647,8 @@ data class AdSoundUi(
     val tracks: Int = 0,
     /** Clé de la radio choisie (voir AdRadios). */
     val radioKey: String = AdRadios.all.first().key,
+    /** Volume de la musique, en pourcentage (voir AdMusicLevel). */
+    val level: Int = tv.nextv.app.data.settings.AdMusicLevel.DEFAULT,
 )
 
 /** Envoi des enregistrements d'analyse sur filebin (Réglages › Son). */

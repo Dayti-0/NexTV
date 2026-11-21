@@ -308,6 +308,7 @@ fun SettingsScreen(
         adSound = adSound,
         onCycleAdSound = viewModel::cycleAdSound,
         onAdRadio = viewModel::setAdRadio,
+        onCycleAdMusicLevel = viewModel::cycleAdMusicLevel,
         radioVisual = radioVisual,
         onRadioVisual = viewModel::setRadioVisual,
         onDeleteAdMusic = viewModel::deleteAdMusic,
@@ -384,6 +385,7 @@ fun SettingsContent(
     adSound: AdSoundUi = AdSoundUi(),
     onCycleAdSound: () -> Unit = {},
     onAdRadio: (String) -> Unit = {},
+    onCycleAdMusicLevel: () -> Unit = {},
     radioVisual: tv.nextv.app.data.settings.RadioVisual = tv.nextv.app.data.settings.RadioVisual.DEFAULT,
     onRadioVisual: (tv.nextv.app.data.settings.RadioVisual) -> Unit = {},
     onDeleteAdMusic: () -> Unit = {},
@@ -697,6 +699,20 @@ fun SettingsContent(
                                     AdRecordingsDialog(adRecordings, onShareAdMusic, onDeleteAdMusic, onDismiss = { addingMusic = false }, musicTracks = adSound.tracks)
                                 }
                             }
+                        }
+                        if (adSound.mode != AdSound.LOWER) {
+                            ValueRow(
+                                title = stringResource(R.string.settings_ad_music_level),
+                                value = stringResource(
+                                    when (adSound.level) {
+                                        10 -> R.string.settings_ad_music_level_10
+                                        35 -> R.string.settings_ad_music_level_35
+                                        60 -> R.string.settings_ad_music_level_60
+                                        else -> R.string.settings_ad_music_level_20
+                                    },
+                                ),
+                                onClick = onCycleAdMusicLevel,
+                            )
                         }
                         InfoText(stringResource(R.string.settings_ad_sound_help))
                     }

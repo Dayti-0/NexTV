@@ -14,6 +14,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import tv.nextv.app.data.settings.AdMusicLevel
 import tv.nextv.core.catalog.InternetRadios
 import java.io.File
 
@@ -121,6 +122,19 @@ class AdMusicPlayer(private val context: Context) {
     private val handler = Handler(Looper.getMainLooper())
     private var fade: Runnable? = null
 
+    /** Volume de la musique (0 à 1, réglage « Volume de la musique ») ; changé pendant la musique : appliqué en fondu. */
+    var level: Float = AdMusicLevel.DEFAULT / 100f
+        set(value) {
+            val wanted = value.coerceIn(0f, 1f)
+            if (wanted == field) return
+            field = wanted
+            val player = player
+            if (playing && player != null) ramp(from = player.volume, to = wanted, millis = FADE_OUT_MILLIS) {}
+        }
+
+    /** Volume actuel du lecteur de musique (fondu compris). */
+    val volume: Float get() = player?.volume ?: 0f
+
     /** Musique en cours (fondu compris). */
     var playing: Boolean = false
         private set
@@ -177,7 +191,7 @@ class AdMusicPlayer(private val context: Context) {
         playing = true
         player.volume = 0f
         player.play()
-        ramp(from = 0f, to = VOLUME, millis = FADE_IN_MILLIS) {}
+        ramp(from = 0f, to = level, millis = FADE_IN_MILLIS) {}
     }
 
     /** Le programme reprend : la musique s'efface, puis s'arrête (la radio est fermée, la musique mise en pause). */
@@ -213,7 +227,6 @@ class AdMusicPlayer(private val context: Context) {
     }
 
     private companion object {
-        const val VOLUME = 0.8f
         const val FADE_IN_MILLIS = 1_500L
         const val FADE_OUT_MILLIS = 800L
         const val FADE_STEP_MILLIS = 50L
