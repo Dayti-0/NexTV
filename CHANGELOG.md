@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.213
+- Accueil : les cartes des chaînes montrent le programme en cours dès le retour du lecteur, et le suivant dès qu’un programme se termine (elles gardaient celui d’avant la lecture)
+
 ## 0.2.212
 - MMA : carte des combats de Cage Warriors, KSW, Hexagone et ONE (photos, palmarès, catégories, ceinture en jeu, résultats)
 - MMA : l’heure de ces galas vient de leur diffusion dans le guide, sinon « Heure à venir »

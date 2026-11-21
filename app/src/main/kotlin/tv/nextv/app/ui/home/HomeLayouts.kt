@@ -60,6 +60,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -688,7 +689,10 @@ private fun GroupShelf(
     val title = group.title.orEmpty()
     val name = group.title ?: stringResource(R.string.channels_no_group)
     val count = itemCount(section, group.count)
-    val version = rowVersion(section, group, content.now / ROW_REFRESH_MILLIS)
+    // Heure où un programme affiché dans la rangée a été vu fini : la rangée est relue aussitôt (sinon jusqu'à 5 min
+    // avec le programme fini, barre pleine).
+    var endedSeenAt by remember(spec.key) { mutableLongStateOf(0L) }
+    val version = rowVersion(section, group, content.now / ROW_REFRESH_MILLIS) + if (endedSeenAt > 0) ":$endedSeenAt" else ""
     // Suite de la rangée lue d'elle-même en approchant du bout (plus de « Voir plus »). La rangée ne dessine
     // que les vignettes à l'écran : celles qui sont passées sont libérées en défilant.
     var limit by rememberSaveable(spec.key) { mutableIntStateOf(HomeRows.ROW_SIZE) }
@@ -703,6 +707,9 @@ private fun GroupShelf(
             value = loadSafely { content.rows.fresh<ChannelListRow>(section, title, version, limit) } ?: value.orEmpty()
         }
         val list = channels.orEmpty()
+        if (list.any { item -> item.nowStop?.let { it <= content.now } == true }) {
+            LaunchedEffect(content.now) { endedSeenAt = content.now }
+        }
         FollowLastChannel(lastOpened, spec.key) { key -> list.indexOfFirst { it.itemKey == key } }
         Shelf(name, count, padding, null, sizes.channel, CHANNEL_RATIO, spec.key, list.size, lastOpened, loading = channels == null, style = style, onNearEnd = loadMore(list.size), prefetch = remember(list) { list.map { it.logoUrl } }) {
             itemsIndexed(list, key = { _, it -> it.id }) { index, channel ->

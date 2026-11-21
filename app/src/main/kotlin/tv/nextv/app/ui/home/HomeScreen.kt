@@ -219,13 +219,7 @@ fun HomeScreen(
     LaunchedEffect(viewModel) {
         viewModel.messages.collect { snackbar.showSnackbar(it) }
     }
-    // Programmes en cours : rechargement périodique sans vider la grille.
-    LaunchedEffect(channels) {
-        while (true) {
-            delay(CHANNELS_REFRESH_MILLIS)
-            channels.refresh()
-        }
-    }
+    KeepProgrammesCurrent(channels)
     // « Retour » depuis l'accueil : « Appuyer à nouveau pour quitter », l'application ne se ferme qu'au second appui.
     // Déclaré en premier : les autres usages de « Retour » à l'accueil passent avant.
     val activity = LocalActivity.current
@@ -2092,7 +2086,37 @@ internal fun gridSpacing(columns: Int): Dp = when {
     else -> GRID_SPACING
 }
 internal const val NO_GROUP_KEY = "\u0000"
+/**
+ * Programmes en cours de la liste des chaînes : lus dans la base avec l'heure de son chargement, et la liste est
+ * gardée par l'accueil pendant la lecture. Relue toutes les 5 minutes seulement, elle montrait au retour du lecteur
+ * les programmes d'avant la lecture (des heures plus tôt), barre pleine, alors que le bandeau du haut avait le bon.
+ * Elle est donc relue dès qu'un programme affiché est fini (aussi au retour, juste après la remise de la sélection),
+ * et toutes les 5 minutes pour ceux qui commencent sur une chaîne sans programme ; sans vider la grille.
+ */
+@Composable
+internal fun KeepProgrammesCurrent(channels: LazyPagingItems<ChannelListRow>) {
+    LaunchedEffect(channels) {
+        delay(CHANNELS_FIRST_CHECK_MILLIS)
+        var lastRefresh = System.currentTimeMillis()
+        while (true) {
+            val clock = System.currentTimeMillis()
+            val ended = channels.itemSnapshotList.items.any { item -> item.nowStop?.let { it <= clock } == true }
+            if (ended || clock - lastRefresh >= CHANNELS_REFRESH_MILLIS) {
+                channels.refresh()
+                lastRefresh = clock
+            }
+            delay(CHANNELS_CHECK_MILLIS)
+        }
+    }
+}
+
 private const val CHANNELS_REFRESH_MILLIS = 5 * 60_000L
+
+/** Premier coup d'œil après l'ouverture de l'accueil : laisse la sélection revenir sur la chaîne regardée. */
+private const val CHANNELS_FIRST_CHECK_MILLIS = 1_500L
+
+/** Recherche des programmes finis dans la liste affichée. */
+private const val CHANNELS_CHECK_MILLIS = 20_000L
 
 /**
  * « Retour » sur l'accueil : un premier appui affiche « Appuyer à nouveau pour quitter » pendant [EXIT_CONFIRM_MILLIS] ;
