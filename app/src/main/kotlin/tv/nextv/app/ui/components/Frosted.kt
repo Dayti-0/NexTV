@@ -38,15 +38,19 @@ import kotlin.math.roundToInt
  * net. Le flou de Compose
  * (`Modifier.blur`) n'existe qu'à partir d'Android 12, que la Fire TV n'a pas : à l'ouverture, l'image de
  * cette bande est prise une fois, réduite, floutée, puis posée par-dessus en fondu.
+ *
+ * [contentKey] : ce que montre le contenu (la rubrique). S'il change, l'image floutée de l'ancien contenu disparaît tout
+ * de suite : rubrique choisie dans le menu, elle restait en fondu par-dessus la nouvelle page pendant que le menu se
+ * refermait (titre et affiches de l'ancienne page en transparence, vu en vidéo sur l'appareil).
  */
 @Composable
-fun Frosted(active: Boolean, width: Dp, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+fun Frosted(active: Boolean, width: Dp, modifier: Modifier = Modifier, contentKey: Any? = null, content: @Composable () -> Unit) {
     val layer = rememberGraphicsLayer()
     val background = MaterialTheme.colorScheme.background.toArgb()
     // Le fondu vers le net commence au bord du menu, pas avant : son bord droit, translucide, laissait voir le net.
     val stripPx = with(LocalDensity.current) { (width.toPx() / (1f - FROST_FADE)).roundToInt() }
-    var frosted by remember { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(active) {
+    var frosted by remember(contentKey) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(active, contentKey) {
         if (!active) return@LaunchedEffect
         // Une image pour que le contenu soit dessiné tel qu'il est à l'ouverture.
         withFrameNanos { }
@@ -72,9 +76,13 @@ fun Frosted(active: Boolean, width: Dp, modifier: Modifier = Modifier, content: 
     ) { content() }
 }
 
-/** Réduction de l’image : un pixel pour 4 de l’écran, le flou (léger) est ensuite étiré, sans coût. */
-private const val FROST_SCALE = 4
-private const val FROST_RADIUS = 2
+/**
+ * Réduction de l’image : un pixel pour 6 de l’écran, le flou est ensuite étiré, sans coût. Assez fort pour que les
+ * mots coupés par le bord du menu ne se lisent plus (avec 4 et 2, « …rame », « champi… » restaient lisibles à côté du
+ * menu ouvert et semblaient des restes de l'écran).
+ */
+private const val FROST_SCALE = 6
+private const val FROST_RADIUS = 3
 
 /** Part de la bande, à droite (au-delà du menu), où le flou s'efface : pas de ligne nette au bord du menu. */
 private const val FROST_FADE = 0.25f

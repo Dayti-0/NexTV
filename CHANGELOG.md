@@ -4,6 +4,12 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.215
+- Streaming : en choisissant Films ou Séries dans le menu de gauche, l’ancienne page ne reste plus en transparence par-dessus la nouvelle
+- Streaming : la nouvelle page s’ouvre sur sa première rangée (Top 10) et n’y glisse plus jusqu’à « Reprendre la lecture »
+- Streaming : le bandeau ne montre plus un film en Séries (ou une série en Films) juste après le changement
+- Menu de gauche ouvert : le flou derrière lui est plus fort, on ne voit plus de morceaux de mots coupés à son bord
+
 ## 0.2.214
 - Pubs : la radio ou la musique mise à la place des pubs joue maintenant en fond sonore, bien moins fort
 - Réglages › Son : nouveau choix « Volume de la musique » (très bas, bas, moyen, fort)

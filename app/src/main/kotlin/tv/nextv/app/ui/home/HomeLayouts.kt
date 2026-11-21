@@ -182,6 +182,8 @@ internal fun StreamingHome(
     modifier: Modifier = Modifier,
     /** Bandes-annonces du bandeau (réglages). */
     trailers: TrailerSettings = TrailerSettings(),
+    /** Entrée dans les rangées (première affiche de la première rangée), demandée par le menu de gauche. */
+    entryFocus: FocusRequester? = null,
 ) {
     val section = content.section
     val padding = if (window.isWide) 28.dp else window.horizontalPadding
@@ -250,13 +252,17 @@ internal fun StreamingHome(
     }
     // Bandeau sans boutons : à la première ouverture sur la télé, la sélection va sur la première affiche des rangées.
     val heroFocus = remember { FocusRequester() }
+    // Première rangée : y entrer explicitement. En entrant dans la liste, Android prend l'affiche la plus proche du coin
+    // haut-gauche : celle de « Reprendre la lecture », collée au bord, battait la n°1 du Top 10 (décalée par son grand
+    // chiffre), et la liste glissait jusqu'à la 2e rangée.
+    val firstRow = entryFocus ?: remember { FocusRequester() }
     var heroFocusDone by rememberSaveable(section) { mutableStateOf(false) }
     if (hero && window.isTv && !heroFocusDone && lastOpened.value == null) {
         LaunchedEffect(shown?.item?.itemKey != null) {
             if (shown?.item == null) return@LaunchedEffect
             for (attempt in 1..30) {
                 withFrameNanos { }
-                if (runCatching { heroFocus.requestFocus() }.getOrDefault(false)) break
+                if (runCatching { firstRow.requestFocus() }.getOrDefault(false) || runCatching { heroFocus.requestFocus() }.getOrDefault(false)) break
             }
             heroFocusDone = true
         }
@@ -317,7 +323,7 @@ internal fun StreamingHome(
                     }
                     return@LazyColumn
                 }
-                shelfItems(shelves, content, sizes, padding, lastOpened, actions, ShelfStyle.STREAMING)
+                shelfItems(shelves, content, sizes, padding, lastOpened, actions, ShelfStyle.STREAMING, firstRowFocus = firstRow)
             }
         }
     }
@@ -565,9 +571,29 @@ internal fun LazyListScope.shelfItems(
     lastOpened: MutableState<OpenedItem?>,
     actions: HomeActions,
     style: ShelfStyle,
+    /** Entrée dans la première rangée (sa première affiche), sinon celle qu'Android juge la plus proche. */
+    firstRowFocus: FocusRequester? = null,
 ) {
+    val firstKey = shelves.firstOrNull()?.key
     // Type de rangée : la liste réutilise une rangée du même genre en défilant (moins de travail par rangée).
     items(shelves, key = { it.key }, contentType = { it::class }) { spec ->
+        Box(if (firstRowFocus != null && spec.key == firstKey) Modifier.focusRequester(firstRowFocus) else Modifier) {
+            ShelfItem(spec, content, sizes, padding, lastOpened, actions, style)
+        }
+    }
+}
+
+@Composable
+private fun ShelfItem(
+    spec: ShelfSpec,
+    content: ShelfContent,
+    sizes: ShelfSizes,
+    padding: Dp,
+    lastOpened: MutableState<OpenedItem?>,
+    actions: HomeActions,
+    style: ShelfStyle,
+) {
+    run {
         if (spec is ShelfSpec.Channels) FollowLastChannel(lastOpened, spec.key) { key -> spec.channels.indexOfFirst { it.itemKey == key } }
         when (spec) {
             is ShelfSpec.Channels -> Shelf(

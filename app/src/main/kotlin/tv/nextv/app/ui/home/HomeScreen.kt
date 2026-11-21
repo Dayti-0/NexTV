@@ -209,7 +209,11 @@ fun HomeScreen(
     val preview by viewModel.preview.collectAsStateWithLifecycle()
     val previewPlayer by viewModel.previewPlayer.collectAsStateWithLifecycle()
     val spotlight by viewModel.spotlight.collectAsStateWithLifecycle()
-    val discover by (if (section == HomeSection.SERIES) viewModel.seriesDiscover else viewModel.movieDiscover).collectAsStateWithLifecycle()
+    // Les deux suivies en permanence : en changeant de rubrique, l'état gardait une image de plus les rangées de
+    // l'autre (Top 10 des films sous « Séries »), et la vedette prise dans ces rangées restait (« L'Odyssée » en Séries).
+    val movieDiscover by viewModel.movieDiscover.collectAsStateWithLifecycle()
+    val seriesDiscover by viewModel.seriesDiscover.collectAsStateWithLifecycle()
+    val discover = if (section == HomeSection.SERIES) seriesDiscover else movieDiscover
     val channels = viewModel.channels.collectAsLazyPagingItems()
     val movies = viewModel.movies.collectAsLazyPagingItems()
     val series = viewModel.series.collectAsLazyPagingItems()
@@ -517,6 +521,8 @@ fun HomeContent(
     val tabsFocused = remember { mutableStateOf(false) }
     val player = previewPlayer.takeIf { showPreview }
     val catalog = section.kind() != null
+    // Vedette d'une autre rubrique (film encore choisi juste après le passage à Séries) : pas affichée.
+    val sectionSpotlight = spotlight?.takeIf { it.item.kind == section.kind() }
     val resumeItems = when (section) {
         HomeSection.MOVIES -> continueMovies
         HomeSection.SERIES -> continueSeries
@@ -545,13 +551,28 @@ fun HomeContent(
     val navFocus = remember { FocusRequester() }
     // Section choisie dans le menu de gauche : la sélection quitte le menu (→) dès que le contenu est là.
     var navPicked by remember { mutableIntStateOf(0) }
+    var navTarget by remember { mutableStateOf<HomeSection?>(null) }
     val navFocusManager = LocalFocusManager.current
+    // Rangées de films ou de séries (Streaming) : la sélection va sur la première affiche de la première rangée. Par →,
+    // elle tombait sur l'affiche la plus proche du menu (souvent « Reprendre la lecture », 2e rangée) : la page
+    // s'affichait sur son Top 10 puis glissait jusqu'à elle (vu en vidéo sur l'appareil).
+    val rowsEntry = remember { FocusRequester() }
+    val currentSection by rememberUpdatedState(section)
+    val entersRows by rememberUpdatedState(layout == HomeLayout.STREAMING && category == Category.All && (section == HomeSection.MOVIES || section == HomeSection.SERIES))
     LaunchedEffect(navPicked) {
         if (navPicked == 0) return@LaunchedEffect
+        val target = navTarget
         for (attempt in 1..40) {
             withFrameNanos { }
             if (!tabsFocused.value) break
-            if (navFocusManager.moveFocus(FocusDirection.Right) && !tabsFocused.value) break
+            // La rubrique choisie doit être affichée (sinon la sélection irait dans l'ancienne page).
+            if (target != null && currentSection != target && attempt < 20) continue
+            val moved = if (entersRows && attempt < 30) {
+                runCatching { rowsEntry.requestFocus() }.getOrDefault(false)
+            } else {
+                navFocusManager.moveFocus(FocusDirection.Right)
+            }
+            if (moved && !tabsFocused.value) break
         }
     }
     // Accueil à rangées : Streaming et Classique, sauf les chaînes sur grand écran (liste avec aperçu).
@@ -636,7 +657,7 @@ fun HomeContent(
                     series = series,
                     preview = preview,
                     previewPlayer = player,
-                    spotlight = spotlight,
+                    spotlight = sectionSpotlight,
                     lastOpened = lastOpened,
                     actions = actions,
                     topBar = topBar,
@@ -664,7 +685,7 @@ fun HomeContent(
                     ),
             ) {
             // Menu de gauche ouvert : le contenu est légèrement flouté sous lui (pas le reste de l'écran).
-            Frosted(streamingNav && tabsFocused.value, STREAMING_NAV_OPEN_WIDTH, Modifier.fillMaxSize()) {
+            Frosted(streamingNav && tabsFocused.value, STREAMING_NAV_OPEN_WIDTH, Modifier.fillMaxSize(), contentKey = section) {
             Column(Modifier.fillMaxSize().padding(start = if (streamingNav) STREAMING_NAV_WIDTH else 0.dp)) {
                 if (!streamingNav) topBar()
                 when {
@@ -688,10 +709,11 @@ fun HomeContent(
                         series = series,
                         preview = preview,
                         previewPlayer = player,
-                        spotlight = spotlight,
+                        spotlight = sectionSpotlight,
                         lastOpened = lastOpened,
                         actions = actions,
                         trailers = trailers,
+                        entryFocus = rowsEntry,
                         )
                     }
                     else -> CatalogBody(
@@ -718,7 +740,7 @@ fun HomeContent(
                         showPreview = showPreview,
                         preview = preview,
                         previewPlayer = player,
-                        spotlight = spotlight,
+                        spotlight = sectionSpotlight,
                         lastOpened = lastOpened,
                         focused = focused,
                         modifier = Modifier.weight(1f),
@@ -746,6 +768,7 @@ fun HomeContent(
                     // Section choisie : le menu se referme, la sélection passe au contenu de la section.
                     onSection = { target ->
                         actions.onSection(target)
+                        navTarget = target
                         navPicked++
                     },
                     onSearch = onSearch,
