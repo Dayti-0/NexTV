@@ -4,6 +4,11 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.218
+- Guide TV en Streaming : la grille commence juste à côté du menu de gauche, sans la grande place vide
+- Guide TV : en descendant sur une chaîne sans programme à cette heure, la sélection va sur son nom au lieu de repartir des heures en arrière (la frise horaire ne bouge plus)
+- Guide TV : les chaînes Rakuten TV (Ciné Nanar, Emotion’L, Top Sci-Fi…) ne sont plus vides le soir : guide de Plex (3 jours) préféré à celui de Samsung (6 h), lui-même relu toutes les 3 h
+
 ## 0.2.217
 - Fiche d’une série : la bonne série quand plusieurs portent le même nom (« Prisoner » de 2026 et non le feuilleton de 1979), d’après l’identifiant donné par l’abonnement
 

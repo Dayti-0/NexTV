@@ -3,6 +3,7 @@ package tv.nextv.app.ui.guide
 import tv.nextv.app.ui.common.isRadio
 import tv.nextv.app.ui.common.noProgrammeText
 import tv.nextv.app.ui.common.frenchText
+import tv.nextv.app.ui.components.startPadding
 import tv.nextv.app.ui.components.FadingBottom
 import android.widget.Toast
 import androidx.compose.material.icons.filled.Add
@@ -209,7 +210,7 @@ fun GuideContent(
     val favorites = selectedGroup == GuideViewModel.FAVORITES || selectedGroup == GuideViewModel.FAVORITES_TONIGHT
     Column(modifier.fillMaxSize()) {
         LazyRow(
-            contentPadding = PaddingValues(horizontal = window.horizontalPadding, vertical = 10.dp),
+            contentPadding = PaddingValues(start = window.startPadding, end = window.horizontalPadding, top = 10.dp, bottom = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             // Favoris : en grille ou en « Ce soir » (choix juste en dessous), le mode choisi est gardé.
@@ -231,7 +232,7 @@ fun GuideContent(
         if (favorites) {
             // Favoris : grille du guide ou programme du soir.
             Row(
-                Modifier.padding(start = window.horizontalPadding, end = window.horizontalPadding, bottom = 4.dp),
+                Modifier.padding(start = window.startPadding, end = window.horizontalPadding, bottom = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -266,7 +267,8 @@ fun GuideContent(
                 channelColumnWidth = channelColumnWidth,
                 rowHeight = rowHeight,
                 compact = !window.isWide,
-                horizontalPadding = window.horizontalPadding,
+                startPadding = window.startPadding,
+                endPadding = window.horizontalPadding,
                 requestInitialFocus = window.isTv,
                 onPlay = onPlay,
                 onFocus = { focused = it },
@@ -306,7 +308,8 @@ private fun GuideGrid(
     channelColumnWidth: Dp,
     rowHeight: Dp,
     compact: Boolean,
-    horizontalPadding: Dp,
+    startPadding: Dp,
+    endPadding: Dp,
     requestInitialFocus: Boolean,
     onPlay: (Long) -> Unit,
     onFocus: (Pair<GuideChannel, GuideProgramme>) -> Unit,
@@ -378,18 +381,18 @@ private fun GuideGrid(
     }
 
     Column(Modifier.fillMaxSize()) {
-        ProgrammeDetails(highlighted, state.now, Modifier.padding(horizontal = horizontalPadding, vertical = 8.dp))
+        ProgrammeDetails(highlighted, state.now, Modifier.padding(start = startPadding, end = endPadding, top = 8.dp, bottom = 8.dp))
         TimeRuler(
             state = state,
             scroll = scroll,
             minuteWidth = minuteWidth,
             channelColumnWidth = channelColumnWidth,
-            modifier = Modifier.padding(start = horizontalPadding),
+            modifier = Modifier.padding(start = startPadding),
         )
         FadingBottom({ listState.canScrollForward }, { listState.canScrollBackward }) { fade ->
             LazyColumn(
                 state = listState,
-                contentPadding = PaddingValues(start = horizontalPadding, bottom = 24.dp, top = 4.dp),
+                contentPadding = PaddingValues(start = startPadding, bottom = 24.dp, top = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.fillMaxSize().then(fade).onPreviewKeyEvent { event ->
                     if (event.type != KeyEventType.KeyDown || focusedRow < 0) return@onPreviewKeyEvent false
@@ -402,8 +405,9 @@ private fun GuideGrid(
                         }
                     }
                     val target = focusedRow + step
-                    // Première ligne vers le haut (catégories), dernière vers le bas, ligne sans programme : comportement habituel.
-                    if (target !in state.channels.indices || visibleProgrammes(state.channels[target], state).isEmpty()) return@onPreviewKeyEvent false
+                    // Première ligne vers le haut (catégories), dernière vers le bas : comportement habituel. Une ligne sans
+                    // programme à cette heure prend la sélection sur le nom de la chaîne (GuideRow).
+                    if (target !in state.channels.indices) return@onPreviewKeyEvent false
                     verticalMove = true
                     timelineLocked = true
                     pendingFocus = target to anchor
@@ -427,7 +431,12 @@ private fun GuideGrid(
                         focusAt = pendingFocus?.takeIf { it.first == index }?.second,
                         timelineLocked = { timelineLocked },
                         onFocusAtDone = { pendingFocus = null },
-                        onChannelFocus = { focusedRow = -1 },
+                        onChannelFocus = {
+                            // Nom de la chaîne atteint par haut / bas (rien à cette heure) : haut / bas continuent à la même
+                            // heure ; atteint par gauche : comportement habituel.
+                            focusedRow = if (verticalMove) index else -1
+                            verticalMove = false
+                        },
                         onPlay = {
                             rememberOpened(index, state.now)
                             onPlay(channel.id)
@@ -591,16 +600,16 @@ private fun GuideRow(
     val totalWidth = minutes(state.windowEnd - state.windowStart) * minuteWidth
     val shown = visibleProgrammes(channel, state)
     val requesters = remember(shown) { shown.associateWith { FocusRequester() } }
-    // Programme qui doit prendre le focus (haut / bas) : celui de l'heure visée, sinon le plus proche.
+    // Programme qui doit prendre le focus (haut / bas) : celui de l'heure visée, sinon le plus proche s'il en est
+    // tout près (petit trou entre deux programmes). Rien autour de cette heure (guide de la chaîne terminé, ou pas
+    // encore commencé) : le nom de la chaîne, sans faire repartir la frise horaire des heures en arrière.
     val focusTarget = remember(focusAt, shown) {
-        focusAt?.let { at ->
-            shown.firstOrNull { at >= it.startMillis && at < it.stopMillis }
-                ?: shown.minByOrNull { minOf(abs(it.startMillis - at), abs(it.stopMillis - at)) }
-        }
+        focusAt?.let { at -> focusTargetAt(shown, at) }
     }
+    val channelRequester = remember { FocusRequester() }
     if (focusAt != null) {
         LaunchedEffect(focusAt) {
-            focusTarget?.let { runCatching { requesters.getValue(it).requestFocus() } }
+            runCatching { focusTarget?.let { requesters.getValue(it) }?.requestFocus() ?: channelRequester.requestFocus() }
             onFocusAtDone()
         }
     }
@@ -626,7 +635,7 @@ private fun GuideRow(
     Row(Modifier.fillMaxWidth().height(rowHeight)) {
         FocusSurface(
             onClick = onPlay,
-            modifier = Modifier.width(channelColumnWidth).fillMaxHeight(),
+            modifier = Modifier.width(channelColumnWidth).fillMaxHeight().focusRequester(channelRequester),
             shape = MaterialTheme.shapes.small,
             color = MaterialTheme.colorScheme.surfaceContainerLow,
             focusScale = 1f,
@@ -962,6 +971,19 @@ private const val DEFAULT_VIEWPORT_PX = 1920
 
 /** Marge minimale dessinée de chaque côté de ce qui est à l'écran. */
 private const val MIN_DRAWN_MARGIN_MILLIS = 2 * 60 * 60_000L
+
+/**
+ * Programme d'une ligne qui prend la sélection par haut / bas pour l'heure [at] : celui qui la couvre, sinon le plus
+ * proche à moins de [NEAR_PROGRAMME_MILLIS] ; `null` si la ligne n'a rien autour de cette heure.
+ */
+internal fun focusTargetAt(shown: List<GuideProgramme>, at: Long): GuideProgramme? =
+    shown.firstOrNull { at >= it.startMillis && at < it.stopMillis }
+        ?: shown.map { it to minOf(abs(it.startMillis - at), abs(it.stopMillis - at)) }
+            .filter { it.second <= NEAR_PROGRAMME_MILLIS }
+            .minByOrNull { it.second }?.first
+
+/** Écart toléré entre l'heure visée et un programme voisin (trous de quelques minutes entre deux programmes). */
+private const val NEAR_PROGRAMME_MILLIS = 30 * 60_000L
 
 /** Programmes affichés d'une ligne : au moins une minute dans la fenêtre de la grille. */
 private fun visibleProgrammes(channel: GuideChannel, state: GuideUiState): List<GuideProgramme> =

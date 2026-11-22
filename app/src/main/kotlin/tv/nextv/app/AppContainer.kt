@@ -167,9 +167,15 @@ class AppContainer(context: Context) {
         }
     }
 
-    /** Guides d'appoint (Pluto TV, Samsung TV Plus, Plex) pour les chaînes que le guide français ne couvre pas. */
+    /** Guides d'appoint (Pluto TV, Plex, Samsung TV Plus, epgshare) pour les chaînes que le guide français ne couvre pas. */
     private val extraEpgFeeds = HttpEpgFeedProvider.EXTRA_GUIDES.map { (folder, url) ->
-        HttpEpgFeedProvider(clients = httpClients, url = url.toHttpUrl(), directory = File(appContext.filesDir, "epg_$folder"), logger = logger)
+        HttpEpgFeedProvider(
+            clients = httpClients,
+            url = url.toHttpUrl(),
+            directory = File(appContext.filesDir, "epg_$folder"),
+            maxAgeMillis = HttpEpgFeedProvider.EXTRA_GUIDE_MAX_AGE_MILLIS[folder] ?: HttpEpgFeedProvider.DEFAULT_MAX_AGE_MILLIS,
+            logger = logger,
+        )
     }
 
     /** Comptes Xtream Codes : abonnement (date de fin, connexions simultanées) et chaînes avec replay. */

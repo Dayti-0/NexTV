@@ -1,5 +1,6 @@
 package tv.nextv.app.ui.guide
 
+import tv.nextv.app.ui.components.startPadding
 import tv.nextv.app.ui.components.FadingBottom
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
@@ -106,7 +107,7 @@ internal fun TonightView(
 
     Column(modifier.fillMaxSize()) {
         LazyRow(
-            contentPadding = PaddingValues(horizontal = window.horizontalPadding, vertical = 4.dp),
+            contentPadding = PaddingValues(start = window.startPadding, end = window.horizontalPadding, top = 4.dp, bottom = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             itemsIndexed(state.evenings) { index, evening ->
@@ -116,7 +117,7 @@ internal fun TonightView(
         // Programme sélectionné : image, horaires, genre et résumé.
         Row(
             // Hauteur fixe (deux lignes de résumé toujours réservées) : la liste ne bouge pas d'un programme à l'autre.
-            Modifier.fillMaxWidth().padding(horizontal = window.horizontalPadding, vertical = 8.dp).heightIn(min = DETAILS_MIN_HEIGHT),
+            Modifier.fillMaxWidth().padding(start = window.startPadding, end = window.horizontalPadding, top = 8.dp, bottom = 8.dp).heightIn(min = DETAILS_MIN_HEIGHT),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -160,7 +161,7 @@ internal fun TonightView(
         val channelWidth = if (numbered) TONIGHT_CHANNEL_WIDTH else TONIGHT_CHANNEL_WIDTH - TONIGHT_NUMBER_WIDTH - 10.dp
         if (window.isWide) {
             Row(
-                Modifier.padding(start = window.horizontalPadding + channelWidth + 12.dp, end = window.horizontalPadding, bottom = 4.dp),
+                Modifier.padding(start = window.startPadding + channelWidth + 12.dp, end = window.horizontalPadding, bottom = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 ColumnTitle(stringResource(R.string.tonight_first_part), Modifier.weight(1.15f))
@@ -170,7 +171,7 @@ internal fun TonightView(
         FadingBottom({ listState.canScrollForward }, { listState.canScrollBackward }) { fade ->
             LazyColumn(
                 state = listState,
-                contentPadding = PaddingValues(start = window.horizontalPadding, end = window.horizontalPadding, bottom = 32.dp),
+                contentPadding = PaddingValues(start = window.startPadding, end = window.horizontalPadding, bottom = 32.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.fillMaxSize().then(fade),
             ) {

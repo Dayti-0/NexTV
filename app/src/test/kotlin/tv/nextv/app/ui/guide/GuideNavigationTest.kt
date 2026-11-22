@@ -137,22 +137,48 @@ class GuideNavigationTest {
         assertTrue(!exists("Une 2h00"))
     }
 
-    /** Haut / bas vers une ligne sans programme à l'heure affichée : son programme le plus proche, même loin, prend le focus. */
+    /**
+     * Haut / bas vers une ligne sans programme à l'heure affichée (guide de la chaîne terminé, 22/11/2026 : chaînes
+     * Rakuten vides le soir) : le nom de la chaîne prend la sélection, la frise horaire ne repart pas des heures en
+     * arrière, et la ligne suivante reprend à la même heure.
+     */
     @Test
-    fun upAndDownReachAProgrammeFarFromTheScreen() {
+    fun aRowWithNothingAtThatTimeSelectsTheChannelAndKeepsTheTimeline() {
         val withGap = state.copy(
-            channels = state.channels + GuideChannel(3, "Trois", "3", null, listOf(GuideProgramme("Nuit", midnight + 2 * hour, midnight + 3 * hour))),
+            channels = listOf(
+                state.channels.first(),
+                GuideChannel(3, "Trois", "3", null, listOf(GuideProgramme("Nuit", midnight + 2 * hour, midnight + 3 * hour))),
+                GuideChannel(4, "Quatre", "4", null, halfHours("Quatre")),
+            ),
         )
         show(withGap)
-        // Ligne sans programme à l'heure affichée : sa case la plus proche reste dessinée, pour rester atteignable.
-        assertTrue("case la plus proche absente", exists("Nuit"))
+        press(Key.DirectionRight)
+        assertTrue(focusedText(), "Une 14h30" in focusedText())
+        val label = SimpleDateFormat("HH:mm", Locale.FRANCE).format(midnight + 15 * hour)
+        fun labelX() = compose.onAllNodesWithText(label).onFirst().getBoundsInRoot().left
+        val before = labelX()
         press(Key.DirectionDown)
-        assertTrue(focusedText(), "Long après-midi" in focusedText())
+        assertTrue(focusedText(), "Trois" in focusedText() && "Nuit" !in focusedText())
+        assertEquals("la frise horaire a bougé", before.value, labelX().value, 0.5f)
         press(Key.DirectionDown)
-        assertTrue(focusedText(), "Nuit" in focusedText())
-        // Et retour : la ligne du dessus reprend le focus.
+        assertTrue(focusedText(), "Quatre 14h30" in focusedText())
         press(Key.DirectionUp)
-        assertTrue(focusedText(), "Matinée" in focusedText() || "Long après-midi" in focusedText())
+        assertTrue(focusedText(), "Trois" in focusedText())
+        press(Key.DirectionUp)
+        assertTrue(focusedText(), "Une 14h30" in focusedText())
+        assertEquals(before.value, labelX().value, 0.5f)
+    }
+
+    /** Petit trou entre deux programmes à l'heure visée : le programme voisin prend la sélection, pas le nom de la chaîne. */
+    @Test
+    fun aShortGapStillSelectsTheNeighbouringProgramme() {
+        val programmes = listOf(
+            GuideProgramme("Avant", midnight + 13 * hour, midnight + 14 * hour),
+            GuideProgramme("Après", midnight + 14 * hour + 10 * minute, midnight + 16 * hour),
+        )
+        assertEquals("Après", focusTargetAt(programmes, midnight + 14 * hour + 6 * minute)?.title)
+        assertEquals("Avant", focusTargetAt(programmes, midnight + 14 * hour + 2 * minute)?.title)
+        assertEquals(null, focusTargetAt(programmes, midnight + 17 * hour))
     }
 
     /**

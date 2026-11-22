@@ -194,17 +194,30 @@ class HttpEpgFeedProvider(
 
         /**
          * Guides d'appoint pour les chaînes que le guide français ne couvre pas, dans l'ordre d'import (le premier qui a
-         * une chaîne l'emporte) : Pluto TV, Samsung TV Plus et Plex France (i.mjh.nz, éditions françaises seulement :
-         * les autres pays ont d'autres grilles sous les mêmes noms), puis epgshare01 France et Rakuten TV (toutes
-         * éditions ; les chaînes françaises y sont marquées « FR: »). Nom du dossier de cache → adresse.
+         * une chaîne l'emporte) : Pluto TV, Plex et Samsung TV Plus (i.mjh.nz, éditions françaises seulement : les autres
+         * pays ont d'autres grilles sous les mêmes noms), puis epgshare01 France et Rakuten TV (toutes éditions ; les
+         * chaînes françaises y sont marquées « FR: »). Nom du dossier de cache → adresse.
          * Mesuré sur la playlist le 18/11/2026 : 118 chaînes Pluto TV sur ~120, 103 Rakuten TV sur ~112.
+         * Plex avant Samsung (22/11/2026) : Samsung ne donne qu'environ 6 h de programmes à l'avance (Pluto ~14 h, Plex
+         * et epgshare 3 jours) ; passé ce délai, les chaînes Rakuten qu'il couvrait (Ciné Nanar…) n'avaient plus rien.
+         * epgshare Rakuten en dernier : ses horaires ont 2 h d'avance sur ceux de Plex et Samsung (qui concordent).
          */
         val EXTRA_GUIDES = linkedMapOf(
             "pluto_fr" to "https://i.mjh.nz/PlutoTV/fr.xml.gz",
-            "samsung_fr" to "https://i.mjh.nz/SamsungTVPlus/fr.xml.gz",
             "plex_fr" to "https://i.mjh.nz/Plex/fr.xml.gz",
+            "samsung_fr" to "https://i.mjh.nz/SamsungTVPlus/fr.xml.gz",
             "epgshare_fr" to "https://epgshare01.online/epgshare01/epg_ripper_FR1.xml.gz",
             "epgshare_rakuten" to "https://epgshare01.online/epgshare01/epg_ripper_RAKUTEN1.xml.gz",
+        )
+
+        /**
+         * Guides qui ne couvrent que quelques heures à l'avance : retéléchargés plus souvent (vérification périodique de
+         * l'appli toutes les 3 h), sinon leurs chaînes restent sans programme entre deux imports. Un guide qui a changé
+         * fait réimporter le guide entier.
+         */
+        val EXTRA_GUIDE_MAX_AGE_MILLIS = mapOf(
+            "samsung_fr" to 2 * 60 * 60_000L,
+            "pluto_fr" to 5 * 60 * 60_000L,
         )
         const val DEFAULT_MAX_AGE_MILLIS = 12 * 60 * 60_000L
 

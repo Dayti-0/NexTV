@@ -670,6 +670,16 @@ fun WindowInfo.contentPadding(top: Dp = 8.dp, bottom: Dp = 24.dp) =
  */
 val LocalTabsFocused = compositionLocalOf<() -> Boolean> { { false } }
 
+/**
+ * Marge de gauche d'une section affichée à côté du menu de gauche de Streaming (le menu fait déjà la
+ * séparation avec le bord de l'écran) ; `null` : marge habituelle ([WindowInfo.horizontalPadding]).
+ */
+val LocalSideMenuStart = compositionLocalOf<Dp?> { null }
+
+/** Marge de gauche du contenu : réduite à côté du menu de gauche de Streaming. */
+val WindowInfo.startPadding: Dp
+    @Composable get() = LocalSideMenuStart.current ?: horizontalPadding
+
 /** Hauteur du fondu en bas des listes. */
 val BottomFadeLength: Dp = 56.dp
 

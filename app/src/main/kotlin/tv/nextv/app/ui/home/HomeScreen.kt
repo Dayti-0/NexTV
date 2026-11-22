@@ -118,6 +118,7 @@ import tv.nextv.app.data.db.MovieRow
 import tv.nextv.app.data.db.SeriesRow
 import tv.nextv.app.ui.common.appViewModel
 import tv.nextv.app.ui.common.channelCount
+import tv.nextv.app.ui.components.LocalSideMenuStart
 import tv.nextv.app.ui.components.LocalTabsFocused
 import tv.nextv.app.ui.components.ignoreHeldOk
 import tv.nextv.app.ui.components.BrandMark
@@ -691,7 +692,10 @@ fun HomeContent(
             Column(Modifier.fillMaxSize().padding(start = if (streamingNav) STREAMING_NAV_WIDTH else 0.dp)) {
                 if (!streamingNav) topBar()
                 when {
-                    section == HomeSection.GUIDE -> guide(Modifier.weight(1f))
+                    // Guide à côté du menu de gauche : pas de grande marge en plus (place vide inutile).
+                    section == HomeSection.GUIDE -> CompositionLocalProvider(LocalSideMenuStart provides if (streamingNav) SIDE_MENU_CONTENT_START else null) {
+                        guide(Modifier.weight(1f))
+                    }
                     section == HomeSection.FOOTBALL -> football(Modifier.weight(1f))
                     section == HomeSection.MMA -> mma(Modifier.weight(1f))
                     layout == HomeLayout.STREAMING && category == Category.All && !liveList -> CategoryDrawer(

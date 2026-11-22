@@ -150,7 +150,10 @@ Commandes :
   configuration rapide n'est plus ouverte par-dessus : elle vient après le premier chargement (`onHome`, `quickSetupDone`).
 - Accueil : `ui/home/` (interfaces Live Center, Streaming, Classique) ; composants communs dans
   `ui/components/Components.kt` (fondus `bottomFade`, `FadingRow` / `edgeFade`).
-- Guide TV et fiche programme : `ui/guide/`.
+- Guide TV et fiche programme : `ui/guide/`. Haut / bas vers une ligne sans programme à l'heure visée (à 30 min près,
+  `focusTargetAt`) : sélection sur le nom de la chaîne, frise horaire inchangée (0.2.218 ; avant, le programme le plus
+  proche, même des heures plus tôt, faisait repartir la frise en arrière). En Streaming, marge de gauche réduite à côté du
+  menu (`LocalSideMenuStart`, `WindowInfo.startPadding`).
 - Section MMA (0.2.206, `HomeSection.MMA`, `ui/mma/`) : galas de l'UFC, du PFL et de Cage Warriors par le calendrier public
   d'ESPN (`core/mma/MmaScheduleClient`, `MmaEspn` : cartes, horaires préliminaires / carte principale, résultats ; Cage
   Warriors y est très incomplet), chaînes par le guide (`ProgrammeDao.mmaCandidates`, `MmaGuide.promotionOf` écarte
@@ -252,6 +255,10 @@ Commandes :
   Gradle reprend l'ancien résultat). Écartés le 18/11/2026 : guides étrangers de Pluto/Plex/Samsung (autres grilles sous
   les mêmes noms), epgshare01 BE2/CH1 (peu de chaînes, une fausse association), iptv-org (pas de guide prêt à
   télécharger, seulement un outil à faire tourner soi-même).
+  Ordre depuis 0.2.218 : Pluto, Plex, Samsung, epgshare FR1, epgshare Rakuten. Samsung ne couvre que ~6 h à l'avance
+  (Pluto ~14 h, Plex et epgshare 3 jours) : chaînes Rakuten vides le soir quand il passait avant Plex (vidéo du 22/11/2026) ;
+  Samsung retéléchargé à chaque vérification de 3 h, Pluto toutes les 6 h (`EXTRA_GUIDE_MAX_AGE_MILLIS`). epgshare Rakuten
+  a 2 h d'avance sur Plex / Samsung (qui concordent) : à garder en dernier.
 - Catégories de films et de séries (0.2.185) : `core/catalog/VodCategories.kt` donne le nom propre (`properName`, table
   `NAMES` des noms vus dans la playlist, sinon écriture normale des majuscules ; redonne le même nom à un nom déjà propre)
   et les catégories d'autres pays (`isFrench` : arabes, maghrébines, turques, polonaises, ramadan ; coréennes gardées).
