@@ -10,8 +10,6 @@ import androidx.compose.runtime.DisposableEffect
 import android.view.ViewGroup
 import androidx.annotation.OptIn as AndroidXOptIn
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -114,7 +112,7 @@ internal fun ChannelHero(
                 AnimatedContent(
                     targetState = preview,
                     contentKey = { it?.channel?.id },
-                    transitionSpec = { fadeIn() togetherWith fadeOut() },
+                    transitionSpec = { heroTextIn() togetherWith heroTextOut() },
                     label = "hero",
                 ) { shown ->
                     if (shown != null) HeroDetails(shown, now)

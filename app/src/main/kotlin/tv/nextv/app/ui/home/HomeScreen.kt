@@ -601,6 +601,8 @@ fun HomeContent(
             // Accueil à rangées (Streaming, Classique) : saut à la rangée de la catégorie, toutes les
             // autres restent ; ailleurs, la catégorie s'ouvre.
             onCategory = { chosen ->
+                // Catégorie choisie : un élément ouvert avant (sélection à lui rendre, restée en attente) ne la reprend plus.
+                lastOpened.value = null
                 if (rowsHome && category == Category.All) {
                     drawerOpen.value = false
                     rowJump.target = chosen
@@ -767,6 +769,10 @@ fun HomeContent(
                     window = window,
                     // Section choisie : le menu se referme, la sélection passe au contenu de la section.
                     onSection = { target ->
+                        // Un élément ouvert avant (film repris, puis retour du lecteur sur une autre rubrique) gardait sa
+                        // sélection en attente : il la reprenait à l'arrivée sur sa rubrique, et la page glissait de la
+                        // première rangée jusqu'à lui (vu sur la box en 0.2.215). La rubrique choisie l'emporte.
+                        lastOpened.value = null
                         actions.onSection(target)
                         navTarget = target
                         navPicked++

@@ -144,9 +144,11 @@ internal fun StreamingHero(
             )
             // Changement de contenu : le texte se fond, sans saut.
             // Le fondu ne joue qu'au changement de titre ; chaque texte garde le sien pendant qu'il s'efface.
+            // L'ancien s'efface d'abord, le nouveau vient ensuite : en même temps, deux ou trois titres se superposaient
+            // (catégorie choisie dans le volet : affiche de départ, une affiche traversée, puis celle de la rangée).
             AnimatedContent(
                 spotlight,
-                transitionSpec = { fadeIn(tween(350)) togetherWith fadeOut(tween(200)) },
+                transitionSpec = { heroTextIn() togetherWith heroTextOut() },
                 contentKey = { it?.item?.itemKey },
                 label = "heroText",
             ) { shown ->
@@ -173,6 +175,17 @@ internal fun StreamingHero(
         }
     }
 }
+
+/**
+ * Changement du texte d'un bandeau en « fondu enchaîné » : l'ancien texte s'efface vite ([HERO_TEXT_OUT_MILLIS]), le
+ * nouveau n'apparaît qu'ensuite. Un texte remplacé aussitôt (sélection qui ne fait que passer) ne se voit jamais.
+ */
+internal fun heroTextIn() = fadeIn(tween(HERO_TEXT_IN_MILLIS, delayMillis = HERO_TEXT_OUT_MILLIS))
+
+internal fun heroTextOut() = fadeOut(tween(HERO_TEXT_OUT_MILLIS))
+
+private const val HERO_TEXT_OUT_MILLIS = 110
+private const val HERO_TEXT_IN_MILLIS = 220
 
 /**
  * Fondu du visuel vers le fond, étroit pour garder l'aperçu net : un peu à gauche (raccord avec le texte),

@@ -37,7 +37,7 @@ import kotlin.math.roundToInt
  * recouvre (largeur [width], floutée en entier), puis un court fondu au-delà de son bord ; le reste de l'écran reste
  * net. Le flou de Compose
  * (`Modifier.blur`) n'existe qu'à partir d'Android 12, que la Fire TV n'a pas : à l'ouverture, l'image de
- * cette bande est prise une fois, réduite, floutée, puis posée par-dessus en fondu.
+ * cette bande est prise une fois, réduite, floutée, puis posée par-dessus en fondu ; retirée d'un coup à la fermeture.
  *
  * [contentKey] : ce que montre le contenu (la rubrique). S'il change, l'image floutée de l'ancien contenu disparaît tout
  * de suite : rubrique choisie dans le menu, elle restait en fondu par-dessus la nouvelle page pendant que le menu se
@@ -57,13 +57,15 @@ fun Frosted(active: Boolean, width: Dp, modifier: Modifier = Modifier, contentKe
         val shot = runCatching { layer.toImageBitmap() }.getOrNull() ?: return@LaunchedEffect
         frosted = withContext(Dispatchers.Default) { runCatching { blurred(shot.asAndroidBitmap(), stripPx, background) }.getOrNull() }
     }
-    val alpha by animateFloatAsState(if (active && frosted != null) 1f else 0f, tween(if (active) 200 else 160), label = "frosted")
+    // Fondu à l'ouverture seulement. À la fermeture, l'image disparaît d'un coup : en fondu, l'ancien contenu flouté
+    // restait en transparence sur le nouveau (catégorie choisie dans le volet : rangée et bandeau déjà changés).
+    val alpha by animateFloatAsState(if (active && frosted != null) 1f else 0f, tween(if (active) 200 else 0), label = "frosted")
     Box(
         modifier.drawWithContent {
             layer.record { this@drawWithContent.drawContent() }
             drawLayer(layer)
             val image = frosted
-            if (image != null && alpha > 0f) {
+            if (active && image != null && alpha > 0f) {
                 drawImage(
                     image,
                     dstOffset = IntOffset.Zero,
