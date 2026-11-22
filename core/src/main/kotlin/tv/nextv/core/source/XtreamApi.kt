@@ -41,8 +41,17 @@ data class VodVideo(val width: Int?, val height: Int?) {
     val unknown: Boolean get() = width == null && height == null
 }
 
-/** Série du catalogue Xtream (`get_series`) : son identifiant et son nom tel que le serveur l'écrit. */
-data class XtreamSeries(val id: String, val name: String)
+/**
+ * Série du catalogue Xtream (`get_series`) : son identifiant et son nom tel que le serveur l'écrit ; identifiant TMDB
+ * (`tmdb`) et année de sortie si le serveur les donne.
+ */
+data class XtreamSeries(val id: String, val name: String, val tmdbId: Long? = null, val year: Int? = null)
+
+/**
+ * Fiche d'une série sur le serveur Xtream (`get_series_info`) : durée de chaque épisode (secondes, par identifiant de
+ * flux), identifiant TMDB et année de sortie si le serveur les donne.
+ */
+data class XtreamSeriesInfo(val durations: Map<String, Int>, val tmdbId: Long? = null, val year: Int? = null)
 
 /** Programme d'une chaîne d'après le guide du compte Xtream (`get_short_epg`). */
 data class XtreamProgramme(val title: String, val description: String?, val startMillis: Long, val stopMillis: Long)
@@ -102,11 +111,11 @@ class XtreamApi(
         }
 
     /**
-     * Durée des épisodes d'une série (`get_series_info`), en secondes, par identifiant de flux de l'épisode (celui de
-     * son adresse, « …/series/…/12345.mkv ») ; `null` : pas de compte Xtream ou pas de réponse.
+     * Fiche d'une série (`get_series_info`) : durée des épisodes en secondes, par identifiant de flux de l'épisode (celui
+     * de son adresse, « …/series/…/12345.mkv »), identifiant TMDB et année ; `null` : pas de compte Xtream ou pas de réponse.
      */
-    suspend fun episodeDurations(source: PlaylistSource, seriesId: String): Map<String, Int>? =
-        call(source, action = "get_series_info", callTimeoutMillis, mapOf("series_id" to seriesId)) { parseEpisodeDurations(it.body.string()) }
+    suspend fun seriesInfo(source: PlaylistSource, seriesId: String): XtreamSeriesInfo? =
+        call(source, action = "get_series_info", callTimeoutMillis, mapOf("series_id" to seriesId)) { parseSeriesInfo(it.body.string()) }
 
     private suspend fun <T : Any> call(
         source: PlaylistSource,
@@ -195,11 +204,34 @@ class XtreamApi(
             (0 until array.length()).mapNotNull { i ->
                 val item = array.optJSONObject(i) ?: return@mapNotNull null
                 val id = item.text("series_id") ?: return@mapNotNull null
-                XtreamSeries(id, item.text("name") ?: return@mapNotNull null)
+                XtreamSeries(id, item.text("name") ?: return@mapNotNull null, tmdbIdOf(item), yearOf(item))
             }
         } catch (e: JSONException) {
             null
         }
+
+        /** Réponse de `get_series_info` : durées des épisodes ([parseEpisodeDurations]) et `info` (TMDB, sortie). */
+        fun parseSeriesInfo(body: String): XtreamSeriesInfo? {
+            val durations = parseEpisodeDurations(body) ?: return null
+            val info = try {
+                JSONObject(body).optJSONObject("info")
+            } catch (e: JSONException) {
+                null
+            }
+            return XtreamSeriesInfo(durations, info?.let(::tmdbIdOf), info?.let(::yearOf))
+        }
+
+        /** Identifiant TMDB d'une fiche Xtream (`tmdb` ou `tmdb_id`, nombre ou texte ; « 0 » : aucun). */
+        private fun tmdbIdOf(item: JSONObject): Long? =
+            (item.text("tmdb") ?: item.text("tmdb_id"))?.toLongOrNull()?.takeIf { it > 0 }
+
+        /** Année de sortie d'une fiche Xtream (`releaseDate`, `release_date` « 2026-04-30 », ou `year`). */
+        private fun yearOf(item: JSONObject): Int? =
+            listOf("releaseDate", "release_date", "year").firstNotNullOfOrNull { name ->
+                item.text(name)?.let { YEAR.find(it)?.value?.toIntOrNull() }
+            }
+
+        private val YEAR = Regex("""(?<!\d)(19|20)\d{2}(?!\d)""")
 
         /**
          * Réponse de `get_series_info` : `{"episodes":{"1":[{"id":"12345","info":{"duration_secs":3120,"duration":"00:52:00"}}]}}`

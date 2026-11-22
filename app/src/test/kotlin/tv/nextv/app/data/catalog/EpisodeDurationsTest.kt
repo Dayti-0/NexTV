@@ -57,7 +57,7 @@ class EpisodeDurationsTest {
                     }
                     "get_series_info" -> when (url.queryParameter("series_id")) {
                         "50" -> """{"episodes":{"1":[{"id":"9001","info":{"duration_secs":3000}}]}}"""
-                        "51" -> """{"episodes":{"1":[{"id":"1001","info":{"duration_secs":3480}},{"id":"1002","info":{"duration":"01:02:10"}}]}}"""
+                        "51" -> """{"info":{"tmdb":"311858","releaseDate":"2026-04-30"},"episodes":{"1":[{"id":"1001","info":{"duration_secs":3480}},{"id":"1002","info":{"duration":"01:02:10"}}]}}"""
                         else -> """{"episodes":{}}"""
                     }
                     else -> """{"user_info":{"auth":1,"status":"Active"}}"""
@@ -117,6 +117,18 @@ class EpisodeDurationsTest {
         idle { again.state.value.episodeSeconds.isNotEmpty() }
         assertEquals(2, again.state.value.episodeSeconds.size)
         assertEquals(asked, actions.size)
+    }
+
+    /** Identifiant TMDB et année donnés par le serveur : la bonne fiche parmi les séries du même nom. */
+    @Test
+    fun theServerGivesTheTmdbIdOfTheSeries() = runBlocking {
+        val (id, first) = playlist()
+        val urls = container.channelDao.episodes(id, "series:l imperatrice remariee").map { it.streamUrl }
+        val found = checkNotNull(container.episodeDurations.find(id, "l imperatrice remariee", "K-Drama", urls))
+        assertEquals(311858L, found.tmdbId)
+        assertEquals(2026, found.year)
+        assertEquals(2, found.durations.size)
+        assertTrue(first > 0)
     }
 
     @Test

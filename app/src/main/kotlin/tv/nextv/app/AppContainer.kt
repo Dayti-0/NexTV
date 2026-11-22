@@ -183,7 +183,7 @@ class AppContainer(context: Context) {
         source = { playlistStore.getSource(it) },
         categories = xtreamApi::seriesCategories,
         series = xtreamApi::series,
-        durations = xtreamApi::episodeDurations,
+        info = xtreamApi::seriesInfo,
     )
 
     /** Section Foot : tour des chaînes « événement » (LALIGA 1 à 5…) retenu d'un jour à l'autre. */

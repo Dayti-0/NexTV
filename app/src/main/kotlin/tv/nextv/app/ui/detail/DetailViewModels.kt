@@ -13,8 +13,12 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.withTimeoutOrNull
 import tv.nextv.app.AppContainer
 import tv.nextv.app.data.catalog.MetadataState
+import tv.nextv.app.data.catalog.ServerSeries
 import tv.nextv.app.data.progress.ProgressEntity
 import tv.nextv.app.data.db.EpisodeRow
 import tv.nextv.app.data.db.MovieVersionRow
@@ -145,6 +149,9 @@ class DetailViewModel(
     /** Vrai dès qu'une version a été choisie sur la fiche : la reprise en cours ne la change plus. */
     private var versionChosen = false
 
+    /** Série retrouvée sur le serveur Xtream (durées des épisodes, identifiant TMDB) ; `null` pour un film. */
+    private var serverSeries: Deferred<ServerSeries?>? = null
+
     init {
         viewModelScope.launch { load() }
     }
@@ -174,12 +181,16 @@ class DetailViewModel(
                 .map { (number, episodes) -> Season(number, episodes) }
                 .sortedBy { it.number ?: 0 }
             mutableState.update { it.copy(seasons = seasons) }
-            // Durée de chaque épisode d'après le serveur Xtream (sans attendre TMDB, et même sans fiche TMDB).
+            // La série sur le serveur Xtream : durée de chaque épisode (sans attendre TMDB, et même sans fiche TMDB) et
+            // identifiant TMDB (la bonne fiche parmi les séries du même nom).
+            val episodes = seasons.flatMap { it.episodes }
+            serverSeries = viewModelScope.async {
+                runCatching {
+                    container.episodeDurations.find(entity.sourceId, entity.itemKey.removePrefix("series:"), entity.groupTitle, episodes.map { it.streamUrl })
+                }.getOrNull()
+            }
             viewModelScope.launch {
-                val episodes = seasons.flatMap { it.episodes }
-                val seconds = runCatching {
-                    container.episodeDurations.of(entity.sourceId, entity.itemKey.removePrefix("series:"), entity.groupTitle, episodes.map { it.streamUrl })
-                }.getOrDefault(emptyMap())
+                val seconds = serverSeries?.await()?.durations.orEmpty()
                 if (seconds.isEmpty()) return@launch
                 val byId = episodes.mapNotNull { episode -> seconds[episode.streamUrl]?.let { episode.id to it } }.toMap()
                 mutableState.update { it.copy(episodeSeconds = byId) }
@@ -218,12 +229,15 @@ class DetailViewModel(
         val metadata = if (!container.hasTmdbKey()) {
             MetadataState.Unavailable(TmdbError.MISSING_KEY)
         } else {
+            // Série : identifiant TMDB et année d'après le serveur, attendus quelques secondes au plus (sinon, par le titre).
+            val server = serverSeries?.let { withTimeoutOrNull(SERVER_SERIES_WAIT_MILLIS) { it.await() } }
             container.metadata.details(
                 // Version de la recherche : les « introuvables » enregistrés avant son amélioration sont ignorés.
                 cacheKey = metadataCacheKey(entity.itemKey),
                 type = if (kind == ContentKind.SERIES) MediaType.SERIES else MediaType.MOVIE,
                 title = title,
-                year = entity.year,
+                year = entity.year ?: server?.year,
+                tmdbId = server?.tmdbId,
             )
         }
         mutableState.update { it.copy(metadata = metadata) }
@@ -336,6 +350,9 @@ internal fun metadataCacheKey(itemKey: String): String = METADATA_CACHE_PREFIX +
 
 /** Clé du titre d'une fiche en cache ([metadataCacheKey] inverse) ; `null` pour une fiche d'une ancienne version. */
 internal fun itemKeyOfCache(cacheKey: String): String? = cacheKey.takeIf { it.startsWith(METADATA_CACHE_PREFIX) }?.removePrefix(METADATA_CACHE_PREFIX)
+
+/** Attente au plus de la série sur le serveur Xtream avant la recherche TMDB par le titre seul. */
+private const val SERVER_SERIES_WAIT_MILLIS = 6_000L
 
 /** Titres similaires affichés sur la fiche Streaming. */
 private const val SIMILAR_COUNT = 20

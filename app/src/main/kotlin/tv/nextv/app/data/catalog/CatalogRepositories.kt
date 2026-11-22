@@ -101,15 +101,23 @@ class MetadataRepository(
         return year != null && year >= now - 1
     }
 
-    suspend fun details(cacheKey: String, type: MediaType, title: String, year: Int?, exact: Boolean = false): MetadataState {
+    /**
+     * Fiche du titre [title], en cache si elle y est encore valable. [tmdbId] : identifiant TMDB donné par le fournisseur
+     * (fiche Xtream d'une série) ; une fiche en cache d'un autre identifiant (trouvée par le titre, une autre série du
+     * même nom) est relue.
+     */
+    suspend fun details(cacheKey: String, type: MediaType, title: String, year: Int?, exact: Boolean = false, tmdbId: Long? = null): MetadataState {
         val now = clock()
         dao.get(cacheKey)?.let { cached ->
             val ttl = cached.ttl()
             // Fiche lue avant que la langue de la bande-annonce soit retenue (et la VF préférée) : relue une fois.
             val current = !cached.found || cached.trailerKey == null || cached.trailerLanguage != null
-            if (current && now - cached.fetchedAt < ttl) return if (cached.found) MetadataState.Available(cached.toDetails(type)) else MetadataState.NotFound
+            val sameTitle = tmdbId == null || (cached.found && cached.tmdbId == tmdbId)
+            if (current && sameTitle && now - cached.fetchedAt < ttl) {
+                return if (cached.found) MetadataState.Available(cached.toDetails(type)) else MetadataState.NotFound
+            }
         }
-        return when (val result = client.lookup(type, title, year, exact)) {
+        return when (val result = client.lookup(type, title, year, exact, tmdbId)) {
             is TmdbResult.Found -> {
                 dao.put(result.details.toEntity(cacheKey, now))
                 MetadataState.Available(result.details)

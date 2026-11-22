@@ -81,6 +81,9 @@ class TmdbClientTest {
                         """{"season_number":4,"episodes":[{"episode_number":1,"runtime":52},{"episode_number":2,"runtime":47},
                         {"episode_number":3,"runtime":null},{"episode_number":4}]}""",
                     )
+                    path.endsWith("/tv/311858") -> json(
+                        """{"id":311858,"name":"Prisoner","first_air_date":"2026-04-30","number_of_seasons":1,"genres":[{"name":"Crime"}]}""",
+                    )
                     path.endsWith("/tv/42/aggregate_credits") -> json(
                         """{"cast":[{"name":"Pedro Pascal","order":0,"roles":[{"character":"Joel","episode_count":9},{"character":"Invité","episode_count":1}]}]}""",
                     )
@@ -273,6 +276,20 @@ class TmdbClientTest {
         assertEquals(TmdbResult.NotFound, client.lookup(MediaType.MOVIE, "Avatar 3", null, exact = true))
         val found = client.lookup(MediaType.MOVIE, "Avatar", null, exact = true) as TmdbResult.Found
         assertEquals(19995L, found.details.tmdbId)
+    }
+
+    /** Identifiant TMDB donné par le fournisseur : sa fiche directement, pas une autre série du même nom. */
+    @Test
+    fun `an id from the provider is read without searching the title`() = runBlocking {
+        val found = client.lookup(MediaType.SERIES, "Prisoner", null, tmdbId = 311858) as TmdbResult.Found
+        assertEquals(311858L, found.details.tmdbId)
+        assertEquals(2026, found.details.year)
+        assertTrue(requests.none { it.url.encodedPath.contains("/search/") })
+        // Identifiant inconnu de TMDB : recherche par le titre.
+        requests.clear()
+        val unknown = client.lookup(MediaType.MOVIE, "Avatar", 2009, tmdbId = 999) as TmdbResult.Found
+        assertEquals(19995L, unknown.details.tmdbId)
+        assertTrue(requests.any { it.url.encodedPath.endsWith("/search/movie") })
     }
 
     @Test

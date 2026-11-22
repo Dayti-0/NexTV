@@ -7,10 +7,17 @@ import tv.nextv.core.catalog.ContentClassifier
 import tv.nextv.core.model.PlaylistSource
 import tv.nextv.core.source.Catchup
 import tv.nextv.core.source.XtreamSeries
+import tv.nextv.core.source.XtreamSeriesInfo
 
 /**
- * Durée des épisodes d'une série d'après le serveur Xtream : celle de chaque fichier, que le serveur connaît
- * (`get_series_info`), même pour une série trop récente pour que TMDB la donne.
+ * Série de la playlist retrouvée sur le serveur Xtream : durée de chaque épisode (secondes, par adresse de flux) et,
+ * si le serveur les donne, identifiant TMDB et année de sortie (la bonne fiche parmi les séries du même nom).
+ */
+data class ServerSeries(val durations: Map<String, Int>, val tmdbId: Long? = null, val year: Int? = null)
+
+/**
+ * Série de la playlist sur le serveur Xtream : durée des épisodes, celle de chaque fichier, que le serveur connaît
+ * (`get_series_info`), même pour une série trop récente pour que TMDB la donne ; identifiant TMDB de la série.
  *
  * La playlist ne dit pas quelle série du serveur est la sienne : elle est retrouvée par sa catégorie (le groupe de la
  * playlist, `get_series_categories`), puis par son titre parmi les séries de cette catégorie (`get_series`, tout le
@@ -21,12 +28,12 @@ class EpisodeDurations(
     private val source: suspend (Long) -> PlaylistSource?,
     private val categories: suspend (PlaylistSource) -> Map<String, String>?,
     private val series: suspend (PlaylistSource, String?) -> List<XtreamSeries>?,
-    private val durations: suspend (PlaylistSource, String) -> Map<String, Int>?,
+    private val info: suspend (PlaylistSource, String) -> XtreamSeriesInfo?,
 ) {
     private val lock = Mutex()
 
-    /** Durées trouvées (identifiant de flux → secondes), par série de la playlist. */
-    private val found = HashMap<String, Map<String, Int>>()
+    /** Séries trouvées (durées par identifiant de flux, TMDB), par série de la playlist. */
+    private val found = HashMap<String, XtreamSeriesInfo>()
 
     /** Catégories de séries, puis catalogue entier, par playlist. */
     private val categoriesBySource = HashMap<Long, Map<String, String>>()
@@ -35,22 +42,30 @@ class EpisodeDurations(
     /**
      * Durée de chaque épisode, en secondes, par adresse de flux ([episodeUrls]) ; vide si ce n'est pas une playlist
      * Xtream, si la série n'est pas retrouvée sur le serveur ou s'il ne répond pas.
+     */
+    suspend fun of(sourceId: Long, seriesKey: String, group: String?, episodeUrls: List<String>): Map<String, Int> =
+        find(sourceId, seriesKey, group, episodeUrls)?.durations.orEmpty()
+
+    /**
+     * La série sur le serveur : durées par adresse de flux ([episodeUrls]), identifiant TMDB et année ; `null` si ce
+     * n'est pas une playlist Xtream, si la série n'est pas retrouvée sur le serveur ou s'il ne répond pas.
      *
      * @param seriesKey clé de la série sans « series: » (titre en minuscules, voir [ItemKeys.normalize]).
      * @param group groupe de la playlist où la série est rangée.
      */
-    suspend fun of(sourceId: Long, seriesKey: String, group: String?, episodeUrls: List<String>): Map<String, Int> {
+    suspend fun find(sourceId: Long, seriesKey: String, group: String?, episodeUrls: List<String>): ServerSeries? {
         // Épisodes servis par le serveur Xtream (« …/series/identifiant/mot de passe/12345.mkv »).
         val ids = episodeUrls.mapNotNull { url -> if ("/series/" in url) Catchup.streamId(url)?.let { it to url } else null }.toMap()
-        if (ids.isEmpty() || seriesKey.isEmpty()) return emptyMap()
+        if (ids.isEmpty() || seriesKey.isEmpty()) return null
         val cacheKey = "$sourceId|$seriesKey|${group.orEmpty()}"
         val known = lock.withLock { found[cacheKey] } ?: lookUp(sourceId, seriesKey, group, ids.keys)?.also { result ->
             lock.withLock { found[cacheKey] = result }
-        } ?: return emptyMap()
-        return ids.mapNotNull { (id, url) -> known[id]?.let { url to it } }.toMap()
+        } ?: return null
+        val durations = ids.mapNotNull { (id, url) -> known.durations[id]?.let { url to it } }.toMap()
+        return ServerSeries(durations, known.tmdbId, known.year)
     }
 
-    private suspend fun lookUp(sourceId: Long, seriesKey: String, group: String?, ids: Set<String>): Map<String, Int>? {
+    private suspend fun lookUp(sourceId: Long, seriesKey: String, group: String?, ids: Set<String>): XtreamSeriesInfo? {
         val playlist = source(sourceId) ?: return null
         val wanted = ItemKeys.normalize(group.orEmpty())
         val categoryId = if (wanted.isEmpty()) {
@@ -65,15 +80,18 @@ class EpisodeDurations(
             matching(playlist, inCategory, seriesKey, ids)?.let { return it }
         }
         val catalog = lock.withLock { catalogBySource[sourceId] } ?: series(playlist, null)?.also { lock.withLock { catalogBySource[sourceId] = it } } ?: return null
-        return matching(playlist, catalog, seriesKey, ids) ?: emptyMap()
+        return matching(playlist, catalog, seriesKey, ids) ?: XtreamSeriesInfo(emptyMap())
     }
 
-    /** Durées de la série de [list] qui porte ce titre et contient ces épisodes (la même en VF et en VOSTFR : la bonne). */
-    private suspend fun matching(playlist: PlaylistSource, list: List<XtreamSeries>, seriesKey: String, ids: Set<String>): Map<String, Int>? {
+    /** Fiche de la série de [list] qui porte ce titre et contient ces épisodes (la même en VF et en VOSTFR : la bonne). */
+    private suspend fun matching(playlist: PlaylistSource, list: List<XtreamSeries>, seriesKey: String, ids: Set<String>): XtreamSeriesInfo? {
         val candidates = list.filter { titleKey(it.name) == seriesKey }.take(MAX_CANDIDATES)
         for (candidate in candidates) {
-            val episodes = durations(playlist, candidate.id) ?: continue
-            if (episodes.keys.any { it in ids }) return episodes
+            val sheet = info(playlist, candidate.id) ?: continue
+            // TMDB et année : ceux de la fiche, sinon ceux de la liste des séries.
+            if (sheet.durations.keys.any { it in ids }) {
+                return sheet.copy(tmdbId = sheet.tmdbId ?: candidate.tmdbId, year = sheet.year ?: candidate.year)
+            }
         }
         return null
     }

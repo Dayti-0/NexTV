@@ -93,19 +93,20 @@ class TmdbClient(
     fun isInterfaceLanguage(trailerLanguage: String?): Boolean =
         !trailerLanguage.isNullOrEmpty() && trailerLanguage.substringBefore('-') == language.substringBefore('-')
 
-    /** Recherche un film ou une série par titre (et année si connue), puis en lit la fiche. */
     /**
-     * Fiche du film ou de la série [title]. [exact] : seulement un résultat portant exactement ce titre
-     * (programmes du guide hors films et séries : pas de fiche approchante, donc pas de fausse image).
+     * Fiche du film ou de la série [title] (et année si connue). [exact] : seulement un résultat portant exactement ce
+     * titre (programmes du guide hors films et séries : pas de fiche approchante, donc pas de fausse image).
+     * [tmdbId] : identifiant TMDB donné par le fournisseur (fiche Xtream de la série) ; lu directement, sans recherche
+     * par titre, qui prenait une autre série du même nom (« Prisoner » de 1979 au lieu de celle de 2026).
      */
-    suspend fun lookup(type: MediaType, title: String, year: Int?, exact: Boolean = false): TmdbResult {
+    suspend fun lookup(type: MediaType, title: String, year: Int?, exact: Boolean = false, tmdbId: Long? = null): TmdbResult {
         val fallback = fallbackApiKey()?.trim()?.takeIf { it.isNotEmpty() }
         val key = apiKey()?.trim()?.takeIf { it.isNotEmpty() } ?: fallback ?: return TmdbResult.Failed(TmdbError.MISSING_KEY)
-        val result = lookupWith(key, type, title, year, exact)
+        val result = lookupWith(key, type, title, year, exact, tmdbId)
         // Clé des réglages refusée (ancienne, mal recopiée…) : celle fournie avec l'application.
         if (result == TmdbResult.Failed(TmdbError.INVALID_KEY) && fallback != null && fallback != key) {
             logger.warn(TAG, "Clé TMDB des réglages refusée : clé fournie avec l'application")
-            return lookupWith(fallback, type, title, year, exact)
+            return lookupWith(fallback, type, title, year, exact, tmdbId)
         }
         return result
     }
@@ -277,8 +278,16 @@ class TmdbClient(
         )
     }
 
-    private suspend fun lookupWith(key: String, type: MediaType, title: String, year: Int?, exact: Boolean = false): TmdbResult {
+    private suspend fun lookupWith(key: String, type: MediaType, title: String, year: Int?, exact: Boolean = false, tmdbId: Long? = null): TmdbResult {
         return try {
+            // Identifiant du fournisseur : sa fiche, sauf s'il est inconnu de TMDB (alors recherche par titre).
+            if (tmdbId != null && tmdbId > 0) {
+                try {
+                    return TmdbResult.Found(details(key, type, tmdbId))
+                } catch (e: NotFoundException) {
+                    logger.warn(TAG, "Identifiant TMDB du fournisseur inconnu pour « $title » : recherche par titre")
+                }
+            }
             // Titre tel quel, puis sans ses parties entre parenthèses ou crochets ; avec l'année, puis sans.
             val queries = listOf(title, title.replace(BRACKETED, " ").replace(SPACES, " ").trim())
                 .filter { it.isNotBlank() }

@@ -189,4 +189,28 @@ class XtreamApiTest {
         assertEquals(emptyMap<String, Int>(), XtreamApi.parseEpisodeDurations("""{"episodes":[]}"""))
         assertNull(XtreamApi.parseEpisodeDurations("<html>Erreur</html>"))
     }
+
+    /** Identifiant TMDB et année d'une série, dans la liste des séries et dans sa fiche (quand le serveur les donne). */
+    @Test
+    fun readsTheTmdbIdAndYearOfASeries() {
+        assertEquals(
+            listOf(
+                XtreamSeries("4336", "Prisoner (MULTI) FHD", tmdbId = 311858, year = 2026),
+                XtreamSeries("12", "Sans fiche"),
+                XtreamSeries("13", "Année seule", year = 1979),
+            ),
+            XtreamApi.parseSeries(
+                """[{"name":"Prisoner (MULTI) FHD","series_id":4336,"releaseDate":"2026-04-30","tmdb":"311858"},
+                {"name":"Sans fiche","series_id":12,"tmdb":"0","releaseDate":""},
+                {"name":"Année seule","series_id":13,"tmdb_id":null,"year":"1979"}]""",
+            ),
+        )
+        val info = XtreamApi.parseSeriesInfo(
+            """{"info":{"name":"Prisoner (MULTI) FHD","release_date":"2026-04-30","tmdb":311858},
+            "episodes":{"1":[{"id":"1001","info":{"duration_secs":2700}}]}}""",
+        )
+        assertEquals(XtreamSeriesInfo(mapOf("1001" to 2700), tmdbId = 311858, year = 2026), info)
+        assertEquals(XtreamSeriesInfo(emptyMap()), XtreamApi.parseSeriesInfo("""{"info":[],"episodes":[]}"""))
+        assertNull(XtreamApi.parseSeriesInfo("<html>Erreur</html>"))
+    }
 }

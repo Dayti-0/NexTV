@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.217
+- Fiche d’une série : la bonne série quand plusieurs portent le même nom (« Prisoner » de 2026 et non le feuilleton de 1979), d’après l’identifiant donné par l’abonnement
+
 ## 0.2.216
 - Streaming : après un film repris, choisir Films ou Séries dans le menu ne fait plus glisser la page vers « Reprendre la lecture » : elle reste sur le Top 10
 - Streaming : en choisissant une catégorie dans le volet, les titres du bandeau ne se superposent plus (l’ancien s’efface avant que le nouveau apparaisse)
