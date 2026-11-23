@@ -40,6 +40,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
+import tv.nextv.core.catalog.ContentClassifier
 import tv.nextv.app.ui.home.TrailerFullScreen
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.withFrameNanos
@@ -532,7 +533,10 @@ private fun EpisodeItem(episode: EpisodeRow, minutes: Int?, modifier: Modifier, 
                     episode.episode?.let { stringResource(R.string.detail_episode, it) } ?: episode.name,
                     style = MaterialTheme.typography.titleSmall,
                 )
-                Text(episode.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                // Titre propre à l'épisode seulement (pas le nom brut de la playlist : série, « (MULTI) FHD S01 E01 »).
+                (if (episode.episode != null) ContentClassifier.episodeTitle(episode.name) else null)?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
             // Durée de l'épisode, à droite.
             if (minutes != null) {

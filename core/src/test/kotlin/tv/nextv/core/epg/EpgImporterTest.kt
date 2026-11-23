@@ -99,6 +99,22 @@ class EpgImporterTest {
         )
     }
 
+    /** Radio du même nom qu'une chaîne de télé (« RTL ») : aucun guide, même avec un identifiant. */
+    @Test
+    fun `radios never take a television guide`() {
+        val guide = listOf(XmltvChannel("RTL.de", listOf("RTL")), XmltvChannel("M6.fr", listOf("M6")))
+        val channels = listOf(
+            EpgChannelRef(1, tvgId = null, tvgName = null, name = "RTL", radio = true),
+            EpgChannelRef(2, tvgId = "RTL.de", tvgName = null, name = "|FR| RTL", radio = true),
+            EpgChannelRef(3, tvgId = null, tvgName = null, name = "M6"),
+        )
+
+        val importer = EpgImporter(parserFactory = { KXmlParser() })
+        assertEquals(mapOf(3L to "m6.fr"), importer.match(channels, guide, emptySet()))
+        // Sans guide (identifiants de la playlist seuls) : pareil.
+        assertEquals(emptyMap<Long, String>(), importer.match(channels.take(2), emptyList(), emptySet()))
+    }
+
     @Test
     fun `a channel from another country never takes the French programme of the same name`() {
         val guide = listOf(

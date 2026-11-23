@@ -113,6 +113,18 @@ object ContentClassifier {
         return extractYear(before).first.ifBlank { cleaned }
     }
 
+    /**
+     * Titre propre à un épisode d'après son nom dans la playlist (« Série (MULTI) FHD S01 E03 - Le retour » → « Le
+     * retour »), `null` quand il n'en a pas : seulement le nom de la série et le numéro, inutile à répéter sous
+     * « Épisode 3 » (« The Midnight Romance in Hagwon (MULTI) FHD S01 E01 » s'affichait tel quel, vu le 23/11/2026).
+     */
+    fun episodeTitle(name: String): String? {
+        val cleaned = cleanTitle(name)
+        val episode = EPISODE.find(cleaned) ?: return cleaned.takeIf { it != seriesTitle(name) }?.ifBlank { null }
+        val after = cleaned.substring(episode.range.last + 1).trim().trimStart('-', ':', '·', '|', '.', ',').trim()
+        return after.takeIf { it.length >= 2 && it != seriesTitle(name) }
+    }
+
     /** Titre d'un film d'après son nom dans la playlist (« FR: The Virtuoso (2021) FHD » → « The Virtuoso »). */
     fun movieTitle(name: String): String = movieTitleAndYear(cleanTitle(name)).first
 

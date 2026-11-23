@@ -14,6 +14,11 @@ data class EpgChannelRef(
     val tvgId: String?,
     val tvgName: String?,
     val name: String,
+    /**
+     * Radio (rubriques Radios et Web radios) : jamais de guide de télévision. La radio « RTL » prenait celui de la
+     * chaîne allemande RTL (vu sur la box le 23/11/2026) ; l'émission en cours vient des services des radios.
+     */
+    val radio: Boolean = false,
 )
 
 /** Destination des programmes importés, par lots. */
@@ -190,6 +195,7 @@ class EpgImporter(
         val result = HashMap<Long, String>()
         if (xmltvChannels.isEmpty()) {
             for (channel in channels) {
+                if (channel.radio) continue
                 val id = channel.tvgId?.let(::normalizeId)?.takeIf { it.isNotEmpty() && it !in excluded } ?: continue
                 result[channel.channelId] = id
             }
@@ -234,6 +240,7 @@ class EpgImporter(
             antennas
         }
         for (channel in channels) {
+            if (channel.radio) continue
             val names = listOfNotNull(channel.tvgName, channel.name)
             // Chaîne d'un autre pays (« |DE| DAZN 1 », « |AR| BEIN SPORTS 1 ») : seulement une chaîne de ce pays dans
             // le guide, jamais la française du même nom (autre programme). Pays absent du guide : pas de programme.
@@ -263,7 +270,7 @@ class EpgImporter(
          * avec une version antérieure est réimporté dès le lancement suivant, sans attendre sa
          * réimportation quotidienne.
          */
-        const val VERSION = 12
+        const val VERSION = 13
 
         /** Nom du guide de la chaîne nationale France 3 ([normalizeName]). */
         private const val FRANCE_3 = "france3"

@@ -319,7 +319,7 @@ interface SourceDao {
 
 data class EpgAssignmentRow(val tvgId: String?, val name: String, val epgChannelId: String)
 
-data class EpgRefRow(val id: Long, val tvgId: String?, val tvgName: String?, val name: String)
+data class EpgRefRow(val id: Long, val tvgId: String?, val tvgName: String?, val name: String, val theme: String? = null, val groupTitle: String? = null)
 
 data class GroupRow(val title: String?, val count: Int)
 
@@ -496,7 +496,7 @@ interface ChannelDao {
     @Query("SELECT tvgId, name, epgChannelId FROM channels WHERE sourceId = :sourceId AND epgChannelId IS NOT NULL")
     suspend fun epgAssignments(sourceId: Long): List<EpgAssignmentRow>
 
-    @Query("SELECT id, tvgId, tvgName, name FROM channels WHERE sourceId = :sourceId AND kind = 'LIVE'")
+    @Query("SELECT id, tvgId, tvgName, name, theme, groupTitle FROM channels WHERE sourceId = :sourceId AND kind = 'LIVE'")
     suspend fun epgRefs(sourceId: Long): List<EpgRefRow>
 
     @Query("UPDATE channels SET epgChannelId = NULL WHERE sourceId = :sourceId")

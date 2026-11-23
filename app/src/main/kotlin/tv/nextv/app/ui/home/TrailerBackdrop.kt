@@ -74,6 +74,12 @@ internal fun TrailerBackdrop(
     renderScale: Float = 1f,
     /** Qualité choisie par YouTube (« hd720 », « hd1080 »), redonnée à chaque changement. */
     onQuality: (String) -> Unit = {},
+    /**
+     * Vidéo lancée sans délai, gardée cachée et muette ce temps au début, puis repartie de 0 : l'habillage de YouTube
+     * du démarrage (chaîne, titre, gros symbole pause) n'est plus visible (bande-annonce en plein écran, vue sur la box
+     * le 23/11/2026). 0 : montrée dès qu'elle joue.
+     */
+    primeMillis: Long = 0,
 ) {
     // Le lecteur se prépare dès [PRELOAD_AFTER_MILLIS] (caché, muet), pendant le délai : la bande-annonce
     // apparaît au bout du délai si elle est prête (le chargement de YouTube prend plusieurs secondes sur
@@ -101,7 +107,7 @@ internal fun TrailerBackdrop(
         val height = maxHeight.value.roundToInt()
         if (width > 0 && height > 0) {
             androidx.compose.runtime.key(key, width, height) {
-                TrailerPage(key, captions(language), width, height, zoom, renderScale, muted, delayPassed, onShown, onFinished, onFailed, onQuality)
+                TrailerPage(key, captions(language), width, height, zoom, renderScale, muted, delayPassed, primeMillis, onShown, onFinished, onFailed, onQuality)
             }
         }
     }
@@ -159,6 +165,8 @@ internal fun TrailerFullScreen(
                 current.first, current.second, Modifier.fillMaxSize(), delayMillis = 0, muted = false,
                 onFinished = { if (failedKey != current.first) close() },
                 onFailed = onFailed,
+                renderScale = FULL_SCREEN_RENDER_SCALE,
+                primeMillis = FULL_SCREEN_PRIME_MILLIS,
             )
         }
     }
@@ -220,6 +228,7 @@ private fun TrailerPage(
     muted: Boolean,
     /** Délai d'attente écoulé : la vidéo peut apparaître (avant, elle se prépare cachée et muette). */
     delayPassed: Boolean,
+    primeMillis: Long,
     onShown: (Boolean) -> Unit,
     onFinished: () -> Unit,
     onFailed: () -> Unit,
@@ -261,7 +270,7 @@ private fun TrailerPage(
     AndroidView(
         factory = { context ->
             trailerView(
-                context, key, captions, width, height, zoom, renderScale, muted || !delayPassed, delayPassed,
+                context, key, captions, width, height, zoom, renderScale, muted || !delayPassed, delayPassed, primeMillis,
                 onVisible = { ready = it },
                 onFinished = { ready = false; shown(false); finished() },
                 onFailed = { failed() },
@@ -295,6 +304,7 @@ private fun trailerView(
     startMuted: Boolean,
     /** Délai d'attente déjà écoulé : la vidéo apparaît dès qu'elle démarre. */
     startAllowed: Boolean,
+    primeMillis: Long,
     onVisible: (Boolean) -> Unit,
     onFinished: () -> Unit,
     onFailed: () -> Unit,
@@ -380,6 +390,9 @@ private fun trailerView(
         var hidden=true;
         var allowed=${if (startAllowed) "true" else "false"};
         var primed=false;
+        // Début gardé caché (plein écran) : la vidéo joue, cachée et muette, puis repart de 0 et apparaît.
+        var primeMs=$primeMillis;
+        var priming=false;
         var done=false;
         var startTimer=null;
         function call(f){try{f();}catch(e){}}
@@ -448,7 +461,11 @@ private fun trailerView(
               onStateChange:function(e){
                 if(e.data==1){askBest(e.target);reportQuality(e.target);}
                 if(e.data==1&&hidden){
-                  if(allowed){reveal();}
+                  if(allowed&&primeMs>0&&!primed){
+                    primed=true;priming=true;clearTimeout(startTimer);
+                    setTimeout(function(){if(done)return;priming=false;call(function(){player.seekTo(0,true);});setTimeout(function(){if(hidden&&!done)reveal();},$REVEAL_AFTER_SEEK_MILLIS);},primeMs);
+                  }
+                  else if(allowed){if(!priming)reveal();}
                   else{primed=true;clearTimeout(startTimer);}
                 }
                 if(e.data==0){hidden=true;show(false);finish();}
@@ -497,6 +514,12 @@ internal const val TRAILER_HERO_RENDER_SCALE = 1.5f
 
 /** Vidéo préparée qui repart de 0 : elle apparaît après ce temps (l'image du début est alors affichée). */
 private const val REVEAL_AFTER_SEEK_MILLIS = 300
+
+/** Bande-annonce en plein écran : début gardé caché ce temps (habillage de YouTube du démarrage). */
+private const val FULL_SCREEN_PRIME_MILLIS = 3_000L
+
+/** Bande-annonce en plein écran dessinée en 1080p (habillage de YouTube deux fois plus petit, image nette). */
+private const val FULL_SCREEN_RENDER_SCALE = 2f
 
 /** Temps passé sur la même affiche avant que sa bande-annonce démarre (réglable). */
 internal const val TRAILER_DELAY_MILLIS = 3_000L

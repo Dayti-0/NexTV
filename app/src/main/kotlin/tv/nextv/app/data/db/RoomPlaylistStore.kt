@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import tv.nextv.core.catalog.ContentClassifier
 import tv.nextv.core.catalog.LiveVariants
+import tv.nextv.core.catalog.ChannelLineup
 import tv.nextv.core.epg.EpgChannelRef
 import tv.nextv.core.error.SourceError
 import tv.nextv.core.model.Channel
@@ -169,7 +170,13 @@ class RoomPlaylistStore(
     }
 
     override suspend fun getEpgChannelRefs(sourceId: Long): List<EpgChannelRef> =
-        channelDao.epgRefs(sourceId).map { EpgChannelRef(it.id, it.tvgId, it.tvgName, it.name) }
+        channelDao.epgRefs(sourceId).map { EpgChannelRef(it.id, it.tvgId, it.tvgName, it.name, radio = isRadioRow(it)) }
+
+    /** Chaîne rangée parmi les radios (rubriques Radios et Web radios), ou dans une catégorie de radios de la playlist. */
+    private fun isRadioRow(row: EpgRefRow): Boolean =
+        row.theme == ChannelLineup.Section.RADIO.title || row.theme == ChannelLineup.Section.WEBRADIO.title ||
+            row.groupTitle == tv.nextv.core.catalog.InternetRadios.GROUP || row.groupTitle == tv.nextv.core.catalog.InternetRadios.FRENCH_GROUP ||
+            (row.groupTitle?.contains("radio", ignoreCase = true) == true && ChannelLineup.isRadioName(row.name))
 
     override suspend fun beginEpgImport(sourceId: Long): EpgImportSession {
         val committed = sourceDao.get(sourceId)?.epgGeneration ?: 0L

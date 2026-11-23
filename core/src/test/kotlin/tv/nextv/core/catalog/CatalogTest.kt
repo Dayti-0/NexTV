@@ -12,6 +12,13 @@ import tv.nextv.core.model.StreamQuality
 class QualityParserTest {
 
     @Test
+    fun `episode titles leave out the series name and the episode number`() {
+        org.junit.Assert.assertNull(ContentClassifier.episodeTitle("The Midnight Romance in Hagwon (MULTI) FHD S01 E01"))
+        org.junit.Assert.assertEquals("Le retour", ContentClassifier.episodeTitle("FR: Ma Série (MULTI) FHD S01 E03 - Le retour"))
+        org.junit.Assert.assertNull(ContentClassifier.episodeTitle("Ma Série S02E04"))
+    }
+
+    @Test
     fun `quality tags are detected and removed from the base name`() {
         val fhd = QualityParser.parse("FR| TF1 FHD")
         val hd = QualityParser.parse("FR| TF1 HD")

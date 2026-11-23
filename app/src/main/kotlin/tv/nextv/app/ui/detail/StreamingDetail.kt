@@ -57,6 +57,7 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.text.style.TextAlign
+import tv.nextv.core.catalog.ContentClassifier
 import tv.nextv.core.meta.CastMember
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
@@ -522,7 +523,10 @@ private fun EpisodeCard(
             color = if (current) colors.primary else colors.onSurface,
             maxLines = 1,
         )
-        Text(episode.name, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        // Titre propre à l'épisode seulement (pas le nom brut de la playlist : série, « (MULTI) FHD S01 E01 »).
+        (if (episode.episode != null) ContentClassifier.episodeTitle(episode.name) else null)?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
         Spacer(Modifier.height(2.dp))
     }
 }

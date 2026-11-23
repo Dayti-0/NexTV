@@ -1128,10 +1128,20 @@ fun PlayerOverlay(
                         Text(stringResource(R.string.player_error_title), style = MaterialTheme.typography.titleLarge)
                     }
                     Text(message, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        PillButton(stringResource(R.string.action_retry), onRetry, icon = Icons.Filled.Refresh, style = PillStyle.Primary)
-                        if (state.isLive) PillButton(stringResource(R.string.player_next_channel), { onZap(+1) }, icon = Icons.Filled.KeyboardArrowUp)
-                        PillButton(stringResource(R.string.action_back), onBack, style = PillStyle.Ghost)
+                    if (window.isTv) {
+                        // Télécommande : les touches du lecteur agissent (OK, ↑, Retour) ; des boutons qu'on ne peut pas
+                        // sélectionner laissaient croire que « Chaîne suivante » ne marchait pas (vu sur la box le 23/11/2026).
+                        Text(
+                            stringResource(if (state.isLive) R.string.player_error_keys_live else R.string.player_error_keys),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    } else {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            PillButton(stringResource(R.string.action_retry), onRetry, icon = Icons.Filled.Refresh, style = PillStyle.Primary)
+                            if (state.isLive) PillButton(stringResource(R.string.player_next_channel), { onZap(+1) }, icon = Icons.Filled.KeyboardArrowUp)
+                            PillButton(stringResource(R.string.action_back), onBack, style = PillStyle.Ghost)
+                        }
                     }
                 }
             }
