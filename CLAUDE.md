@@ -7,13 +7,19 @@ Application IPTV Android en Kotlin / Jetpack Compose (Media3). Elle s'appelait N
 
 ## Échanges avec l'utilisateur
 
-- Il écrit en français, souvent avec des photos de l'écran : une Fire TV, une télé Sony, et une box Raspberry Pi
-  sous LineageOS (KonstaKANG, Android 13+) branchée sur le moniteur ASUS (une photo de l'écran ASUS, c'est la box).
+- Il écrit en français, souvent avec des photos de l'écran : une Fire TV, une télé Sony, et une box Raspberry Pi 5
+  sous LineageOS (KonstaKANG, Android 15) branchée sur le moniteur ASUS (une photo de l'écran ASUS, c'est la box).
   Sur la télé Sony, c'est une Fire TV de première génération, peu puissante (environ 1 Go de mémoire) qui tourne ;
   il a aussi une Fire TV 4K, peu puissante elle aussi : les deux servent d'essai en conditions réelles.
   Demander sur quel appareil est prise une autre photo avant d'en tirer une cause propre à un modèle. Répondre en français, simplement, sans jargon.
 - Les tests sur l'appareil sont faits par lui : dire clairement ce qui a été vérifié ici (tests, captures) et ce
   qui reste à voir sur la télé.
+- Relais chez lui (23/11/2026) : un Raspberry Pi 4 (2 Go, Raspberry Pi OS Lite, nom `nixtv-pi`, utilisateur `nixtv-pi`)
+  sur le même réseau que les télés, avec `adb`, `git` et Claude Code lancé en `claude remote-control` dans `~/nixtv`
+  (dans `tmux`, à relancer après un redémarrage). Une session lancée dessus (`create_session` sur son environnement
+  « nixtv-pi », de type bridge) commande les télés par ADB : installer une version, lire `logcat`, faire des captures.
+  Box reliée (appli `tv.nextv.app`) ; les deux Fire TV restent à relier (débogage ADB à activer). Ne jamais écrire les
+  adresses du réseau de l'utilisateur dans le dépôt. Rien n'est désinstallé ni effacé sur les télés sans son accord.
 - Point en attente : plantage du guide sur la Fire TV après la 25e chaîne, non reproduit. Il faut la photo de la
   carte « Dernier incident » (Réglages) pour en connaître la cause.
 
