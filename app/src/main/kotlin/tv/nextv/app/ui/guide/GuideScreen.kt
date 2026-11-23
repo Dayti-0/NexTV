@@ -542,9 +542,14 @@ private fun TimeRuler(
     modifier: Modifier = Modifier,
 ) {
     val totalWidth = minutes(state.windowEnd - state.windowStart) * minuteWidth
+    // Date du jour affiché au bord gauche de la frise : elle suit le défilement (demain, après-demain…).
+    val minutePx = with(LocalDensity.current) { minuteWidth.toPx() }
+    val shownDay by remember(state.windowStart, minutePx) {
+        derivedStateOf { dayStart(state.windowStart + (scroll.value / minutePx * 60_000f).toLong()) }
+    }
     Row(modifier.fillMaxWidth().height(28.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(
-            DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(state.now)),
+            DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(shownDay)),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.width(channelColumnWidth + 6.dp),
@@ -992,6 +997,16 @@ private fun visibleProgrammes(channel: GuideChannel, state: GuideUiState): List<
 private const val HALF_HOUR = 30 * 60_000L
 
 private fun minutes(millis: Long): Float = millis / 60_000f
+
+/** Minuit (heure locale) du jour de [millis]. */
+private fun dayStart(millis: Long): Long =
+    java.util.Calendar.getInstance().apply {
+        timeInMillis = millis
+        set(java.util.Calendar.HOUR_OF_DAY, 0)
+        set(java.util.Calendar.MINUTE, 0)
+        set(java.util.Calendar.SECOND, 0)
+        set(java.util.Calendar.MILLISECOND, 0)
+    }.timeInMillis
 
 private operator fun Float.times(dp: Dp): Dp = dp * this
 
