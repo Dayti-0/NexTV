@@ -236,6 +236,9 @@ fun HomeScreen(
     var resumeOpen by rememberSaveable { mutableStateOf(false) }
     // Fenêtre « Favoris » ouverte depuis le menu de Classique (gardée au retour d'une fiche ou du lecteur).
     var favoritesOpen by rememberSaveable { mutableStateOf(false) }
+    // Bouton du menu de Classique d'où l'on est parti (Favoris, Reprendre, Recherche, Réglages) : il reprend la sélection
+    // au retour ; une tuile choisie l'efface.
+    var menuReturn by rememberSaveable { mutableStateOf<MenuButton?>(null) }
     BackHandler(enabled = layout == HomeLayout.PREMIUM && !premiumMenu) { premiumMenu = true }
     // Interfaces à rangées : « Retour » ramène d'une catégorie ou d'une recherche aux rangées.
     BackHandler(enabled = layout != HomeLayout.LIVE_CENTER && section.kind() != null && (category != Category.All || query.isNotEmpty())) {
@@ -378,15 +381,29 @@ fun HomeScreen(
         PremiumMenu(
             current = section,
             onSection = { target ->
+                menuReturn = null
                 viewModel.selectSection(target)
                 premiumMenu = false
             },
-            onFavorites = { favoritesOpen = true },
-            onContinue = { resumeOpen = true },
-            onSettings = onSettings,
-            onSearch = openSearch,
+            onFavorites = {
+                menuReturn = MenuButton.FAVORITES
+                favoritesOpen = true
+            },
+            onContinue = {
+                menuReturn = MenuButton.CONTINUE
+                resumeOpen = true
+            },
+            onSettings = {
+                menuReturn = MenuButton.SETTINGS
+                onSettings()
+            },
+            onSearch = {
+                menuReturn = MenuButton.SEARCH
+                openSearch()
+            },
             counts = menuCounts,
             subscription = subscription,
+            returnTo = menuReturn,
         )
         return
     }

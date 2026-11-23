@@ -20,6 +20,16 @@ Application IPTV Android en Kotlin / Jetpack Compose (Media3). Elle s'appelait N
   « nixtv-pi », de type bridge) commande les télés par ADB : installer une version, lire `logcat`, faire des captures.
   Box reliée (appli `tv.nextv.app`) ; les deux Fire TV restent à relier (débogage ADB à activer). Ne jamais écrire les
   adresses du réseau de l'utilisateur dans le dépôt. Rien n'est désinstallé ni effacé sur les télés sans son accord.
+  La session du Pi ne peut pas écrire à celle-ci : lire ses réponses avec `list_events` (types `result`, `assistant`).
+  Sa sécurité refuse de changer un réglage de la box sur la seule demande d'une autre session : l'utilisateur le lui
+  confirme lui-même (règles `allow` dans `~/nixtv/.claude/settings.json` du Pi). Installer une version : APK officiel
+  `NexTV-vX.Y.Z.arm64-v8a.apk` de la version GitHub + `.sha256`, `adb install -r` (données gardées).
+  Film de l'écran de la box (`screenrecord`) : pas d'encodeur matériel sur le Pi 5, 7 images/s en 1080p, 11 en 720p,
+  16 en 540p ; bon pour l'analyse (640×360 toute une nuit, +12 % de processeur), pas pour une vidéo de présentation :
+  celle-ci se fera avec la Fire TV 4K (demande de l'utilisateur, 23/11/2026 ; plan dans l'historique de la session).
+  Audit du 23/11/2026 (0.2.218 → 0.2.222) : aucun plantage, box à l'aise (2,4 Go libres, 47-59 °C) ; H.264 décodé par
+  le processeur (`c2.ffmpeg.h264`, le Pi 5 ne décode en matériel que le HEVC) ; défauts trouvés corrigés en
+  0.2.219-0.2.222 (date du guide, Foot, bandes-annonces YouTube, volet des catégories, Classique, radios…).
 - Point en attente : plantage du guide sur la Fire TV après la 25e chaîne, non reproduit. Il faut la photo de la
   carte « Dernier incident » (Réglages) pour en connaître la cause.
 

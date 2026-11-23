@@ -63,12 +63,18 @@ fun PremiumMenu(
     counts: Map<HomeSection, Int> = emptyMap(),
     /** « Abonnement jusqu'au 10 novembre 2026 » (compte Xtream), `null` si inconnu. */
     subscription: String? = null,
+    /**
+     * Bouton du bas d'où l'on revient (Favoris, Reprendre…) : il reprend la sélection, au lieu de la tuile de la
+     * dernière section (la sélection partait sur une tuile du haut, vu sur la box le 23/11/2026). `null` : la tuile.
+     */
+    returnTo: MenuButton? = null,
     modifier: Modifier = Modifier,
 ) {
     val window = rememberWindowInfo()
     val colors = MaterialTheme.colorScheme
     val focus = remember { HomeSection.entries.associateWith { FocusRequester() } }
-    LaunchedEffect(Unit) { runCatching { focus.getValue(current).requestFocus() } }
+    val buttons = remember { MenuButton.entries.associateWith { FocusRequester() } }
+    LaunchedEffect(Unit) { runCatching { (returnTo?.let(buttons::getValue) ?: focus.getValue(current)).requestFocus() } }
     Box(
         modifier
             .fillMaxSize()
@@ -105,14 +111,17 @@ fun PremiumMenu(
                 }
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                PillButton(stringResource(R.string.search_everywhere), onSearch, icon = Icons.Filled.Search)
-                PillButton(stringResource(R.string.home_favorites), onFavorites, icon = Icons.Filled.Star)
-                PillButton(stringResource(R.string.home_continue), onContinue, icon = Icons.Filled.PlayArrow)
-                PillButton(stringResource(R.string.settings_title), onSettings, icon = Icons.Filled.Settings)
+                PillButton(stringResource(R.string.search_everywhere), onSearch, Modifier.focusRequester(buttons.getValue(MenuButton.SEARCH)), icon = Icons.Filled.Search)
+                PillButton(stringResource(R.string.home_favorites), onFavorites, Modifier.focusRequester(buttons.getValue(MenuButton.FAVORITES)), icon = Icons.Filled.Star)
+                PillButton(stringResource(R.string.home_continue), onContinue, Modifier.focusRequester(buttons.getValue(MenuButton.CONTINUE)), icon = Icons.Filled.PlayArrow)
+                PillButton(stringResource(R.string.settings_title), onSettings, Modifier.focusRequester(buttons.getValue(MenuButton.SETTINGS)), icon = Icons.Filled.Settings)
             }
         }
     }
 }
+
+/** Boutons du bas du menu de Classique. */
+enum class MenuButton { SEARCH, FAVORITES, CONTINUE, SETTINGS }
 
 /** Ordre des tuiles : le direct et son guide, puis films, séries et foot. */
 private val MENU_ORDER = listOf(HomeSection.TV, HomeSection.GUIDE, HomeSection.MOVIES, HomeSection.SERIES, HomeSection.FOOTBALL, HomeSection.MMA)

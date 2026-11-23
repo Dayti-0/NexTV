@@ -1145,6 +1145,36 @@ class HomeFocusTest {
         assertTrue("Volet ouvert sur ${focusedText()} au lieu de $row", focusedText()?.contains(row!!) == true)
     }
 
+    /**
+     * Menu de Classique : au retour de Favoris (ou de Reprendre), la sélection revient sur ce bouton, pas sur une tuile du
+     * haut (vu sur la box le 23/11/2026) ; sans bouton de retour, sur la tuile de la dernière section.
+     */
+    @Test
+    fun classicMenuReturnsToTheButtonYouCameFrom() {
+        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().setInTouchMode(false)
+        var returnTo by androidx.compose.runtime.mutableStateOf<MenuButton?>(MenuButton.FAVORITES)
+        var shown by androidx.compose.runtime.mutableStateOf(true)
+        compose.setContent {
+            NexTvTheme(ThemeStyle.NIGHT) {
+                if (shown) PremiumMenu(current = HomeSection.MOVIES, onSection = {}, onFavorites = {}, onContinue = {}, onSettings = {}, returnTo = returnTo)
+            }
+        }
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(500)
+        compose.waitForIdle()
+        println("Retour de Favoris : ${focusedText()}")
+        assertTrue("Sélection : ${focusedText()}", focusedText()?.contains("Favoris") == true)
+        shown = false
+        compose.waitForIdle()
+        returnTo = null
+        shown = true
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(500)
+        compose.waitForIdle()
+        println("Sans retour : ${focusedText()}")
+        assertTrue("Sélection : ${focusedText()}", focusedText()?.contains("Films") == true)
+    }
+
     /** ← jusqu'à l'ouverture du volet des catégories (bord gauche de la rangée ou de la liste). */
     private fun openDrawerWithLeft() {
         repeat(10) {
