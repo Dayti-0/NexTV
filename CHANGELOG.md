@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.219
+- Guide TV : la date en haut à gauche suit le jour affiché (demain, après-demain…) au lieu de rester sur aujourd'hui
+
 ## 0.2.218
 - Guide TV en Streaming : la grille commence juste à côté du menu de gauche, sans la grande place vide
 - Guide TV : en descendant sur une chaîne sans programme à cette heure, la sélection va sur son nom au lieu de repartir des heures en arrière (la frise horaire ne bouge plus)
