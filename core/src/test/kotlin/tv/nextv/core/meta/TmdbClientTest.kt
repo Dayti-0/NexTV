@@ -100,6 +100,14 @@ class TmdbClientTest {
 
     private fun json(body: String) = MockResponse.Builder().code(200).addHeader("Content-Type", "application/json").body(body).build()
 
+    /** Genres de séries laissés en anglais par TMDB : traduits ; les autres inchangés. */
+    @Test
+    fun `series genres left in English are translated`() {
+        org.junit.Assert.assertEquals("Guerre & Politique", frenchGenre("War & Politics"))
+        org.junit.Assert.assertEquals("Science-Fiction & Fantastique", frenchGenre("Sci-Fi & Fantasy"))
+        org.junit.Assert.assertEquals("Drame", frenchGenre("Drame"))
+    }
+
     @Test
     fun `finds the best matching movie and reads its details`() = runBlocking {
         val result = client.lookup(MediaType.MOVIE, "Avatar", 2009) as TmdbResult.Found

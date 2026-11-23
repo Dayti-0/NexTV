@@ -4,6 +4,15 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.221
+- Bandes-annonces de Streaming : plus de nom de chaîne YouTube, de symbole pause ni de « Plus de vidéos » par-dessus la vidéo à son apparition ; image plus nette
+- Streaming : le volet des catégories s'ouvre sur la catégorie de la rangée sélectionnée (et non plus toujours sur « Tous les films »)
+- Streaming : ← sur la première affiche du Top 10 ouvre le volet des catégories au lieu de descendre à la rangée suivante
+- Live Center (Films, Séries) : une phrase d'aide à la place du cadre gris vide quand aucun titre n'est choisi
+- Réglages : la taille de la playlist compte des « éléments (chaînes, films et séries) » et non plus des « chaînes »
+- Séries : genres en français (« Guerre & Politique » au lieu de « War & Politics »)
+- MMA : « HEXAGONE » et « Cage Warriors » ne sont plus coupés dans la liste
+
 ## 0.2.220
 - Foot : Ligue 2, Coupe de France, Süper Lig (Turquie) et Liga Portugal ajoutées, avec scores et minute de jeu en direct
 - Foot : après avoir regardé un match lancé depuis sa fiche, le retour revient sur la carte du match (et non plus sur la liste des compétitions)

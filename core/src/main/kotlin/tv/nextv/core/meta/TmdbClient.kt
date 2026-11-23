@@ -366,7 +366,7 @@ class TmdbClient(
             year = date?.take(4)?.toIntOrNull(),
             rating = json.optDouble("vote_average").takeIf { !it.isNaN() && it > 0 },
             voteCount = json.optInt("vote_count"),
-            genres = json.optJSONArray("genres").objects().mapNotNull { it.optStringOrNull("name") },
+            genres = json.optJSONArray("genres").objects().mapNotNull { it.optStringOrNull("name")?.let(::frenchGenre) },
             posterUrl = json.optStringOrNull("poster_path")?.let { "${imageBaseUrl}w500$it" },
             backdropUrl = json.optStringOrNull("backdrop_path")?.let { "${imageBaseUrl}w1280$it" },
             trailerYoutubeKey = trailer?.optString("key"),
@@ -445,3 +445,19 @@ class TmdbClient(
         val NON_ALPHANUMERIC = Regex("[^a-z0-9]+")
     }
 }
+
+/**
+ * Genres de séries que TMDB laisse en anglais même en français (« War & Politics » vu sur la box le 23/11/2026).
+ */
+private val ENGLISH_GENRES = mapOf(
+    "War & Politics" to "Guerre & Politique",
+    "Action & Adventure" to "Action & Aventure",
+    "Sci-Fi & Fantasy" to "Science-Fiction & Fantastique",
+    "Kids" to "Enfants",
+    "News" to "Actualités",
+    "Reality" to "Téléréalité",
+    "Soap" to "Feuilleton",
+    "Talk" to "Talk-show",
+)
+
+internal fun frenchGenre(name: String): String = ENGLISH_GENRES[name.trim()] ?: name

@@ -61,6 +61,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
@@ -733,7 +734,8 @@ private fun PromotionItem(name: String, count: Int, promotion: MmaPromotion?, se
             } else {
                 Icon(NexTvIcons.Mma, contentDescription = null, modifier = Modifier.size(24.dp))
             }
-            Text(name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            // Deux lignes : « Cage Warriors » était coupé à côté de son logo (vu sur la box le 23/11/2026).
+            Text(name, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             Text(count.toString(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -768,11 +770,19 @@ private fun PromotionChip(name: String, selected: Boolean, promotion: MmaPromoti
 private fun PromotionLogo(promotion: MmaPromotion, height: Dp) {
     val logo = promotion.logo
     if (logo == null) {
+        // Nom en entier dans la place du logo (72 dp dans la liste) : « HEXAGONE » était coupé en « HEXAGO ».
         Box(
-            Modifier.height(height).clip(RoundedCornerShape(height * 0.22f)).background(promotionColor(promotion)).padding(horizontal = 8.dp),
+            Modifier.height(height).clip(RoundedCornerShape(height * 0.22f)).background(promotionColor(promotion)).padding(horizontal = 5.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Text(promotion.short, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1)
+            Text(
+                promotion.short,
+                style = MaterialTheme.typography.labelMedium.copy(fontSize = (height.value * 0.37f).sp, letterSpacing = 0.sp),
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                maxLines = 1,
+                softWrap = false,
+            )
         }
         return
     }
