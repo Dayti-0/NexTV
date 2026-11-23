@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -128,18 +129,30 @@ private fun MenuTile(section: HomeSection, count: Int?, onClick: () -> Unit, mod
         contentColor = colors.onSurface,
         focusScale = 1.06f,
     ) {
-        Column(
-            Modifier.fillMaxSize().padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Icon(sectionIcon(section), contentDescription = null, modifier = Modifier.size(56.dp))
-            Spacer(Modifier.height(14.dp))
-            Text(sectionLabel(section), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, maxLines = 1)
-            // Nombre de chaînes, de films ou de séries ; rien pour le guide et le foot.
-            count?.let {
-                Spacer(Modifier.height(4.dp))
-                Text(itemCount(section, it), style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, maxLines = 1)
+        // Six tuiles sur une rangée : sur la télé, chacune ne fait que ~130 dp de haut, et le nombre de films ou de séries
+        // était coupé sous le titre (vu sur la box le 23/11/2026). L'icône et les marges suivent la taille de la tuile.
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val small = maxHeight < 170.dp
+            Column(
+                Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = if (small) 8.dp else 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Icon(sectionIcon(section), contentDescription = null, modifier = Modifier.size(if (small) 40.dp else 56.dp))
+                Spacer(Modifier.height(if (small) 8.dp else 14.dp))
+                Text(
+                    sectionLabel(section),
+                    style = if (small) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                // Nombre de chaînes, de films ou de séries ; rien pour le guide et le foot.
+                count?.let {
+                    Spacer(Modifier.height(2.dp))
+                    Text(itemCount(section, it), style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, maxLines = 1)
+                }
             }
         }
     }
