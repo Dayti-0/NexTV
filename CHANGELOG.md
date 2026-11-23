@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.223
+- Classique : au retour de Favoris, Reprendre la lecture, la recherche ou les Réglages, la sélection revient sur ce bouton au lieu de partir sur une tuile du haut
+
 ## 0.2.222
 - Classique : le nombre de chaînes, de films et de séries n'est plus coupé sous les tuiles du menu
 - Radios : plus de programme d'une chaîne de télé du même nom (la radio RTL affichait le guide de la chaîne allemande RTL)
