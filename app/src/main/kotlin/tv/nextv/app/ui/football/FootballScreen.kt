@@ -1048,21 +1048,24 @@ private val LOGO_TILE = Color(0xFFF2F4F8)
  * Logos des compétitions sur le serveur d'écussons de football-data.org (pas de logo commun aux sélections) ; celles
  * qu'il ne suit pas : logos d'ESPN, la source de leur calendrier.
  */
-private fun competitionLogoUrl(competition: Competition): String? = when (competition) {
-    Competition.LIGUE_2 -> return espnLogo(96)
-    Competition.COUPE_DE_FRANCE -> return espnLogo(182)
-    Competition.SUPER_LIG -> return espnLogo(18)
-    Competition.LIGA_PORTUGAL -> return espnLogo(14)
-    Competition.LIGUE_1 -> "FL1"
-    Competition.PREMIER_LEAGUE -> "PL"
-    Competition.LA_LIGA -> "PD"
-    Competition.SERIE_A -> "SA"
-    Competition.BUNDESLIGA -> "BL1"
-    Competition.CHAMPIONS_LEAGUE -> "CL"
-    Competition.EUROPA_LEAGUE -> "EL"
-    Competition.CONFERENCE_LEAGUE -> "UCL"
-    Competition.NATIONAL_TEAMS -> null
-}?.let { "https://crests.football-data.org/$it.png" }
+private fun competitionLogoUrl(competition: Competition): String? {
+    val code = when (competition) {
+        Competition.LIGUE_2 -> return espnLogo(96)
+        Competition.COUPE_DE_FRANCE -> return espnLogo(182)
+        Competition.SUPER_LIG -> return espnLogo(18)
+        Competition.LIGA_PORTUGAL -> return espnLogo(14)
+        Competition.LIGUE_1 -> "FL1"
+        Competition.PREMIER_LEAGUE -> "PL"
+        Competition.LA_LIGA -> "PD"
+        Competition.SERIE_A -> "SA"
+        Competition.BUNDESLIGA -> "BL1"
+        Competition.CHAMPIONS_LEAGUE -> "CL"
+        Competition.EUROPA_LEAGUE -> "EL"
+        Competition.CONFERENCE_LEAGUE -> "UCL"
+        Competition.NATIONAL_TEAMS -> return null
+    }
+    return "https://crests.football-data.org/$code.png"
+}
 
 private fun espnLogo(id: Int): String = "https://a.espncdn.com/i/leaguelogos/soccer/500/$id.png"
 
