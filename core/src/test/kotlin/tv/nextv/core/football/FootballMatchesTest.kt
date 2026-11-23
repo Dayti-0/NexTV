@@ -34,7 +34,9 @@ class FootballMatchesTest {
         assertEquals(Fixture(Competition.CONFERENCE_LEAGUE, "Strasbourg", "Fiorentina"), of("Football : Ligue Europa Conférence", "Strasbourg / Fiorentina"))
         assertEquals(Fixture(Competition.NATIONAL_TEAMS, "France", "Allemagne"), of("Football : Ligue des nations", "France / Allemagne"))
         assertEquals(Fixture(Competition.NATIONAL_TEAMS, "France", "Espagne"), of("Football : éliminatoires de la Coupe du monde 2030 - France / Espagne"))
-        assertNull(of("Football : Liga Portugal", "Benfica / Porto"))
+        assertEquals(Fixture(Competition.LIGA_PORTUGAL, "Benfica", "Porto"), of("Football : Liga Portugal", "Benfica / Porto"))
+        assertEquals(Fixture(Competition.LIGUE_2, "Nantes", "Grenoble"), of("Football : Ligue 2", "Nantes / Grenoble"))
+        assertEquals(Fixture(Competition.SUPER_LIG, "Trabzonspor", "Eyüpspor"), of("Football : Süper Lig", "Trabzonspor / Eyüpspor"))
         assertNull(of("Football : 2. Bundesliga", "Hambourg / Hanovre"))
         assertNull(of("Football : Coupe du monde des clubs", "Real Madrid / Al-Hilal"))
         assertNull(of("Rugby : Coupe du monde", "France / Irlande"))
@@ -108,7 +110,7 @@ class FootballMatchesTest {
         assertNull(of("Ligue 1 McDonald's", "Multiplex - 11e journée"))
         assertNull(of("Football : Ligue des champions", "Tirage au sort des huitièmes de finale"))
         assertNull(of("Football : Ligue 1", "11e journée"))
-        assertNull(of("Football", "Coupe de France : Rennes - Nantes"))
+        assertEquals(Fixture(Competition.COUPE_DE_FRANCE, "Rennes", "Nantes"), of("Football", "Coupe de France : Rennes - Nantes"))
         assertNull(of("Ligue 10 de démonstration", "A / B"))
     }
 

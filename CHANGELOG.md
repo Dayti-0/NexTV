@@ -4,6 +4,12 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.220
+- Foot : Ligue 2, Coupe de France, Süper Lig (Turquie) et Liga Portugal ajoutées, avec scores et minute de jeu en direct
+- Foot : après avoir regardé un match lancé depuis sa fiche, le retour revient sur la carte du match (et non plus sur la liste des compétitions)
+- Foot : en changeant de compétition, la liste repart d'aujourd'hui au lieu de rester plus loin dans la semaine
+- Lecteur : plus de badge « Rediffusion » sur un match en direct quand une autre chaîne avait ouvert son antenne sous le titre du match plus d'une heure avant
+
 ## 0.2.219
 - Guide TV : la date en haut à gauche suit le jour affiché (demain, après-demain…) au lieu de rester sur aujourd'hui
 
