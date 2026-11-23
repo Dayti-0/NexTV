@@ -104,6 +104,36 @@ class PlayerViewModelTest {
         idle()
     }
 
+    /**
+     * Même match commencé plus d'une heure avant sur une autre chaîne (antenne ouverte tôt sous le titre du match) et
+     * encore en cours : ce n'est pas une rediffusion (« Brentford / Everton » en direct sur Canal+, le 23/11/2026).
+     */
+    @Test
+    fun aMatchStillOnAirElsewhereIsNotARebroadcast() {
+        val (live, _) = playlist()
+        val now = System.currentTimeMillis()
+        val minute = 60_000L
+        val match = "Brentford / Everton"
+        runBlocking {
+            container.channelDao.setEpg(live, "tf1.fr")
+            val sourceId = checkNotNull(container.channelDao.get(live)).sourceId
+            fun programme(channel: String, start: Long, stop: Long) =
+                ProgrammeEntity(sourceId = sourceId, generation = 0, epgChannelId = channel, startMillis = start, stopMillis = stop, title = match, subtitle = null, description = null, category = null)
+            container.programmeDao.insertAll(
+                listOf(programme("autre.fr", now - 80 * minute, now + 60 * minute), programme("tf1.fr", now - 10 * minute, now + 110 * minute)),
+            )
+        }
+        val (viewModel, store) = open(live)
+        viewModel.onStart()
+        val deadline = System.nanoTime() + 8_000_000_000L
+        do idle() while (viewModel.state.value.now == null && System.nanoTime() < deadline)
+        val shown = checkNotNull(viewModel.state.value.now)
+        assertEquals(match, shown.title)
+        assertTrue(!shown.rebroadcast)
+        store.clear()
+        idle()
+    }
+
     @Test
     fun opensAMovieAndClosesIt() {
         val (_, movie) = playlist()

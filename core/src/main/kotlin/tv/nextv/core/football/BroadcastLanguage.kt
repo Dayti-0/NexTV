@@ -65,6 +65,10 @@ object BroadcastLanguage {
         Competition.LA_LIGA to Regex("$BEIN|$DAZN"),
         Competition.SERIE_A to Regex("$BEIN|$DAZN"),
         Competition.BUNDESLIGA to Regex(BEIN),
+        Competition.LIGUE_2 to Regex(BEIN),
+        Competition.SUPER_LIG to Regex(BEIN),
+        // Coupe de France : beIN SPORTS et France Télévisions.
+        Competition.COUPE_DE_FRANCE to Regex("""$BEIN|\bfrance\s*[234]\b"""),
         Competition.CHAMPIONS_LEAGUE to Regex(CANAL_PLUS),
         Competition.EUROPA_LEAGUE to Regex(CANAL_PLUS),
         Competition.CONFERENCE_LEAGUE to Regex(CANAL_PLUS),

@@ -1053,7 +1053,7 @@ class PlayerViewModel(
         rebroadcastChecked?.takeIf { it.first == key }?.let { return it.second }
         val window = Rebroadcast.earlierWindow(programme.startMillis)
         val answer = Rebroadcast.isRebroadcast(programme.title, programme.subtitle) {
-            container.programmeDao.airedBetween(programme.sourceId, programme.title, window.first, window.last)
+            container.programmeDao.airedBetween(programme.sourceId, programme.title, window.first, window.last, programme.startMillis)
         }
         rebroadcastChecked = key to answer
         return answer

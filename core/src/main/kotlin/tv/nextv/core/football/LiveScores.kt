@@ -207,6 +207,10 @@ class LiveScoreClient(
         /** Tableaux des scores d'ESPN de chaque compétition (les sélections jouent dans plusieurs). */
         private val LEAGUES = mapOf(
             Competition.LIGUE_1 to listOf("fra.1"),
+            Competition.LIGUE_2 to listOf("fra.2"),
+            Competition.COUPE_DE_FRANCE to listOf("fra.coupe_de_france"),
+            Competition.SUPER_LIG to listOf("tur.1"),
+            Competition.LIGA_PORTUGAL to listOf("por.1"),
             Competition.PREMIER_LEAGUE to listOf("eng.1"),
             Competition.LA_LIGA to listOf("esp.1"),
             Competition.SERIE_A to listOf("ita.1"),

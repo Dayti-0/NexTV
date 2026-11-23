@@ -1359,17 +1359,23 @@ interface ProgrammeDao {
     )
     suspend fun upcoming(channelId: Long, from: Long, limit: Int): List<ProgrammeEntity>
 
-    /** Le guide en vigueur d'une source a-t-il un programme de ce titre commencé entre [from] et [to] (rediffusions) ? */
+    /**
+     * Le guide en vigueur d'une source a-t-il un programme de ce titre commencé entre [from] et [to], et fini au plus
+     * tard à [endedBy] (rediffusions) ? Une diffusion encore en cours n'en fait pas une : une autre chaîne qui ouvre son
+     * antenne plus d'une heure avant le coup d'envoi, sous le titre du match, le diffuse en même temps (« Brentford /
+     * Everton » marqué « Rediffusion » en plein direct sur Canal+, le 23/11/2026).
+     */
     @Query(
         """
         SELECT EXISTS(
             SELECT 1 FROM programmes p
             JOIN sources s ON s.id = p.sourceId AND p.generation = s.epgGeneration
             WHERE p.sourceId = :sourceId AND p.title = :title AND p.startMillis BETWEEN :from AND :to
+                AND p.stopMillis <= :endedBy
         )
         """,
     )
-    suspend fun airedBetween(sourceId: Long, title: String, from: Long, to: Long): Boolean
+    suspend fun airedBetween(sourceId: Long, title: String, from: Long, to: Long, endedBy: Long): Boolean
 
     /** Programmes visibles d'une source dans la fenêtre [from, to[. */
     @Query(

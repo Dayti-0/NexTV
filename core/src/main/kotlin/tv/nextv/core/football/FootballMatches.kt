@@ -8,10 +8,14 @@ import java.text.Normalizer
  */
 enum class Competition(val label: String, val apiId: Int?) {
     LIGUE_1("Ligue 1", 2015),
+    LIGUE_2("Ligue 2", null),
+    COUPE_DE_FRANCE("Coupe de France", null),
     PREMIER_LEAGUE("Premier League", 2021),
     LA_LIGA("Liga", 2014),
     SERIE_A("Serie A", 2019),
     BUNDESLIGA("Bundesliga", 2002),
+    SUPER_LIG("Süper Lig", null),
+    LIGA_PORTUGAL("Liga Portugal", null),
     CHAMPIONS_LEAGUE("Ligue des champions", 2001),
     EUROPA_LEAGUE("Ligue Europa", null),
     CONFERENCE_LEAGUE("Ligue Conférence", null),
@@ -104,6 +108,11 @@ object FootballMatches {
         Pattern(Competition.EUROPA_LEAGUE, Regex("""\b(ligue europa|europa league)\b""")),
         Pattern(Competition.CHAMPIONS_LEAGUE, Regex("""\b(ligue des champions|champions league)\b""")),
         Pattern(Competition.PREMIER_LEAGUE, Regex("""\bpremier league\b""")),
+        // Avant la Liga : « Primeira Liga », « Liga Portugal Betclic ».
+        Pattern(Competition.LIGA_PORTUGAL, Regex("""\b(liga portugal|primeira liga|liga nos|liga betclic|championnat du portugal)\b""")),
+        Pattern(Competition.SUPER_LIG, Regex("""\b(super ?lig|championnat de turquie|trendyol)\b""")),
+        Pattern(Competition.COUPE_DE_FRANCE, Regex("""\bcoupe de france\b"""), Regex("""\b(rugby|basket|handball|volley|feminine|feminines)\b""")),
+        Pattern(Competition.LIGUE_2, Regex("""\bligue 2(?!\d)""")),
         Pattern(
             Competition.LA_LIGA,
             Regex("""\b(laliga|la liga|liga|championnat d'espagne)\b"""),

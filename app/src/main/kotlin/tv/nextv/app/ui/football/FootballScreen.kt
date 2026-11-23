@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -37,6 +38,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -150,6 +152,9 @@ fun FootballContent(
 ) {
     val window = rememberWindowInfo()
     var details by remember { mutableStateOf<FootballMatch?>(null) }
+    // Match dont une chaîne a été ouverte (carte ou fiche du match) : il reprend la sélection au retour sur l'accueil.
+    val opened = rememberSaveable { mutableStateOf<List<String>?>(null) }
+    val visit = HomeVisit.current
     // Fenêtre des équipes suivies (« Mes équipes »).
     var teamsOpen by remember { mutableStateOf(false) }
     val shown = state.matches.filter { if (myTeams) it.involves(favoriteTeams) else competition == null || it.competition == competition }
@@ -205,6 +210,9 @@ fun FootballContent(
                 )
                 else -> MatchList(
                     matches = shown,
+                    // Autre compétition : la liste repart du haut (aujourd'hui), pas de la place de la précédente.
+                    listKey = if (myTeams) "my-teams" else competition?.name ?: "all",
+                    openedState = opened,
                     now = state.now,
                     notice = state.notice,
                     favoriteTeams = favoriteTeams,
@@ -283,6 +291,9 @@ fun FootballContent(
             favoriteTeams = favoriteTeams,
             onWatch = { channelId ->
                 details = null
+                // Chaîne choisie dans la fiche : au retour, la sélection revient sur la carte du match (elle allait
+                // à la liste des compétitions, où l'appui suivant en ouvrait une autre).
+                opened.value = listOf(match.key, visit.toString())
                 onPlay(channelId)
             },
             onToggleTeam = onToggleTeam,
@@ -304,6 +315,8 @@ fun FootballContent(
 @Composable
 private fun MatchList(
     matches: List<FootballMatch>,
+    listKey: String,
+    openedState: MutableState<List<String>?>,
     now: Long,
     notice: FootballNotice?,
     favoriteTeams: Set<String>,
@@ -315,7 +328,7 @@ private fun MatchList(
 ) {
     val days = remember(matches) { matches.groupBy { dayStart(it.kickoffMillis) } }
     // Match ouvert (lecture) : il reprend le focus au retour sur l'accueil.
-    var opened by rememberSaveable { mutableStateOf<List<String>?>(null) }
+    var opened by openedState
     val visit = HomeVisit.current
     val backKey = opened?.takeIf { it.size == 2 && it[1] != visit.toString() }?.get(0)
     val backFocus = remember { FocusRequester() }
@@ -331,7 +344,7 @@ private fun MatchList(
             opened = null
         }
     }
-    val listState = rememberLazyListState()
+    val listState = rememberSaveable(listKey, saver = LazyListState.Saver) { LazyListState() }
     FadingBottom({ listState.canScrollForward }, { listState.canScrollBackward }) { fade ->
         LazyColumn(
             state = listState,
@@ -1031,8 +1044,15 @@ fun CompetitionLogo(competition: Competition, size: Dp, modifier: Modifier = Mod
 /** Pastille des logos de compétition. */
 private val LOGO_TILE = Color(0xFFF2F4F8)
 
-/** Logos des compétitions sur le serveur d'écussons de football-data.org (pas de logo commun aux sélections). */
+/**
+ * Logos des compétitions sur le serveur d'écussons de football-data.org (pas de logo commun aux sélections) ; celles
+ * qu'il ne suit pas : logos d'ESPN, la source de leur calendrier.
+ */
 private fun competitionLogoUrl(competition: Competition): String? = when (competition) {
+    Competition.LIGUE_2 -> return espnLogo(96)
+    Competition.COUPE_DE_FRANCE -> return espnLogo(182)
+    Competition.SUPER_LIG -> return espnLogo(18)
+    Competition.LIGA_PORTUGAL -> return espnLogo(14)
     Competition.LIGUE_1 -> "FL1"
     Competition.PREMIER_LEAGUE -> "PL"
     Competition.LA_LIGA -> "PD"
@@ -1043,6 +1063,8 @@ private fun competitionLogoUrl(competition: Competition): String? = when (compet
     Competition.CONFERENCE_LEAGUE -> "UCL"
     Competition.NATIONAL_TEAMS -> null
 }?.let { "https://crests.football-data.org/$it.png" }
+
+private fun espnLogo(id: Int): String = "https://a.espncdn.com/i/leaguelogos/soccer/500/$id.png"
 
 /** Pastille d'un match en cours : « Mi-temps » ou la minute de jeu (« 81' », « 45+2' ») ; rien sinon. */
 @Composable
@@ -1071,6 +1093,10 @@ private fun competitionColor(competition: Competition): Color = NexTvColors.read
 
 private fun baseCompetitionColor(competition: Competition): Color = when (competition) {
     Competition.LIGUE_1 -> Color(0xFF5C9DFF)
+    Competition.LIGUE_2 -> Color(0xFF8FB8FF)
+    Competition.COUPE_DE_FRANCE -> Color(0xFF7986CB)
+    Competition.SUPER_LIG -> Color(0xFFEF5350)
+    Competition.LIGA_PORTUGAL -> Color(0xFF66BB6A)
     Competition.PREMIER_LEAGUE -> Color(0xFFC792EA)
     Competition.LA_LIGA -> Color(0xFFFF8A65)
     Competition.SERIE_A -> Color(0xFF4DD0E1)
