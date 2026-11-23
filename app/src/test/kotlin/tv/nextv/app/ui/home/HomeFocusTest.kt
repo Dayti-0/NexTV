@@ -1162,7 +1162,7 @@ class HomeFocusTest {
         compose.waitForIdle()
         compose.mainClock.advanceTimeBy(500)
         compose.waitForIdle()
-        println("Retour de Favoris : ${focusedText()}")
+        println("Retour de Favoris : ${focusedText()} ; sélectionnés : ${compose.onAllNodes(isFocused()).fetchSemanticsNodes().map { it.config.toString().take(120) }}")
         assertTrue("Sélection : ${focusedText()}", focusedText()?.contains("Favoris") == true)
         shown = false
         compose.waitForIdle()

@@ -25,6 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -74,7 +75,14 @@ fun PremiumMenu(
     val colors = MaterialTheme.colorScheme
     val focus = remember { HomeSection.entries.associateWith { FocusRequester() } }
     val buttons = remember { MenuButton.entries.associateWith { FocusRequester() } }
-    LaunchedEffect(Unit) { runCatching { (returnTo?.let(buttons::getValue) ?: focus.getValue(current)).requestFocus() } }
+    LaunchedEffect(Unit) {
+        val target = returnTo?.let(buttons::getValue) ?: focus.getValue(current)
+        // Les tuiles et les boutons ne sont placés qu'à l'image suivante : on réessaie quelques images.
+        repeat(10) {
+            withFrameNanos { }
+            if (runCatching { target.requestFocus() }.getOrDefault(false) == true) return@LaunchedEffect
+        }
+    }
     Box(
         modifier
             .fillMaxSize()
