@@ -585,7 +585,9 @@ fun HomeContent(
             groups = groups,
             recentCount = recentChannels.size.takeIf { section == HomeSection.TV },
             allCount = channelCount?.takeIf { section == HomeSection.TV } ?: groups.sumOf { it.count },
-            category = category,
+            // Accueil à rangées : la catégorie de la rangée où est la sélection (un choix dans le volet ne fait que
+            // descendre à sa rangée, la page reste « Tous »).
+            category = if (rowsHome && category == Category.All) rowJump.focusedCategory ?: category else category,
             query = query,
             favoritesCount = when (section) {
                 HomeSection.TV -> favoriteChannels.size

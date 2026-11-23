@@ -116,6 +116,7 @@ internal fun StreamingHero(
                     onShown = onTrailerShown,
                     onFinished = onTrailerFinished,
                     zoom = TRAILER_FILL_ZOOM,
+                    renderScale = TRAILER_HERO_RENDER_SCALE,
                 )
             }
             HeroFade(background)

@@ -442,6 +442,17 @@ private fun UpcomingLine(programme: GuideProgramme, highlight: Boolean = false) 
 @Composable
 internal fun SpotlightPane(spotlight: Spotlight?, modifier: Modifier) {
     ScrollingPane(spotlight?.item?.itemKey, modifier) {
+        // Aucun titre choisi (sélection dans les catégories) : une phrase plutôt qu'un cadre gris vide (vu sur la box
+        // le 23/11/2026).
+        if (spotlight == null) {
+            Text(
+                stringResource(R.string.home_pane_hint),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 24.dp),
+            )
+            return@ScrollingPane
+        }
         val image = spotlightImage(spotlight)
         Crossfade(image, animationSpec = tween(400), label = "pane", modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(MaterialTheme.shapes.large)) { url ->
             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
@@ -452,7 +463,6 @@ internal fun SpotlightPane(spotlight: Spotlight?, modifier: Modifier) {
                 }
             }
         }
-        if (spotlight == null) return@ScrollingPane
         Text(spotlight.item.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
         MetaLine(spotlight)
         spotlight.details?.tagline?.let {

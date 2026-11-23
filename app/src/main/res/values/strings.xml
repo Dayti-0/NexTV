@@ -28,7 +28,7 @@
     <string name="status_refreshing_short">Actualisation…</string>
     <string name="status_error">Erreur</string>
     <string name="status_ok">À jour</string>
-    <string name="stat_channels">chaînes</string>
+    <string name="stat_items">éléments</string>
     <string name="stat_guide">chaînes avec guide</string>
     <string name="stat_updated">mise à jour</string>
     <string name="sources_title">Playlists</string>
@@ -727,6 +727,7 @@
     <string name="settings_preview_handoff_help">OK sur l’aperçu : la chaîne continue en grand sans être rouverte, et revient dans l’aperçu au retour. À désactiver si l’image reste noire en passant de l’un à l’autre.</string>
     <string name="settings_channel_groups">Catégories de chaînes</string>
     <string name="settings_movie_groups">Catégories de films</string>
+    <string name="home_pane_hint">Choisissez un titre dans la liste pour voir son affiche et son résumé.</string>
     <string name="exit_press_again">Appuyer à nouveau pour quitter</string>
     <string name="settings_home_layout">Interface de l’accueil</string>
     <string name="home_layout_live">Live Center</string>
@@ -943,6 +944,11 @@
     <plurals name="settings_restore_done">
         <item quantity="one">Sauvegarde restaurée (%d playlist).</item>
         <item quantity="other">Sauvegarde restaurée (%d playlists).</item>
+    </plurals>
+    <!-- Taille d'une playlist : chaînes, films et séries ensemble (nombre déjà mis en forme). -->
+    <plurals name="playlist_items_count">
+        <item quantity="one">%s élément (chaînes, films et séries)</item>
+        <item quantity="other">%s éléments (chaînes, films et séries)</item>
     </plurals>
     <plurals name="channels_count">
         <item quantity="one">%d chaîne</item>

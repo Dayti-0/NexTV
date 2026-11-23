@@ -70,6 +70,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusProperties
 import kotlin.math.roundToInt
 import coil3.request.ImageRequest
 import coil3.imageLoader
@@ -455,6 +456,27 @@ internal class RowJump {
 
     /** Rangées affichées, par clé : de quoi y poser la sélection. */
     val rows = HashMap<String, FocusRequester>()
+
+    /** Clé de la rangée qui a (ou a eu en dernier) la sélection. */
+    var focusedRow by mutableStateOf<String?>(null)
+
+    /**
+     * Catégorie de la rangée qui a la sélection, pour ouvrir le volet sur elle : après un saut à « Animation et
+     * famille », le volet s'ouvrait sur « Tous les films » (vu sur la box le 23/11/2026). `null` : rangée sans
+     * catégorie (Top 10, nouveautés…).
+     */
+    val focusedCategory: Category?
+        get() = categoryOfRowKey(focusedRow)
+}
+
+/** Catégorie d'une rangée d'après sa clé (inverse de [rowKeyOf]) ; `null` pour une rangée sans catégorie. */
+internal fun categoryOfRowKey(key: String?): Category? = when {
+    key == null -> null
+    key == FAVORITES_ROW -> Category.Favorites
+    key == "recent" -> Category.Recent
+    key == "continue" -> Category.ContinueWatching
+    key.startsWith("group:") -> Category.Group(key.removePrefix("group:").takeIf { it != NO_GROUP_KEY }.orEmpty())
+    else -> null
 }
 
 internal val LocalRowJump = staticCompositionLocalOf<RowJump?> { null }
@@ -677,7 +699,12 @@ private fun ShelfItem(
                 style = style,
             ) {
                 itemsIndexed(spec.items, key = { _, it -> it.itemKey }) { index, item ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Première affiche décalée par son grand « 1 » : ← y trouvait une affiche plus à gauche dans la
+                    // rangée du dessous au lieu d'ouvrir le volet des catégories (vu sur la box le 23/11/2026).
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = if (index == 0) Modifier.focusProperties { left = FocusRequester.Cancel } else Modifier,
+                    ) {
                         // Rang en grand, en contour, comme sur les plateformes de streaming.
                         Text(
                             "${index + 1}",
@@ -901,7 +928,7 @@ internal fun Shelf(
             }
         } else {
             Modifier
-        },
+        }.then(if (jump != null) Modifier.onFocusChanged { if (it.hasFocus) jump.focusedRow = rowKey } else Modifier),
         verticalArrangement = Arrangement.spacedBy(spacing),
     ) {
         Row(

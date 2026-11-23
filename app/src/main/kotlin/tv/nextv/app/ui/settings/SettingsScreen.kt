@@ -466,7 +466,8 @@ fun SettingsContent(
                         val status = playlist.status
                         InfoText(
                             listOfNotNull(
-                                resources.getQuantityString(R.plurals.channels_count, status.channelCount, status.channelCount),
+                                // Chaînes, films et séries ensemble (« 138114 chaînes » pour 812 chaînes, vu sur la box le 23/11/2026).
+                                resources.getQuantityString(R.plurals.playlist_items_count, status.channelCount, java.text.NumberFormat.getIntegerInstance().format(status.channelCount)),
                                 status.lastSuccessAtMillis?.let { stringResource(R.string.settings_updated, relativeTime(it, now).lowercaseFirst()) },
                             ).joinToString("  ·  "),
                         )

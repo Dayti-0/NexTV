@@ -316,7 +316,7 @@ private fun SourceStatusPill(item: SourceItem) {
 private fun SourceStats(source: PlaylistSource, now: Long) {
     val status = source.status
     Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-        Stat(value = status.channelCount.toString(), label = stringResource(R.string.stat_channels))
+        Stat(value = java.text.NumberFormat.getIntegerInstance().format(status.channelCount), label = stringResource(R.string.stat_items))
         Stat(
             value = if (status.epg.programmeCount > 0) status.epg.matchedChannelCount.toString() else "—",
             label = stringResource(R.string.stat_guide),

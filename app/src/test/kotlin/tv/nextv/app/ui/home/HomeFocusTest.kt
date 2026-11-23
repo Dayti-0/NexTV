@@ -174,19 +174,20 @@ class HomeFocusTest {
         // Dans les rangées (première vignette), puis ← : volet ouvert, focus sur ses catégories.
         // Streaming : ← mène au menu de gauche, dont « Catégories » ouvre le volet.
         repeat(3) { press(Key.DirectionDown) }
-        // ← jusqu'au bord gauche de la rangée : le volet des catégories s'ouvre (Streaming comme Classique).
+        val row = checkNotNull(focused.lastOrNull()?.substringBefore(" · ")?.removePrefix("Groupe ")?.toIntOrNull()) { "Rangée : ${focused.lastOrNull()}" }
+        // ← jusqu'au bord gauche de la rangée : le volet des catégories s'ouvre (Streaming comme Classique), sur la
+        // catégorie de cette rangée.
         openDrawerWithLeft()
         compose.onNodeWithText("Groupe 1").assertExists()
-        // Volet ouvert sur « Tous les films », puis Groupe 1, 2, 3 ; OK : saut à la rangée « Groupe 3 »,
-        // toutes les rangées restent (aucune catégorie ouverte).
-        repeat(3) { press(Key.DirectionDown) }
+        // ↓ : la catégorie suivante ; OK : saut à sa rangée, toutes les rangées restent (aucune catégorie ouverte).
+        press(Key.DirectionDown)
         press(Key.DirectionCenter)
         compose.mainClock.advanceTimeBy(1_000)
         compose.waitForIdle()
-        println("$layout, saut : ${focused.lastOrNull()}, catégories ouvertes : $categories")
+        println("$layout, rangée $row, saut : ${focused.lastOrNull()}, catégories ouvertes : $categories")
         assertTrue("Catégorie ouverte au lieu du saut : $categories", categories.isEmpty())
-        assertTrue("Sélection : ${focused.lastOrNull()}", focused.lastOrNull()?.startsWith("Groupe 3 · ") == true)
-        compose.onNodeWithText("Groupe 4").assertExists()
+        assertTrue("Sélection : ${focused.lastOrNull()}", focused.lastOrNull()?.startsWith("Groupe ${row + 1} · ") == true)
+        compose.onNodeWithText("Groupe ${row + 2}").assertExists()
     }
 
     /** Classique : ☰ ouvre le volet des catégories (sélection dedans) ; ☰ le referme, la sélection revient aux rangées. */
@@ -1101,6 +1102,47 @@ class HomeFocusTest {
         assertTrue("Titre « Groupe ${group + 1} » caché sous la rangée choisie", compose.onNodeWithText("Groupe ${group + 1}").isDisplayed())
         val card = runCatching { compose.onNodeWithText("Groupe ${group + 1} · 0").isDisplayed() }.getOrDefault(false)
         assertTrue("Affiches de « Groupe ${group + 1} » visibles sous la rangée choisie", !card)
+    }
+
+    /**
+     * Top 10 de Streaming : ← sur la première affiche (décalée par son grand « 1 ») ouvre le volet des catégories ; la
+     * sélection descendait sur la rangée du dessous (vu sur la box le 23/11/2026).
+     */
+    @Test
+    fun leftOnTheFirstTop10PosterOpensTheDrawer() {
+        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().setInTouchMode(false)
+        val trending = Discover(trending = SampleData.movies.take(3).map { it.toPoster() })
+        compose.setContent { Home(HomeLayout.STREAMING, HomeActions(), HomeSection.MOVIES, discover = trending) }
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
+        assertTrue("Départ : ${focusedText()}", focusedText()?.contains("Le Grand Voyage") == true)
+        press(Key.DirectionLeft)
+        compose.mainClock.advanceTimeBy(500)
+        compose.waitForIdle()
+        println("Top 10, ← : ${focusedText()}")
+        assertTrue("Volet fermé, sélection : ${focusedText()}", compose.onAllNodesWithTag(CATEGORY_DRAWER_TAG).fetchSemanticsNodes().isNotEmpty())
+    }
+
+    /**
+     * Streaming : le volet s'ouvre sur la catégorie de la rangée où est la sélection (la page reste « Tous les films »
+     * après un saut à une rangée ; il s'ouvrait sur « Tous les films », vu sur la box le 23/11/2026).
+     */
+    @Test
+    fun streamingDrawerOpensOnTheFocusedRowCategory() {
+        val focused = mutableListOf<String>()
+        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().setInTouchMode(false)
+        compose.setContent { Home(HomeLayout.STREAMING, HomeActions(onPosterFocus = { focused += it.title }), HomeSection.MOVIES) }
+        compose.waitForIdle()
+        enterStreamingContent()
+        repeat(3) { press(Key.DirectionDown) }
+        val row = focused.lastOrNull()?.substringBefore(" · ")
+        println("Rangée choisie : $row")
+        assertTrue("Rangée : $row", row?.startsWith("Groupe ") == true)
+        openDrawerWithLeft()
+        compose.onNodeWithTag(CATEGORY_DRAWER_TAG).assertExists()
+        println("Volet : ${focusedText()}")
+        assertTrue("Volet ouvert sur ${focusedText()} au lieu de $row", focusedText()?.contains(row!!) == true)
     }
 
     /** ← jusqu'à l'ouverture du volet des catégories (bord gauche de la rangée ou de la liste). */

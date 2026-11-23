@@ -373,8 +373,10 @@ private fun trailerView(
         var player=null;
         // Son voulu (bouton du bandeau, réglage) ; la lecture démarre toujours muette (lecture automatique).
         var muted=${if (startMuted) "true" else "false"};
-        // Vidéo cachée tant que le délai d'attente n'est pas écoulé : elle se prépare (chargée, en pause sur sa
-        // première image), puis repart de 0 et apparaît aussitôt (le titre YouTube du début peut se voir).
+        // Vidéo cachée tant que le délai d'attente n'est pas écoulé : elle se prépare en jouant (cachée, muette), puis
+        // repart de 0 et apparaît. Jamais mise en pause : une vidéo en pause garde l'habillage de YouTube (nom de la
+        // chaîne, gros symbole pause, « Plus de vidéos »), qui restait visible quelques instants à son apparition
+        // (vu sur la box le 23/11/2026).
         var hidden=true;
         var allowed=${if (startAllowed) "true" else "false"};
         var primed=false;
@@ -393,7 +395,7 @@ private fun trailerView(
           if(allowed||done)return;
           allowed=true;
           watchStart();
-          if(primed)call(function(){player.seekTo(0,true);player.playVideo();});
+          if(primed){call(function(){player.seekTo(0,true);player.playVideo();});setTimeout(function(){if(hidden&&!done)reveal();},$REVEAL_AFTER_SEEK_MILLIS);}
         }
         function pause(){call(function(){player.pauseVideo();});}
         // Meilleure qualité proposée demandée (YouTube peut l'ignorer : il choisit d'après la taille du lecteur et
@@ -441,13 +443,13 @@ private fun trailerView(
               onReady:function(e){applyCaptions(e.target);watchCaptions(e.target);watchQuality(e.target);},
               onPlaybackQualityChange:function(e){reportQuality(e.target);},
               onApiChange:function(e){applyCaptions(e.target);},
-              // Lecture (1) : avant la fin du délai, arrêt sur la première image (prête) ; après, la vidéo apparaît.
+              // Lecture (1) : avant la fin du délai, la vidéo est prête (elle continue, cachée) ; après, elle apparaît.
               // Fin (0) : terminée.
               onStateChange:function(e){
                 if(e.data==1){askBest(e.target);reportQuality(e.target);}
                 if(e.data==1&&hidden){
                   if(allowed){reveal();}
-                  else{primed=true;clearTimeout(startTimer);call(function(){e.target.pauseVideo();e.target.seekTo(0,true);});}
+                  else{primed=true;clearTimeout(startTimer);}
                 }
                 if(e.data==0){hidden=true;show(false);finish();}
               },
@@ -481,8 +483,20 @@ private fun captions(language: String?): Captions = when {
     else -> Captions.FRENCH
 }
 
-/** Agrandissement des bandes-annonces du bandeau et des fiches (bandes noires du format cinéma rognées). */
-internal const val TRAILER_FILL_ZOOM = 1.25f
+/**
+ * Agrandissement des bandes-annonces du bandeau et des fiches : bandes noires du format cinéma rognées, et avec elles
+ * le haut et le bas du lecteur, où YouTube affiche le nom de la chaîne et son logo.
+ */
+internal const val TRAILER_FILL_ZOOM = 1.32f
+
+/**
+ * Lecteur du bandeau dessiné plus grand puis réduit : l'habillage de YouTube (taille fixe en points) y prend moins de
+ * place, et le rognage de [TRAILER_FILL_ZOOM] le cache ; l'image est aussi plus nette.
+ */
+internal const val TRAILER_HERO_RENDER_SCALE = 1.5f
+
+/** Vidéo préparée qui repart de 0 : elle apparaît après ce temps (l'image du début est alors affichée). */
+private const val REVEAL_AFTER_SEEK_MILLIS = 300
 
 /** Temps passé sur la même affiche avant que sa bande-annonce démarre (réglable). */
 internal const val TRAILER_DELAY_MILLIS = 3_000L
