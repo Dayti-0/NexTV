@@ -4,6 +4,13 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.222
+- Classique : le nombre de chaînes, de films et de séries n'est plus coupé sous les tuiles du menu
+- Radios : plus de programme d'une chaîne de télé du même nom (la radio RTL affichait le guide de la chaîne allemande RTL)
+- Bande-annonce en plein écran : le début de l'habillage YouTube (chaîne, titre, symbole pause) n'est plus visible, image plus nette
+- Lecteur, en cas d'erreur sur la télé : les touches à utiliser sont indiquées (OK : réessayer, ▲ : chaîne suivante, Retour : quitter) à la place de boutons qu'on ne pouvait pas sélectionner
+- Séries : sous chaque épisode, son titre seulement, plus le nom brut de la playlist (« (MULTI) FHD S01 E01 »)
+
 ## 0.2.221
 - Bandes-annonces de Streaming : plus de nom de chaîne YouTube, de symbole pause ni de « Plus de vidéos » par-dessus la vidéo à son apparition ; image plus nette
 - Streaming : le volet des catégories s'ouvre sur la catégorie de la rangée sélectionnée (et non plus toujours sur « Tous les films »)
