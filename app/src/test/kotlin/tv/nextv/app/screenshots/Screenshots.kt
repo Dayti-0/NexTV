@@ -985,6 +985,24 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
+    fun settingsNetwork() = capture("16m_reglages_reseau") {
+        SettingsContent(
+            state = SampleData.settings.copy(dns = tv.nextv.core.net.DnsProvider.QUAD9),
+            snackbarHostState = remember { SnackbarHostState() },
+            onBack = {},
+            onPlaylists = {},
+            onRefreshPlaylist = {},
+            onRefreshGuide = {},
+            onAutoQuality = {},
+            onSaveTmdbKey = {},
+            onClearTmdbKey = {},
+            onProxy = {},
+            now = SampleData.NOW,
+            initialPage = SettingsPage.NETWORK,
+        )
+    }
+
+    @Test
     fun settingsLink() = capture("16k_reglages_teles_reliees") {
         SettingsContent(
             state = SampleData.settings,

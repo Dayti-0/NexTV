@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.224
+- Playlist qui ne charge pas à cause du DNS (Quad9 bloque certains serveurs) : si le DNS ne trouve pas le serveur, l’appli en essaie seule un autre (celui de l’appareil, Cloudflare ou Google)
+
 ## 0.2.223
 - Classique : au retour de Favoris, Reprendre la lecture, la recherche ou les Réglages, la sélection revient sur ce bouton au lieu de partir sur une tuile du haut
 

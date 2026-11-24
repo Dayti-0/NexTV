@@ -98,12 +98,19 @@ class HttpClientProvider(
     /** Résolveur partagé par tous les clients, recréé quand le réglage change. */
     private fun resolver(): Dns = resolver ?: buildResolver(networkSettings.dns).also { resolver = it }
 
-    private fun buildResolver(provider: DnsProvider): Dns {
+    private fun buildResolver(provider: DnsProvider): Dns =
+        FallbackDns(provider.withFallbacks().mapIndexed { index, it -> it to single(it, fallback = index > 0) }, logger)
+
+    private fun single(provider: DnsProvider, fallback: Boolean): Dns {
         val url = provider.dohUrl ?: return Dns.SYSTEM
         logger.debug(TAG, "DNS sur HTTPS : $provider")
+        var client = baseClient.newBuilder().proxy(Proxy.NO_PROXY) // joint directement par ses adresses IP, sans proxy
+        if (fallback) {
+            // Un secours ne doit pas faire attendre longtemps le message d'erreur d'un appareil hors ligne.
+            client = client.connectTimeout(4, TimeUnit.SECONDS).readTimeout(4, TimeUnit.SECONDS).callTimeout(6, TimeUnit.SECONDS)
+        }
         return DnsOverHttps.Builder()
-            // Le résolveur est joint directement par ses adresses IP, sans proxy.
-            .client(baseClient.newBuilder().proxy(Proxy.NO_PROXY).build())
+            .client(client.build())
             .url(url.toHttpUrl())
             .bootstrapDnsHosts(provider.addresses.map(InetAddress::getByName))
             .build()

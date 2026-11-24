@@ -850,6 +850,7 @@ fun SettingsContent(
                         value = dnsLabel(state.dns),
                         onClick = onCycleDns,
                     )
+                    InfoText(stringResource(R.string.settings_dns_fallback))
                 }
                 SectionCard(stringResource(R.string.settings_group_proxy)) {
                     InfoText(

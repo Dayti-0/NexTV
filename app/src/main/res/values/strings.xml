@@ -836,6 +836,7 @@
     <string name="settings_dns">DNS (résolution des adresses)</string>
     <string name="settings_dns_system">Celui de l’appareil (fournisseur d’accès)</string>
     <string name="settings_dns_public">%1$s (%2$s), chiffré</string>
+    <string name="settings_dns_fallback">Si ce DNS ne trouve pas un serveur (Quad9 en bloque certains), l’appli essaie seule un autre DNS.</string>
     <string name="settings_proxy_configure">Configurer le proxy</string>
     <string name="settings_version">NixTV version %1$s</string>
     <string name="settings_update">Mise à jour</string>
