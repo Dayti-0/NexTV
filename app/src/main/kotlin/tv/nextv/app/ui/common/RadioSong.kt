@@ -1,8 +1,9 @@
 package tv.nextv.app.ui.common
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.delay
@@ -25,23 +26,25 @@ fun isRadio(name: String, groupTitle: String?): Boolean =
 /**
  * Texte affiché quand le guide n'a pas de programme pour la chaîne : « Pas d'information de programme », sauf pour une
  * radio, qui n'est jamais dans le guide. Une radio dont le service publie le morceau en cours l'affiche (« ♪ Artiste –
- * Titre », relu à la fin du morceau ou toutes les 30 s, seulement si [fetch] : la radio sélectionnée) ; sinon son genre,
- * ou rien (chaîne vide).
+ * Titre », relu à la fin du morceau ou toutes les 30 s, seulement si [fetch]) ; sinon son genre, ou rien (chaîne vide).
+ * Le morceau est propre à la chaîne affichée : à un changement de chaîne (aperçu, vignette réutilisée par la liste), celui
+ * de la précédente disparaît aussitôt, remplacé par le dernier connu de la nouvelle radio en attendant la réponse.
  */
 @Composable
 fun noProgrammeText(name: String, groupTitle: String?, fetch: Boolean = true): String {
     if (!isRadio(name, groupTitle)) return stringResource(R.string.channels_no_epg)
     val service = LocalRadioTitles.current
     val source = InternetRadios.titlesFor(name)
-    val playing by produceState<NowPlaying?>(null, name, fetch, service) {
-        if (!fetch || service == null || source == null) return@produceState
+    val playing = remember(name, fetch, service) { mutableStateOf(source?.takeIf { fetch }?.let { service?.known(it) }) }
+    LaunchedEffect(name, fetch, service) {
+        if (!fetch || service == null || source == null) return@LaunchedEffect
         while (true) {
             val song = service.cached(source)
-            value = song
+            playing.value = song
             val untilEnd = song?.untilMillis?.let { it - System.currentTimeMillis() + 3_000 } ?: 30_000L
             delay(untilEnd.coerceIn(15_000L, 60_000L))
         }
     }
-    playing?.let { song -> return if (song.artist.isNullOrBlank()) song.title else "♪ ${song.label}" }
+    playing.value?.let { song -> return if (song.artist.isNullOrBlank()) song.title else "♪ ${song.label}" }
     return InternetRadios.byName(name)?.genre.orEmpty()
 }

@@ -1,5 +1,6 @@
 package tv.nextv.app.ui.home
 
+import tv.nextv.app.ui.common.isRadio
 import tv.nextv.app.ui.common.noProgrammeText
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
@@ -193,7 +194,7 @@ fun ChannelCard(
                 }
                 // Programme en cours, quelle que soit la taille de la vignette.
                 ScrollingText(
-                    channel.nowTitle ?: noProgrammeText(channel.name, channel.groupTitle, fetch = focused),
+                    channel.nowTitle ?: noProgrammeText(channel.name, channel.groupTitle),
                     if (small) MaterialTheme.typography.labelSmall else MaterialTheme.typography.bodySmall,
                     color = if (channel.nowTitle != null) MaterialTheme.colorScheme.onSurfaceVariant else NexTvColors.TextMuted,
                     scrolling = focused,
@@ -247,9 +248,15 @@ fun ChannelListItem(
                     qualityLabel(channel.quality)?.let { Badge(it, color = NexTvColors.Primary) }
                     if (isFavorite) Icon(Icons.Filled.Star, contentDescription = null, tint = NexTvColors.Warning, modifier = Modifier.size(16.dp))
                 }
+                // Programme en cours ; pour une radio, le morceau qu'elle passe (ou son genre).
+                val radioSong = if (channel.nowTitle == null && isRadio(channel.name, channel.groupTitle)) {
+                    noProgrammeText(channel.name, channel.groupTitle).takeIf { it.isNotEmpty() }
+                } else {
+                    null
+                }
                 channel.nowTitle?.let {
                     ScrollingText(it, MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, scrolling = focused)
-                }
+                } ?: radioSong?.let { ScrollingText(it, MaterialTheme.typography.bodySmall, color = NexTvColors.TextMuted, scrolling = focused) }
                 val start = channel.nowStart
                 val stop = channel.nowStop
                 if (start != null && stop != null) LiveProgress(start, stop, now, Modifier.padding(top = 4.dp))

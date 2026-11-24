@@ -9,6 +9,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
@@ -212,13 +214,26 @@ class RadioTitleService(
 
     private val cache = java.util.concurrent.ConcurrentHashMap<InternetRadios.TitleSource, Cached>()
 
+    /** Un seul appel à la fois par service : plusieurs vignettes (et l'aperçu) de la même radio attendent la même réponse. */
+    private val locks = java.util.concurrent.ConcurrentHashMap<InternetRadios.TitleSource, Mutex>()
+
     /** Morceau en cours, relu au plus toutes les 20 s par service (accueil). */
-    suspend fun cached(source: InternetRadios.TitleSource): NowPlaying? {
+    suspend fun cached(source: InternetRadios.TitleSource): NowPlaying? = locks.getOrPut(source) { Mutex() }.withLock {
         val now = SystemClock.elapsedRealtime()
-        cache[source]?.takeIf { now - it.atMillis < CACHE_MILLIS }?.let { return it.playing }
+        cache[source]?.takeIf { now - it.atMillis < CACHE_MILLIS }?.let { return@withLock it.playing }
         val playing = current(source)
         cache[source] = Cached(now, playing)
-        return playing
+        playing
+    }
+
+    /**
+     * Dernier morceau connu de ce service, sans appel réseau (affiché tout de suite par une vignette ou l'aperçu, avant la
+     * réponse) : `null` s'il n'a pas été lu depuis 2 min ou si ce morceau est fini.
+     */
+    fun known(source: InternetRadios.TitleSource): NowPlaying? {
+        val entry = cache[source] ?: return null
+        if (SystemClock.elapsedRealtime() - entry.atMillis > KNOWN_MILLIS) return null
+        return entry.playing?.takeIf { song -> song.untilMillis.let { it == null || it > System.currentTimeMillis() } }
     }
 
     /** Morceau en cours lu sur le service de la radio, `null` s'il ne répond pas ou ne le donne pas. */
@@ -252,5 +267,6 @@ class RadioTitleService(
     private companion object {
         const val TAG = "RadioNowPlaying"
         const val CACHE_MILLIS = 20_000L
+        const val KNOWN_MILLIS = 120_000L
     }
 }
