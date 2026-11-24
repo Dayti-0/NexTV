@@ -14,6 +14,7 @@ import java.security.SecureRandom
 import java.util.zip.GZIPInputStream
 import java.util.zip.GZIPOutputStream
 import javax.crypto.Cipher
+import javax.crypto.Mac
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
@@ -135,27 +136,47 @@ object SyncCodec {
 }
 
 /**
- * Liaison de deux télés par un code à 6 chiffres : la première dépose l'invitation (le groupe, chiffré avec une clé
- * tirée du code) sur une page filebin dont le nom vient aussi du code ; la seconde, avec le même code, la retrouve et
- * la déchiffre, puis dépose sa réponse. L'invitation est supprimée dès que la seconde télé a répondu, ou au bout de
- * [VALIDITY_MILLIS].
+ * Liaison des télés par un code. Code du groupe ([codeOf], [LINK_DIGITS] chiffres) : tiré de la clé du groupe, donc
+ * le même sur toutes ses télés, et permanent. L'invitation (le groupe, chiffré avec une clé tirée du code) est sur une
+ * page filebin dont le nom vient aussi du code ([inviteBin]) ; chaque télé du groupe la redépose au moins tous les
+ * 3 jours (filebin garde une page 7 jours) : une télé qui saisit le code rejoint le groupe même si les autres sont
+ * éteintes. Les codes à [CODE_DIGITS] chiffres servent à la configuration à distance ([RemoteSetupLink]).
  */
 object SyncPairing {
     const val CODE_DIGITS = 6
-    const val VALIDITY_MILLIS = 10 * 60_000L
+    const val LINK_DIGITS = 8
     const val INVITE_FILE = "invitation.bin"
-    const val ANSWER_FILE = "reponse.bin"
 
     fun newCode(random: SecureRandom = SecureRandom()): String =
         (1..CODE_DIGITS).map { '0' + random.nextInt(10) }.joinToString("")
 
-    /** Code saisi (espaces et tirets permis) ramené à ses chiffres ; `null` s'il n'a pas le bon nombre de chiffres. */
-    fun normalize(input: String): String? = input.filter { it.isDigit() }.takeIf { it.length == CODE_DIGITS && input.all { c -> c.isDigit() || c == ' ' || c == '-' } }
+    /** Code permanent du groupe, le même sur toutes ses télés. */
+    fun codeOf(group: SyncGroup): String {
+        val mac = Mac.getInstance("HmacSHA256")
+        mac.init(SecretKeySpec(group.key, "HmacSHA256"))
+        val bytes = mac.doFinal("nixtv-link-code".toByteArray(Charsets.UTF_8))
+        val number = bytes.take(8).fold(0L) { acc, b -> (acc shl 8) or (b.toLong() and 0xFF) } and Long.MAX_VALUE
+        return (number % 100_000_000L).toString().padStart(LINK_DIGITS, '0')
+    }
 
-    /** « 482 913 » */
-    fun display(code: String): String = if (code.length == CODE_DIGITS) code.substring(0, 3) + " " + code.substring(3) else code
+    /**
+     * Code saisi (espaces et tirets permis) ramené à ses chiffres ; `null` s'il n'a pas [digits] chiffres.
+     */
+    fun normalize(input: String, digits: Int = CODE_DIGITS): String? =
+        input.filter { it.isDigit() }.takeIf { it.length == digits && input.all { c -> c.isDigit() || c == ' ' || c == '-' } }
 
-    fun inviteBin(code: String): String = "nixtv-link-" + "nixtv-link|$code".encodeUtf8().sha256().hex().take(20)
+    /** « 482 913 », « 4829 1306 » */
+    fun display(code: String): String = when (code.length) {
+        CODE_DIGITS -> code.substring(0, 3) + " " + code.substring(3)
+        LINK_DIGITS -> code.substring(0, 4) + " " + code.substring(4)
+        else -> code
+    }
+
+    /** Page de l'invitation ; [generation] > 0 quand filebin a fermé les précédentes (7 jours sans dépôt). */
+    fun inviteBin(code: String, generation: Int = 0): String {
+        val base = "nixtv-link-" + "nixtv-link|$code".encodeUtf8().sha256().hex().take(20)
+        return if (generation == 0) base else "$base-$generation"
+    }
 
     fun inviteKey(code: String): ByteArray = "nixtv-link-key|$code".encodeUtf8().sha256().toByteArray()
 
@@ -171,17 +192,6 @@ object SyncPairing {
     fun decodeInvite(bytes: ByteArray, code: String): Invite? = try {
         val json = JSONObject(String(SyncCodec.decrypt(bytes, inviteKey(code)), Charsets.UTF_8))
         SyncGroup.decode(json.getString("group"))?.let { Invite(it, json.optInt("generation"), json.optString("from")) }
-    } catch (e: SyncFormatException) {
-        null
-    } catch (e: JSONException) {
-        null
-    }
-
-    fun encodeAnswer(name: String, code: String): ByteArray =
-        SyncCodec.encrypt(JSONObject().put("name", name).toString().toByteArray(Charsets.UTF_8), inviteKey(code))
-
-    fun decodeAnswer(bytes: ByteArray, code: String): String? = try {
-        JSONObject(String(SyncCodec.decrypt(bytes, inviteKey(code)), Charsets.UTF_8)).optString("name")
     } catch (e: SyncFormatException) {
         null
     } catch (e: JSONException) {

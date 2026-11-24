@@ -62,7 +62,6 @@ sealed interface TvLinkMessage {
     data object InvalidCode : TvLinkMessage
     data object AlreadyLinked : TvLinkMessage
     data object Offline : TvLinkMessage
-    data object Expired : TvLinkMessage
     data class Synced(val changes: Int) : TvLinkMessage
     data object Unlinked : TvLinkMessage
 }
@@ -102,12 +101,15 @@ class TvLinkController(private val scope: CoroutineScope, private val sync: TvSy
                 return@launch
             }
             local.value = Local(invite = invite)
-            val name = sync.awaitAnswer(invite)
-            local.value = Local(message = name?.let(TvLinkMessage::Linked) ?: TvLinkMessage.Expired)
+            // Le code reste affiché : chaque télé qui le saisit est annoncée, jusqu'à « Fermer le code ».
+            while (true) {
+                val name = sync.awaitNewTv()
+                local.update { it.copy(message = TvLinkMessage.Linked(name)) }
+            }
         }
     }
 
-    /** Code retiré de l'écran (et de filebin). */
+    /** Code retiré de l'écran (il reste valable). */
     fun hideCode() {
         inviteJob?.cancel()
         inviteJob = null
@@ -115,7 +117,7 @@ class TvLinkController(private val scope: CoroutineScope, private val sync: TvSy
     }
 
     fun join(input: String) {
-        val code = SyncPairing.normalize(input) ?: run {
+        val code = SyncPairing.normalize(input, SyncPairing.LINK_DIGITS) ?: run {
             local.update { it.copy(message = TvLinkMessage.InvalidCode) }
             return
         }
@@ -204,8 +206,7 @@ internal fun TvLinkPage(link: TvLinkUi, actions: TvLinkActions, now: Long) {
             Text(stringResource(R.string.settings_link_busy), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         link.message?.let { message ->
-            val error = message is TvLinkMessage.UnknownCode || message is TvLinkMessage.InvalidCode || message is TvLinkMessage.Offline ||
-                message is TvLinkMessage.Expired
+            val error = message is TvLinkMessage.UnknownCode || message is TvLinkMessage.InvalidCode || message is TvLinkMessage.Offline
             Text(
                 messageText(message),
                 style = MaterialTheme.typography.bodyMedium,
@@ -221,7 +222,7 @@ internal fun TvLinkPage(link: TvLinkUi, actions: TvLinkActions, now: Long) {
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             PillButton(
-                stringResource(if (link.invite == null) R.string.settings_link_show_code else R.string.settings_link_new_code),
+                stringResource(R.string.settings_link_show_code),
                 actions.onShowCode,
                 modifier = Modifier.focusRequester(codeButton),
                 icon = Icons.Filled.Share,
@@ -242,7 +243,7 @@ internal fun TvLinkPage(link: TvLinkUi, actions: TvLinkActions, now: Long) {
                 color = MaterialTheme.colorScheme.primary,
             )
             Text(
-                stringResource(R.string.settings_link_code_help, relativeTime(invite.expiresAt, now).lowercase()),
+                stringResource(R.string.settings_link_code_help),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -263,7 +264,7 @@ internal fun TvLinkPage(link: TvLinkUi, actions: TvLinkActions, now: Long) {
         var code by rememberSaveable { mutableStateOf("") }
         NexTvTextField(
             value = code,
-            onValueChange = { typed -> code = typed.filter { it.isDigit() }.take(SyncPairing.CODE_DIGITS) },
+            onValueChange = { typed -> code = typed.filter { it.isDigit() }.take(SyncPairing.LINK_DIGITS) },
             label = stringResource(R.string.settings_link_join_code),
             keyboardType = KeyboardType.NumberPassword,
         )
@@ -283,7 +284,6 @@ private fun messageText(message: TvLinkMessage): String = when (message) {
     TvLinkMessage.InvalidCode -> stringResource(R.string.settings_link_invalid_code)
     TvLinkMessage.AlreadyLinked -> stringResource(R.string.settings_link_already)
     TvLinkMessage.Offline -> stringResource(R.string.settings_link_offline)
-    TvLinkMessage.Expired -> stringResource(R.string.settings_link_expired)
     is TvLinkMessage.Synced -> if (message.changes > 0) {
         pluralStringResource(R.plurals.settings_link_synced, message.changes, message.changes)
     } else {

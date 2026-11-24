@@ -96,6 +96,7 @@ class TvSyncEngineTest {
     }
 
     private var now = 1_000_000L
+    private val DAY = 24 * 60 * 60_000L
     private val relay = FakeRelay()
 
     private fun engine(tv: FakeTv, name: String, store: MemoryStore = MemoryStore()) =
@@ -114,7 +115,7 @@ class TvSyncEngineTest {
     /** Relie [b] au groupe de [a] par le code affiché sur [a]. */
     private fun link(a: TvSyncEngine, b: TvSyncEngine): JoinResult = runBlocking {
         val invite = a.createInvite()
-        val answer = async { a.awaitAnswer(invite) }
+        val answer = async { a.awaitNewTv() }
         yield()
         val result = b.join(invite.code)
         assertEquals("B", answer.await())
@@ -145,8 +146,8 @@ class TvSyncEngineTest {
         assertEquals("s:DARK", tvA.values[theme])
         assertEquals(listOf("B"), a.status.value.peers.map { it.name })
         assertEquals(listOf("A"), b.status.value.peers.map { it.name })
-        // L'invitation a disparu : le code ne sert qu'une fois.
-        assertTrue(relay.bins.keys.none { it.startsWith("nixtv-link-") })
+        // L'invitation reste : le code sert encore pour d'autres télés.
+        assertEquals(listOf(SyncPairing.INVITE_FILE), relay.bins.getValue(SyncPairing.inviteBin(a.createInvite().code)).keys.toList())
     }
 
     @Test
@@ -159,10 +160,10 @@ class TvSyncEngineTest {
         val c = engine(tvC, "C")
         link(a, b)
         val invite = b.createInvite()
-        val answer = async { b.awaitAnswer(invite) }
+        val answer = async { b.awaitNewTv() }
         yield()
         c.join(invite.code)
-        answer.await()
+        assertEquals("C", answer.await())
         // C n'avait aucune playlist : celle du groupe lui est ajoutée, avec ses favoris.
         assertTrue(scope in tvC.scopes)
         assertEquals("1", tvC.values[fav("tf1")])
@@ -213,7 +214,7 @@ class TvSyncEngineTest {
         val tvB = FakeTv()
         val a = engine(tvA, "A")
         val b = engine(tvB, "B")
-        assertEquals(JoinResult.UnknownCode, b.join("000000"))
+        assertEquals(JoinResult.UnknownCode, b.join("00000000"))
         link(a, b)
         relay.offline = true
         tvA.values[fav("canal")] = "1"
@@ -243,6 +244,37 @@ class TvSyncEngineTest {
         b.sync()
         assertEquals("1", tvB.values[fav("arte")])
         assertEquals(listOf("A"), b.status.value.peers.map { it.name })
+    }
+
+    @Test
+    fun `the code never expires and works while the first tv is off`() = runBlocking {
+        val tvA = tvWithPlaylist().apply { values[fav("tf1")] = "1" }
+        val a = engine(tvA, "A")
+        val code = a.createInvite().code
+        assertEquals(SyncPairing.LINK_DIGITS, code.length)
+        assertEquals(code, a.createInvite().code)
+        // A est éteinte : personne n'attend la réponse. B saisit le code deux jours plus tard.
+        now += 2 * DAY
+        val tvB = FakeTv()
+        val b = engine(tvB, "B")
+        assertTrue(b.join(code) is JoinResult.Joined)
+        assertTrue(scope in tvB.scopes)
+        assertEquals("1", tvB.values[fav("tf1")])
+        // Même code sur toutes les télés du groupe.
+        assertEquals(code, b.createInvite().code)
+
+        // Toutes éteintes plus de 7 jours : filebin a fermé la page du code. La première rallumée la refait.
+        val invitePage = SyncPairing.inviteBin(code)
+        relay.bins.remove(invitePage)
+        relay.closed += invitePage
+        now += 8 * DAY
+        b.sync()
+        val tvC = FakeTv()
+        val c = engine(tvC, "C")
+        assertTrue(c.join(code) is JoinResult.Joined)
+        assertEquals("1", tvC.values[fav("tf1")])
+        a.sync()
+        assertEquals(listOf("B", "C"), a.status.value.peers.map { it.name })
     }
 
     @Test

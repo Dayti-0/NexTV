@@ -36,7 +36,7 @@ import tv.nextv.core.sync.SyncStatus
 
 /**
  * Page « Télés reliées » à la télécommande : un bouton qui disparaît sous la sélection (« Ne plus relier », « Fermer le
- * code ») la laisse dans la page, sur « Afficher un code », au lieu de la perdre (elle partirait en haut à gauche).
+ * code ») la laisse dans la page, sur « Afficher le code », au lieu de la perdre (elle partirait en haut à gauche).
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -77,7 +77,7 @@ class TvLinkFocusTest {
         var link by mutableStateOf(
             TvLinkUi(
                 status = SyncStatus(linked = true, peers = listOf(SyncDevice("a", "Salon", at = SampleData.NOW)), lastSyncAt = SampleData.NOW),
-                invite = SyncInvite("123456", SampleData.NOW + 600_000),
+                invite = SyncInvite("12345678"),
             ),
         )
         var unlinked = 0
@@ -112,12 +112,12 @@ class TvLinkFocusTest {
 
         moveTo("Fermer le code")
         press(Key.Enter)
-        assertEquals("Afficher un code", focusedText())
+        assertEquals("Afficher le code", focusedText())
 
         moveTo("Ne plus relier cette télé")
         press(Key.Enter)
         assertEquals(1, unlinked)
-        assertEquals("Afficher un code", focusedText())
+        assertEquals("Afficher le code", focusedText())
         assertTrue(texts(compose.onRoot().fetchSemanticsNode()).any { it.startsWith("Cette télé n'est reliée") })
     }
 }

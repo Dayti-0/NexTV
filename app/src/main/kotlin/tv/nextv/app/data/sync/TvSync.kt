@@ -82,7 +82,8 @@ class TvSync(
 
     suspend fun createInvite(): SyncInvite = engine.createInvite()
 
-    suspend fun awaitAnswer(invite: SyncInvite): String? = engine.awaitAnswer(invite).also { if (it != null) request(ANSWER_DELAY_MILLIS) }
+    /** Nom de la prochaine télé qui rejoint le groupe (attente tant que le code est affiché). */
+    suspend fun awaitNewTv(): String = engine.awaitNewTv { runSync() }
 
     suspend fun join(code: String): JoinResult = engine.join(code)
 
@@ -95,8 +96,6 @@ class TvSync(
         const val AFTER_PLAYBACK_DELAY_MILLIS = 3_000L
         const val RESUME_DELAY_MILLIS = 2_000L
 
-        /** La télé qui vient de saisir le code dépose son document juste après sa réponse. */
-        const val ANSWER_DELAY_MILLIS = 8_000L
         const val SETTLE_MILLIS = 2_000L
         const val PERIOD_MILLIS = 5 * 60_000L
     }

@@ -304,8 +304,10 @@ Commandes :
   chaque télé garde son compte, une seule connexion par abonnement), `TvSyncEngine` (chaque télé dépose son document
   complet chiffré AES-GCM `tv-<id>.bin` sur la page filebin du groupe `nixtv-sync-…`, et fusionne ceux des autres ;
   page fermée par filebin — 7 jours sans dépôt ou supprimée, 405 — : page suivante `…-1`, redépôt tous les 3 jours),
-  `SyncPairing` (code à 6 chiffres : invitation chiffrée sur `nixtv-link-<sha256 du code>`, supprimée à la réponse ou
-  après 10 min). Appli : `data/sync/RoomSyncLocal` (lecture / écriture des bases et réglages ; playlist ajoutée
+  `SyncPairing` (0.2.226 : code du groupe permanent à 8 chiffres, `codeOf` = tiré de la clé du groupe, le même sur toutes
+  ses télés ; invitation chiffrée sur `nixtv-link-<sha256 du code>`, `-1`, `-2`… quand filebin a fermé la page, redéposée
+  par chaque télé tous les 3 jours, `SyncState.inviteAt` ; pas de réponse : la télé qui affiche le code voit arriver les
+  autres sur la page du groupe, `awaitNewTv`. Avant, code de 10 min supprimé dès la sortie de l'écran : « code inconnu »). Appli : `data/sync/RoomSyncLocal` (lecture / écriture des bases et réglages ; playlist ajoutée
   seulement à une télé sans ce fournisseur, jamais retirée ailleurs ; réglages propres à l'appareil :
   `SettingsRepository.DEVICE_ONLY`), `TvSync` (quand : 5 s après un changement, fin de lecture, retour dans l'appli,
   toutes les 5 min ; jamais pendant une lecture), `EncryptedSyncStateStore` (`files/sync`), écran `ui/settings/TvLink.kt`.

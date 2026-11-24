@@ -1021,7 +1021,7 @@ abstract class ScreenshotSuite(private val device: String) {
                     peers = listOf(tv.nextv.core.sync.SyncDevice("a", "Fire TV du salon", at = SampleData.NOW - 3 * 60_000L)),
                     lastSyncAt = SampleData.NOW - 60_000L,
                 ),
-                invite = tv.nextv.core.sync.SyncInvite("482913", SampleData.NOW + 10 * 60_000L),
+                invite = tv.nextv.core.sync.SyncInvite("48291306"),
             ),
             now = SampleData.NOW,
             initialPage = SettingsPage.LINK,

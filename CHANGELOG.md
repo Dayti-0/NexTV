@@ -4,6 +4,10 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.226
+- Télés reliées : le code ne change plus et n'expire plus (8 chiffres, le même sur toutes les télés reliées) ; une autre télé peut le saisir même quand celle qui l'a affiché est éteinte ou a quitté les Réglages
+- Télés reliées : la télé qui affiche le code annonce chaque télé qui la rejoint, tant que le code reste à l'écran
+
 ## 0.2.225
 - Radios : le morceau en cours s'affiche sur toutes leurs vignettes, plus seulement sur celle qui est sélectionnée (aussi dans la liste des chaînes)
 - Radios : en passant d'une radio à l'autre, le titre de la précédente ne reste plus affiché dans l'aperçu ; celui de la nouvelle apparaît tout de suite s'il est déjà connu

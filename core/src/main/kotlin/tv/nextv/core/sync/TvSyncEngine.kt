@@ -1,14 +1,12 @@
 package tv.nextv.core.sync
 
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 import okio.ByteString.Companion.encodeUtf8
 import org.json.JSONArray
 import org.json.JSONException
@@ -73,6 +71,9 @@ data class SyncState(
     /** Autres télés du groupe, d'après leurs derniers dépôts. */
     val peers: List<SyncDevice> = emptyList(),
     val lastSyncAt: Long = 0,
+    /** Dernier dépôt de l'invitation du code du groupe par cette télé (0 : à refaire) et sa page ([SyncPairing.inviteBin]). */
+    val inviteAt: Long = 0,
+    val inviteGeneration: Int = 0,
 )
 
 /** Lecture et écriture de [SyncState] sur l'appareil (appels bloquants, faits hors du fil principal). */
@@ -92,13 +93,13 @@ data class SyncStatus(
     val running: Boolean = false,
 )
 
-/** Code affiché sur la télé qui invite, valable jusqu'à [expiresAt]. */
-data class SyncInvite(val code: String, val expiresAt: Long)
+/** Code du groupe affiché sur la télé : permanent, le même sur toutes les télés reliées. */
+data class SyncInvite(val code: String)
 
 sealed interface JoinResult {
     data class Joined(val from: String, val applied: SyncApplied, val synced: Boolean) : JoinResult
 
-    /** Aucune invitation sous ce code (faute de frappe, code expiré ou déjà utilisé). */
+    /** Aucune invitation sous ce code (faute de frappe, ou groupe dont aucune télé n'a déposé l'invitation). */
     data object UnknownCode : JoinResult
 
     data object AlreadyLinked : JoinResult
@@ -236,6 +237,17 @@ class TvSyncEngine(
             uploadedDigest = digest
             uploadedAt = now
         }
+        var inviteAt = start.inviteAt
+        var inviteGeneration = start.inviteGeneration
+        if (inviteAt == 0L || now - inviteAt >= REUPLOAD_MILLIS || generation != start.generation) {
+            try {
+                inviteGeneration = publishInvite(group, generation, inviteGeneration)
+                inviteAt = now
+            } catch (e: IOException) {
+                // Refait au passage suivant ; les documents, eux, sont à jour.
+                logger?.warn(TAG, "Invitation du groupe non déposée : ${e.message}")
+            }
+        }
         val before = state()
         val finished = before.copy(
             document = document,
@@ -247,6 +259,8 @@ class TvSyncEngine(
             uploadedAt = uploadedAt,
             peers = peers.values.sortedBy { it.name },
             lastSyncAt = now,
+            inviteAt = inviteAt,
+            inviteGeneration = inviteGeneration,
         )
         // Rien de neuf (le cas de presque tous les passages) : pas de réécriture du fichier, seulement l'heure en mémoire.
         if (finished.copy(lastSyncAt = before.lastSyncAt, peers = before.peers) == before && finished.peers.map { it.id } == before.peers.map { it.id }) {
@@ -262,7 +276,27 @@ class TvSyncEngine(
     }
 
     /**
-     * Affiche un code pour relier une autre télé (crée le groupe si cette télé n'en a pas encore).
+     * Dépose l'invitation du groupe sous son code, sur la page [inviteGeneration] ou la suivante si filebin l'a fermée.
+     * @return la page utilisée.
+     */
+    private suspend fun publishInvite(group: SyncGroup, generation: Int, inviteGeneration: Int): Int {
+        val code = SyncPairing.codeOf(group)
+        val bytes = SyncPairing.encodeInvite(group, deviceName(), code, generation)
+        var page = inviteGeneration
+        while (true) {
+            try {
+                relay.write(SyncPairing.inviteBin(code, page), SyncPairing.INVITE_FILE, bytes)
+                return page
+            } catch (e: SyncBinClosedException) {
+                if (page - inviteGeneration >= MAX_PAGE_SKIPS) throw e
+                page++
+            }
+        }
+    }
+
+    /**
+     * Code pour relier une autre télé (crée le groupe si cette télé n'en a pas encore). Le code ne change pas et
+     * n'expire pas : l'invitation est déposée tout de suite, puis redéposée par chaque télé du groupe.
      * @throws IOException sans réseau.
      */
     suspend fun createInvite(): SyncInvite = mutex.withLock {
@@ -270,69 +304,70 @@ class TvSyncEngine(
         val group = state.group ?: SyncGroup.create(random).also {
             // Première télé du groupe : tout ce qu'elle a part au premier dépôt.
             state = state.copy(group = it, document = SyncDocument(), base = SyncSnapshot(), joining = false, uploadedDigest = null, peers = emptyList())
-            save(state)
         }
-        // Document de cette télé déposé avant l'invitation : l'autre télé trouve tout dès qu'elle a saisi le code.
+        // Invitation redéposée à coup sûr (page perdue entre-temps) avec le document de cette télé : l'autre télé
+        // trouve tout dès qu'elle a saisi le code, même si celle-ci est éteinte entre-temps.
+        save(state.copy(inviteAt = 0))
         syncLocked()
-        if (mutableStatus.value.failedAt != 0L) throw IOException("Synchronisation impossible")
-        // Page d'un code déjà servi (fermée par filebin) : autre code.
-        repeat(MAX_PAGE_SKIPS + 1) {
-            val code = SyncPairing.newCode(random)
-            try {
-                relay.write(SyncPairing.inviteBin(code), SyncPairing.INVITE_FILE, SyncPairing.encodeInvite(group, deviceName(), code, state().generation))
-                return@withLock SyncInvite(code, clock() + SyncPairing.VALIDITY_MILLIS)
-            } catch (e: SyncBinClosedException) {
-                // Code suivant.
-            }
-        }
-        throw IOException("Aucune page libre pour l'invitation")
+        if (mutableStatus.value.failedAt != 0L || state().inviteAt == 0L) throw IOException("Synchronisation impossible")
+        SyncInvite(SyncPairing.codeOf(group))
     }
 
     /**
-     * Attend la réponse de l'autre télé. @return son nom, ou `null` si le code a expiré sans réponse. L'invitation est
-     * supprimée dans tous les cas (y compris si l'attente est annulée : écran fermé).
+     * Attend qu'une nouvelle télé rejoigne le groupe (tant que le code est affiché) : son document apparaît sur la page
+     * commune. Synchronise alors (par [syncNow]) et @return son nom.
      */
-    suspend fun awaitAnswer(invite: SyncInvite): String? {
-        val bin = SyncPairing.inviteBin(invite.code)
-        try {
-            while (clock() < invite.expiresAt) {
-                delay(pollMillis)
-                val files = try {
-                    relay.list(bin)
-                } catch (e: IOException) {
-                    continue
-                }
-                if (SyncPairing.ANSWER_FILE !in files) continue
-                val name = runCatching { relay.read(bin, SyncPairing.ANSWER_FILE) }.getOrNull()
-                    ?.let { SyncPairing.decodeAnswer(it, invite.code) } ?: continue
-                return name.ifBlank { "?" }
+    suspend fun awaitNewTv(syncNow: suspend () -> Unit = { this.sync() }): String {
+        val known = mutex.withLock { state().peers.map { it.id }.toHashSet() }
+        val started = clock()
+        while (true) {
+            // Code laissé longtemps à l'écran : la page est relue moins souvent.
+            delay(if (clock() - started < FAST_WAIT_MILLIS) pollMillis else SLOW_POLL_MILLIS)
+            val state = loaded ?: continue
+            val group = state.group ?: continue
+            val files = try {
+                relay.list(pageOf(group, state.generation))
+            } catch (e: IOException) {
+                continue
             }
-            return null
-        } finally {
-            withContext(NonCancellable) { runCatching { relay.deleteBin(bin) } }
+            val arrived = files.keys
+                .filter { it.startsWith(FILE_PREFIX) && it.endsWith(FILE_SUFFIX) }
+                .map { it.removePrefix(FILE_PREFIX).removeSuffix(FILE_SUFFIX) }
+                .filter { it != state.deviceId && it !in known }
+            if (arrived.isEmpty()) continue
+            syncNow()
+            state().peers.firstOrNull { it.id !in known }?.let { return it.name.ifBlank { "?" } }
+            // Document illisible (autre groupe, fichier abîmé) : plus attendu.
+            if (mutableStatus.value.failedAt == 0L) known += arrived
         }
     }
 
-    /** Rejoint le groupe d'une autre télé avec le code qu'elle affiche, puis synchronise. */
+    /** Rejoint le groupe avec le code affiché sur une de ses télés (même éteinte depuis), puis synchronise. */
     suspend fun join(code: String): JoinResult = mutex.withLock {
-        val bin = SyncPairing.inviteBin(code)
-        val invite = try {
-            relay.read(bin, SyncPairing.INVITE_FILE)
+        var found: Pair<SyncPairing.Invite, Int>? = null
+        try {
+            for (page in 0..MAX_PAGE_SKIPS) {
+                val bytes = relay.read(SyncPairing.inviteBin(code, page), SyncPairing.INVITE_FILE) ?: continue
+                val decoded = SyncPairing.decodeInvite(bytes, code) ?: continue
+                found = decoded to page
+                break
+            }
         } catch (e: IOException) {
             return@withLock JoinResult.Offline
-        } ?: return@withLock JoinResult.UnknownCode
-        val decoded = SyncPairing.decodeInvite(invite, code) ?: return@withLock JoinResult.UnknownCode
+        }
+        val (decoded, invitePage) = found ?: return@withLock JoinResult.UnknownCode
         val group = decoded.group
         val previous = state()
         if (previous.group == group) return@withLock JoinResult.AlreadyLinked
         previous.group?.let { old -> runCatching { relay.deleteFile(pageOf(old, previous.generation), fileName(previous.deviceId)) } }
-        save(SyncState(deviceId = previous.deviceId, group = group, generation = decoded.generation, joining = true))
+        // Invitation qui vient d'être lue : déjà en place, pas à redéposer tout de suite.
+        save(
+            SyncState(
+                deviceId = previous.deviceId, group = group, generation = decoded.generation, joining = true,
+                inviteAt = clock(), inviteGeneration = invitePage,
+            ),
+        )
         merged.clear()
-        try {
-            relay.write(bin, SyncPairing.ANSWER_FILE, SyncPairing.encodeAnswer(deviceName(), code))
-        } catch (e: IOException) {
-            // La télé qui invite verra la nôtre à sa prochaine synchronisation, sans le message « reliée ».
-        }
         val applied = syncLocked()
         JoinResult.Joined(decoded.from, applied ?: SyncApplied(), synced = mutableStatus.value.failedAt == 0L)
     }
@@ -352,7 +387,11 @@ class TvSyncEngine(
         const val FILE_SUFFIX = ".bin"
         const val POLL_MILLIS = 3_000L
 
-        /** Dépôt refait au moins tous les 3 jours : filebin garde la page 7 jours après le dernier. */
+        /** Attente d'une nouvelle télé : page relue toutes les [POLL_MILLIS] pendant 10 min, puis chaque minute. */
+        const val FAST_WAIT_MILLIS = 10 * 60_000L
+        const val SLOW_POLL_MILLIS = 60_000L
+
+        /** Dépôt (document, invitation) refait au moins tous les 3 jours : filebin garde la page 7 jours après le dernier. */
         const val REUPLOAD_MILLIS = 3L * 24 * 60 * 60_000L
 
         fun fileName(deviceId: String) = "$FILE_PREFIX$deviceId$FILE_SUFFIX"
@@ -394,6 +433,8 @@ object SyncStateCodec {
             .put("uploadedDigest", state.uploadedDigest ?: JSONObject.NULL)
             .put("uploadedAt", state.uploadedAt)
             .put("lastSyncAt", state.lastSyncAt)
+            .put("inviteAt", state.inviteAt)
+            .put("inviteGeneration", state.inviteGeneration)
             .put(
                 "peers",
                 JSONArray(state.peers.map { JSONObject().put("id", it.id).put("name", it.name).put("app", it.app).put("at", it.at) }),
@@ -419,6 +460,8 @@ object SyncStateCodec {
             uploadedDigest = if (root.isNull("uploadedDigest")) null else root.optString("uploadedDigest"),
             uploadedAt = root.optLong("uploadedAt"),
             lastSyncAt = root.optLong("lastSyncAt"),
+            inviteAt = root.optLong("inviteAt"),
+            inviteGeneration = root.optInt("inviteGeneration"),
             peers = root.optJSONArray("peers")?.let { array ->
                 (0 until array.length()).mapNotNull { i ->
                     array.optJSONObject(i)?.let { SyncDevice(it.optString("id"), it.optString("name"), it.optString("app"), it.optLong("at")) }

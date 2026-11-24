@@ -162,7 +162,7 @@ class TvSyncLocalTest {
 
         val chambre = tv("Chambre")
         val invite = salon.engine.createInvite()
-        val answer = async { salon.engine.awaitAnswer(invite) }
+        val answer = async { salon.engine.awaitNewTv() }
         yield()
         chambre.engine.join(invite.code)
         assertEquals("Chambre", answer.await())
