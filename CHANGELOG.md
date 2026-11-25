@@ -4,6 +4,11 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.229
+- Retour à l'accueil par appui long sur Retour depuis une chaîne : l'aperçu continue sans coupure (il restait noir 2 s, le temps de rouvrir la chaîne)
+- Bandes-annonces sur la box : la limite à 720p s'applique bien (le décodeur de la box se faisait passer pour un décodeur matériel)
+- L'appli indique à Android quelles parties de son code compiler d'avance après une mise à jour
+
 ## 0.2.228
 - Bandes-annonces : sur un appareil sans décodeur adapté aux vidéos de YouTube (box), qualité limitée à 720p, pour une vidéo qui démarre plus vite et ne s'arrête plus sans cesse
 - Bandes-annonces : quand la vidéo recharge, l'image revient par-dessus au lieu de l'habillage de YouTube (symbole pause, titre)

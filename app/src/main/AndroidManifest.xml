@@ -56,6 +56,9 @@
         <receiver
             android:name=".data.update.InstallResultReceiver"
             android:exported="false" />
+        <!-- Mesure du processeur par adb (simpleperf) sur la version publiée, pour trouver ce qui saccade sur la box.
+             Seulement depuis l'ordinateur relié en adb (« shell ») : aucune autre appli n'y a accès. -->
+        <profileable android:shell="true" tools:targetApi="29" />
     </application>
 
 </manifest>
