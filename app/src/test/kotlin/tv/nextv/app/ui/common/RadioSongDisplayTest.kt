@@ -37,8 +37,11 @@ import java.util.concurrent.atomic.AtomicInteger
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class)
 class RadioSongDisplayTest {
+    // Effets sur le fil principal, comme dans l'appli : réponse du service reçue sur un fil d'arrière-plan, l'écran était
+    // parfois redessiné depuis ce fil par l'outil de test (« Only the original thread… », échec au hasard sur la CI).
+    @OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
     @get:Rule
-    val compose = createComposeRule()
+    val compose = createComposeRule(effectContext = kotlinx.coroutines.Dispatchers.Main)
 
     private val server = MockWebServer()
     private val fipAnswer = CountDownLatch(1)
