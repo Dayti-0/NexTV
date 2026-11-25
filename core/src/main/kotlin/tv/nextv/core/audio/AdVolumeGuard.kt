@@ -98,6 +98,12 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
     private var logoSeen = false
 
     /**
+     * Départs du logo hors page de pubs, récents : un logo qui part sans cesse est mal vu sur ces images (dessins animés
+     * de Gulli et de 6ter, très colorés) ; son départ seul ne dit alors rien d'une page de pubs.
+     */
+    private val logoDepartures = ArrayDeque<Long>()
+
+    /**
      * Le logo suit les coupures de cette chaîne : il a déjà été vu revenir à la fin d'une page de pubs. Tant que ce
      * n'est pas le cas, son absence ne prouve rien (un habillage propre à une émission disparaît avec elle).
      */
@@ -188,7 +194,13 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
                     logoMissing = false
                 }
                 // Un logo qui disparaît suit de nouveau les coupures : il est réécouté.
-                LogoState.HIDDEN -> logoStays = false
+                LogoState.HIDDEN -> {
+                    logoStays = false
+                    if (!attenuating) {
+                        logoDepartures.addLast(elapsed)
+                        while (logoDepartures.size > FLICKER_DEPARTURES) logoDepartures.removeFirst()
+                    }
+                }
                 LogoState.UNKNOWN -> Unit
             }
         }
@@ -411,6 +423,10 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
         if (logoOnlyFor == logoSince) return false
         // Ce départ du logo seul s'est déjà trompé il y a peu sur ce flux : seules les jonctions ouvrent la page.
         if (logoOnlyFailedAt != NEVER && elapsed - logoOnlyFailedAt < LOGO_ONLY_PAUSE_MILLIS) return false
+        // Logo qui « clignote » (parti au moins [FLICKER_DEPARTURES] fois en [FLICKER_WINDOW_MILLIS]) : mal vu sur ces
+        // images, son départ ne prouve rien (dessins animés de Gulli baissés à tort, nuits du 23 au 25/11/2026 ; avant
+        // une vraie page, le logo n'était parti qu'une ou deux fois).
+        if (logoDepartures.size >= FLICKER_DEPARTURES && elapsed - logoDepartures.first() <= FLICKER_WINDOW_MILLIS) return false
         return elapsed - logoSince in LOGO_ONLY_MILLIS..LOGO_JUST_HIDDEN_MILLIS
     }
 
@@ -640,6 +656,10 @@ class AdVolumeGuard(private val attenuationDb: Double = -24.0) {
 
         /** Après une telle erreur, le départ du logo seul n'ouvre plus de page pendant ce temps. */
         const val LOGO_ONLY_PAUSE_MILLIS = 15 * 60_000L
+
+        /** Logo parti au moins ce nombre de fois en [FLICKER_WINDOW_MILLIS] (hors pubs) : son départ seul n'ouvre pas de page. */
+        const val FLICKER_DEPARTURES = 4
+        const val FLICKER_WINDOW_MILLIS = 5 * 60_000L
 
         /** Pareil pour une jonction qui montre un carton (après des bandes-annonces, par exemple). */
         const val LOGO_HIDDEN_CARD_MILLIS = 240_000L
