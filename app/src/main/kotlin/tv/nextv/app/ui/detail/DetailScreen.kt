@@ -51,6 +51,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -314,7 +315,9 @@ fun DetailContent(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             itemsIndexed(state.seasons) { index, season ->
-                                SeasonChip(season, index == state.selectedSeason) { onSelectSeason(index) }
+                                // ▲ : sur « Lecture » / « Reprendre » (les saisons sont sous l'affiche, sans bouton
+                                // au-dessus : il fallait appuyer deux fois depuis « Saison 2 », vu sur la box).
+                                SeasonChip(season, index == state.selectedSeason, Modifier.focusProperties { up = playFocus }) { onSelectSeason(index) }
                             }
                         }
                     }
@@ -501,9 +504,10 @@ private fun MetadataNotice(text: String) {
 }
 
 @Composable
-private fun SeasonChip(season: Season, selected: Boolean, onClick: () -> Unit) {
+private fun SeasonChip(season: Season, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     FocusSurface(
         onClick = onClick,
+        modifier = modifier,
         shape = CircleShape,
         color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
         focusedColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,

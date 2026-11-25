@@ -4,6 +4,12 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.228
+- Bandes-annonces : sur un appareil sans décodeur adapté aux vidéos de YouTube (box), qualité limitée à 720p, pour une vidéo qui démarre plus vite et ne s'arrête plus sans cesse
+- Bandes-annonces : quand la vidéo recharge, l'image revient par-dessus au lieu de l'habillage de YouTube (symbole pause, titre)
+- Classique : ▼ depuis les tuiles de droite (Séries, Foot…) descend sur les boutons du bas
+- Fiche d'une série (Classique) : ▲ depuis une saison remonte du premier coup sur « Lecture » ou « Reprendre »
+
 ## 0.2.227
 - Recherche : après avoir tapé le texte, la touche ▼ descend vers les résultats (elle restait dans le champ) ; Retour quitte le champ sans fermer la recherche
 - Direct : sur les appareils qui ont beaucoup de mémoire (box), ◀ peut revenir environ 2 minutes en arrière au lieu d'une trentaine de secondes

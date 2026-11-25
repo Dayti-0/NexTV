@@ -1175,6 +1175,24 @@ class HomeFocusTest {
         assertTrue("Sélection : ${focusedText()}", focusedText()?.contains("Films") == true)
     }
 
+    /** Classique : ▼ depuis une tuile de droite (« Séries ») descend sur un bouton du bas (restait en haut sur la box). */
+    @Test
+    fun classicMenuDownFromARightTileReachesTheButtons() {
+        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().setInTouchMode(false)
+        compose.setContent {
+            NexTvTheme(ThemeStyle.NIGHT) {
+                PremiumMenu(current = HomeSection.SERIES, onSection = {}, onFavorites = {}, onContinue = {}, onSettings = {})
+            }
+        }
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(500)
+        compose.waitForIdle()
+        assertTrue("Sélection : ${focusedText()}", focusedText()?.contains("Séries") == true)
+        press(Key.DirectionDown)
+        val buttons = listOf("Recherche", "Favoris", "Reprendre", "Réglages")
+        assertTrue("Après ▼ : ${focusedText()}", buttons.any { focusedText()?.contains(it) == true })
+    }
+
     /** ← jusqu'à l'ouverture du volet des catégories (bord gauche de la rangée ou de la liste). */
     private fun openDrawerWithLeft() {
         repeat(10) {

@@ -30,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -109,10 +110,20 @@ fun PremiumMenu(
             val order = MENU_ORDER.filterNot { it in LocalHiddenSections.current }
             val perRow = if (window.isWide) order.size else 2
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                order.chunked(perRow).forEach { row ->
+                val rows = order.chunked(perRow)
+                rows.forEachIndexed { rowIndex, row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(if (window.isWide) 20.dp else 12.dp)) {
-                        row.forEach { section ->
-                            MenuTile(section, counts[section], onClick = { onSection(section) }, modifier = Modifier.weight(1f).focusRequester(focus.getValue(section)))
+                        row.forEachIndexed { index, section ->
+                            // Dernière rangée : ▼ va au bouton du bas le plus proche. Les boutons, serrés à gauche,
+                            // ne sont pas sous les tuiles de droite (▼ depuis « Séries » restait en haut, vu sur la box).
+                            val below = if (rowIndex == rows.lastIndex) buttons.getValue(MenuButton.entries[index * MenuButton.entries.size / perRow]) else null
+                            MenuTile(
+                                section,
+                                counts[section],
+                                onClick = { onSection(section) },
+                                modifier = Modifier.weight(1f).focusRequester(focus.getValue(section))
+                                    .then(if (below != null) Modifier.focusProperties { down = below } else Modifier),
+                            )
                         }
                         repeat(perRow - row.size) { Spacer(Modifier.weight(1f)) }
                     }

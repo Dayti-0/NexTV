@@ -366,7 +366,12 @@ private fun trailerView(
     val left = (width - playerWidth) / 2
     val top = (height - playerHeight) / 2
     // Lecteur agrandi de [renderScale] dans la page puis réduit d'autant (même place à l'écran) : meilleure qualité.
-    val scale = renderScale.coerceAtLeast(1f)
+    // Sans décodeur matériel pour les vidéos de YouTube (box Raspberry Pi 5 : le processeur décode) : 720p au plus, et
+    // lecteur moins agrandi. En 1080p la vidéo s'arrêtait sans cesse (écran noir, puis habillage de YouTube et symbole
+    // pause pendant les rechargements, vu sur la box le 25/11/2026).
+    val weak = TrailerDecoding.software
+    val maxQuality = if (weak) "hd720" else "hd1080"
+    val scale = renderScale.coerceAtLeast(1f).let { if (weak) it.coerceAtMost(WEAK_DECODER_RENDER_SCALE) else it }
     val drawnWidth = (playerWidth * scale).roundToInt()
     val drawnHeight = (playerHeight * scale).roundToInt()
     // Page avec le lecteur intégré, à la taille exacte du cadre : son adresse de base sert d'origine
@@ -377,7 +382,7 @@ private fun trailerView(
         html,body{margin:0;width:${width}px;height:${height}px;background:transparent;overflow:hidden}
         iframe{position:absolute;top:${top}px;left:${left}px;width:${drawnWidth}px;height:${drawnHeight}px;border:0;pointer-events:none;transform:scale(${1f / scale});transform-origin:0 0}
         </style></head><body>
-        <iframe id="player" width="$drawnWidth" height="$drawnHeight" src="https://www.youtube-nocookie.com/embed/$key?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0&playsinline=1&iv_load_policy=3&vq=hd1080&disablekb=1&fs=0&hl=fr&cc_load_policy=${captions.loadPolicy}${if (captions == Captions.FRENCH) "&cc_lang_pref=fr" else ""}&enablejsapi=1&origin=https%3A%2F%2Fnixtv.app"
+        <iframe id="player" width="$drawnWidth" height="$drawnHeight" src="https://www.youtube-nocookie.com/embed/$key?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0&playsinline=1&iv_load_policy=3&vq=$maxQuality&disablekb=1&fs=0&hl=fr&cc_load_policy=${captions.loadPolicy}${if (captions == Captions.FRENCH) "&cc_lang_pref=fr" else ""}&enablejsapi=1&origin=https%3A%2F%2Fnixtv.app"
         allow="autoplay; encrypted-media" referrerpolicy="strict-origin-when-cross-origin"></iframe>
         <script>
         var player=null;
@@ -413,21 +418,26 @@ private fun trailerView(
         // Vidéo repartie de 0 : elle n'apparaît qu'une fois relancée (lecture, au moins $REVEAL_AFTER_SEEK_MILLIS ms
         // jouées), sinon YouTube montre son gros symbole pause tant qu'il recharge le début (4 s sur la box, 25/11/2026).
         var seekWatch=null;
-        function revealAfterSeek(){
+        var stallTimer=null;
+        var stalled=false;
+        function revealAfterSeek(from){
+          from=from||0;
           var t0=Date.now();clearInterval(seekWatch);
           seekWatch=setInterval(function(){
             if(done||!hidden){clearInterval(seekWatch);return;}
             var ok=false;
-            call(function(){var t=player.getCurrentTime();ok=player.getPlayerState()==1&&t>=$REVEAL_AFTER_SEEK_MILLIS/1000&&t<5;});
+            call(function(){var t=player.getCurrentTime();ok=player.getPlayerState()==1&&t>=from+$REVEAL_AFTER_SEEK_MILLIS/1000&&t<from+5;});
             var waited=Date.now()-t0;
             if((ok&&waited>=$REVEAL_AFTER_SEEK_MILLIS)||waited>=$REVEAL_AFTER_SEEK_MAX_MILLIS){clearInterval(seekWatch);if(hidden&&!done)reveal();}
           },100);
         }
         function pause(){call(function(){player.pauseVideo();});}
-        // Meilleure qualité proposée demandée (YouTube peut l'ignorer : il choisit d'après la taille du lecteur et
+        // Meilleure qualité proposée (jusqu'à [maxQuality]) demandée (YouTube peut l'ignorer : il choisit d'après la taille du lecteur et
         // le débit), puis qualité en cours redonnée à l'appli à chaque changement (infos de lecture).
         var lastQuality='';
-        function askBest(p){call(function(){var l=p.getAvailableQualityLevels()||[];var best=l.filter(function(q){return q!='auto';})[0];if(best)p.setPlaybackQuality(best);});}
+        var maxQuality='$maxQuality';
+        var QUALITIES=['highres','hd2880','hd2160','hd1440','hd1080','hd720','large','medium','small','tiny'];
+        function askBest(p){call(function(){var l=p.getAvailableQualityLevels()||[];var cap=QUALITIES.indexOf(maxQuality);var best=l.filter(function(q){return q!='auto'&&QUALITIES.indexOf(q)>=cap;})[0];if(best)p.setPlaybackQuality(best);});}
         function reportQuality(p){call(function(){var q=p.getPlaybackQuality();if(q&&q!=lastQuality){lastQuality=q;NixTv.quality(q);}});}
         function watchQuality(p){setInterval(function(){reportQuality(p);},5000);}
         function resume(){if(done||!allowed)return;call(function(){player.playVideo();});}
@@ -473,6 +483,13 @@ private fun trailerView(
               // Fin (0) : terminée.
               onStateChange:function(e){
                 if(e.data==1){askBest(e.target);reportQuality(e.target);}
+                // Vidéo affichée qui recharge (3) plus d'un instant : l'image revient par-dessus (sinon YouTube montre
+                // son habillage et un symbole pause), puis la vidéo réapparaît une fois relancée.
+                if(e.data==3&&!hidden&&allowed&&!done){
+                  clearTimeout(stallTimer);
+                  stallTimer=setTimeout(function(){call(function(){if(!done&&!hidden&&player.getPlayerState()==3){stalled=true;hidden=true;show(false);applySound();}});},$STALL_HIDE_MILLIS);
+                }
+                if(e.data==1&&stalled&&hidden){stalled=false;var at=0;call(function(){at=player.getCurrentTime();});revealAfterSeek(at);return;}
                 if(e.data==1&&hidden){
                   if(allowed&&primeMs>0&&!primed){
                     primed=true;priming=true;clearTimeout(startTimer);
@@ -530,6 +547,9 @@ private const val REVEAL_AFTER_SEEK_MILLIS = 300
 
 /** Vidéo repartie de 0 qui ne rejoue toujours pas : elle apparaît quand même après ce temps. */
 private const val REVEAL_AFTER_SEEK_MAX_MILLIS = 5_000
+
+/** Vidéo affichée qui recharge depuis ce temps : cachée jusqu'à sa reprise. */
+private const val STALL_HIDE_MILLIS = 600
 
 /** Bande-annonce en plein écran : début gardé caché ce temps (habillage de YouTube du démarrage). */
 private const val FULL_SCREEN_PRIME_MILLIS = 3_000L
@@ -589,3 +609,26 @@ private class TrailerStoppedException(message: String) : RuntimeException(messag
 
 /** Lecture qui ne démarre pas (réseau, page bloquée) : abandonnée au bout de ce temps. */
 private const val START_TIMEOUT_MILLIS = 20_000
+
+/** Lecteur des bandes-annonces sans décodeur matériel : agrandi au plus de ce facteur (moins d'image à dessiner). */
+private const val WEAK_DECODER_RENDER_SCALE = 1.25f
+
+/**
+ * Décodage des vidéos de YouTube (VP9) : `software` vrai quand l'appareil n'a pas de décodeur matériel pour ce format
+ * (box Raspberry Pi 5, qui ne décode en matériel que le HEVC). Lu une fois.
+ */
+internal object TrailerDecoding {
+    val software: Boolean by lazy {
+        runCatching {
+            android.media.MediaCodecList(android.media.MediaCodecList.REGULAR_CODECS).codecInfos.none { info ->
+                !info.isEncoder && info.supportedTypes.any { it.equals("video/x-vnd.on2.vp9", ignoreCase = true) } && isHardware(info)
+            }
+        }.getOrDefault(false)
+    }
+
+    private fun isHardware(info: android.media.MediaCodecInfo): Boolean {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) return info.isHardwareAccelerated
+        val name = info.name.lowercase()
+        return !(name.startsWith("omx.google.") || name.startsWith("c2.android.") || name.contains("ffmpeg") || name.contains(".sw."))
+    }
+}
