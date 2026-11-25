@@ -39,7 +39,62 @@ data class PlayerMatch(
     val halfTime: Boolean = false,
     /** Pendant la mi-temps : heure estimée de la reprise (`HalfTimes`), pour le temps restant du bandeau. */
     val resumeAtMillis: Long? = null,
+    /** Coup d'envoi (source des scores) : un match commencé pendant le programme est le direct, pas une rediffusion. */
+    val kickoffMillis: Long? = null,
 )
+
+/**
+ * Écran pendant les pubs : la pub continue en petit dans un coin, et autour le programme et la suite, les matchs en direct,
+ * la radio qui remplace le son de la pub et la météo ([AdBoardController]).
+ */
+data class AdBoard(
+    /** Début de la page de pub (horloge de l'appareil). */
+    val sinceMillis: Long,
+    /** Fin prévue : annoncée par le flux ([announced]) ou d'après la durée habituelle des pubs de la chaîne ; `null` : inconnue. */
+    val endMillis: Long? = null,
+    val announced: Boolean = false,
+    val programme: AdBoardProgramme? = null,
+    val next: AdBoardProgramme? = null,
+    val matches: List<AdBoardMatch> = emptyList(),
+    val weather: tv.nextv.core.weather.Weather? = null,
+    /** Ville de la météo pas encore choisie (Réglages › Son et radios). */
+    val weatherPlaceMissing: Boolean = false,
+    val radio: AdBoardRadio? = null,
+)
+
+/** Programme du guide montré sur l'écran des pubs. */
+data class AdBoardProgramme(
+    val title: String,
+    val startMillis: Long,
+    val stopMillis: Long,
+    val subtitle: String? = null,
+    val description: String? = null,
+    val category: String? = null,
+    val year: Int? = null,
+    val imageUrl: String? = null,
+)
+
+/** Match en direct de l'écran des pubs. */
+data class AdBoardMatch(
+    val home: String,
+    val away: String,
+    val homeCrest: String?,
+    val awayCrest: String?,
+    val homeScore: Int?,
+    val awayScore: Int?,
+    val minute: String?,
+    val halfTime: Boolean,
+    /** Mi-temps : reprise estimée. */
+    val resumeAtMillis: Long? = null,
+    val goals: List<tv.nextv.core.football.MatchGoal> = emptyList(),
+    /** But marqué depuis l'ouverture de l'écran : la ligne s'allume jusqu'à ce moment. */
+    val goalUntilMillis: Long? = null,
+    /** Le match de la chaîne regardée. */
+    val onThisChannel: Boolean = false,
+)
+
+/** Radio jouée à la place du son de la pub, et son morceau en cours. */
+data class AdBoardRadio(val name: String, val title: String? = null, val artist: String? = null, val cover: String? = null)
 
 data class PlayerUiState(
     val channelName: String = "",
@@ -55,6 +110,8 @@ data class PlayerUiState(
     val now: PlayerProgramme? = null,
     val next: PlayerProgramme? = null,
     val match: PlayerMatch? = null,
+    /** Écran pendant les pubs (pub détectée, réglage activé) ; `null` : image en plein écran. */
+    val adBoard: AdBoard? = null,
     /** Qualité de la version en cours de lecture (« FHD »…), si la playlist l'indique. */
     val quality: String? = null,
     /** Message après un changement automatique de qualité. */

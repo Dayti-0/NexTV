@@ -297,6 +297,23 @@ Commandes :
   pause, ESPN garde la dernière minute de la première période, « 45' » ou « 45+2' » : `LiveScore.clock` la garde ; 2 min sans
   elle). Reprise 16 min après (annonces d'ESPN espacées de 16 à 17 min) ; rien d'affiché une fois l'heure passée. Réglé sur
   les 7 matchs de Ligue des champions du 25/11/2026 relevés toutes les 20 s.
+- Écran pendant les pubs (0.2.233, réglage `adScreen`, activé d'office ; seulement avec « Baisser le son des pubs ») :
+  `ui/player/AdBoardController.kt` (ouvert quand `adMuted`, direct lu par le lecteur de l'appli, image, sans erreur ; relit
+  toutes les 15 s guide, matchs en direct `liveScores.schedule` avec buteurs `ScheduledMatch.goals`, météo, morceau de la
+  radio des pubs ; à la fin d'une vraie page, sa durée → `AppContainer.noteAdBreak` / `core/audio/AdBreakDurations`,
+  médiane des 10 dernières par chaîne dès 3, préférences `ad_breaks`) et `AdBoardScreen.kt` (fond découpé à la place de la
+  pub : `clipPath` `Difference`, la vidéo est dessous). Image du direct : la même vue `AndroidView` réduite
+  (`AdBoardLayout.window`, 340 × 191 en haut à droite sur 960 × 540), jamais une autre surface. Fin annoncée par le flux :
+  `AdCues.announcedEnd` (`PlayerEngine.adCueRemainingMillis`). Touches : OK = pub en grand jusqu'à la fin de la page,
+  Retour = `dismissAdBreak` (non compté). Barres de la radio : `AdMusicPlayer.spectrum` (`SpectrumTap`). Captures :
+  `stillAt` (sinon l'horloge et les barres empêchent le test de finir) ; maquettes et vidéo de démonstration :
+  `screenshots/AdBreakMockups.kt` (`AD_VIDEO=1`). Météo : `core/weather/Weather.kt` (Open-Meteo sans clé, gardée 30 min,
+  ville `weather_place` cherchée par son géocodage ; le cloud partagé atteint parfois la limite du jour : ne pas s'en
+  inquiéter, chaque télé a la sienne).
+- Rediffusion d'un match : un match des scores en direct dont le coup d'envoi tombe dans le programme (jusqu'à 45 min avant
+  son début) est le direct, même si le guide a déjà eu ce titre plus tôt (avant-match sous le titre du match : PSG – Roma
+  « Rediffusion » sans score le 25/11/2026). Le flux nommé « Canal+ Sport 2 » du fournisseur montrait ce soir-là le logo
+  « +LIVE 2 » (Lille – Bayern) pendant que le guide annonçait PSG – Roma : erreur du flux ou du guide, pas de l'appli.
 - Année de sortie dans la fiche programme : celle du guide (`<date>`, la moitié des films de xmltvfr), sinon celle de la
   fiche TMDB du même titre (`rememberProgrammeYear`, `sameTitleYear` dans `ProgrammeArt.kt`, même cache que l'image).
 - Fun Radio / RTL2 : `icecast.funradio.fr` redirige vers `streaming-ice.audiomeans.fr` (paramètres AdsWizz `aw_…` : pubs

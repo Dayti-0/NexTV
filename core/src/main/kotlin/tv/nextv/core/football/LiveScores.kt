@@ -283,6 +283,7 @@ class LiveScoreClient(
                     else -> MatchStatus.SCHEDULED
                 }
                 val started = matchStatus == MatchStatus.LIVE || matchStatus == MatchStatus.FINISHED
+                val homeId = home.optJSONObject("team")?.optString("id")
                 ScheduledMatch(
                     id = id,
                     competition = competition,
@@ -295,6 +296,28 @@ class LiveScoreClient(
                     // À la mi-temps, ESPN garde la dernière minute de la première période (« 45'+2' ») : temps additionnel.
                     clock = status.optString("displayClock").takeIf { state == "in" }?.let(::minute),
                     halfTime = state == "in" && halfTime,
+                    goals = if (started) goals(contest, homeId) else emptyList(),
+                )
+            }
+        }
+
+        /** Buts d'un match (« details » d'ESPN : buts, cartons…), l'équipe reconnue par son identifiant. */
+        private fun goals(contest: JSONObject, homeId: String?): List<MatchGoal> {
+            val details = contest.optJSONArray("details") ?: return emptyList()
+            return (0 until details.length()).mapNotNull { index ->
+                val detail = details.optJSONObject(index) ?: return@mapNotNull null
+                if (!detail.optBoolean("scoringPlay") || detail.optBoolean("shootout")) return@mapNotNull null
+                val minute = detail.optJSONObject("clock")?.optString("displayValue")?.trim().orEmpty()
+                val athlete = detail.optJSONArray("athletesInvolved")?.optJSONObject(0)
+                val scorer = athlete?.optString("shortName")?.trim()?.ifEmpty { null }
+                    ?: athlete?.optString("displayName")?.trim()?.ifEmpty { null }
+                    ?: return@mapNotNull null
+                MatchGoal(
+                    minute = minute,
+                    scorer = scorer,
+                    home = detail.optJSONObject("team")?.optString("id") == homeId,
+                    penalty = detail.optBoolean("penaltyKick"),
+                    ownGoal = detail.optBoolean("ownGoal"),
                 )
             }
         }

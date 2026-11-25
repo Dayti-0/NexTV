@@ -266,6 +266,28 @@ class PlayerViewModel(
     private var adSoundMode = AdSound.LOWER
     private var adRadioKey: String? = null
 
+    /** Écran pendant les pubs (réglage, activé d'office). */
+    private var adScreenEnabled = true
+
+    /** Écran pendant les pubs : programme, matchs, radio et météo autour de la pub réduite dans un coin. */
+    private val adBoard = AdBoardController(
+        scope = viewModelScope,
+        container = container,
+        state = mutableState,
+        programmes = {
+            val current = session.channel
+            if (current == null || current.kind != ContentKind.LIVE.name) {
+                emptyList()
+            } else {
+                container.programmeDao.upcoming(current.id, System.currentTimeMillis(), limit = 2)
+            }
+        },
+        radioTitles = RadioTitleService({ container.httpClients.client(tv.nextv.core.net.RequestPurpose.METADATA) }, container.logger),
+    )
+
+    /** Son de la radio des pubs, pour les barres de l'écran des pubs. */
+    val adMusicSpectrum: tv.nextv.core.audio.SpectrumAnalyzer get() = adMusic.spectrum
+
     /** Enregistrement d'analyse en train d'être coupé (fichier suivant) : l'automatique continue. */
     private var adRecordingSplitting = false
 
@@ -284,6 +306,7 @@ class PlayerViewModel(
         viewModelScope.launch { container.settings.adSound.collect { adSoundMode = it } }
         viewModelScope.launch { container.settings.adRadio.collect { adRadioKey = it } }
         viewModelScope.launch { container.settings.adMusicLevel.collect { adMusic.level = it / 100f } }
+        viewModelScope.launch { container.settings.adScreen.collect { adScreenEnabled = it } }
         // Lecteur ouvert : les actualisations automatiques de la playlist et du guide attendent sa fermeture.
         container.playerOpened()
         // Chaîne ouverte depuis l'accueil : aucune catégorie choisie dans le menu des chaînes pour l'instant.
@@ -312,6 +335,15 @@ class PlayerViewModel(
                 checkLiveStall()
                 val adMuted = engine.adVolume.enabled && engine.adVolume.attenuating
                 updateAdMusic(adMuted)
+                // Écran pendant les pubs : direct lu par le lecteur de l'appli, avec une image (pas une radio), sans erreur.
+                val shown = state.value
+                adBoard.update(
+                    open = adMuted && adScreenEnabled && shown.isLive && delayed.replay == null && vlc == null && shown.error == null && !shown.audioOnly,
+                    channelName = shown.channelName,
+                    channelVersion = shown.channelVersion,
+                    music = adBoardMusic(),
+                    cueRemainingMillis = if (adMuted) engine.adCueRemainingMillis() else null,
+                )
                 val adWatch = if (vlc == null) engine.adVolume.watch() else null
                 val adDetails = if (vlc == null) engine.adDetails() else null
                 // Enregistrement d'analyse coupé avant 30 Mo (la limite d'un envoi), ou au bout de deux heures.
@@ -743,8 +775,19 @@ class PlayerViewModel(
         engine.adVolume.muteAds = adMusic.playing && !adMusic.failed
     }
 
-    /** Options › « Ce n'est pas une pub » : le son de la chaîne revient tout de suite, la musique s'arrête. */
+    /** Musique jouée à la place de la pub, pour l'écran des pubs. */
+    private fun adBoardMusic(): AdBoardController.Music? = when {
+        !adMusic.playing || adMusic.failed -> null
+        adSoundMode == AdSound.RADIO -> AdBoardController.Music(AdRadios.of(adRadioKey).name)
+        else -> AdBoardController.Music(resources.getString(R.string.player_ad_music_own), adMusic.currentTrack)
+    }
+
+    /**
+     * Options › « Ce n'est pas une pub » (ou Retour sur l'écran des pubs) : le son de la chaîne revient tout de suite, la
+     * musique s'arrête, l'image reprend tout l'écran.
+     */
     fun dismissAdBreak() {
+        adBoard.dismiss()
         engine.adVolume.dismissBreak()
         if (adMusic.playing) adMusic.stop()
         engine.adVolume.muteAds = false
@@ -1035,11 +1078,21 @@ class PlayerViewModel(
         if (session.channel?.id != current.id) return
         mutableState.update { it.copy(now = live, next = upcoming.firstOrNull { p -> p.startMillis != live?.startMillis }) }
         // Chaîne « événement » (LALIGA 2 LIVE MATCH…) sans programme du guide : le match qu'elle diffuse.
-        val match = (if (live != null) matchOnAir(programmes.first(), now) else null)
+        val found = if (live != null) matchOnAir(programmes.first(), now) else null
+        // Coup d'envoi pendant ce programme (scores en direct) : c'est le direct, jamais une rediffusion, même si le guide
+        // a déjà eu ce titre plus tôt (avant-match sous le titre du match : PSG – Roma marqué « Rediffusion », sans score, en
+        // pleine seconde période sur la box le 25/11/2026).
+        // (Une rediffusion annoncée par le guide, « en différé », le reste.)
+        val direct = live != null && found?.kickoffMillis?.let { it >= live.startMillis - LIVE_MATCH_EARLY_MILLIS && it < live.stopMillis } == true &&
+            !Rebroadcast.announced(programmes.first().title, programmes.first().subtitle)
+        val onScreen = if (direct) live?.copy(rebroadcast = false) else live
+        val match = found
             // Rediffusion : jamais le score final (il gâcherait le match).
-            ?.let { if (live?.rebroadcast == true) it.copy(score = null, live = false, clock = null, halfTime = false, resumeAtMillis = null) else it }
+            ?.let { if (onScreen?.rebroadcast == true) it.copy(score = null, live = false, clock = null, halfTime = false, resumeAtMillis = null) else it }
             ?: eventMatchOnAir(container, current.sourceId, current.name, now)?.let(::playerMatchOf)
-        if (session.channel?.id == current.id) mutableState.update { it.copy(match = match) }
+        if (session.channel?.id == current.id) {
+            mutableState.update { if (it.now == live && onScreen != live) it.copy(match = match, now = onScreen) else it.copy(match = match) }
+        }
     }
 
     /** Réponse gardée pour le programme en cours (la base n'est relue qu'à chaque nouveau programme). */
@@ -1084,6 +1137,7 @@ class PlayerViewModel(
                 clock = match.clock.takeIf { live },
                 halfTime = live && match.halfTime,
                 resumeAtMillis = resumeAt(match.home.displayName, match.away.displayName, match.kickoffMillis, live, live && match.halfTime, match.clock),
+                kickoffMillis = match.kickoffMillis,
             )
         }
         val fixture = FootballMatches.fixtureOf(programme.title, programme.subtitle, programme.category, programme.description)
@@ -1103,6 +1157,7 @@ class PlayerViewModel(
             clock = score?.clock,
             halfTime = score?.halfTime == true,
             resumeAtMillis = score?.let { resumeAt(home, away, it.kickoffMillis, it.inPlay, it.halfTime, it.clock) },
+            kickoffMillis = score?.kickoffMillis,
         )
     }
 
@@ -1123,6 +1178,7 @@ class PlayerViewModel(
             clock = match.clock.takeIf { live },
             halfTime = live && match.halfTime,
             resumeAtMillis = resumeAt(match.home.displayName, match.away.displayName, match.kickoffMillis, live, live && match.halfTime, match.clock),
+            kickoffMillis = match.kickoffMillis,
         )
     }
 
@@ -1676,6 +1732,9 @@ class PlayerViewModel(
 
         /** Même période que la section Foot : la réponse de football-data.org est partagée. */
         private const val FOOTBALL_WINDOW_MILLIS = 8 * 24 * 60 * 60_000L
+
+        /** Un programme de match commence souvent par l'avant-match : coup d'envoi jusqu'à 45 min avant lui compris. */
+        private const val LIVE_MATCH_EARLY_MILLIS = 45 * 60_000L
         private const val QUALITY_CHECK_MILLIS = 500L
 
         /** Durée d'affichage d'un message de qualité dans le bandeau. */

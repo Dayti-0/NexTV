@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -91,6 +92,7 @@ import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import tv.nextv.app.CrashLog
@@ -152,6 +154,8 @@ fun SettingsScreen(
     val adRecordings by viewModel.adRecordings.collectAsStateWithLifecycle()
     val adPlace by viewModel.adPlace.collectAsStateWithLifecycle()
     val adSound by viewModel.adSound.collectAsStateWithLifecycle()
+    val adScreen by viewModel.adScreen.collectAsStateWithLifecycle()
+    val weatherPlace by viewModel.weatherPlace.collectAsStateWithLifecycle()
     val radioVisual by viewModel.radioVisual.collectAsStateWithLifecycle()
     val auddKeySaved by viewModel.auddKeySaved.collectAsStateWithLifecycle()
     val adUpload by viewModel.adUpload.collectAsStateWithLifecycle()
@@ -307,6 +311,11 @@ fun SettingsScreen(
         onDeleteAdRecording = viewModel::deleteAdRecording,
         adSound = adSound,
         onCycleAdSound = viewModel::cycleAdSound,
+        adScreen = adScreen,
+        onAdScreen = viewModel::setAdScreen,
+        weatherPlace = weatherPlace,
+        onSearchWeatherPlaces = viewModel::searchWeatherPlaces,
+        onWeatherPlace = viewModel::setWeatherPlace,
         onAdRadio = viewModel::setAdRadio,
         onCycleAdMusicLevel = viewModel::cycleAdMusicLevel,
         radioVisual = radioVisual,
@@ -384,6 +393,12 @@ fun SettingsContent(
     /** Pendant les pubs : son baissé, radio ou musique de l'appareil. */
     adSound: AdSoundUi = AdSoundUi(),
     onCycleAdSound: () -> Unit = {},
+    /** Écran pendant les pubs, et ville de sa météo. */
+    adScreen: Boolean = true,
+    onAdScreen: (Boolean) -> Unit = {},
+    weatherPlace: tv.nextv.core.weather.WeatherPlace? = null,
+    onSearchWeatherPlaces: suspend (String) -> List<tv.nextv.core.weather.WeatherPlace>? = { emptyList() },
+    onWeatherPlace: (tv.nextv.core.weather.WeatherPlace) -> Unit = {},
     onAdRadio: (String) -> Unit = {},
     onCycleAdMusicLevel: () -> Unit = {},
     radioVisual: tv.nextv.app.data.settings.RadioVisual = tv.nextv.app.data.settings.RadioVisual.DEFAULT,
@@ -716,6 +731,31 @@ fun SettingsContent(
                             )
                         }
                         InfoText(stringResource(R.string.settings_ad_sound_help))
+                        // Écran pendant les pubs : la pub en petit, avec le programme, le foot, la radio et la météo.
+                        ToggleRow(
+                            title = stringResource(R.string.settings_ad_screen),
+                            description = stringResource(R.string.settings_ad_screen_help),
+                            checked = adScreen,
+                            onChange = onAdScreen,
+                        )
+                        if (adScreen) {
+                            var choosingPlace by remember { mutableStateOf(false) }
+                            ValueRow(
+                                title = stringResource(R.string.settings_weather_place),
+                                value = weatherPlace?.name ?: stringResource(R.string.settings_weather_place_none),
+                                onClick = { choosingPlace = true },
+                            )
+                            if (choosingPlace) {
+                                WeatherPlaceDialog(
+                                    search = onSearchWeatherPlaces,
+                                    onSelect = { place ->
+                                        choosingPlace = false
+                                        onWeatherPlace(place)
+                                    },
+                                    onDismiss = { choosingPlace = false },
+                                )
+                            }
+                        }
                     }
                     // Enregistrements pour l'analyse des pubs : envoyés tout seuls sur filebin (adresse et QR code ici).
                     if (state.lowerAdVolume || adRecordings.isNotEmpty()) {
@@ -1229,6 +1269,64 @@ private fun RegionDialog(
     onSelect = onSelect,
     onDismiss = onDismiss,
 )
+
+/**
+ * Ville de la météo : le nom tapé est cherché (Open-Meteo) une demi-seconde après la dernière lettre, les villes
+ * trouvées s'affichent dessous (les plus peuplées d'abord) ; OK sur l'une la choisit.
+ */
+@Composable
+private fun WeatherPlaceDialog(
+    search: suspend (String) -> List<tv.nextv.core.weather.WeatherPlace>?,
+    onSelect: (tv.nextv.core.weather.WeatherPlace) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var query by rememberSaveable { mutableStateOf("") }
+    var places by remember { mutableStateOf<List<tv.nextv.core.weather.WeatherPlace>?>(emptyList()) }
+    var searching by remember { mutableStateOf(false) }
+    LaunchedEffect(query) {
+        if (query.trim().length < 2) {
+            places = emptyList()
+            return@LaunchedEffect
+        }
+        delay(500)
+        searching = true
+        places = search(query)
+        searching = false
+    }
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            modifier = Modifier.widthIn(max = 520.dp).ignoreHeldOk(),
+        ) {
+            Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(stringResource(R.string.settings_weather_place), style = MaterialTheme.typography.titleLarge)
+                NexTvTextField(value = query, onValueChange = { query = it }, label = stringResource(R.string.settings_weather_place_search))
+                val found = places
+                when {
+                    found == null -> InfoText(stringResource(R.string.settings_weather_place_error))
+                    found.isEmpty() && query.trim().length >= 2 && !searching -> InfoText(stringResource(R.string.settings_weather_place_nothing))
+                }
+                LazyColumn(Modifier.heightIn(max = 320.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    items(found.orEmpty()) { place ->
+                        FocusSurface(
+                            onClick = { onSelect(place) },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.medium,
+                            color = Color.Transparent,
+                            focusScale = 1f,
+                        ) {
+                            Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                                Text(place.name, style = MaterialTheme.typography.titleSmall)
+                                place.region?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 /** Fenêtre de choix dans une liste qui défile, la sélection posée sur le choix en cours. */
 @Composable

@@ -286,6 +286,21 @@ class SettingsRepository(
         edit { it[LOWER_AD_VOLUME] = enabled }
     }
 
+    /** Écran pendant les pubs (activé d'office) : la pub en petit, avec le programme, le foot en direct, la radio et la météo. */
+    val adScreen: Flow<Boolean> = preferences.map { it[AD_SCREEN] ?: true }.distinctUntilChanged()
+
+    suspend fun setAdScreen(enabled: Boolean) {
+        edit { it[AD_SCREEN] = enabled }
+    }
+
+    /** Ville de la météo de l'écran des pubs ; `null` tant qu'elle n'est pas choisie. */
+    val weatherPlace: Flow<tv.nextv.core.weather.WeatherPlace?> =
+        preferences.map { tv.nextv.core.weather.WeatherPlace.decode(it[WEATHER_PLACE]) }.distinctUntilChanged()
+
+    suspend fun setWeatherPlace(place: tv.nextv.core.weather.WeatherPlace) {
+        edit { it[WEATHER_PLACE] = place.encode() }
+    }
+
     /** Chaînes 4K (UHD, HDR) masquées partout et jamais choisies : l'appareil ne les lit pas bien. */
     val hideUhd: Flow<Boolean> = preferences.map { it[HIDE_UHD] ?: false }.distinctUntilChanged()
 
@@ -744,6 +759,8 @@ class SettingsRepository(
         val FAVORITE_TEAMS = stringKey("favorite_teams")
         val LOWER_AD_VOLUME = booleanKey("lower_ad_volume")
         val AD_SOUND = stringKey("ad_sound")
+        val AD_SCREEN = booleanKey("ad_screen")
+        val WEATHER_PLACE = stringKey("weather_place")
         val AD_RADIO = stringKey("ad_radio")
         val AD_MUSIC_LEVEL = intKey("ad_music_level")
         val RADIO_VISUAL = stringKey("radio_visual")

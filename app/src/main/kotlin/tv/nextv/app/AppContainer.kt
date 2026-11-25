@@ -367,6 +367,21 @@ class AppContainer(context: Context) {
     /** Début des mi-temps vues (temps restant avant la reprise dans le bandeau du lecteur). */
     val halfTimes = HalfTimes()
 
+    /** Météo de l'écran des pubs (Open-Meteo, sans clé). */
+    val weather = tv.nextv.core.weather.WeatherClient(httpClients, logger = logger)
+
+    /** Durée habituelle des pubs de chaque chaîne (« Fin prévue dans… » de l'écran des pubs), gardée sur l'appareil. */
+    val adBreakDurations: tv.nextv.core.audio.AdBreakDurations by lazy {
+        tv.nextv.core.audio.AdBreakDurations.decode(adBreakPrefs.getString(AD_BREAKS_KEY, null))
+    }
+
+    private val adBreakPrefs by lazy { appContext.getSharedPreferences("ad_breaks", Context.MODE_PRIVATE) }
+
+    /** Page de pub terminée sur [channel] : sa durée compte pour la durée habituelle de la chaîne. */
+    fun noteAdBreak(channel: String, millis: Long) {
+        if (adBreakDurations.add(channel, millis)) adBreakPrefs.edit().putString(AD_BREAKS_KEY, adBreakDurations.encode()).apply()
+    }
+
     /** Galas de la section MMA (calendrier public d'ESPN : UFC, PFL, Cage Warriors). */
     val mmaSchedule = tv.nextv.core.mma.MmaScheduleClient(httpClients, logger = logger)
 
@@ -639,6 +654,7 @@ class AppContainer(context: Context) {
     }
 
     private companion object {
+        const val AD_BREAKS_KEY = "durations"
         const val HOUR = 60 * 60_000L
         const val PERIODIC_CHECK_MILLIS = 3 * HOUR
     }

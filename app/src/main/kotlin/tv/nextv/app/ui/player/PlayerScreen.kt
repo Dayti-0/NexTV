@@ -26,7 +26,10 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.width
@@ -198,6 +201,13 @@ fun PlayerScreen(
     // Bandeau et touches du lecteur : direct, et replay (programme lu depuis l'enregistrement du serveur).
     val bannerMode = state.isLive || state.replay != null
 
+    // Écran pendant les pubs : la pub en petit dans un coin, le reste autour. OK : pub en grand jusqu'à la fin de cette
+    // page de pub ; Retour : « ce n'est pas une pub ». Écran en largeur seulement (télé, tablette couchée).
+    var boardHidden by remember { mutableStateOf(false) }
+    LaunchedEffect(state.adBoard == null) { if (state.adBoard == null) boardHidden = false }
+    val landscape = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    val boardShown = state.adBoard != null && !boardHidden && landscape && !menu.open
+
     // Lecture en pause (direct, replay, film…) : icône au centre de l'écran.
     var playWhenReady by remember(activePlayer) { mutableStateOf(activePlayer?.playWhenReady ?: true) }
     DisposableEffect(activePlayer) {
@@ -261,6 +271,8 @@ fun PlayerScreen(
     // Premier « Retour » : menu des chaînes (sans interrompre la lecture) ; second : fermeture du menu.
     BackHandler(enabled = menu.open) { viewModel.closeMenu() }
     BackHandler(enabled = !menu.open && state.isLive) { viewModel.openMenu() }
+    // Écran des pubs affiché : « Retour » dit que ce n'est pas une pub (le son et l'image reviennent).
+    BackHandler(enabled = boardShown) { viewModel.dismissAdBreak() }
     // Film : « Retour » masque d'abord les commandes.
     BackHandler(enabled = film && filmControls && !optionsVisible && !menu.open && state.upNext == null) { filmControls = false }
     // Déclaré en dernier : prioritaire, « Retour » ferme d'abord le panneau d'infos.
@@ -323,6 +335,8 @@ fun PlayerScreen(
                         else -> if (!long) {
                             when {
                                 state.error != null -> viewModel.retry()
+                                // Écran des pubs : OK remet la pub en grand jusqu'à la fin de cette page.
+                                boardShown -> boardHidden = true
                                 bannerVisible || state.paused -> {
                                     viewModel.togglePause()
                                     bannerTrigger++
@@ -458,32 +472,43 @@ fun PlayerScreen(
                 sampler.release()
             }
         }
-        AndroidView(
-            factory = { viewContext ->
-                VideoViews.create(viewContext).apply {
-                    layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-                    // Commandes dessinées par NixTV (direct, replay, films) : jamais celles de Media3.
-                    useController = false
-                    isFocusable = false
-                    descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
-                    playerView = this
-                }
-            },
-            update = { view ->
-                // Pause, différé, saut dans un replay : la dernière image reste affichée pendant le changement de flux.
-                view.setKeepContentOnPlayerReset(state.paused || state.liveDelayMs > 0 || state.seekable)
-                view.keepScreenOn = keepScreenOn
-                // Direct rendu à l'accueil (retour) : son image reste ici jusqu'à ce que l'aperçu la prenne.
-                VideoViews.bind(view, player)
-                view.resizeMode = when (aspect) {
-                    AspectMode.FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    AspectMode.FILL -> AspectRatioFrameLayout.RESIZE_MODE_FILL
-                    AspectMode.ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                }
-            },
-            onRelease = { view -> VideoViews.release(view) },
-            modifier = Modifier.fillMaxSize(),
-        )
+        // Image du direct : en plein écran, ou réduite à la place de la pub sur l'écran des pubs (la même vue, seulement plus
+        // petite : jamais une autre surface donnée au décodeur).
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val boardWindow = AdBoardLayout.window(maxWidth, maxHeight)
+            AndroidView(
+                factory = { viewContext ->
+                    VideoViews.create(viewContext).apply {
+                        layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                        // Commandes dessinées par NixTV (direct, replay, films) : jamais celles de Media3.
+                        useController = false
+                        isFocusable = false
+                        descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+                        playerView = this
+                    }
+                },
+                update = { view ->
+                    // Pause, différé, saut dans un replay : la dernière image reste affichée pendant le changement de flux.
+                    view.setKeepContentOnPlayerReset(state.paused || state.liveDelayMs > 0 || state.seekable)
+                    view.keepScreenOn = keepScreenOn
+                    // Direct rendu à l'accueil (retour) : son image reste ici jusqu'à ce que l'aperçu la prenne.
+                    VideoViews.bind(view, player)
+                    view.resizeMode = when (aspect) {
+                        AspectMode.FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        AspectMode.FILL -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+                        AspectMode.ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                    }
+                },
+                onRelease = { view -> VideoViews.release(view) },
+                modifier = if (boardShown) {
+                    Modifier
+                        .offset(x = boardWindow.left, y = boardWindow.top)
+                        .size(boardWindow.right - boardWindow.left, boardWindow.bottom - boardWindow.top)
+                } else {
+                    Modifier.fillMaxSize()
+                },
+            )
+        }
 
         // Moteur VLC : son image, par-dessus (le lecteur de l'appli est arrêté).
         vlc?.let { playback ->
@@ -545,6 +570,15 @@ fun PlayerScreen(
             }
         }
 
+        // Écran pendant les pubs, autour de l'image réduite (gardé le temps de son fondu de sortie).
+        var lastBoard by remember { mutableStateOf<AdBoard?>(null) }
+        state.adBoard?.let { lastBoard = it }
+        AnimatedVisibility(visible = boardShown, enter = fadeIn(), exit = fadeOut()) {
+            lastBoard?.let { board ->
+                AdBoardScreen(board, state.channelName, state.logoUrl, viewModel.adMusicSpectrum, lowPower)
+            }
+        }
+
         // Film ou épisode : commandes NixTV.
         if (film) {
             FilmControls(
@@ -566,7 +600,7 @@ fun PlayerScreen(
             now = now,
             // Film : le bandeau du direct n'apparaît pas (ses commandes le remplacent), sauf en cas d'erreur.
             visible = (bannerVisible || state.error != null || state.paused || (state.fastSeek != 0 && bannerMode)) &&
-                !menu.open && state.resumePrompt == null && (bannerMode || state.error != null),
+                !menu.open && state.resumePrompt == null && (bannerMode || state.error != null) && !boardShown,
             showTouchControls = !window.isTv,
             onBack = leave,
             onZap = viewModel::zap,
@@ -663,7 +697,7 @@ fun PlayerScreen(
 
         // Pub détectée : son baissé, signalé discrètement en haut à gauche.
         AnimatedVisibility(
-            visible = state.adMuted && !menu.open,
+            visible = state.adMuted && !menu.open && !boardShown,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.align(Alignment.TopStart).padding(24.dp),

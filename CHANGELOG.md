@@ -4,6 +4,13 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.233
+- Écran pendant les pubs (Réglages › Son et radios, activé d'office avec « Baisser le son des pubs ») : la pub continue en petit en haut à droite, et autour s'affichent le programme en cours et la suite, le foot en direct (score, minute, buteurs, « BUT ! » quand un but tombe pendant la pub, reprise de la mi-temps), la radio qui remplace le son de la pub (morceau, pochette, barres au rythme de la musique) et la météo ; il se referme tout seul à la fin de la pub
+- Durée de la pub sur cet écran : « depuis 1 min 20 » et la fin prévue (annoncée par la chaîne quand elle le fait, sinon d'après la durée habituelle de ses pubs, apprise au fil des soirées)
+- Touches pendant la pub : OK remet la pub en grand, Retour dit que ce n'est pas une pub
+- Météo : ville à choisir dans Réglages › Son et radios › Ville de la météo
+- Match en direct marqué « Rediffusion » (sans score) quand le guide avait déjà eu son titre plus tôt dans la soirée (PSG – Roma) : c'est corrigé, un match commencé pendant le programme est toujours le direct
+
 ## 0.2.232
 - Match dans le bandeau du lecteur : pendant la mi-temps, le temps restant avant la reprise s'affiche à côté du badge « Mi-temps » (« Reprise dans 9 min » ; estimé, les scores en direct ne disent pas à quelle heure la pause a commencé)
 
