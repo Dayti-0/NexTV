@@ -2,23 +2,12 @@ package tv.nextv.app.screenshots
 
 import android.app.Application
 import android.graphics.Bitmap
-import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.requiredSize
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onRoot
-import org.junit.Assume.assumeTrue
-import org.junit.Rule
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -26,7 +15,9 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -35,41 +26,57 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.asImage
+import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePreviewHandler
 import coil3.compose.LocalAsyncImagePreviewHandler
 import com.github.takahirom.roborazzi.captureRoboImage
+import org.junit.Assume.assumeTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
-import tv.nextv.app.data.settings.RadioVisual
 import tv.nextv.app.ui.components.ChannelLogo
 import tv.nextv.app.ui.components.StatusPill
-import tv.nextv.app.ui.player.RadioVisualizer
 import tv.nextv.app.ui.theme.NexTvColors
 import tv.nextv.app.ui.theme.NexTvTheme
 import tv.nextv.app.ui.theme.ThemeStyle
-import tv.nextv.core.audio.SpectrumAnalyzer
 import java.util.TimeZone
+import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
- * Maquettes « pendant les pubs » (pas encore dans l'appli) : la pub continue en petit en haut à droite, le reste de
- * l'écran montre autre chose (programme, scores, radio). Captures dans `app/build/screenshots/tv_50*`.
+ * Maquette « pendant les pubs » (pas encore dans l'appli) : la pub continue en petit en haut à droite, et un seul écran
+ * réunit le programme, les matchs en direct, la radio qui remplace le son de la pub et la météo.
+ * Capture dans `app/build/screenshots/tv_510_pub_ecran.png`.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -81,286 +88,17 @@ class AdBreakMockups {
         TimeZone.setDefault(TimeZone.getTimeZone("Europe/Paris"))
     }
 
-    private fun capture(name: String, content: @Composable () -> Unit) {
-        captureRoboImage("build/screenshots/tv_$name.png") {
-            NexTvTheme(ThemeStyle.NIGHT) { content() }
-        }
-    }
-
     @Test
-    fun programme() = capture("501_pub_programme") {
-        ProgrammeBackground()
-        Frame(channel = "M6", adStatus = "depuis 1 min 20", adEnd = "Fin prévue dans 2 min", adProgress = 0.4f) { ProgrammePanel() }
-    }
-
-    @Test
-    fun scores() = capture("502_pub_scores") {
-        ScoresBackground()
-        Frame(channel = "Canal+ Foot", adStatus = "depuis 40 s", adEnd = "Durée habituelle : 3 min", adProgress = 0.22f) { ScoresPanel(onThisChannel = true) }
-    }
-
-    @OptIn(coil3.annotation.ExperimentalCoilApi::class)
-    @Test
-    fun radio() = capture("503_pub_radio") {
-        WithCover {
-            RadioBackground()
-            Frame(channel = null, adStatus = "depuis 1 min 20", adEnd = "Pub sur M6 · FIP Groove à la place", adProgress = 0.4f, windowWidth = RadioWindowWidth) {}
+    fun board() {
+        captureRoboImage("build/screenshots/tv_510_pub_ecran.png") {
+            NexTvTheme(ThemeStyle.NIGHT) { WithCover { AdBreakBoard(BoardMoment(elapsed = 80, time = 3f)) } }
         }
     }
 }
-
-/** Cadre commun : à gauche le contenu, en haut à droite la pub en petit avec sa durée, en bas les touches. */
-@Composable
-private fun Frame(
-    channel: String?,
-    adStatus: String,
-    adEnd: String?,
-    adProgress: Float,
-    windowWidth: Dp = WindowWidth,
-    content: @Composable () -> Unit,
-) {
-    Box(Modifier.fillMaxSize().padding(horizontal = 40.dp, vertical = 28.dp)) {
-        Column(Modifier.fillMaxHeight().width(500.dp)) {
-            if (channel != null) {
-                ChannelHeader(channel)
-                Spacer(Modifier.height(22.dp))
-            }
-            content()
-        }
-        Column(Modifier.align(Alignment.TopEnd).width(windowWidth), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            AdWindow(Modifier.fillMaxWidth().height(windowWidth * 9 / 16))
-            AdStatus(adStatus, adEnd, adProgress)
-        }
-        Hints(Modifier.align(Alignment.BottomEnd))
-    }
-}
-
-@Composable
-private fun ChannelHeader(channel: String) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        ChannelLogo(null, channel, Modifier.size(34.dp), monogramSize = 11.dp)
-        Text(channel, style = MaterialTheme.typography.titleMedium, color = Color.White)
-        Text("· le programme reprend après la pub", style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.65f))
-    }
-}
-
-@Composable
-private fun AdStatus(adStatus: String, adEnd: String?, adProgress: Float) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatusPill("Pub", NexTvColors.Warning)
-            Text(adStatus, style = MaterialTheme.typography.labelLarge, color = Color.White)
-        }
-        Bar(adProgress, NexTvColors.Warning, Modifier.fillMaxWidth())
-        adEnd?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.7f)) }
-    }
-}
-
-@Composable
-private fun Hints(modifier: Modifier) {
-    Text(
-        "OK  plein écran      ◀ ▶  autre écran      Retour  ce n'est pas une pub",
-        style = MaterialTheme.typography.labelMedium,
-        color = Color.White.copy(alpha = 0.5f),
-        modifier = modifier,
-    )
-}
-
-@Composable
-private fun ProgrammeBackground() {
-    Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF2F6B5E), Color(0xFF1F3B57), Color(0xFF0B0F14)))))
-    Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color.Black.copy(alpha = 0.85f), Color.Black.copy(alpha = 0.35f)))))
-}
-
-@Composable
-private fun ScoresBackground() {
-    Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF0E1A2B), Color(0xFF0B0F14)))))
-}
-
-@Composable
-private fun RadioBackground() {
-    RadioVisualizer(
-        visual = RadioVisual.VINYL,
-        analyzer = remember { SpectrumAnalyzer() },
-        name = "FIP Groove",
-        logoUrl = null,
-        genre = "Groove, funk, soul",
-        title = "Move On Up",
-        artist = "Curtis Mayfield",
-        cover = "https://exemple.invalid/pochette.jpg",
-        lowPower = false,
-        warmUpSeconds = 4,
-        animate = false,
-    )
-}
-
-/** Pochette fabriquée pour le vinyle (pas de réseau dans les tests). */
-@OptIn(coil3.annotation.ExperimentalCoilApi::class)
-@Composable
-private fun WithCover(content: @Composable () -> Unit) {
-    val art = remember {
-        Bitmap.createBitmap(300, 300, Bitmap.Config.ARGB_8888).also { bitmap ->
-            val canvas = android.graphics.Canvas(bitmap)
-            canvas.drawColor(0xFF00695C.toInt())
-            val paint = android.graphics.Paint().apply { color = 0xFFFFB300.toInt() }
-            canvas.drawCircle(150f, 150f, 95f, paint)
-            paint.color = 0xFF263238.toInt()
-            canvas.drawRect(0f, 220f, 300f, 300f, paint)
-        }
-    }
-    CompositionLocalProvider(
-        LocalInspectionMode provides true,
-        LocalAsyncImagePreviewHandler provides AsyncImagePreviewHandler { art.asImage() },
-    ) { Box(Modifier.fillMaxSize()) { content() } }
-}
-
-@Composable
-private fun ProgrammePanel() {
-    Column {
-        Label("En ce moment")
-        Text("Zone interdite", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Color.White)
-        Text("Vacances au camping : les nouveaux rois de l'été", style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.9f))
-        Spacer(Modifier.height(10.dp))
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            StatusPill("Magazine", NexTvColors.Accent)
-            Text("21:10 – 23:00", style = MaterialTheme.typography.labelLarge, color = Color.White)
-            Text("Reste 48 min", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.7f))
-        }
-        Spacer(Modifier.height(8.dp))
-        Bar(0.56f, NexTvColors.Live, Modifier.width(420.dp))
-        Spacer(Modifier.height(12.dp))
-        Text(
-            "Chaque été, des milliers de familles posent leurs valises dans les campings du littoral. Entre animations, " +
-                "emplacements les plus prisés et nouveaux mobil-homes haut de gamme, enquête sur un secteur en plein essor.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = Color.White.copy(alpha = 0.8f),
-            maxLines = 4,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Spacer(Modifier.height(22.dp))
-        Label("Ensuite")
-        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            Picture(Color(0xFF7A3E2E), Color(0xFF2B1B3D), Modifier.size(150.dp, 84.dp))
-            Column(Modifier.weight(1f)) {
-                Text("23:00 · Enquête exclusive", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = Color.White)
-                Text("Magazine · 1 h 10", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.7f))
-                Text(
-                    "Plongée dans les coulisses des grands palaces de la Côte d'Azur.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.White.copy(alpha = 0.75f),
-                    maxLines = 2,
-                )
-            }
-        }
-        Spacer(Modifier.height(10.dp))
-        Text("Puis 00:10 · 66 minutes : grand format", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.6f))
-    }
-}
-
-@Composable
-private fun ScoresPanel(onThisChannel: Boolean) {
-    Column {
-        Label("Ligue des champions · en direct")
-        Spacer(Modifier.height(6.dp))
-        MatchLine(
-            "PSG", "Roma", "2 – 1", "67'", scorers = "12' L. Martin, 54' K. Diallo · 38' M. Rossi",
-            note = "Sur cette chaîne".takeIf { onThisChannel }, highlight = onThisChannel,
-        )
-        MatchLine("Liverpool", "Bruges", "3 – 0", "71'", scorers = "But à la 70' · 9' A. Smith, 33' A. Smith, 70' J. Clark", goal = true)
-        MatchLine("Bayern", "Lille", "1 – 1", "Mi-temps", resume = "Reprise dans 9 min", scorers = "22' T. Weber · 41' N. Dupont")
-        MatchLine("Inter", "Stuttgart", "0 – 0", "58'")
-        Spacer(Modifier.height(14.dp))
-        Label("À suivre")
-        Text("Demain 18:45 · Marseille – Ajax · Canal+ Foot", style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.8f))
-        Text("Samedi 21:05 · Lyon – Lens · DAZN 1", style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.8f))
-    }
-}
-
-/** Image de la pub en cours (fausse pub), dans sa fenêtre. */
-@Composable
-private fun AdWindow(modifier: Modifier) {
-    Box(
-        modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFF7043), Color(0xFFD81B60))))
-            .border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(12.dp)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("SOLDES", fontSize = 30.sp, fontWeight = FontWeight.Black, color = Color.White)
-            Text("jusqu'à -50 %", style = MaterialTheme.typography.titleMedium, color = Color.White)
-        }
-    }
-}
-
-@Composable
-private fun MatchLine(
-    home: String,
-    away: String,
-    score: String,
-    minute: String,
-    scorers: String? = null,
-    resume: String? = null,
-    note: String? = null,
-    highlight: Boolean = false,
-    goal: Boolean = false,
-) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .padding(bottom = 8.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(
-                when {
-                    goal -> NexTvColors.Live.copy(alpha = 0.22f)
-                    highlight -> Color.White.copy(alpha = 0.12f)
-                    else -> Color.White.copy(alpha = 0.05f)
-                },
-            )
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ChannelLogo(null, home, Modifier.size(24.dp), monogramSize = 9.dp)
-            Text(home, style = MaterialTheme.typography.titleSmall, color = Color.White)
-            Text(score, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = NexTvColors.Live)
-            Text(away, style = MaterialTheme.typography.titleSmall, color = Color.White)
-            ChannelLogo(null, away, Modifier.size(24.dp), monogramSize = 9.dp)
-            StatusPill(minute, NexTvColors.Live)
-            resume?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.85f)) }
-            if (goal) StatusPill("BUT !", NexTvColors.Warning)
-            note?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = NexTvColors.Accent) }
-        }
-        scorers?.let {
-            Text("⚽ $it", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.65f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-    }
-}
-
-@Composable
-private fun Label(text: String) {
-    Text(text.uppercase(), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = NexTvColors.Accent, letterSpacing = 1.5.sp)
-    Spacer(Modifier.height(4.dp))
-}
-
-@Composable
-private fun Bar(fraction: Float, color: Color, modifier: Modifier) {
-    Box(modifier.height(3.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.2f))) {
-        Box(Modifier.fillMaxWidth(fraction).height(3.dp).background(color))
-    }
-}
-
-@Composable
-private fun Picture(top: Color, bottom: Color, modifier: Modifier) {
-    Box(modifier.clip(RoundedCornerShape(8.dp)).background(Brush.verticalGradient(listOf(top, bottom))))
-}
-
-/** Fenêtre de la pub dans un coin (plus petite sur l'écran radio : la pochette est à côté). */
-private val WindowWidth = 340.dp
-private val RadioWindowWidth = 260.dp
 
 /**
- * Vidéo de démonstration (14 s) : programme ; pub détectée, elle se réduit dans le coin et le panneau Programme
- * apparaît ; ▶ Scores ; ▶ Radio ; fin de la pub, retour en plein écran. Une image par 1/20 s dans `build/ad_video/`
+ * Vidéo de démonstration (13,5 s) : programme ; pub détectée, elle se réduit dans le coin et l'écran s'affiche ; but
+ * pendant la pub ; fin de la pub, retour en plein écran. Une image par 1/20 s dans `build/ad_video/`
  * (`AD_VIDEO=1 ./gradlew :app:recordRoborazziDebug --tests '*AdBreakVideo*'`), à assembler avec ffmpeg.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -386,8 +124,320 @@ class AdBreakVideo {
 
     private companion object {
         const val FPS = 20f
-        const val VIDEO_SECONDS = 14.5f
+        const val VIDEO_SECONDS = 13.5f
     }
+}
+
+/** État de l'écran à un instant : [elapsed] secondes de pub, [time] pour l'animation de la radio, but en cours. */
+private data class BoardMoment(val elapsed: Int, val time: Float, val goal: Float = 0f, val liverpoolScore: String = "3 – 0")
+
+/** Page de pub prévue (secondes) : annoncée par la chaîne, ou durée habituelle de ses pubs. */
+private const val PLANNED_SECONDS = 150
+
+private val WindowWidth = 340.dp
+
+/** L'écran pendant les pubs, la pub dans sa fenêtre en haut à droite. */
+@Composable
+private fun AdBreakBoard(moment: BoardMoment, window: Boolean = true) {
+    Box(Modifier.fillMaxSize()) {
+        // Image du programme en grand, assombrie (ici fabriquée : pas de réseau dans les tests).
+        Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF2F6B5E), Color(0xFF1F3B57), Color(0xFF0B0F14)))))
+        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color.Black.copy(alpha = 0.88f), Color.Black.copy(alpha = 0.55f)))))
+        Box(Modifier.fillMaxSize().padding(horizontal = 40.dp, vertical = 28.dp)) {
+            Column(Modifier.fillMaxHeight().width(500.dp)) {
+                ChannelHeader("M6")
+                Spacer(Modifier.height(16.dp))
+                ProgrammeBlock()
+                Spacer(Modifier.height(16.dp))
+                ScoresBlock(moment)
+                Spacer(Modifier.weight(1f))
+                RadioBar(moment.time)
+            }
+            Column(Modifier.align(Alignment.TopEnd).fillMaxHeight().width(WindowWidth)) {
+                if (window) AdWindow(Modifier.fillMaxWidth().height(WindowWidth * 9 / 16)) else Spacer(Modifier.height(WindowWidth * 9 / 16))
+                Spacer(Modifier.height(10.dp))
+                AdStatus(moment.elapsed)
+                Spacer(Modifier.weight(1f))
+                WeatherCard()
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChannelHeader(channel: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        ChannelLogo(null, channel, Modifier.size(30.dp), monogramSize = 10.dp)
+        Text(channel, style = MaterialTheme.typography.titleMedium, color = Color.White)
+        Text("· reprend après la pub", style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.65f))
+    }
+}
+
+@Composable
+private fun ProgrammeBlock() {
+    Label("En ce moment")
+    Text("Zone interdite", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = Color.White)
+    Text("Vacances au camping : les nouveaux rois de l'été", style = MaterialTheme.typography.titleSmall, color = Color.White.copy(alpha = 0.9f))
+    Spacer(Modifier.height(6.dp))
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        StatusPill("Magazine", NexTvColors.Accent)
+        Text("21:10 – 23:00", style = MaterialTheme.typography.labelLarge, color = Color.White)
+        Text("Reste 48 min", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.7f))
+    }
+    Spacer(Modifier.height(6.dp))
+    Bar(0.56f, NexTvColors.Live, Modifier.width(420.dp))
+    Spacer(Modifier.height(8.dp))
+    Text(
+        "Chaque été, des milliers de familles posent leurs valises dans les campings du littoral : enquête sur un secteur en plein essor.",
+        style = MaterialTheme.typography.bodySmall,
+        color = Color.White.copy(alpha = 0.8f),
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+    )
+    Spacer(Modifier.height(10.dp))
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Picture(Color(0xFF7A3E2E), Color(0xFF2B1B3D), Modifier.size(80.dp, 45.dp))
+        Column {
+            Text("ENSUITE · 23:00", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = NexTvColors.Accent, letterSpacing = 1.2.sp)
+            Text("Enquête exclusive", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = Color.White)
+            Text("Magazine · 1 h 10", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.7f))
+        }
+    }
+}
+
+@Composable
+private fun ScoresBlock(moment: BoardMoment) {
+    Label("Foot en direct")
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        MatchRow("PSG", "Roma", "2 – 1", "67'")
+        MatchRow("Liverpool", "Bruges", moment.liverpoolScore, "71'", goal = moment.goal)
+        MatchRow("Bayern", "Lille", "1 – 1", "Mi-temps", resume = "reprise dans 9 min")
+    }
+}
+
+/** Radio qui remplace le son de la pub : pochette, morceau, barres au rythme de la musique. */
+@Composable
+private fun RadioBar(time: Float) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color.White.copy(alpha = 0.08f))
+            .padding(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        AsyncImage(
+            model = "https://exemple.invalid/pochette.jpg",
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.size(46.dp).clip(RoundedCornerShape(8.dp)),
+        )
+        Column(Modifier.weight(1f)) {
+            Text("FIP GROOVE · À LA PLACE DE LA PUB", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = NexTvColors.Accent, letterSpacing = 1.2.sp)
+            Text("Move On Up", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1)
+            Text("Curtis Mayfield", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.75f), maxLines = 1)
+        }
+        Canvas(Modifier.size(72.dp, 34.dp)) {
+            val bars = 9
+            val gap = size.width / bars
+            repeat(bars) { i ->
+                val level = 0.25f + 0.75f * abs(sin(time * 3.1f + i * 0.9f) * cos(time * 1.7f + i * 1.4f))
+                val h = size.height * level
+                drawRoundRect(
+                    color = Color(0xFFFFB300),
+                    topLeft = Offset(i * gap + gap * 0.2f, size.height - h),
+                    size = Size(gap * 0.6f, h),
+                    cornerRadius = CornerRadius(gap * 0.3f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AdStatus(elapsed: Int) {
+    val minutes = elapsed / 60
+    val seconds = elapsed % 60
+    val since = if (minutes == 0) "depuis $seconds s" else "depuis $minutes min %02d".format(seconds)
+    val left = PLANNED_SECONDS - elapsed
+    val end = if (left < 60) "Fin prévue dans moins d'1 min" else "Fin prévue dans ${(left + 59) / 60} min"
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        StatusPill("Pub", NexTvColors.Warning)
+        Text(since, style = MaterialTheme.typography.labelLarge, color = Color.White)
+        Spacer(Modifier.weight(1f))
+        Text(end, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.7f))
+    }
+    Spacer(Modifier.height(8.dp))
+    Bar(elapsed / PLANNED_SECONDS.toFloat(), NexTvColors.Warning, Modifier.fillMaxWidth())
+    Spacer(Modifier.height(8.dp))
+    Text("OK  pub en grand      Retour  ce n'est pas une pub", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
+}
+
+private enum class Sky { SUN, MOON, CLOUD, RAIN, SUN_CLOUD }
+
+/** Météo de la ville choisie dans les réglages (Open-Meteo, sans clé). */
+@Composable
+private fun WeatherCard() {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color.White.copy(alpha = 0.08f))
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            WeatherIcon(Sky.RAIN, Modifier.size(44.dp))
+            Column {
+                Text("PARIS", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = NexTvColors.Accent, letterSpacing = 1.2.sp)
+                Text("6°", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Color.White)
+            }
+            Spacer(Modifier.weight(1f))
+            Column(horizontalAlignment = Alignment.End) {
+                Text("Averses", style = MaterialTheme.typography.titleSmall, color = Color.White)
+                Text("Min 3° · Max 9°", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.7f))
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            listOf(Triple("23 h", Sky.RAIN, "5°"), Triple("0 h", Sky.CLOUD, "5°"), Triple("1 h", Sky.MOON, "4°"), Triple("2 h", Sky.MOON, "4°"))
+                .forEach { (hour, sky, temperature) ->
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(hour, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.7f))
+                        WeatherIcon(sky, Modifier.size(24.dp).padding(vertical = 2.dp))
+                        Text(temperature, style = MaterialTheme.typography.labelLarge, color = Color.White)
+                    }
+                }
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            WeatherIcon(Sky.SUN_CLOUD, Modifier.size(20.dp))
+            Text("Demain : éclaircies, 4° à 11°", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.85f))
+        }
+    }
+}
+
+/** Petits pictogrammes dessinés (soleil, lune, nuage, pluie). */
+@Composable
+private fun WeatherIcon(sky: Sky, modifier: Modifier) {
+    Canvas(modifier) {
+        val w = size.width
+        fun sun(center: Offset, radius: Float) {
+            repeat(8) { i ->
+                val angle = i * Math.PI.toFloat() / 4
+                drawLine(
+                    Color(0xFFFFC107),
+                    center + Offset(cos(angle), sin(angle)) * radius * 1.35f,
+                    center + Offset(cos(angle), sin(angle)) * radius * 1.75f,
+                    strokeWidth = w * 0.06f,
+                    cap = StrokeCap.Round,
+                )
+            }
+            drawCircle(Color(0xFFFFC107), radius, center)
+        }
+        fun cloud(color: Color, dx: Float = 0f, dy: Float = 0f) {
+            drawCircle(color, w * 0.18f, Offset(w * 0.36f + dx, w * 0.52f + dy))
+            drawCircle(color, w * 0.24f, Offset(w * 0.56f + dx, w * 0.44f + dy))
+            drawRoundRect(color, Offset(w * 0.18f + dx, w * 0.5f + dy), Size(w * 0.64f, w * 0.2f), CornerRadius(w * 0.1f))
+        }
+        when (sky) {
+            Sky.SUN -> sun(center, w * 0.22f)
+            Sky.MOON -> {
+                drawCircle(Color(0xFFFFF59D), w * 0.3f, center)
+                drawCircle(Color(0xFF1B2A3A), w * 0.26f, center + Offset(w * 0.14f, -w * 0.1f))
+            }
+            Sky.CLOUD -> cloud(Color(0xFFCFD8DC))
+            Sky.SUN_CLOUD -> {
+                sun(Offset(w * 0.36f, w * 0.34f), w * 0.15f)
+                cloud(Color(0xFFECEFF1), dx = w * 0.06f, dy = w * 0.08f)
+            }
+            Sky.RAIN -> {
+                cloud(Color(0xFFB0BEC5), dy = -w * 0.12f)
+                repeat(3) { i ->
+                    val x = w * (0.32f + i * 0.18f)
+                    drawLine(Color(0xFF64B5F6), Offset(x, w * 0.68f), Offset(x - w * 0.06f, w * 0.88f), strokeWidth = w * 0.06f, cap = StrokeCap.Round)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MatchRow(home: String, away: String, score: String, minute: String, resume: String? = null, goal: Float = 0f) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color.White.copy(alpha = 0.06f))
+            .background(NexTvColors.Live.copy(alpha = 0.3f * goal))
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        ChannelLogo(null, home, Modifier.size(20.dp), monogramSize = 8.dp)
+        Text(home, style = MaterialTheme.typography.labelLarge, color = Color.White)
+        Text(score, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = NexTvColors.Live)
+        Text(away, style = MaterialTheme.typography.labelLarge, color = Color.White)
+        ChannelLogo(null, away, Modifier.size(20.dp), monogramSize = 8.dp)
+        StatusPill(minute, NexTvColors.Live)
+        resume?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.85f)) }
+        if (goal > 0f) StatusPill("BUT !", NexTvColors.Warning, Modifier.alpha(goal))
+    }
+}
+
+/** Image de la pub en cours (fausse pub), dans sa fenêtre. */
+@Composable
+private fun AdWindow(modifier: Modifier) {
+    Box(
+        modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFF7043), Color(0xFFD81B60))))
+            .border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(12.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("SOLDES", fontSize = 30.sp, fontWeight = FontWeight.Black, color = Color.White)
+            Text("jusqu'à -50 %", style = MaterialTheme.typography.titleMedium, color = Color.White)
+        }
+    }
+}
+
+@Composable
+private fun Label(text: String) {
+    Text(text.uppercase(), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = NexTvColors.Accent, letterSpacing = 1.5.sp)
+    Spacer(Modifier.height(4.dp))
+}
+
+@Composable
+private fun Bar(fraction: Float, color: Color, modifier: Modifier) {
+    Box(modifier.height(3.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.2f))) {
+        Box(Modifier.fillMaxWidth(fraction.coerceIn(0f, 1f)).height(3.dp).background(color))
+    }
+}
+
+@Composable
+private fun Picture(top: Color, bottom: Color, modifier: Modifier) {
+    Box(modifier.clip(RoundedCornerShape(6.dp)).background(Brush.verticalGradient(listOf(top, bottom))))
+}
+
+/** Pochette fabriquée pour la radio (pas de réseau dans les tests). */
+@OptIn(coil3.annotation.ExperimentalCoilApi::class)
+@Composable
+private fun WithCover(content: @Composable () -> Unit) {
+    val art = remember {
+        Bitmap.createBitmap(300, 300, Bitmap.Config.ARGB_8888).also { bitmap ->
+            val canvas = android.graphics.Canvas(bitmap)
+            canvas.drawColor(0xFF00695C.toInt())
+            val paint = android.graphics.Paint().apply { color = 0xFFFFB300.toInt() }
+            canvas.drawCircle(150f, 150f, 95f, paint)
+            paint.color = 0xFF263238.toInt()
+            canvas.drawRect(0f, 220f, 300f, 300f, paint)
+        }
+    }
+    CompositionLocalProvider(
+        LocalInspectionMode provides true,
+        LocalAsyncImagePreviewHandler provides AsyncImagePreviewHandler { art.asImage() },
+    ) { Box(Modifier.fillMaxSize()) { content() } }
 }
 
 /** 0 avant [from], 1 après [to], en douceur entre les deux. */
@@ -398,35 +448,26 @@ private fun ramp(t: Float, from: Float, to: Float): Float {
 
 private fun lerp(a: Float, b: Float, f: Float) = a + (b - a) * f
 
-/** Image de la scène à l'instant [t] (secondes) de la vidéo. */
+/** Image de la vidéo à l'instant [t] (secondes). */
 @Composable
 private fun AdBreakScene(t: Float) {
     val adStart = 1.5f
-    val adEnd = 12f
-    // 0 : pub en plein écran ; 1 : pub dans le coin, panneau affiché.
+    val adEnd = 11.2f
+    // 0 : plein écran ; 1 : pub dans le coin, écran affiché.
     val shrink = ramp(t, 2.0f, 2.8f) - ramp(t, adEnd, adEnd + 0.8f)
-    val toScores = ramp(t, 6.0f, 6.6f)
-    val toRadio = ramp(t, 9.0f, 9.6f)
-    // Pub simulée : 12 s de pub par seconde de vidéo, page prévue de 2 min 30.
-    val elapsed = ((t - adStart) * 12f).coerceIn(0f, (adEnd - adStart) * 12f).toInt()
-    val planned = 150
+    // Pub simulée : 15 s de pub par seconde de vidéo.
+    val elapsed = ((t - adStart) * 15f).coerceIn(0f, (adEnd - adStart) * 15f).toInt()
+    // But de Liverpool pendant la pub, ligne allumée quelques secondes.
+    val goalAt = 6.5f
+    val goal = ramp(t, goalAt, goalAt + 0.3f) - ramp(t, goalAt + 2.6f, goalAt + 3.2f)
+    val moment = BoardMoment(elapsed, time = t, goal = goal, liverpoolScore = if (t >= goalAt) "3 – 0" else "2 – 0")
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        if (shrink > 0f) {
-            Box(Modifier.fillMaxSize().alpha(shrink)) {
-                // Chaque écran a sa place : -1 à gauche, 0 affiché, 1 à droite.
-                PanelLayer(position = -toScores, background = { ProgrammeBackground() }) { PanelColumn { ProgrammePanel() } }
-                PanelLayer(position = 1 - toScores - toRadio, background = { ScoresBackground() }) { PanelColumn { ScoresPanel(onThisChannel = false) } }
-                PanelLayer(position = 1 - toRadio, background = { RadioBackground() }) {}
-                // Nom de la chaîne, fixe (l'écran radio a le sien).
-                Box(Modifier.padding(horizontal = 40.dp, vertical = 28.dp).alpha(1f - toRadio)) { ChannelHeader("M6") }
-            }
-        }
+        if (shrink > 0f) Box(Modifier.fillMaxSize().alpha(shrink)) { AdBreakBoard(moment, window = false) }
         // La pub (puis le programme) : la même image, réduite dans le coin.
-        val cornerWidth = lerp(WindowWidth.value, RadioWindowWidth.value, toRadio)
-        val cornerX = 960f - 40f - cornerWidth
-        val width = lerp(960f, cornerWidth, shrink)
+        val corner = WindowWidth.value
+        val width = lerp(960f, corner, shrink)
         val scale = width / 960f
-        val x = lerp(0f, cornerX, shrink)
+        val x = lerp(0f, 960f - 40f - corner, shrink)
         val y = lerp(0f, 28f, shrink)
         Box(
             Modifier
@@ -444,61 +485,18 @@ private fun AdBreakScene(t: Float) {
         ) {
             if (t >= adStart && t < adEnd) AdScene(t) else ProgrammeScene(t)
         }
-        // Durée de la pub : seulement une fois la fenêtre à sa place (sinon par-dessus la pub qui se réduit).
-        val settled = ((shrink - 0.85f) / 0.15f).coerceIn(0f, 1f)
-        if (shrink > 0f) {
-            Column(
-                Modifier
-                    .offset(x = cornerX.dp, y = (28f + cornerWidth * 9 / 16 + 8f).dp)
-                    .width(cornerWidth.dp)
-                    .alpha(settled),
-            ) {
-                val minutes = elapsed / 60
-                val seconds = elapsed % 60
-                val since = if (minutes == 0) "depuis $seconds s" else "depuis $minutes min %02d".format(seconds)
-                val left = planned - elapsed
-                val end = when {
-                    toRadio > 0.5f -> "Pub sur M6 · FIP Groove à la place"
-                    left < 60 -> "Fin prévue dans moins d'1 min"
-                    else -> "Fin prévue dans ${(left + 59) / 60} min"
-                }
-                AdStatus(since, end, elapsed / planned.toFloat())
-            }
-            Hints(Modifier.align(Alignment.BottomEnd).padding(end = 40.dp, bottom = 28.dp).alpha(shrink))
-        }
         Caption(t)
     }
 }
 
-@Composable
-private fun PanelLayer(position: Float, background: @Composable () -> Unit, content: @Composable () -> Unit) {
-    // Fond en fondu enchaîné ; texte : l'écran qui part s'efface avant que le suivant n'arrive.
-    val shown = (1f - kotlin.math.abs(position)).coerceIn(0f, 1f)
-    if (shown <= 0f) return
-    val text = (1f - 2 * kotlin.math.abs(position)).coerceIn(0f, 1f)
-    Box(Modifier.fillMaxSize().alpha(shown)) {
-        background()
-        Box(Modifier.fillMaxSize().offset(x = (position * 80f).dp).alpha(text)) { content() }
-    }
-}
-
-@Composable
-private fun PanelColumn(content: @Composable () -> Unit) {
-    Column(Modifier.fillMaxHeight().padding(horizontal = 40.dp, vertical = 28.dp).width(500.dp)) {
-        Spacer(Modifier.height(56.dp))
-        content()
-    }
-}
-
-/** Ce qui se passe, en légende en bas à gauche. */
+/** Ce qui se passe, en légende en bas, au milieu. */
 @Composable
 private fun BoxScope.Caption(t: Float) {
     val captions = listOf(
         Triple(0.2f, 1.4f, "Programme en cours sur M6"),
-        Triple(1.6f, 3.0f, "Pub détectée"),
-        Triple(5.5f, 6.8f, "▶  écran suivant : les scores"),
-        Triple(8.5f, 9.8f, "▶  écran suivant : la radio"),
-        Triple(11.8f, 13.6f, "Fin de la pub : retour au programme"),
+        Triple(1.6f, 3.4f, "Pub détectée : tout s'affiche à côté"),
+        Triple(6.4f, 8.6f, "But pendant la pub !"),
+        Triple(11.0f, 12.8f, "Fin de la pub : retour au programme"),
     )
     val (from, to, text) = captions.firstOrNull { t >= it.first && t <= it.second } ?: return
     val alpha = minOf(ramp(t, from, from + 0.2f), 1f - ramp(t, to - 0.2f, to))
@@ -508,12 +506,11 @@ private fun BoxScope.Caption(t: Float) {
         fontWeight = FontWeight.Bold,
         color = Color.Black,
         modifier = Modifier
-            .align(Alignment.BottomStart)
-            .padding(start = 40.dp, bottom = 24.dp)
+            .align(Alignment.Center)
             .alpha(alpha)
             .clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.92f))
-            .padding(horizontal = 18.dp, vertical = 8.dp),
+            .background(Color.White.copy(alpha = 0.94f))
+            .padding(horizontal = 20.dp, vertical = 10.dp),
     )
 }
 
@@ -532,7 +529,7 @@ private fun AdScene(t: Float) {
                 .background(Color.White.copy(alpha = 0.25f)),
         )
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("SOLDES", fontSize = (96 + 6 * kotlin.math.sin(t * 4f)).sp, fontWeight = FontWeight.Black, color = Color.White)
+            Text("SOLDES", fontSize = (96 + 6 * sin(t * 4f)).sp, fontWeight = FontWeight.Black, color = Color.White)
             Text("jusqu'à -50 %", fontSize = 40.sp, fontWeight = FontWeight.Bold, color = Color.White)
         }
     }
