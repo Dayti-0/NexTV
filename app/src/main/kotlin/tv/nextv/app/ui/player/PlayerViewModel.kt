@@ -1037,7 +1037,7 @@ class PlayerViewModel(
         // Chaîne « événement » (LALIGA 2 LIVE MATCH…) sans programme du guide : le match qu'elle diffuse.
         val match = (if (live != null) matchOnAir(programmes.first(), now) else null)
             // Rediffusion : jamais le score final (il gâcherait le match).
-            ?.let { if (live?.rebroadcast == true) it.copy(score = null, live = false, clock = null, halfTime = false) else it }
+            ?.let { if (live?.rebroadcast == true) it.copy(score = null, live = false, clock = null, halfTime = false, resumeAtMillis = null) else it }
             ?: eventMatchOnAir(container, current.sourceId, current.name, now)?.let(::playerMatchOf)
         if (session.channel?.id == current.id) mutableState.update { it.copy(match = match) }
     }
@@ -1083,6 +1083,7 @@ class PlayerViewModel(
                 live = live,
                 clock = match.clock.takeIf { live },
                 halfTime = live && match.halfTime,
+                resumeAtMillis = resumeAt(match.home.displayName, match.away.displayName, match.kickoffMillis, live, live && match.halfTime, match.clock),
             )
         }
         val fixture = FootballMatches.fixtureOf(programme.title, programme.subtitle, programme.category, programme.description)
@@ -1101,6 +1102,7 @@ class PlayerViewModel(
             live = score?.inPlay == true,
             clock = score?.clock,
             halfTime = score?.halfTime == true,
+            resumeAtMillis = score?.let { resumeAt(home, away, it.kickoffMillis, it.inPlay, it.halfTime, it.clock) },
         )
     }
 
@@ -1120,8 +1122,13 @@ class PlayerViewModel(
             live = live,
             clock = match.clock.takeIf { live },
             halfTime = live && match.halfTime,
+            resumeAtMillis = resumeAt(match.home.displayName, match.away.displayName, match.kickoffMillis, live, live && match.halfTime, match.clock),
         )
     }
+
+    /** Mi-temps : heure estimée de la reprise (début de la pause noté pour toute l'application) ; `null` sinon. */
+    private fun resumeAt(home: String, away: String, kickoffMillis: Long, inPlay: Boolean, halfTime: Boolean, minute: String?): Long? =
+        container.halfTimes.resumeAt("$home|$away|$kickoffMillis", kickoffMillis, inPlay, halfTime, minute)
 
     private fun start(forceHls: Boolean) {
         val playbackRequest = session.request ?: return

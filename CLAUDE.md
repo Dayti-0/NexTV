@@ -290,6 +290,13 @@ Commandes :
   (« A / B » dans le titre) dont le même titre a commencé 1 h à 7 jours plus tôt dans le guide (`ProgrammeDao.airedBetween`),
   vu dans `PlayerViewModel.isRebroadcast` ; sur une rediffusion, pas de score dans le bandeau. Score « comme en direct »
   d'une rediffusion écarté : l'heure du coup d'envoi dans la rediffusion est inconnue (risque d'annoncer un but en avance).
+- Mi-temps (0.2.232) : temps restant avant la reprise à côté du badge du bandeau (`PlayerMatch.resumeAtMillis`, `MatchScore`),
+  estimé par `core/football/HalfTimes` (une seule pour l'appli, `AppContainer.halfTimes`, clé équipes + coup d'envoi) : les
+  scores (ESPN, football-data.org) disent seulement « mi-temps ». Pause vue commencer (dernier relevé « 44' » / « 45+x' » et
+  premier « mi-temps » à moins de 2 min) : entre les deux ; sinon coup d'envoi prévu + 45 + temps additionnel + 1 min 40 (à la
+  pause, ESPN garde la dernière minute de la première période, « 45' » ou « 45+2' » : `LiveScore.clock` la garde ; 2 min sans
+  elle). Reprise 16 min après (annonces d'ESPN espacées de 16 à 17 min) ; rien d'affiché une fois l'heure passée. Réglé sur
+  les 7 matchs de Ligue des champions du 25/11/2026 relevés toutes les 20 s.
 - Année de sortie dans la fiche programme : celle du guide (`<date>`, la moitié des films de xmltvfr), sinon celle de la
   fiche TMDB du même titre (`rememberProgrammeYear`, `sameTitleYear` dans `ProgrammeArt.kt`, même cache que l'image).
 - Fun Radio / RTL2 : `icecast.funradio.fr` redirige vers `streaming-ice.audiomeans.fr` (paramètres AdsWizz `aw_…` : pubs

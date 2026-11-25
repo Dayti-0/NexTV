@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.232
+- Match dans le bandeau du lecteur : pendant la mi-temps, le temps restant avant la reprise s'affiche à côté du badge « Mi-temps » (« Reprise dans 9 min » ; estimé, les scores en direct ne disent pas à quelle heure la pause a commencé)
+
 ## 0.2.231
 - Nombre de films (tuile du menu de Classique, « Tous les films ») : un film rangé dans deux catégories n'est plus compté deux fois (11 966 films annoncés au lieu de 12 419 sur une vraie playlist)
 

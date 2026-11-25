@@ -41,7 +41,8 @@ class LiveScoresTest {
         assertTrue(barca.inPlay)
         assertFalse(barca.halfTime)
         assertTrue(scores[1].halfTime)
-        assertNull(scores[1].clock)
+        // Dernière minute de la première période : temps additionnel, pour estimer la reprise.
+        assertEquals("45+2'", scores[1].clock)
         assertTrue(scores[2].finished)
         assertEquals("45+2'", scores[3].clock)
     }

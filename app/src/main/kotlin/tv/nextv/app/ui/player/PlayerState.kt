@@ -37,6 +37,8 @@ data class PlayerMatch(
     val clock: String? = null,
     /** Mi-temps. */
     val halfTime: Boolean = false,
+    /** Pendant la mi-temps : heure estimée de la reprise (`HalfTimes`), pour le temps restant du bandeau. */
+    val resumeAtMillis: Long? = null,
 )
 
 data class PlayerUiState(

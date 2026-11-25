@@ -71,6 +71,7 @@ import tv.nextv.core.epg.EpgImporter
 import tv.nextv.core.epg.EpgLoader
 import tv.nextv.core.epg.HttpEpgFeedProvider
 import tv.nextv.core.football.FootballDataClient
+import tv.nextv.core.football.HalfTimes
 import tv.nextv.core.football.LiveScoreClient
 import tv.nextv.core.io.CompositeContentOpener
 import tv.nextv.core.io.RemoteContentOpener
@@ -362,6 +363,9 @@ class AppContainer(context: Context) {
 
     /** Scores et minute de jeu en direct (tableau des scores public d'ESPN), partagés par la section Foot et le lecteur. */
     val liveScores = LiveScoreClient(httpClients, logger = logger)
+
+    /** Début des mi-temps vues (temps restant avant la reprise dans le bandeau du lecteur). */
+    val halfTimes = HalfTimes()
 
     /** Galas de la section MMA (calendrier public d'ESPN : UFC, PFL, Cage Warriors). */
     val mmaSchedule = tv.nextv.core.mma.MmaScheduleClient(httpClients, logger = logger)

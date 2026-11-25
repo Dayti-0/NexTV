@@ -40,7 +40,10 @@ data class ScheduledMatch(
     val away: Team,
     val homeScore: Int? = null,
     val awayScore: Int? = null,
-    /** Minute de jeu pendant le match (« 81' », « 45+2' »), si la source des scores la donne. */
+    /**
+     * Minute de jeu pendant le match (« 81' », « 45+2' »), si la source des scores la donne ; à la mi-temps, la
+     * dernière de la première période (temps additionnel, pour estimer la reprise).
+     */
     val clock: String? = null,
     /** Mi-temps. */
     val halfTime: Boolean = false,

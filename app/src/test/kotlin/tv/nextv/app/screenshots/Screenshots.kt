@@ -825,6 +825,22 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
+    fun playerHalfTime() = capture("13e2_lecteur_mi_temps") {
+        FakeVideo()
+        PlayerOverlay(
+            state = SampleData.player.copy(
+                match = PlayerMatch("PSG", "Marseille", null, null, "1 – 0", live = true, halfTime = true, resumeAtMillis = SampleData.NOW + 11 * 60_000L + 20_000),
+            ),
+            now = SampleData.NOW,
+            visible = true,
+            showTouchControls = false,
+            onBack = {},
+            onZap = {},
+            onRetry = {},
+        )
+    }
+
+    @Test
     fun playerInfo() = capture("13b_lecteur_infos") {
         FakeVideo()
         val state = SampleData.player.copy(bandwidthMbps = 21.6, receivedMbps = 14.2, quality = "4K", info = SampleData.playbackInfo)

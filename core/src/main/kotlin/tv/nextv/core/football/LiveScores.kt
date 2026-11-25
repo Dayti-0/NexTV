@@ -28,8 +28,8 @@ import java.util.concurrent.TimeUnit
 data class LiveTeam(val names: List<String>)
 
 /**
- * Score en direct d'un match : [clock] « 81' » ou « 45+2' » pendant le jeu, [halfTime] à la pause,
- * [finished] une fois le match terminé.
+ * Score en direct d'un match : [clock] « 81' » ou « 45+2' » pendant le jeu (à la pause, la dernière minute de la
+ * première période), [halfTime] à la pause, [finished] une fois le match terminé.
  */
 data class LiveScore(
     val competition: Competition,
@@ -292,7 +292,8 @@ class LiveScoreClient(
                     away = espnTeam(away) ?: return@mapNotNull null,
                     homeScore = home.optString("score").toIntOrNull().takeIf { started },
                     awayScore = away.optString("score").toIntOrNull().takeIf { started },
-                    clock = status.optString("displayClock").takeIf { state == "in" && !halfTime }?.let(::minute),
+                    // À la mi-temps, ESPN garde la dernière minute de la première période (« 45'+2' ») : temps additionnel.
+                    clock = status.optString("displayClock").takeIf { state == "in" }?.let(::minute),
                     halfTime = state == "in" && halfTime,
                 )
             }
@@ -367,7 +368,8 @@ class LiveScoreClient(
                     awayScore = away.optString("score").toIntOrNull(),
                     inPlay = state == "in",
                     finished = state == "post",
-                    clock = status.optString("displayClock").takeIf { state == "in" && !halfTime }?.let(::minute),
+                    // À la mi-temps, ESPN garde la dernière minute de la première période (« 45'+2' ») : temps additionnel.
+                    clock = status.optString("displayClock").takeIf { state == "in" }?.let(::minute),
                     halfTime = state == "in" && halfTime,
                 )
             }

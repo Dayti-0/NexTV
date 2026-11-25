@@ -1207,7 +1207,7 @@ private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Mo
                 if (programme.rebroadcast) StatusPill(stringResource(R.string.player_rebroadcast), NexTvColors.Warning)
                 Text(programme.title, style = MaterialTheme.typography.titleLarge, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            state.match?.let { MatchScore(it) }
+            state.match?.let { MatchScore(it, now) }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.widthIn(max = 640.dp)) {
                 Text(timeOf(programme.startMillis), style = MaterialTheme.typography.labelLarge, color = Color.White)
                 LiveProgress(programme.startMillis, programme.stopMillis, watched, Modifier.weight(1f))
@@ -1220,7 +1220,7 @@ private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Mo
             }
         }
         // Chaîne « événement » (DAZN LALIGA… LIVE MATCH) : pas de programme dans le guide, le match seul.
-        if (state.now == null) state.match?.let { MatchScore(it) }
+        if (state.now == null) state.match?.let { MatchScore(it, now) }
         state.next?.let { programme ->
             Text(
                 stringResource(R.string.player_next, timeOf(programme.startMillis), programme.title),
@@ -1241,7 +1241,7 @@ private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Mo
 
 /** Match en cours sur la chaîne : écussons, équipes et score (football-data.org). */
 @Composable
-private fun MatchScore(match: PlayerMatch) {
+private fun MatchScore(match: PlayerMatch, now: Long) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         match.homeCrest?.let { ChannelLogo(it, match.home, Modifier.size(32.dp), monogramSize = 11.dp) }
         Text(match.home, style = MaterialTheme.typography.titleMedium, color = Color.White, maxLines = 1)
@@ -1255,6 +1255,16 @@ private fun MatchScore(match: PlayerMatch) {
         // Minute de jeu ou mi-temps.
         val minute = if (match.halfTime) stringResource(R.string.football_half_time) else match.clock
         minute?.let { StatusPill(it, NexTvColors.Live) }
+        // Mi-temps : temps estimé avant la reprise (minute entamée comptée), rien une fois l'heure passée.
+        match.resumeAtMillis?.takeIf { match.halfTime && it > now }?.let { resumeAt ->
+            val minutes = (resumeAt - now + 59_999) / 60_000
+            Text(
+                stringResource(R.string.player_half_time_resume, formatDuration(minutes * 60_000)),
+                style = MaterialTheme.typography.labelLarge,
+                color = Color.White.copy(alpha = 0.85f),
+                maxLines = 1,
+            )
+        }
     }
 }
 

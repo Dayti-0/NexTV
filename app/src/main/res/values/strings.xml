@@ -489,6 +489,7 @@
     <string name="player_quality_decoder">L’appareil ne suit pas : passage en %1$s</string>
     <string name="player_speed">%1$s Mbit/s</string>
     <string name="player_remaining">Reste %1$s</string>
+    <string name="player_half_time_resume">Reprise dans %1$s</string>
     <string name="player_quality_down">Connexion lente : passage en %1$s</string>
     <string name="player_quality_up">Connexion rétablie : retour en %1$s</string>
     <string name="player_quality_unknown">qualité standard</string>
