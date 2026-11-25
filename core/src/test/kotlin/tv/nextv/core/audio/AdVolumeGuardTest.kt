@@ -208,6 +208,30 @@ class AdVolumeGuardTest {
     }
 
     @Test
+    fun `a flickering logo does not open a break on its own`() {
+        // Gulli, 25/11/2026 vers 1 h 45 : sur les dessins animés, le logo est mal vu et « part » toutes les 30 s ; son départ
+        // ouvrait des pages de pubs en plein programme.
+        guard.logoFollowsBreaks = true
+        guard.logo = LogoState.VISIBLE
+        play(60.0)
+        repeat(3) {
+            guard.logo = LogoState.HIDDEN
+            play(10.0)
+            guard.logo = LogoState.VISIBLE
+            play(20.0)
+        }
+        guard.logo = LogoState.HIDDEN
+        play(25.0)
+        assertFalse("logo qui clignote : son départ seul n'ouvre rien", guard.attenuating)
+        // Logo de nouveau stable plusieurs minutes : son départ ouvre la page, comme avant.
+        guard.logo = LogoState.VISIBLE
+        play(330.0)
+        guard.logo = LogoState.HIDDEN
+        play(21.0)
+        assertTrue("logo stable puis parti depuis 20 s : page ouverte", guard.attenuating)
+    }
+
+    @Test
     fun `trailers one after the other without a silence keep the break open after 30 s`() {
         // CNews, 19/11/2026 à 4 h : deux minutes de bandes-annonces sans silence entre elles ; la page ouverte au départ
         // du logo était refermée au bout de 30 s, faute de jonction.
