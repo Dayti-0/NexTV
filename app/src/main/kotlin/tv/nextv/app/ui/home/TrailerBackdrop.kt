@@ -627,8 +627,10 @@ internal object TrailerDecoding {
     }
 
     private fun isHardware(info: android.media.MediaCodecInfo): Boolean {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) return info.isHardwareAccelerated
+        // Décodeurs logiciels connus, même quand ils se disent matériels (les « c2.ffmpeg » de LineageOS sur la box).
         val name = info.name.lowercase()
-        return !(name.startsWith("omx.google.") || name.startsWith("c2.android.") || name.contains("ffmpeg") || name.contains(".sw."))
+        if (name.startsWith("omx.google.") || name.startsWith("c2.android.") || name.contains("ffmpeg") || name.contains(".sw.")) return false
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) return info.isHardwareAccelerated && !info.isSoftwareOnly
+        return true
     }
 }

@@ -156,6 +156,14 @@ fun PlayerScreen(
         if (backToHome()) viewModel.keepStreamForHome()
         onBack()
     }
+    // Appui long sur « Retour » (retour direct à l'accueil) : l'aperçu reprend aussi le flux. Ce raccourci passait à
+    // côté : l'aperçu restait noir 2 s le temps de rouvrir la chaîne (vu sur la box le 25/11/2026).
+    val activity = androidx.activity.compose.LocalActivity.current as? tv.nextv.app.MainActivity
+    DisposableEffect(activity, viewModel) {
+        val toHome = activity?.onLongBack
+        activity?.onLongBack = toHome?.let { home -> { viewModel.keepStreamForHome(); home() } }
+        onDispose { if (activity != null && toHome != null) activity.onLongBack = toHome }
+    }
     val player by viewModel.player.collectAsStateWithLifecycle()
     val state by viewModel.state.collectAsStateWithLifecycle()
     val menu by viewModel.menu.collectAsStateWithLifecycle()

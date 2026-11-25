@@ -1,0 +1,16 @@
+# Profil de démarrage de l'appli : code compilé d'avance par Android après l'installation (ProfileInstaller), au lieu
+# d'être interprété au premier passage. Sans lui, sur la box (Raspberry Pi 5), changer de section ou de catégorie en
+# Streaming faisait attendre jusqu'à 1,8 à 3 s certaines images (mesuré le 25/11/2026, juste après une mise à jour).
+# Règles larges (tout le code de l'appli et de Compose) : AGP les développe à la fabrication de l'APK.
+HSPLtv/nextv/app/**->**(**)**
+Ltv/nextv/app/**;
+HSPLtv/nextv/core/**->**(**)**
+Ltv/nextv/core/**;
+HSPLandroidx/compose/**->**(**)**
+Landroidx/compose/**;
+HSPLandroidx/paging/**->**(**)**
+Landroidx/paging/**;
+HSPLcoil3/**->**(**)**
+Lcoil3/**;
+HSPLkotlinx/coroutines/**->**(**)**
+Lkotlinx/coroutines/**;
