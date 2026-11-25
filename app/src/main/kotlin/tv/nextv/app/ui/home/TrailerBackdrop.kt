@@ -408,7 +408,20 @@ private fun trailerView(
           if(allowed||done)return;
           allowed=true;
           watchStart();
-          if(primed){call(function(){player.seekTo(0,true);player.playVideo();});setTimeout(function(){if(hidden&&!done)reveal();},$REVEAL_AFTER_SEEK_MILLIS);}
+          if(primed){call(function(){player.seekTo(0,true);player.playVideo();});revealAfterSeek();}
+        }
+        // Vidéo repartie de 0 : elle n'apparaît qu'une fois relancée (lecture, au moins $REVEAL_AFTER_SEEK_MILLIS ms
+        // jouées), sinon YouTube montre son gros symbole pause tant qu'il recharge le début (4 s sur la box, 25/11/2026).
+        var seekWatch=null;
+        function revealAfterSeek(){
+          var t0=Date.now();clearInterval(seekWatch);
+          seekWatch=setInterval(function(){
+            if(done||!hidden){clearInterval(seekWatch);return;}
+            var ok=false;
+            call(function(){var t=player.getCurrentTime();ok=player.getPlayerState()==1&&t>=$REVEAL_AFTER_SEEK_MILLIS/1000&&t<5;});
+            var waited=Date.now()-t0;
+            if((ok&&waited>=$REVEAL_AFTER_SEEK_MILLIS)||waited>=$REVEAL_AFTER_SEEK_MAX_MILLIS){clearInterval(seekWatch);if(hidden&&!done)reveal();}
+          },100);
         }
         function pause(){call(function(){player.pauseVideo();});}
         // Meilleure qualité proposée demandée (YouTube peut l'ignorer : il choisit d'après la taille du lecteur et
@@ -463,7 +476,7 @@ private fun trailerView(
                 if(e.data==1&&hidden){
                   if(allowed&&primeMs>0&&!primed){
                     primed=true;priming=true;clearTimeout(startTimer);
-                    setTimeout(function(){if(done)return;priming=false;call(function(){player.seekTo(0,true);});setTimeout(function(){if(hidden&&!done)reveal();},$REVEAL_AFTER_SEEK_MILLIS);},primeMs);
+                    setTimeout(function(){if(done)return;priming=false;call(function(){player.seekTo(0,true);});revealAfterSeek();},primeMs);
                   }
                   else if(allowed){if(!priming)reveal();}
                   else{primed=true;clearTimeout(startTimer);}
@@ -514,6 +527,9 @@ internal const val TRAILER_HERO_RENDER_SCALE = 1.5f
 
 /** Vidéo préparée qui repart de 0 : elle apparaît après ce temps (l'image du début est alors affichée). */
 private const val REVEAL_AFTER_SEEK_MILLIS = 300
+
+/** Vidéo repartie de 0 qui ne rejoue toujours pas : elle apparaît quand même après ce temps. */
+private const val REVEAL_AFTER_SEEK_MAX_MILLIS = 5_000
 
 /** Bande-annonce en plein écran : début gardé caché ce temps (habillage de YouTube du démarrage). */
 private const val FULL_SCREEN_PRIME_MILLIS = 3_000L

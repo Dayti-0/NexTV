@@ -167,7 +167,7 @@ data class VodInfo(
 )
 
 /** Épisode suivant d'une série : « S01E04 », son titre et son affiche. */
-data class NextEpisode(val id: Long, val label: String?, val title: String, val imageUrl: String?)
+data class NextEpisode(val id: Long, val label: String?, val title: String?, val imageUrl: String?)
 
 /** Raison de l'absence de son, affichée sur l'image. */
 enum class AudioProblem {

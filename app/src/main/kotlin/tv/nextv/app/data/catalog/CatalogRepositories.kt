@@ -1,5 +1,6 @@
 package tv.nextv.app.data.catalog
 
+import tv.nextv.core.meta.frenchGenre
 import androidx.room.withTransaction
 import tv.nextv.app.data.db.FavoriteEntity
 import tv.nextv.app.data.db.NexTvDatabase
@@ -165,7 +166,8 @@ class MetadataRepository(
         year = year,
         rating = rating,
         voteCount = voteCount,
-        genres = genres.split('|').filter { it.isNotBlank() },
+        // Fiches gardées avant la traduction des genres (0.2.219) : traduites à la lecture.
+        genres = genres.split('|').filter { it.isNotBlank() }.map(::frenchGenre),
         posterUrl = posterUrl,
         backdropUrl = backdropUrl,
         trailerYoutubeKey = trailerKey,

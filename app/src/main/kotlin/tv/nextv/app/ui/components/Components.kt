@@ -57,6 +57,7 @@ import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.dropShadow
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
@@ -78,6 +79,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -182,8 +184,11 @@ fun RemoteTextField(
         runCatching { fieldFocus.requestFocus() }
         keyboard?.show()
     }
+    val focusManager = LocalFocusManager.current
+    val frameFocus = remember { FocusRequester() }
     Box(
         modifier
+            .focusRequester(frameFocus)
             .onFocusChanged { frameFocused = it.isFocused }
             .onPreviewKeyEvent { event ->
                 val isOk = event.key == Key.DirectionCenter || event.key == Key.Enter || event.key == Key.NumPadEnter
@@ -201,7 +206,28 @@ fun RemoteTextField(
                     fieldFocused = state.isFocused
                 }
                 .focusRequester(fieldFocus)
-                .focusProperties { canFocus = !remote || editing },
+                .focusProperties { canFocus = !remote || editing }
+                .onPreviewKeyEvent { event ->
+                    // Texte tapé, clavier fermé : haut / bas quittent le champ (le champ les gardait pour son
+                    // curseur, et on ne pouvait plus descendre vers les résultats), et « Retour » rend la main au
+                    // cadre au lieu de fermer l'écran.
+                    if (!remote || !editing) return@onPreviewKeyEvent false
+                    val direction = when (event.key) {
+                        Key.DirectionDown -> FocusDirection.Down
+                        Key.DirectionUp -> FocusDirection.Up
+                        Key.Back -> null
+                        else -> return@onPreviewKeyEvent false
+                    }
+                    if (event.type == KeyEventType.KeyDown) {
+                        if (direction != null) {
+                            if (!focusManager.moveFocus(direction)) return@onPreviewKeyEvent true
+                        } else {
+                            editing = false
+                            runCatching { frameFocus.requestFocus() }
+                        }
+                    }
+                    true
+                },
             interactionSource,
         )
     }

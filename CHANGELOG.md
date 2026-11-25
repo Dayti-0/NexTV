@@ -4,6 +4,14 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.227
+- Recherche : après avoir tapé le texte, la touche ▼ descend vers les résultats (elle restait dans le champ) ; Retour quitte le champ sans fermer la recherche
+- Direct : sur les appareils qui ont beaucoup de mémoire (box), ◀ peut revenir environ 2 minutes en arrière au lieu d'une trentaine de secondes
+- Épisodes : le lecteur et « Ensuite » montrent le titre de l'épisode, plus le nom brut de la playlist (« (MULTI) FHD S01 E01 »)
+- Fiches des séries : genres en français (« Action & Aventure ») même pour les fiches déjà gardées
+- Bandes-annonces du bandeau : la vidéo n'apparaît qu'une fois relancée, sans le gros symbole pause de YouTube au début
+- Baisse du son des pubs : moins de programmes baissés à tort quand le logo de la chaîne clignote (dessins animés de Gulli, après les pubs sur BFMTV et TF1)
+
 ## 0.2.226
 - Télés reliées : le code ne change plus et n'expire plus (8 chiffres, le même sur toutes les télés reliées) ; une autre télé peut le saisir même quand celle qui l'a affiché est éteinte ou a quitté les Réglages
 - Télés reliées : la télé qui affiche le code annonce chaque télé qui la rejoint, tant que le code reste à l'écran

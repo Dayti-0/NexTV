@@ -460,4 +460,5 @@ private val ENGLISH_GENRES = mapOf(
     "Talk" to "Talk-show",
 )
 
-internal fun frenchGenre(name: String): String = ENGLISH_GENRES[name.trim()] ?: name
+/** Genre de TMDB en français : ceux des séries n'ont pas toujours de traduction (« Action & Adventure »). */
+fun frenchGenre(name: String): String = ENGLISH_GENRES[name.trim()] ?: name

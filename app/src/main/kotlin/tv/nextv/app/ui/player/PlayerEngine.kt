@@ -485,11 +485,17 @@ internal class PlayerEngine(
 
     private fun liveTail(): ByteArray = liveTail ?: ByteArray(liveTailBytes()).also { liveTail = it }
 
-    /** Petit appareil (clé TV d'entrée de gamme) : moitié moins de secondes gardées. */
+    /**
+     * Petit appareil (clé TV d'entrée de gamme) : moitié moins de secondes gardées. Appareil à grande mémoire (box
+     * Raspberry Pi 5) : trois fois plus, environ 2 minutes en HD (avec 32 Mo, ← s'arrêtait à 36 s sur la box).
+     */
     private fun liveTailBytes(): Int {
         val manager = container.appContext.getSystemService(ActivityManager::class.java)
         val small = manager == null || manager.isLowRamDevice || manager.largeMemoryClass <= SMALL_HEAP_MB
-        return if (small) LIVE_TAIL_BYTES / 2 else LIVE_TAIL_BYTES
+        if (small) return LIVE_TAIL_BYTES / 2
+        val total = ActivityManager.MemoryInfo().also { manager.getMemoryInfo(it) }.totalMem
+        val large = manager.largeMemoryClass >= LARGE_HEAP_MB && total >= LARGE_DEVICE_BYTES
+        return if (large) LIVE_TAIL_BYTES * 3 else LIVE_TAIL_BYTES
     }
 
     /**
@@ -1083,6 +1089,10 @@ private const val LIVE_TAIL_BYTES = 32 * 1024 * 1024
 
 /** Mémoire maximale de l'application (avec `largeHeap`) en dessous de laquelle l'appareil est traité comme petit. */
 private const val SMALL_HEAP_MB = 256
+
+/** Mémoire de l'application et de l'appareil au-delà desquelles on garde plus de direct (2 min pour revenir en arrière). */
+private const val LARGE_HEAP_MB = 512
+private const val LARGE_DEVICE_BYTES = 3L * 1024 * 1024 * 1024
 
 /** Vidéo lue, en une ligne (« 1920 × 1080 H.264, décodeur matériel OMX.MTK.VIDEO.DECODER.AVC ») ; `null` : rien encore. */
 internal fun videoDescription(info: PlaybackInfo): String? {

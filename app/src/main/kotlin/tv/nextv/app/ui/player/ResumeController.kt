@@ -1,5 +1,6 @@
 package tv.nextv.app.ui.player
 
+import tv.nextv.core.catalog.ContentClassifier
 import androidx.media3.common.Player
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -223,11 +224,13 @@ internal class ResumeController(
                 row.episode != null -> "E%02d".format(row.episode)
                 else -> null
             }
-            NextEpisode(row.id, label, row.name, row.logoUrl)
+            // Titre propre de l'épisode, pas le nom de la playlist (« Série (MULTI) FHD S01 E02 », vu sur la box).
+            NextEpisode(row.id, label, if (label != null) ContentClassifier.episodeTitle(row.name) else row.name, row.logoUrl)
         }
         val series = item.seriesName ?: item.title.ifBlank { item.name }
         val label = episodeLabel(item)
-        val episodeTitle = item.name.takeIf { it.isNotBlank() && !it.equals(series, ignoreCase = true) }
+        val episodeTitle = (if (label != null) ContentClassifier.episodeTitle(item.name) else item.name)
+            ?.takeIf { it.isNotBlank() && !it.equals(series, ignoreCase = true) }
         return VodInfo(series, listOfNotNull(label, episodeTitle).joinToString("  ·  ").ifEmpty { null }, item.year, item.logoUrl, next)
     }
 
