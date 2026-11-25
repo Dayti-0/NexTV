@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.236
+- Films en Dolby Vision (« Dune - [VISION] ») : la mention est retirée du titre, et la fiche est celle du vrai film (au lieu d'une animation d'une minute portant ce nom) ; la reprise de lecture est gardée
+
 ## 0.2.235
 - Match sur plusieurs chaînes : pendant le match, ▲ ▼ passent d'une chaîne du match à l'autre (la première de la liste n'est pas toujours la bonne) ; le bandeau indique « Chaîne 2 sur 4 du match »
 - Plusieurs matchs en même temps : le menu des chaînes (Retour) a une catégorie par match en direct, en tête, avec le score et la minute ; ◀ ▶ passent d'un match à l'autre, ▲ ▼ parcourent ses chaînes ; le menu s'ouvre directement sur le match regardé
