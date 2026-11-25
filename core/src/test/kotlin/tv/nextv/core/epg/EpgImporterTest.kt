@@ -455,6 +455,13 @@ class EpgImporterTest {
         assertEquals(now, XmltvTime.parse("20240101063000-0530"))
         assertEquals(now, XmltvTime.parse("202401011200"))
         assertEquals(now, XmltvTime.parse("20240101120000 Z"))
+        assertEquals(now, XmltvTime.parse("20240101130000 +01:00"))
+        assertEquals(now, XmltvTime.parse(" 20240101120000 utc "))
+        assertEquals(now, XmltvTime.parse("20240101120000GMT"))
+        assertNull(XmltvTime.parse("2024010"))
+        assertNull(XmltvTime.parse("202401011200000"))
+        assertNull(XmltvTime.parse("20240101120000 +01"))
+        assertNull(XmltvTime.parse("20240101120000 +0100 x"))
         assertEquals(951_825_600_000L, XmltvTime.parse("20000229120000 +0000")) // année bissextile
         assertNull(XmltvTime.parse("20241301120000"))
         assertNull(XmltvTime.parse("hier"))

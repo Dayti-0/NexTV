@@ -8,12 +8,35 @@ package tv.nextv.core.epg
  */
 object XmltvTime {
 
-    private val FORMAT = Regex("""^(\d{8,14})\s*(?:([+-])(\d{2}):?(\d{2})|Z|UTC|GMT)?$""", RegexOption.IGNORE_CASE)
-
-    /** @return millisecondes epoch UTC, ou `null` si la valeur est invalide. */
+    /**
+     * @return millisecondes epoch UTC, ou `null` si la valeur est invalide.
+     *
+     * Lu caractère par caractère, sans expression régulière : deux horodatages par programme, plus de 100 000
+     * programmes par guide ; sur Android, chaque recherche d'expression régulière réserve de la mémoire native à
+     * libérer ensuite, ce qui chargeait la box pendant l'import du guide (mesuré le 25/11/2026).
+     */
     fun parse(value: String?): Long? {
-        val match = FORMAT.matchEntire(value?.trim() ?: return null) ?: return null
-        val digits = match.groupValues[1].padEnd(14, '0')
+        val text = value?.trim() ?: return null
+        var i = 0
+        while (i < text.length && text[i] in '0'..'9') i++
+        if (i !in 8..14) return null
+        val digits = text.substring(0, i).padEnd(14, '0')
+        while (i < text.length && text[i].isWhitespace()) i++
+        var offsetSeconds = 0
+        val rest = text.substring(i)
+        when {
+            rest.isEmpty() || rest.equals("Z", ignoreCase = true) || rest.equals("UTC", ignoreCase = true) || rest.equals("GMT", ignoreCase = true) -> Unit
+            rest[0] == '+' || rest[0] == '-' -> {
+                // « +0100 » ou « +01:00 ».
+                val zone = rest.substring(1).let { if (it.length == 5 && it[2] == ':') it.removeRange(2, 3) else it }
+                if (zone.length != 4 || zone.any { it !in '0'..'9' }) return null
+                val hours = zone.substring(0, 2).toInt()
+                val minutes = zone.substring(2, 4).toInt()
+                if (hours > 14 || minutes > 59) return null
+                offsetSeconds = (hours * 3600 + minutes * 60) * if (rest[0] == '-') -1 else 1
+            }
+            else -> return null
+        }
         val year = digits.substring(0, 4).toInt()
         val month = digits.substring(4, 6).toInt()
         val day = digits.substring(6, 8).toInt()
@@ -21,14 +44,6 @@ object XmltvTime {
         val minute = digits.substring(10, 12).toInt()
         val second = digits.substring(12, 14).toInt()
         if (month !in 1..12 || day !in 1..31 || hour > 23 || minute > 59 || second > 60) return null
-
-        var offsetSeconds = 0
-        if (match.groupValues[2].isNotEmpty()) {
-            val hours = match.groupValues[3].toInt()
-            val minutes = match.groupValues[4].toInt()
-            if (hours > 14 || minutes > 59) return null
-            offsetSeconds = (hours * 3600 + minutes * 60) * if (match.groupValues[2] == "-") -1 else 1
-        }
         val epochSeconds = daysFromCivil(year, month, day) * 86_400L + hour * 3600L + minute * 60L + second - offsetSeconds
         return epochSeconds * 1000
     }

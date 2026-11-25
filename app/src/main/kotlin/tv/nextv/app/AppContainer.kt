@@ -199,11 +199,12 @@ class AppContainer(context: Context) {
         store = playlistStore,
         credentialStore = EncryptedCredentialStore(database.credentialDao(), cipher, logger),
         loaders = PlaylistLoaderRegistry(
-            listOf(M3uPlaylistLoader(contentOpener, usesProxy = httpClients::usesProxy, internetRadios = true)),
+            listOf(M3uPlaylistLoader(contentOpener, ioDispatcher = LoadingThreads.dispatcher, usesProxy = httpClients::usesProxy, internetRadios = true)),
         ),
         epgLoader = EpgLoader(
             opener = contentOpener,
             importer = EpgImporter(parserFactory = { Xml.newPullParser() }),
+            ioDispatcher = LoadingThreads.dispatcher,
             usesProxy = httpClients::usesProxy,
         ),
         redactor = redactor,

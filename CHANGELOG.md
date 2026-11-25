@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.230
+- Navigation plus fluide pendant l'actualisation du guide et de la playlist : leur lecture demande beaucoup moins de calcul et de mémoire, et passe après l'affichage (sur la box, elle prenait près de la moitié du processeur de l'appli et faisait saccader les changements de section)
+
 ## 0.2.229
 - Retour à l'accueil par appui long sur Retour depuis une chaîne : l'aperçu continue sans coupure (il restait noir 2 s, le temps de rouvrir la chaîne)
 - Bandes-annonces sur la box : la limite à 720p s'applique bien (le décodeur de la box se faisait passer pour un décodeur matériel)

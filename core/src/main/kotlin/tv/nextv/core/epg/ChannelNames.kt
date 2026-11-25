@@ -10,11 +10,32 @@ import java.text.Normalizer
 object ChannelNames {
 
     /**
+     * Mots et noms « collés » déjà calculés : les mêmes milliers de noms (playlist et guides) reviennent pour chacun des
+     * six guides, à chaque actualisation. Sur Android, chaque expression régulière réserve de la mémoire native : sans
+     * cette mémoire, l'association du guide prenait près de la moitié du processeur de la box (mesuré le 25/11/2026).
+     */
+    private val tokenCache = java.util.concurrent.ConcurrentHashMap<String, List<String>>()
+    private val keyCache = java.util.concurrent.ConcurrentHashMap<String, Optional>()
+
+    private class Optional(val value: String?)
+
+    private inline fun <T : Any> remembered(cache: java.util.concurrent.ConcurrentHashMap<String, T>, name: String, compute: (String) -> T): T {
+        cache[name]?.let { return it }
+        if (cache.size > MAX_REMEMBERED) cache.clear()
+        return compute(name).also { cache[name] = it }
+    }
+
+    private const val MAX_REMEMBERED = 60_000
+
+
+    /**
      * Mots d'un nom : minuscules sans accents, « + » → « plus », lettres et chiffres séparés, zéros de
      * tête et pluriels retirés, « & » → « et ». Les précisions entre parenthèses ou crochets sont
      * ignorées (« MATCH 4 (1 AUDIO StadiumFX) » : ni « audio », ni son « 1 »), comme « 24/24 ».
      */
-    fun tokens(name: String): List<String> {
+    fun tokens(name: String): List<String> = remembered(tokenCache, name) { computeTokens(it) }
+
+    private fun computeTokens(name: String): List<String> {
         // « FHD+ », « HD+ » : mention de qualité, pas le « + » d'un nom (« Canal+ »).
         val withoutDetails = QUALITY_PLUS.replace(ROUND_THE_CLOCK.replace(BRACKETED.replace(name, " "), " "), "$1")
         val spelled = withoutDetails.lowercase().replace("+", " plus ").replace("&", " et ")
@@ -36,7 +57,9 @@ object ChannelNames {
      * `null` : nom trop court pour être sûr. Une fois ses mots passe-partout retirés, un nom sans numéro
      * doit garder un vrai mot : « LA CHAINE INFO » (« info ») ne désigne pas « Info TV ».
      */
-    fun key(name: String): String? {
+    fun key(name: String): String? = remembered(keyCache, name) { Optional(computeKey(it)) }.value
+
+    private fun computeKey(name: String): String? {
         val all = tokens(CAMEL_CASE.replace(name, " "))
         val words = all.filter { it !in GENERIC }
         val letters = words.sumOf { word -> if (word.all(Char::isDigit)) 0 else word.length }

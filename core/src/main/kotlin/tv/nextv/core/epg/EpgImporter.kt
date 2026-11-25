@@ -88,7 +88,7 @@ class EpgImporter(
     ): EpgImportResult {
         // Séparateurs de la playlist (« ▀▄ PLUTO TV ▀▄ FILMS ▄▀▄ ») : pas des chaînes, jamais associés.
         @Suppress("NAME_SHADOWING")
-        val channels = channels.filter { !ChannelLineup.isSeparator(it.name) }
+        val channels = channels.filter { !nameInfo(it.name).separator }
         val reader = XmltvReader(input, parserFactory)
         val now = clock()
         val windowStart = now - options.pastWindowMillis
@@ -244,19 +244,19 @@ class EpgImporter(
             val names = listOfNotNull(channel.tvgName, channel.name)
             // Chaîne d'un autre pays (« |DE| DAZN 1 », « |AR| BEIN SPORTS 1 ») : seulement une chaîne de ce pays dans
             // le guide, jamais la française du même nom (autre programme). Pays absent du guide : pas de programme.
-            val domains = names.firstNotNullOfOrNull(::countryDomains)
+            val domains = names.firstNotNullOfOrNull { nameInfo(it).domains }
             if (domains != null && domains.isEmpty()) continue
             val allowed = { id: String? -> id?.takeIf { domains == null || it.substringAfterLast('.', "") in domains } }
             // Identifiant recopié par erreur (« RMC ALERTE SECOURS » avec celui de RMC Sport 2) : ignoré, le nom décide.
             val byId = allowed(channel.tvgId?.let(::normalizeId)?.takeIf { it in ids })
                 ?.takeUnless { id -> names.all { ChannelNames.contradicts(it, guideNames[id].orEmpty()) } }
-            val region = lazy(LazyThreadSafetyMode.NONE) { names.firstNotNullOfOrNull(FranceRegions::regionOf) }
+            val region = lazy(LazyThreadSafetyMode.NONE) { names.firstNotNullOfOrNull { nameInfo(it).region } }
             // Nom exact, puis sans préfixe de langue ni mention de qualité (« FR| LIGUE 1+ 5 FHD » → « Ligue 1+ 5 »).
             val matched = byId
-                ?: names.firstNotNullOfOrNull { allowed(byName[normalizeName(it)]) }
-                ?: names.firstNotNullOfOrNull { allowed(byName[normalizeName(ContentClassifier.cleanTitle(it))]) }
+                ?: names.firstNotNullOfOrNull { allowed(byName[nameInfo(it).normalized]) }
+                ?: names.firstNotNullOfOrNull { allowed(byName[nameInfo(it).cleanNormalized]) }
                 ?: region.value?.let { allowed(regional.value[it.key]) }
-                ?: names.firstNotNullOfOrNull { allowed(loose.value.find(ContentClassifier.cleanTitle(it))) }
+                ?: names.firstNotNullOfOrNull { allowed(loose.value.find(nameInfo(it).clean)) }
                 // Édition régionale absente du guide : le programme national de France 3, le même hors décrochages.
                 ?: region.value?.let { allowed(byName[FRANCE_3]) }
             if (matched != null) result[channel.channelId] = matched
@@ -265,6 +265,9 @@ class EpgImporter(
     }
 
     companion object {
+        /** Noms déjà ramenés à leur forme simple ([normalizeName]) : ceux des guides reviennent à chaque actualisation. */
+        private val normalizedNames = java.util.concurrent.ConcurrentHashMap<String, String>()
+
         /**
          * Version des règles d'import (association des chaînes, programmes gardés). Un guide importé
          * avec une version antérieure est réimporté dès le lancement suivant, sans attendre sa
@@ -282,6 +285,31 @@ class EpgImporter(
         private val SPORTS_HINTS = listOf("sport", "foot", "ligue1", "bein", "dazn", "canalplus", "rmc", "equipe", "primevideo", "amazon")
 
         fun normalizeId(id: String): String = id.trim().lowercase()
+
+        /**
+         * Ce que l'association calcule pour un nom de chaîne de la playlist, gardé d'un guide à l'autre : sans cela, les
+         * mêmes milliers de noms passaient par les mêmes expressions régulières pour chacun des six guides (près de la
+         * moitié du processeur de l'appli sur la box pendant l'actualisation, mesuré le 25/11/2026).
+         */
+        internal class ChannelNameInfo(name: String) {
+            val separator = ChannelLineup.isSeparator(name)
+            val clean: String by lazy(LazyThreadSafetyMode.PUBLICATION) { ContentClassifier.cleanTitle(name) }
+            val normalized: String by lazy(LazyThreadSafetyMode.PUBLICATION) { normalizeName(name) }
+            val cleanNormalized: String by lazy(LazyThreadSafetyMode.PUBLICATION) { normalizeName(clean) }
+            val domains: Set<String>? by lazy(LazyThreadSafetyMode.PUBLICATION) { countryDomains(name) }
+            val region: FranceRegions.Region? by lazy(LazyThreadSafetyMode.PUBLICATION) { FranceRegions.regionOf(name) }
+        }
+
+        private val nameInfos = java.util.concurrent.ConcurrentHashMap<String, ChannelNameInfo>()
+
+        internal fun nameInfo(name: String): ChannelNameInfo {
+            nameInfos[name]?.let { return it }
+            // Playlist changée plusieurs fois : la mémoire ne grossit pas sans fin.
+            if (nameInfos.size > MAX_NAME_INFOS) nameInfos.clear()
+            return ChannelNameInfo(name).also { nameInfos[name] = it }
+        }
+
+        private const val MAX_NAME_INFOS = 40_000
 
         /** Pays écrit en tête du nom et suivi d'un séparateur (« |DE| », « ES: », « [UK] ») : pas « MA CHAINE ». */
         private val COUNTRY_PREFIX = Regex("""^[\s|\[(]*([A-Z]{2,3})\s*(?:[|:\])]|-\s)""")
@@ -323,6 +351,12 @@ class EpgImporter(
          * disparaissent (« Ligue 1+ 05 » = « Ligue 1+ 5 »).
          */
         fun normalizeName(name: String): String {
+            normalizedNames[name]?.let { return it }
+            if (normalizedNames.size > MAX_NAME_INFOS) normalizedNames.clear()
+            return computeNormalizedName(name).also { normalizedNames[name] = it }
+        }
+
+        private fun computeNormalizedName(name: String): String {
             val decomposed = Normalizer.normalize(name.trim().lowercase().replace("+", "plus").replace("&", "et"), Normalizer.Form.NFD)
             return NON_ALPHANUMERIC.replace(LEADING_ZEROS.replace(DIACRITICS.replace(decomposed, ""), ""), "")
         }
