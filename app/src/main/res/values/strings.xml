@@ -490,6 +490,8 @@
     <string name="player_speed">%1$s Mbit/s</string>
     <string name="player_remaining">Reste %1$s</string>
     <string name="player_half_time_resume">Reprise dans %1$s</string>
+    <string name="player_match_channels">Chaîne %1$d sur %2$d du match  ·  ▲ ▼ autres chaînes  ·  Retour : autres matchs</string>
+    <string name="player_match_no_channel">Aucune chaîne de ce match dans la playlist.</string>
     <string name="settings_ad_screen">Écran pendant les pubs</string>
     <string name="ad_board_now">En ce moment</string>
     <string name="ad_board_next">Ensuite · %1$s</string>

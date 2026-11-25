@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
@@ -29,6 +30,8 @@ import tv.nextv.app.AppContainer
 import tv.nextv.app.data.db.ChannelEntity
 import tv.nextv.app.data.db.ChannelListRow
 import tv.nextv.app.data.db.GroupRow
+import tv.nextv.app.ui.football.FootballMatch
+import tv.nextv.app.ui.football.FootballMatchesFeed
 import tv.nextv.app.ui.guide.GuideChannel
 import tv.nextv.app.ui.guide.GuideProgramme
 import tv.nextv.app.ui.home.Category
@@ -45,6 +48,8 @@ internal class ChannelMenuController(
     private val container: AppContainer,
     private val scope: CoroutineScope,
     sourceId: StateFlow<Long?>,
+    /** Le programme regardé est un match : les matchs en direct sont suivis (zapping entre les chaînes du match). */
+    watchingMatch: Flow<Boolean> = flowOf(false),
 ) {
     private val mutableMenu = MutableStateFlow(ChannelMenuState())
     val menu: StateFlow<ChannelMenuState> = mutableMenu.asStateFlow()
@@ -115,6 +120,55 @@ internal class ChannelMenuController(
         .distinctUntilChanged()
         .stateIn(scope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    /** Calcul des matchs de la section Foot, un par playlist (son guide est gardé d'une ouverture du menu à l'autre). */
+    private val feeds = HashMap<Long, FootballMatchesFeed>()
+
+    /**
+     * Matchs en direct (ou sur le point de commencer) avec les chaînes qui les diffusent, dans l'ordre de la section
+     * Foot : une catégorie chacun en tête du menu. Suivis tant que le menu est ouvert ou qu'un match est regardé.
+     */
+    val liveMatches: StateFlow<List<MenuMatch>> = combine(sourceId, mutableMenu.map { it.open }.distinctUntilChanged(), watchingMatch) { id, open, watching ->
+        id.takeIf { open || watching }
+    }
+        .distinctUntilChanged()
+        .flatMapLatest { id ->
+            if (id == null) {
+                emptyFlow()
+            } else {
+                feeds.getOrPut(id) { FootballMatchesFeed(container, id, scope) }.state
+                    .filter { !it.loading }
+                    .map { state -> menuMatchesOf(state.matches, System.currentTimeMillis()) }
+            }
+        }
+        .distinctUntilChanged()
+        .stateIn(scope, SharingStarted.Eagerly, emptyList())
+
+    /** Match choisi dans la section Foot (avant que le calcul ne le donne ici) : sa catégorie est là tout de suite. */
+    private val pinnedMatch = MutableStateFlow<MenuMatch?>(null)
+
+    val matches: StateFlow<List<MenuMatch>> = combine(liveMatches, pinnedMatch) { live, pinned ->
+        if (pinned == null || live.any { it.category.key == pinned.category.key }) live else listOf(pinned) + live
+    }.stateIn(scope, SharingStarted.Eagerly, emptyList())
+
+    fun pin(match: MenuMatch?) {
+        pinnedMatch.value = match
+    }
+
+    /** Chaînes du match dont la catégorie est affichée, avec leur programme en cours, dans l'ordre du match. */
+    val matchRows: StateFlow<MatchRows?> = combine(mutableMenu.map { it.category }.distinctUntilChanged(), matches, clock) { category, list, now ->
+        Triple(category, list, now)
+    }
+        .transformLatest { (category, list, now) ->
+            val match = (category as? Category.Match)?.let { wanted -> list.firstOrNull { it.category.key == wanted.key } }
+            if (match == null) {
+                emit(null)
+                return@transformLatest
+            }
+            val byId = container.channelDao.channelRowsById(match.channelIds, now).associateBy { it.id }
+            emit(MatchRows(match.category, match.channelIds.mapNotNull { byId[it] }))
+        }
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000), null)
+
     /** Chaîne sélectionnée dans le menu : son programme s'affiche à côté. */
     fun focus(row: ChannelListRow) {
         menuFocus.value = row
@@ -125,6 +179,17 @@ internal class ChannelMenuController(
      * ouverte depuis les favoris, menu ouvert sur les favoris (si elle en fait toujours partie).
      */
     fun open(current: ChannelEntity, fromFavorites: Boolean = false) {
+        // Match en direct sur cette chaîne : le menu s'ouvre sur sa catégorie (ses autres chaînes, ◀ ▶ les autres matchs).
+        matches.value.firstOrNull { current.id in it.channelIds }?.let { match ->
+            mutableMenu.value = ChannelMenuState(
+                open = true,
+                category = match.category,
+                currentChannelId = current.id,
+                currentItemKey = current.itemKey,
+                initialIndex = match.channelIds.indexOf(current.id).coerceAtLeast(0),
+            )
+            return
+        }
         scope.launch {
             val dao = container.channelDao
             // Catégorie où la chaîne est rangée (chaînes rassemblées : sa catégorie par thème).
@@ -190,3 +255,23 @@ internal class ChannelMenuController(
         const val FAVORITES_CLOCK_MILLIS = 30_000L
     }
 }
+
+/** Match en direct du menu des chaînes : sa catégorie, ses chaînes (la préférée d'abord), son score et sa minute. */
+data class MenuMatch(val category: Category.Match, val channelIds: List<Long>, val score: String? = null, val minute: String? = null)
+
+/** Chaînes du match [category], dans son ordre. */
+data class MatchRows(val category: Category.Match, val rows: List<ChannelListRow>)
+
+/** Matchs de la section Foot montrés dans le menu : commencés (ou à moins de 15 min), pas encore finis, avec une chaîne. */
+internal fun menuMatchesOf(matches: List<FootballMatch>, now: Long): List<MenuMatch> = matches
+    .filter { it.channels.isNotEmpty() && it.kickoffMillis <= now + MATCH_EARLY_MILLIS && it.endMillis > now }
+    .map { match ->
+        MenuMatch(
+            category = Category.Match(match.key, match.label),
+            channelIds = match.channels.map { it.id },
+            score = match.score,
+            minute = if (match.halfTime) null else match.clock,
+        )
+    }
+
+private const val MATCH_EARLY_MILLIS = 15 * 60_000L

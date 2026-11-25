@@ -172,6 +172,8 @@ fun PlayerScreen(
     val menu by viewModel.menu.collectAsStateWithLifecycle()
     val menuGroups by viewModel.menuGroups.collectAsStateWithLifecycle()
     val menuFavorites by viewModel.menuFavorites.collectAsStateWithLifecycle()
+    val menuMatches by viewModel.menuMatches.collectAsStateWithLifecycle()
+    val menuMatchRows by viewModel.menuMatchRows.collectAsStateWithLifecycle()
     val menuChannels = viewModel.menuChannels.collectAsLazyPagingItems()
     val programmeSheet by viewModel.programmeSheet.collectAsStateWithLifecycle()
     val menuProgramme by viewModel.menuProgramme.collectAsStateWithLifecycle()
@@ -767,6 +769,8 @@ fun PlayerScreen(
             favorites = menuFavorites,
             now = now,
             onCategory = viewModel::selectMenuCategory,
+            matches = menuMatches,
+            matchRows = menuMatchRows,
             onPlay = viewModel::playFromMenu,
             onProgramme = viewModel::showProgramme,
             programme = menuProgramme,
@@ -1248,6 +1252,7 @@ private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Mo
                 Text(programme.title, style = MaterialTheme.typography.titleLarge, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             state.match?.let { MatchScore(it, now) }
+            state.matchPosition?.let { MatchChannelsHint(it) }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.widthIn(max = 640.dp)) {
                 Text(timeOf(programme.startMillis), style = MaterialTheme.typography.labelLarge, color = Color.White)
                 LiveProgress(programme.startMillis, programme.stopMillis, watched, Modifier.weight(1f))
@@ -1260,7 +1265,10 @@ private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Mo
             }
         }
         // Chaîne « événement » (DAZN LALIGA… LIVE MATCH) : pas de programme dans le guide, le match seul.
-        if (state.now == null) state.match?.let { MatchScore(it, now) }
+        if (state.now == null) {
+            state.match?.let { MatchScore(it, now) }
+            state.matchPosition?.let { MatchChannelsHint(it) }
+        }
         state.next?.let { programme ->
             Text(
                 stringResource(R.string.player_next, timeOf(programme.startMillis), programme.title),
@@ -1308,6 +1316,17 @@ private fun MatchScore(match: PlayerMatch, now: Long) {
     }
 }
 
+/** Match sur plusieurs chaînes : « Chaîne 2 sur 4 du match · ▲ ▼ autres chaînes · Retour : autres matchs ». */
+@Composable
+private fun MatchChannelsHint(position: MatchPosition) {
+    Text(
+        stringResource(R.string.player_match_channels, position.index, position.count),
+        style = MaterialTheme.typography.labelMedium,
+        color = Color.White.copy(alpha = 0.8f),
+        maxLines = 1,
+    )
+}
+
 /** Débit mesuré, en Mbit/s. */
 @Composable
 private fun SpeedLabel(mbps: Double, modifier: Modifier = Modifier) {
@@ -1341,6 +1360,9 @@ fun ChannelMenu(
     /** Programme de la chaîne sélectionnée, montré en grand à côté de la liste (écran large). */
     programme: MenuProgramme? = null,
     onFocusChannel: (ChannelListRow) -> Unit = {},
+    /** Matchs en direct : une catégorie chacun, en tête (◀ ▶ de l'un à l'autre), avec les chaînes du match affiché. */
+    matches: List<MenuMatch> = emptyList(),
+    matchRows: MatchRows? = null,
 ) {
     val window = rememberWindowInfo()
     val listState = rememberLazyListState()
@@ -1349,14 +1371,27 @@ fun ChannelMenu(
     val panelFocus = remember { FocusRequester() }
     val chipsState = rememberLazyListState()
     val favoritesMode = menu.category == Category.Favorites
-    val categories = remember(groups) { listOf(Category.Favorites, Category.All) + groups.map { Category.Group(it.title.orEmpty()) } }
+    val matchMode = menu.category is Category.Match
+    // Liste fixe (pas de pages) : favoris, ou chaînes d'un match.
+    val fixedMode = favoritesMode || matchMode
+    val fixedRows = when {
+        favoritesMode -> favorites
+        matchMode -> matchRows?.takeIf { it.category == menu.category }?.rows.orEmpty()
+        else -> emptyList()
+    }
+    val categories = remember(groups, matches) {
+        matches.map { it.category } + listOf(Category.Favorites, Category.All) + groups.map { Category.Group(it.title.orEmpty()) }
+    }
     var categoryChanges by remember { mutableIntStateOf(0) }
     var focusPlaced by remember { mutableStateOf(false) }
     var panelFocused by remember { mutableStateOf(false) }
 
     /** Vrai quand la liste affichée est celle de la catégorie choisie (et pas encore la précédente). */
-    fun listReady(category: Category): Boolean =
-        category == Category.Favorites || (channels.itemCount > 0 && channels.peek(0)?.category == category)
+    fun listReady(category: Category): Boolean = when (category) {
+        Category.Favorites -> true
+        is Category.Match -> matchRows?.category == category
+        else -> channels.itemCount > 0 && channels.peek(0)?.category == category
+    }
 
     // À l'ouverture : chaîne en cours visible et sélectionnée.
     LaunchedEffect(menu.open) {
@@ -1375,8 +1410,8 @@ fun ChannelMenu(
     // Programmes en cours de la liste : lus dans la base avec l'heure de son chargement. Une fois l'un d'eux
     // terminé (minuit…), la ligne restait sans programme : la liste est relue dès qu'un programme affiché
     // est fini (aussi à l'ouverture, liste chargée plus tôt), et de temps en temps pour ceux qui commencent.
-    LaunchedEffect(menu.open, focusPlaced, favoritesMode) {
-        if (!menu.open || !focusPlaced || favoritesMode) return@LaunchedEffect
+    LaunchedEffect(menu.open, focusPlaced, fixedMode) {
+        if (!menu.open || !focusPlaced || fixedMode) return@LaunchedEffect
         var lastRefresh = System.currentTimeMillis()
         while (true) {
             val clock = System.currentTimeMillis()
@@ -1453,6 +1488,13 @@ fun ChannelMenu(
                                 length = CHIPS_EDGE,
                             ),
                     ) {
+                        // Matchs en direct : « ⚽ PSG – Roma · 2 – 2 ».
+                        items(matches, key = { "match:" + it.category.key }) { match ->
+                            MenuChip(
+                                listOfNotNull("⚽ " + match.category.label, match.score, match.minute).joinToString("  ·  "),
+                                menu.category == match.category,
+                            ) { onCategory(match.category) }
+                        }
                         item { MenuChip(stringResource(R.string.home_favorites), favoritesMode, star = true) { onCategory(Category.Favorites) } }
                         item { MenuChip(stringResource(R.string.channels_all_short), menu.category == Category.All) { onCategory(Category.All) } }
                         items(groups, key = { it.title ?: "\u0000" }) { group ->
@@ -1485,18 +1527,18 @@ fun ChannelMenu(
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                     modifier = Modifier.fillMaxSize(),
                 ) {
-                    if (favoritesMode) {
-                        if (favorites.isEmpty()) {
+                    if (fixedMode) {
+                        if (fixedRows.isEmpty() && (favoritesMode || matchRows?.category == menu.category)) {
                             item {
                                 Text(
-                                    stringResource(R.string.favorites_empty_channels),
+                                    stringResource(if (matchMode) R.string.player_match_no_channel else R.string.favorites_empty_channels),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(16.dp),
                                 )
                             }
                         }
-                        items(favorites.size, key = { favorites[it].id }) { index -> rowFor(index, favorites[index]) }
+                        items(fixedRows.size, key = { fixedRows[it].id }) { index -> rowFor(index, fixedRows[index]) }
                     } else {
                         items(count = channels.itemCount, key = channels.itemKey { it.row.id }) { index ->
                             channels[index]?.let { rowFor(index, it.row) }

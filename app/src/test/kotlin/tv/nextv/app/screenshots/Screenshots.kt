@@ -1003,6 +1003,30 @@ abstract class ScreenshotSuite(private val device: String) {
         }
     }
 
+    /** Menu des chaînes pendant deux matchs : une catégorie par match en tête, celle du match regardé ouverte. */
+    @Test
+    fun playerMenuMatches() = capture("14b_lecteur_menu_matchs") {
+        FakeVideo()
+        val psg = tv.nextv.app.ui.home.Category.Match("CHAMPIONS_LEAGUE-1-PSG – Roma", "PSG – Roma")
+        val lille = tv.nextv.app.ui.home.Category.Match("CHAMPIONS_LEAGUE-2-Lille – Bayern", "Lille – Bayern")
+        val rows = SampleData.channels.take(3)
+        val channels = remember { flowOf(PagingData.empty<MenuChannel>()) }.collectAsLazyPagingItems()
+        ChannelMenu(
+            menu = SampleData.menu.copy(category = psg, currentChannelId = rows[1].id, currentItemKey = rows[1].itemKey),
+            groups = SampleData.groups,
+            channels = channels,
+            favorites = SampleData.favoriteChannels,
+            now = SampleData.NOW,
+            onCategory = {},
+            onPlay = {},
+            matches = listOf(
+                tv.nextv.app.ui.player.MenuMatch(psg, rows.map { it.id }, score = "2 – 2", minute = "86'"),
+                tv.nextv.app.ui.player.MenuMatch(lille, listOf(rows[0].id), score = "2 – 1", minute = "88'"),
+            ),
+            matchRows = tv.nextv.app.ui.player.MatchRows(psg, rows),
+        )
+    }
+
     @Test
     fun playerMenu() = capture("14_lecteur_menu") {
         FakeVideo()

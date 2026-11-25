@@ -106,8 +106,26 @@ class PlayerViewModel(
 
     private val sourceId = MutableStateFlow<Long?>(null)
 
-    // Menu des chaînes (« Retour ») : catégories, liste, programme de la chaîne sélectionnée.
-    private val channelMenu = ChannelMenuController(container, viewModelScope, sourceId)
+    /**
+     * Match dont les chaînes se suivent au zapping (▲ ▼), choisi dans la section Foot ou dans le menu des chaînes ; à
+     * défaut, le match en direct sur la chaîne regardée ([activeMatch]).
+     */
+    private var zapMatch: MenuMatch? = container.pendingMatch.value?.takeIf { channelId in it.channelIds }
+        .also { container.pendingMatch.value = null }
+
+    // Menu des chaînes (« Retour ») : catégories (dont les matchs en direct), liste, programme de la chaîne sélectionnée.
+    private val channelMenu = ChannelMenuController(
+        container, viewModelScope, sourceId,
+        watchingMatch = mutableState.map { it.match != null }.distinctUntilChanged(),
+    )
+
+    init {
+        zapMatch?.let(channelMenu::pin)
+    }
+
+    /** Matchs en direct (catégories en tête du menu des chaînes) et chaînes de celui affiché. */
+    val menuMatches: StateFlow<List<MenuMatch>> = channelMenu.matches
+    val menuMatchRows: StateFlow<MatchRows?> = channelMenu.matchRows
     val menu: StateFlow<ChannelMenuState> = channelMenu.menu
     val programmeSheet: StateFlow<ProgrammeSheetState?> = channelMenu.programmeSheet
     val menuProgramme: StateFlow<MenuProgramme?> = channelMenu.menuProgramme
@@ -311,6 +329,7 @@ class PlayerViewModel(
         viewModelScope.launch { container.settings.adRadio.collect { adRadioKey = it } }
         viewModelScope.launch { container.settings.adMusicLevel.collect { adMusic.level = it / 100f } }
         viewModelScope.launch { container.settings.adScreen.collect { adScreenEnabled = it } }
+        viewModelScope.launch { channelMenu.matches.collect { updateMatchPosition() } }
         // Lecteur ouvert : les actualisations automatiques de la playlist et du guide attendent sa fermeture.
         container.playerOpened()
         // Chaîne ouverte depuis l'accueil : aucune catégorie choisie dans le menu des chaînes pour l'instant.
@@ -914,6 +933,13 @@ class PlayerViewModel(
     fun zap(direction: Int) {
         val current = session.listed ?: return
         if (current.kind != ContentKind.LIVE.name) return
+        // Match regardé sur plusieurs chaînes : ▲ ▼ passent de l'une à l'autre (la première n'est pas toujours la bonne).
+        activeMatch(current)?.takeIf { it.channelIds.size > 1 }?.let { match ->
+            val index = match.channelIds.indexOf(current.id)
+            val target = match.channelIds[(index + direction + match.channelIds.size) % match.channelIds.size]
+            if (target != current.id) load(target)
+            return
+        }
         viewModelScope.launch {
             val dao = container.channelDao
             if (fromFavorites) {
@@ -955,6 +981,21 @@ class PlayerViewModel(
         channelMenu.open(current, fromFavorites)
     }
 
+    /**
+     * Match dont les chaînes se suivent au zapping pour la chaîne [current] : celui choisi (section Foot, menu), sinon le
+     * match en direct sur cette chaîne ; `null` : zapping habituel.
+     */
+    private fun activeMatch(current: ChannelEntity): MenuMatch? =
+        zapMatch?.takeIf { current.id in it.channelIds } ?: channelMenu.matches.value.firstOrNull { current.id in it.channelIds }
+
+    /** Place de la chaîne regardée parmi celles de son match, pour le bandeau (« Chaîne 2 sur 4 du match »). */
+    private fun updateMatchPosition() {
+        val current = session.listed
+        val match = current?.let(::activeMatch)?.takeIf { it.channelIds.size > 1 }
+        val position = match?.let { MatchPosition(it.channelIds.indexOf(current.id) + 1, it.channelIds.size) }
+        if (state.value.matchPosition != position) mutableState.update { it.copy(matchPosition = position) }
+    }
+
     fun closeMenu() = channelMenu.close()
 
     fun selectMenuCategory(category: Category) = channelMenu.selectCategory(category)
@@ -965,9 +1006,22 @@ class PlayerViewModel(
     fun hideProgramme() = channelMenu.hideProgramme()
 
     fun playFromMenu(id: Long) {
-        // Haut/bas zappe ensuite dans la catégorie du menu où la chaîne a été choisie : les favoris, une catégorie, ou
-        // toutes les chaînes.
+        // Haut/bas zappe ensuite dans la catégorie du menu où la chaîne a été choisie : un match, les favoris, une
+        // catégorie, ou toutes les chaînes.
         val category = channelMenu.menu.value.category
+        if (category is Category.Match) {
+            zapMatch = channelMenu.matches.value.firstOrNull { it.category.key == category.key }
+            zapMatch?.let(channelMenu::pin)
+            fromFavorites = false
+            handle[ARG_FAVORITES] = false
+            zapGroup = null
+            handle[ARG_GROUP] = null
+            closeMenu()
+            if (id != session.listed?.id) load(id)
+            return
+        }
+        zapMatch = null
+        channelMenu.pin(null)
         val favorites = category == Category.Favorites
         // Au retour, l'accueil montre la catégorie où elle a été choisie (et la sélection se pose sur elle).
         container.lastLiveCategory.value = category
@@ -1126,6 +1180,7 @@ class PlayerViewModel(
         if (session.channel?.id == current.id) {
             mutableState.update { if (it.now == live && onScreen != live) it.copy(match = match, now = onScreen) else it.copy(match = match) }
         }
+        updateMatchPosition()
     }
 
     /** Réponse gardée pour le programme en cours (la base n'est relue qu'à chaque nouveau programme). */

@@ -851,6 +851,65 @@ class PlayerViewModelTest {
         store.clear()
     }
 
+    /**
+     * Match choisi dans la section Foot : haut/bas passent d'une de ses chaînes à l'autre (dans l'ordre du match, en
+     * boucle), « Retour » ouvre le menu sur sa catégorie, et une chaîne choisie ailleurs dans le menu rend le zapping
+     * habituel.
+     */
+    @Test
+    fun aMatchChosenInTheFootballSectionZapsThroughItsChannels() {
+        val sourceId = runBlocking {
+            val id = container.sourceRepository.add(SourceInput(name = "Match", location = SourceLocation.Remote("http://127.0.0.1:9/match.m3u")))
+            container.playlistStore.replaceChannels(
+                id,
+                listOf(
+                    "TF1" to "TNT", "Canal+" to "CANAL+", "Canal+ Sport 2" to "CANAL+", "Canal+ Live 1" to "CANAL+", "DAZN 1" to "SPORT",
+                ).mapIndexed { index, (name, group) ->
+                    Channel(position = index, name = name, stream = StreamDescriptor("http://127.0.0.1:9/live/$index.ts"), groupTitle = group, title = name)
+                },
+            )
+            id
+        }
+        fun idOf(key: String) = runBlocking { checkNotNull(container.channelDao.primaryIdByKey(sourceId, key)) }
+        val match = MenuMatch(
+            Category.Match("CHAMPIONS_LEAGUE-1-PSG – Roma", "PSG – Roma"),
+            listOf(idOf("live:canal sport 2"), idOf("live:canal live 1"), idOf("live:dazn 1")),
+        )
+        container.pendingMatch.value = match
+        val viewModel = PlayerViewModel(container, SavedStateHandle(mapOf(PlayerViewModel.ARG_CHANNEL_ID to idOf("live:canal sport 2"))), application)
+        val store = ViewModelStore().apply { put("player", viewModel) }
+        viewModel.onStart()
+        idle()
+        assertEquals("Canal+ Sport 2", viewModel.state.value.channelName)
+        assertEquals(null, container.pendingMatch.value)
+        fun zap(direction: Int): String? {
+            val before = viewModel.state.value.channelName
+            viewModel.zap(direction)
+            awaitOtherChannel(viewModel, before)
+            return viewModel.state.value.channelName
+        }
+        // La première chaîne du match n'est pas la bonne : haut, la suivante du match, puis DAZN 1 (autre catégorie de la
+        // playlist, mais chaîne du match), puis retour à la première ; bas : la dernière.
+        assertEquals("Canal+ Live 1", zap(1))
+        assertEquals(MatchPosition(2, 3), viewModel.state.value.matchPosition)
+        assertEquals("DAZN 1", zap(1))
+        assertEquals("Canal+ Sport 2", zap(1))
+        assertEquals("DAZN 1", zap(-1))
+        // « Retour » : le menu s'ouvre sur la catégorie du match, avec ses chaînes.
+        viewModel.openMenu()
+        idle()
+        assertEquals(match.category, viewModel.menu.value.category)
+        assertEquals(match.category, viewModel.menuMatches.value.first().category)
+        // Chaîne choisie dans une autre catégorie : zapping habituel dans celle-ci.
+        val before = viewModel.state.value.channelName
+        viewModel.selectMenuCategory(Category.Group("TNT"))
+        viewModel.playFromMenu(idOf("live:tf1"))
+        awaitOtherChannel(viewModel, before)
+        assertEquals("TF1", viewModel.state.value.channelName)
+        assertEquals(null, viewModel.state.value.matchPosition)
+        store.clear()
+    }
+
     /** Chaîne ouverte d'ailleurs (« Toutes les chaînes », recherche, chaînes récentes) : haut/bas parcourt toute la playlist. */
     @Test
     fun aChannelOpenedFromAllChannelsZapsThroughThePlaylist() {

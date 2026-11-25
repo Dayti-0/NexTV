@@ -720,6 +720,19 @@ interface ChannelDao {
     )
     fun observeFavoriteChannels(sourceId: Long, now: Long): Flow<List<ChannelListRow>>
 
+    /** Chaînes désignées par leur numéro (chaînes d'un match), avec leur programme en cours, dans le désordre. */
+    @Query(
+        """
+        SELECT c.id, c.name, $LIVE_TITLE, c.groupTitle, c.logoUrl, c.channelNumber, c.streamSupport, c.streamIssues,
+            c.quality, c.variantCount, c.itemKey,
+            p.title AS nowTitle, p.startMillis AS nowStart, p.stopMillis AS nowStop
+        FROM channels c
+        $NOW_PROGRAMME
+        WHERE c.id IN (:ids)
+        """,
+    )
+    suspend fun channelRowsById(ids: List<Long>, now: Long): List<ChannelListRow>
+
     /** Chaînes désignées par leur clé (chaînes récentes), meilleure version de chacune, dans le désordre. */
     @Query(
         """

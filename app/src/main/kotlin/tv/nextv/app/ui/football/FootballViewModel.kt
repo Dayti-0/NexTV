@@ -181,6 +181,15 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    /**
+     * Une chaîne du [match] va être lancée : le lecteur reçoit toutes ses chaînes (▲ ▼ de l'une à l'autre, menu des
+     * chaînes ouvert sur le match), quand il y en a plusieurs.
+     */
+    fun prepareMatch(match: FootballMatch) {
+        container.pendingMatch.value = tv.nextv.app.ui.player.menuMatchesOf(listOf(match), match.kickoffMillis).firstOrNull()
+            ?.takeIf { it.channelIds.size > 1 }
+    }
+
     fun toggleTeam(name: String) {
         viewModelScope.launch { container.settings.toggleFavoriteTeam(name) }
     }
@@ -209,184 +218,13 @@ class FootballViewModel(private val container: AppContainer, private val sourceI
         mutableTeamMatches.value = null
     }
 
-    /** Calendrier des matchs, de l'une ou l'autre source. */
-    private data class Schedule(val matches: List<ScheduledMatch>, val notice: FootballNotice?)
-
-    /** Programmes du guide qui peuvent être des matchs, et chaînes « événement » de la playlist (sans guide). */
-    private class GuideData(val rows: List<BroadcastRow>, val events: List<Pair<EventChannelRow, EventChannel>>)
-
-    private var cachedGuide: Pair<Any, GuideData>? = null
-
-    /**
-     * Ce qui change le résultat du guide : playlist ou guide rechargés (environ toutes les 12 h),
-     * catégories masquées ou réaffichées. Rien d'autre ne relance le calcul.
-     */
-    private val guideVersion: Flow<Any> = combine(
-        container.playlistStore.observeSource(sourceId)
-            .map { source -> source?.status?.let { it.lastSuccessAtMillis to it.epg.lastSuccessAtMillis } }
-            .distinctUntilChanged(),
-        container.hiddenGroupDao.observeTitles(sourceId, ContentKind.LIVE.name),
-    ) { version, hidden -> version to hidden }
-
-    // Jamais annulé par le changement suivant (conflate + map) : un appareil lent finit toujours son calcul.
-    private val guide: Flow<GuideData> = guideVersion
-        .conflate()
-        .map { version -> cachedGuide?.takeIf { it.first == version }?.second ?: loadGuide().also { cachedGuide = version to it } }
-
-    /**
-     * Calendrier d'ESPN, redemandé toutes les 20 s pendant les matchs (scores, minute de jeu), juste
-     * avant le prochain coup d'envoi, et toutes les 30 min sinon ; le client garde les réponses.
-     */
-    private val schedule: Flow<Schedule> = flow {
-        while (true) {
-            val now = System.currentTimeMillis()
-            val result = loadSchedule(now)
-            emit(result)
-            val after = System.currentTimeMillis()
-            val nextKickoff = result.matches.filter { it.kickoffMillis > after }.minOfOrNull { it.kickoffMillis }
-            delay(
-                when {
-                    result.matches.any { it.isActive(after) } -> LIVE_REFRESH_MILLIS
-                    // Prochain coup d'envoi : score suivi dès le début du match.
-                    nextKickoff != null -> (nextKickoff - after - LIVE_REFRESH_MILLIS).coerceIn(LIVE_REFRESH_MILLIS, SCHEDULE_REFRESH_MILLIS)
-                    else -> SCHEDULE_REFRESH_MILLIS
-                },
-            )
-        }
-    }.distinctUntilChanged()
-
-    private suspend fun loadSchedule(now: Long): Schedule {
-        // Depuis minuit : les chaînes « événement » numérotent les matchs de la journée, terminés compris ;
-        // et depuis le match retenu la veille, dont le tour continue.
-        val remembered = container.eventTurns.read().values.map { it.kickoffMillis }.filter { it >= now - TURN_MEMORY_MILLIS }
-        val from = (remembered + (now - LIVE_WINDOW_MILLIS) + localDayStart(now)).min()
-        container.liveScores.schedule(from, now + WINDOW_MILLIS)?.let { return Schedule(it, null) }
-        // ESPN injoignable : liste de football-data.org (compétitions de son offre gratuite), si une clé est là.
-        return when (val api = container.footballData.matches(now, now + WINDOW_MILLIS)) {
-            is FootballDataResult.Success -> Schedule(api.matches, FootballNotice.SCHEDULE_PARTIAL)
-            is FootballDataResult.Failed -> Schedule(emptyList(), FootballNotice.SCHEDULE_UNAVAILABLE)
-        }
-    }
-
-    /** Toutes les 30 s, seuls les matchs terminés disparaissent (aucun recalcul). */
-    private val clock = flow {
-        while (true) {
-            emit(System.currentTimeMillis())
-            delay(TICK_MILLIS)
-        }
-    }
-
-    /**
-     * Programmes que le fournisseur annonce sur ses chaînes « événement » (guide du compte Xtream), relus
-     * toutes les 10 min : la source sûre du match de chacune, quand il la donne. Vide sinon.
-     */
-    private val providerGuide: Flow<List<BroadcastRow>> = guide
-        .map { it.events }
-        .distinctUntilChanged()
-        .transformLatest { events ->
-            emit(emptyList())
-            if (events.isEmpty()) return@transformLatest
-            while (true) {
-                emit(loadProviderGuide(events))
-                delay(PROVIDER_REFRESH_MILLIS)
-            }
-        }
-        .distinctUntilChanged()
-
-    val state: StateFlow<FootballUiState> =
-        combine(combine(guide, schedule, providerGuide, ::assemble), clock) { assembled, now ->
-            FootballUiState(
-                loading = false,
-                now = now,
-                matches = assembled.matches.filter { it.endMillis > now },
-                notice = assembled.notice,
-            )
-        }
-            .flowOn(Dispatchers.Default)
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FootballUiState())
-
-    private suspend fun loadGuide(): GuideData {
-        val now = System.currentTimeMillis()
-        // Chaîne qui diffuse les programmes de chaque identifiant du guide : sa meilleure version visible.
-        val channels = HashMap<String, EpgChannelRow>()
-        for (channel in container.channelDao.epgChannels(sourceId)) {
-            val id = channel.epgChannelId ?: continue
-            if (id !in channels) channels[id] = channel
-        }
-        // Chaînes de sport du guide absentes de la playlist : le match est affiché avec leur nom.
-        val guideOnly = container.guideOnlyChannelDao.list(sourceId).associate { it.epgChannelId to it.name }
-        val rows = container.programmeDao.footballCandidates(sourceId, now - LIVE_WINDOW_MILLIS, now + WINDOW_MILLIS).mapNotNull { programme ->
-            channels[programme.epgChannelId]?.let { BroadcastRow(it, null, programme) }
-                ?: guideOnly[programme.epgChannelId]?.let { BroadcastRow(null, it, programme) }
-        }
-        // Chaînes « événement » (« FR| DAZN LALIGA 2 (LIVE MATCH) ») : seulement celles que le guide ne décrit
-        // pas, françaises d'abord (leur famille donne la numérotation).
-        val events = container.channelDao.eventChannelCandidates(sourceId, now - LIVE_WINDOW_MILLIS, now + WINDOW_MILLIS)
-            .filterNot { it.hasGuide }
-            .mapNotNull { channel -> EventChannels.parse(channel.name)?.let { channel to it } }
-            .sortedBy { (channel, _) -> BroadcastLanguage.rank(channel.name) }
-        return GuideData(rows, events)
-    }
-
-    /**
-     * Guide du fournisseur pour une chaîne de chaque numéro (« LALIGA 1 » à « LALIGA 5 ») : programmes
-     * annoncés autour du moment présent. Rien pour une playlist qui n'est pas un compte Xtream.
-     */
-    private suspend fun loadProviderGuide(events: List<Pair<EventChannelRow, EventChannel>>): List<BroadcastRow> {
-        val source = container.playlistStore.getSource(sourceId) ?: return emptyList()
-        val now = System.currentTimeMillis()
-        return coroutineScope {
-            EventChannels.primaries(events).map { (channel, _) ->
-                async {
-                    val streamId = Catchup.streamId(channel.streamUrl) ?: return@async emptyList()
-                    container.xtreamApi.shortEpg(source, streamId).orEmpty()
-                        .filter { it.stopMillis > now - LIVE_WINDOW_MILLIS }
-                        .map { programme -> providerRow(channel, programme) }
-                }
-            }.awaitAll().flatten()
-        }
-    }
-
-    /** Matchs prêts à afficher. */
-    private class Assembled(val matches: List<FootballMatch>, val notice: FootballNotice?)
-
-    private fun assemble(guide: GuideData, schedule: Schedule, provider: List<BroadcastRow>): Assembled {
-        val now = System.currentTimeMillis()
-        val turns = container.eventTurns.read()
-            .filterValues { it.kickoffMillis >= now - TURN_MEMORY_MILLIS }
-            .mapValues { (_, turn) -> turn.matchId to turn.number }
-        val matches = scheduledMatches(schedule.matches, guide.rows + provider, now, guide.events, turns = turns) { first ->
-            container.eventTurns.write(first.mapValues { (_, turn) -> EventTurnStore.Turn(turn.first.id, turn.first.kickoffMillis, turn.second) })
-        }
-        return Assembled(
-            matches.sortedWith(compareBy({ it.kickoffMillis }, { it.competition.ordinal })),
-            schedule.notice,
-        )
-    }
+    /** Matchs à venir et en cours, avec leurs chaînes (calcul partagé avec le lecteur : [FootballMatchesFeed]). */
+    val state: StateFlow<FootballUiState> = FootballMatchesFeed(container, sourceId, viewModelScope).state
 
     private fun noticeOf(error: FootballDataError): FootballNotice = when (error) {
         FootballDataError.MISSING_KEY -> FootballNotice.NO_KEY
         FootballDataError.INVALID_KEY -> FootballNotice.INVALID_KEY
         else -> FootballNotice.UNAVAILABLE
-    }
-
-    private companion object {
-        const val SCHEDULE_REFRESH_MILLIS = 30 * 60_000L
-        /** Pendant les matchs : score et minute de jeu redemandés toutes les 20 s. */
-        const val LIVE_REFRESH_MILLIS = 20_000L
-        const val TICK_MILLIS = 30_000L
-
-        /** Matchs commencés depuis moins de 3 h : peut-être encore en cours (prolongations). */
-        const val LIVE_WINDOW_MILLIS = 3 * 60 * 60_000L
-
-        /** Le guide couvre en général une semaine. */
-        const val WINDOW_MILLIS = 8 * 24 * 60 * 60_000L
-
-        /** Tour des chaînes « événement » retenu : utilisé pendant 4 jours. */
-        const val TURN_MEMORY_MILLIS = 4 * 24 * 60 * 60_000L
-
-        /** Guide du fournisseur pour ses chaînes « événement » : relu toutes les 10 min. */
-        const val PROVIDER_REFRESH_MILLIS = 10 * 60_000L
     }
 }
 

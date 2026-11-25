@@ -325,6 +325,12 @@ class AppContainer(context: Context) {
     val lastLiveCategory = MutableStateFlow<Category?>(null)
 
     /**
+     * Match choisi dans la section Foot, pris par le lecteur qui s'ouvre sur l'une de ses chaînes : ▲ ▼ passent d'une
+     * chaîne du match à l'autre, et le menu des chaînes s'ouvre sur sa catégorie.
+     */
+    val pendingMatch = MutableStateFlow<tv.nextv.app.ui.player.MenuMatch?>(null)
+
+    /**
      * Place de la chaîne regardée ([lastLiveChannel]) dans la liste des chaînes que l'accueil montrera au retour
      * (catégorie et rang, lus dans la base par HomeViewModel.followWatchedChannel) : la liste se charge jusqu'à elle.
      */

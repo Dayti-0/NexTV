@@ -93,6 +93,9 @@ data class AdBoardMatch(
     val onThisChannel: Boolean = false,
 )
 
+/** Place de la chaîne regardée parmi les [count] chaînes de son match (« Chaîne 2 sur 4 »). */
+data class MatchPosition(val index: Int, val count: Int)
+
 /** Radio jouée à la place du son de la pub, et son morceau en cours. */
 data class AdBoardRadio(val name: String, val title: String? = null, val artist: String? = null, val cover: String? = null)
 
@@ -112,6 +115,8 @@ data class PlayerUiState(
     val match: PlayerMatch? = null,
     /** Écran pendant les pubs (pub détectée, réglage activé) ; `null` : image en plein écran. */
     val adBoard: AdBoard? = null,
+    /** Match regardé sur plusieurs chaînes : place de celle-ci (▲ ▼ passent aux autres) ; `null` sinon. */
+    val matchPosition: MatchPosition? = null,
     /** Morceau en cours de la musique des pubs (radio ou « votre musique »), quand il est connu. */
     val adMusicTrack: tv.nextv.core.audio.NowPlaying? = null,
     /** Qualité de la version en cours de lecture (« FHD »…), si la playlist l'indique. */

@@ -80,6 +80,12 @@ sealed interface Category {
 
     /** [title] vide : éléments sans groupe. */
     data class Group(val title: String) : Category
+
+    /**
+     * Match en direct (menu des chaînes du lecteur seulement) : les chaînes qui le diffusent. [key] : celle du match dans
+     * la section Foot ([tv.nextv.app.ui.football.FootballMatch.key]), [label] : « PSG – Roma ».
+     */
+    data class Match(val key: String, val label: String) : Category
 }
 
 /**
@@ -396,6 +402,8 @@ class HomeViewModel(
         Category.Favorites -> dao.observeFavoriteChannels(sourceId, System.currentTimeMillis()).first().any { it.itemKey == itemKey }
         Category.Recent -> itemKey in container.settings.recentChannels(sourceId).first()
         Category.ContinueWatching -> false
+        // Catégorie d'un match : seulement dans le menu du lecteur, jamais à l'accueil.
+        is Category.Match -> false
     }
 
     /** Dernière chaîne sélectionnée dans la grille des chaînes. */

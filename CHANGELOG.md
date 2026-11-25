@@ -4,6 +4,11 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.235
+- Match sur plusieurs chaînes : pendant le match, ▲ ▼ passent d'une chaîne du match à l'autre (la première de la liste n'est pas toujours la bonne) ; le bandeau indique « Chaîne 2 sur 4 du match »
+- Plusieurs matchs en même temps : le menu des chaînes (Retour) a une catégorie par match en direct, en tête, avec le score et la minute ; ◀ ▶ passent d'un match à l'autre, ▲ ▼ parcourent ses chaînes ; le menu s'ouvre directement sur le match regardé
+- Match lancé depuis la section Foot : toutes ses chaînes suivent dans le lecteur
+
 ## 0.2.234
 - Écran pendant les pubs : la météo est entièrement refaite (fond aux couleurs du temps, de jour comme de nuit ; ressenti, vent, risque de pluie, humidité ; cinq heures à venir avec leur risque de pluie ; demain avec ses températures)
 - Écran pendant les pubs : l'image de fond du programme est en vraie qualité (elle était pixellisée)

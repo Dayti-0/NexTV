@@ -373,6 +373,14 @@ Commandes :
   d'une catégorie choisie vide moins de 1,5 s (`EMPTY_LIST_CONFIRM_MILLIS`) : pas prise pour une catégorie vide (le volet
   restait ouvert sur la box, cause exacte non reproduite). Rangées de Streaming : `LazyListState` créé sur la rangée de
   `lastOpened` (en plus de `RestoreRow`) ; saut « haut de page → rangée » vu en vidéo sur la box, non reproduit ici.
+- Matchs dans le lecteur (0.2.235) : le calcul de la section Foot est partagé (`ui/football/FootballMatchesFeed.kt`, sorti
+  de `FootballViewModel`) ; `ChannelMenuController.liveMatches` le suit tant que le menu est ouvert ou qu'un match est
+  regardé (`state.match`), un calcul par playlist (`feeds`). Chaque match en direct (`menuMatchesOf` : coup d'envoi passé ou
+  dans 15 min, pas fini, au moins une chaîne) = `Category.Match` en tête du menu (◀ ▶ entre les matchs), chaînes par
+  `ChannelDao.channelRowsById` dans l'ordre du match (`MatchRows`). Zapping : `activeMatch` = match choisi (`zapMatch` :
+  section Foot via `AppContainer.pendingMatch` / `FootballViewModel.prepareMatch`, ou catégorie du menu), sinon le match en
+  direct sur la chaîne regardée ; ▲ ▼ font le tour de ses chaînes ; une chaîne choisie dans une autre catégorie le coupe.
+  Bandeau : `matchPosition` (« Chaîne 2 sur 4 du match »). `Category.Match` n'existe pas à l'accueil (branches vides).
 - Zapping (haut/bas, chaîne +/-) : `PlayerViewModel.zap` reste, en boucle, dans la liste d'où la chaîne a été ouverte :
   favoris (`ARG_FAVORITES`), catégorie (`ARG_GROUP` : `Routes.groupPlayer`, depuis `HomeActions.onPlayGroupChannel` et le
   guide), sinon toutes les chaînes ; `playFromMenu` prend la catégorie du menu. Requêtes `ChannelDao.nextChannelId` /

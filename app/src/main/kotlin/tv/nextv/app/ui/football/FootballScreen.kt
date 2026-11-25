@@ -109,6 +109,7 @@ fun FootballScreen(sourceId: Long, onPlay: (Long) -> Unit, modifier: Modifier = 
         },
         onPlay = onPlay,
         modifier = modifier,
+        onMatchChosen = viewModel::prepareMatch,
         favoriteTeams = favoriteTeams,
         myTeams = myTeams,
         onMyTeams = {
@@ -135,6 +136,8 @@ fun FootballContent(
     competition: Competition?,
     onCompetition: (Competition?) -> Unit,
     onPlay: (Long) -> Unit,
+    /** Match dont une chaîne est lancée : le lecteur passera d'une de ses chaînes à l'autre avec ▲ ▼. */
+    onMatchChosen: (FootballMatch) -> Unit = {},
     modifier: Modifier = Modifier,
     /** Équipes suivies ([FootballMatch.homeTeam], [FootballMatch.awayTeam]). */
     favoriteTeams: Set<String> = emptySet(),
@@ -219,6 +222,7 @@ fun FootballContent(
                     horizontalPadding = window.horizontalPadding,
                     compact = !window.isWide,
                     onPlay = onPlay,
+                    onMatchChosen = onMatchChosen,
                     onDetails = { details = it },
                     modifier = body,
                 )
@@ -294,6 +298,7 @@ fun FootballContent(
                 // Chaîne choisie dans la fiche : au retour, la sélection revient sur la carte du match (elle allait
                 // à la liste des compétitions, où l'appui suivant en ouvrait une autre).
                 opened.value = listOf(match.key, visit.toString())
+                onMatchChosen(match)
                 onPlay(channelId)
             },
             onToggleTeam = onToggleTeam,
@@ -323,6 +328,7 @@ private fun MatchList(
     horizontalPadding: Dp,
     compact: Boolean,
     onPlay: (Long) -> Unit,
+    onMatchChosen: (FootballMatch) -> Unit,
     onDetails: (FootballMatch) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -381,6 +387,7 @@ private fun MatchList(
                         onClick = {
                             if (channel != null) {
                                 opened = listOf(match.key, visit.toString())
+                                onMatchChosen(match)
                                 onPlay(channel.id)
                             } else {
                                 onDetails(match)
