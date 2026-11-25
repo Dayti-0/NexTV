@@ -167,6 +167,10 @@ class AdMusicPlayer(private val context: Context) {
     /** Son de la musique, pour les barres de l'écran des pubs (rien n'est calculé tant qu'il n'est pas affiché). */
     val spectrum = SpectrumAnalyzer()
 
+    /** Titre donné par le flux de la radio (« Artiste - Titre », métadonnées ICY) ; `null` s'il n'en donne pas. */
+    val streamTitle: String?
+        get() = if (source is Source.Radio) player?.mediaMetadata?.title?.toString()?.trim()?.takeIf { it.isNotEmpty() } else null
+
     /** Morceau de « Ma musique » en cours (nom du fichier, sans extension) ; `null` pour une radio. */
     val currentTrack: String?
         get() = if (source is Source.Tracks) {

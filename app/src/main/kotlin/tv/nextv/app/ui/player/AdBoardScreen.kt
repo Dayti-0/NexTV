@@ -31,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
@@ -41,12 +42,9 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
@@ -57,7 +55,6 @@ import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
-import coil3.request.ImageRequest
 import kotlinx.coroutines.delay
 import tv.nextv.app.R
 import tv.nextv.app.ui.components.ChannelLogo
@@ -67,12 +64,8 @@ import tv.nextv.app.ui.guide.formatDuration
 import tv.nextv.app.ui.guide.rememberProgrammeImage
 import tv.nextv.app.ui.theme.NexTvColors
 import tv.nextv.core.audio.SpectrumAnalyzer
-import tv.nextv.core.weather.Sky
-import tv.nextv.core.weather.Weather
 import java.text.DateFormat
 import java.util.Date
-import kotlin.math.cos
-import kotlin.math.sin
 
 /**
  * Place de la pub sur l'écran des pubs, en haut à droite : 340 × 191 sur un écran de 960 × 540 (mêmes proportions sur
@@ -110,7 +103,12 @@ fun AdBoardScreen(
     modifier: Modifier = Modifier,
     /** Captures d'écran : image fixe à cette heure, sans horloge ni barres qui bougent (sinon le test ne finit pas). */
     stillAt: Long? = null,
+    /** Bandeau du lecteur affiché par-dessus : le contenu s'efface (la pub et son trou restent). */
+    dimmed: Boolean = false,
+    /** Flux en chargement : petit rond au milieu de la pub (pas au milieu de l'écran). */
+    buffering: Boolean = false,
 ) {
+    val contentAlpha by androidx.compose.animation.core.animateFloatAsState(if (dimmed) DIMMED_ALPHA else 1f, label = "ad-board-dim")
     val now by produceState(stillAt ?: System.currentTimeMillis()) {
         if (stillAt != null) return@produceState
         while (true) {
@@ -123,12 +121,22 @@ fun AdBoardScreen(
         val side = AdBoardLayout.side(maxWidth)
         val top = AdBoardLayout.top(maxHeight)
         Backdrop(board.programme, window)
+        if (buffering) {
+            androidx.compose.material3.CircularProgressIndicator(
+                Modifier
+                    .offset(x = (window.left + window.right) / 2 - 18.dp, y = (window.top + window.bottom) / 2 - 18.dp)
+                    .size(36.dp),
+                color = NexTvColors.Primary,
+                strokeWidth = 3.dp,
+            )
+        }
         // À gauche : chaîne, programme, foot en direct, radio.
         Column(
             Modifier
                 .padding(start = side, top = top, bottom = top)
                 .width(window.left - side * 2)
-                .fillMaxHeight(),
+                .fillMaxHeight()
+                .alpha(contentAlpha),
         ) {
             ChannelHeader(channelName, logoUrl)
             Spacer(Modifier.height(16.dp))
@@ -149,12 +157,13 @@ fun AdBoardScreen(
             Modifier
                 .offset(x = window.left, y = window.bottom + 10.dp)
                 .width(window.right - window.left)
-                .height(maxHeight - window.bottom - 10.dp - top),
+                .height(maxHeight - window.bottom - 10.dp - top)
+                .alpha(contentAlpha),
         ) {
             AdStatus(board, now)
             Spacer(Modifier.weight(1f))
             when {
-                board.weather != null -> WeatherCard(board.weather)
+                board.weather != null -> WeatherCard(board.weather, Modifier.fillMaxWidth())
                 board.weatherPlaceMissing -> Text(
                     stringResource(R.string.ad_board_weather_place),
                     style = MaterialTheme.typography.labelMedium,
@@ -169,7 +178,6 @@ fun AdBoardScreen(
 @Composable
 private fun Backdrop(programme: AdBoardProgramme?, window: DpRect) {
     val density = LocalDensity.current
-    val context = LocalContext.current
     val image = rememberProgrammeImage(programme?.toGuide())
     val hole = remember(window, density) {
         with(density) {
@@ -190,17 +198,19 @@ private fun Backdrop(programme: AdBoardProgramme?, window: DpRect) {
     ) {
         Box(Modifier.fillMaxSize().background(Color(0xFF0B0F14)))
         image?.let { url ->
-            // Lue en tout petit puis agrandie : floue, sans calcul de flou (petites Fire TV).
+            // Image en vraie qualité (à la taille de l'écran), assombrie : nette derrière le texte, sans pixels visibles
+            // (lue en 24 points et agrandie, elle était en gros carrés sur la box le 25/11/2026).
             AsyncImage(
-                model = remember(url) { ImageRequest.Builder(context).data(url).size(BLUR_SIZE_PX).build() },
+                model = url,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                filterQuality = FilterQuality.Low,
-                alpha = 0.55f,
+                alpha = 0.7f,
                 modifier = Modifier.fillMaxSize(),
             )
         }
-        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color.Black.copy(alpha = 0.88f), Color.Black.copy(alpha = 0.55f)))))
+        // Plus sombre à gauche (le texte) et en bas (matchs, radio, météo).
+        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color.Black.copy(alpha = 0.9f), Color.Black.copy(alpha = 0.72f), Color.Black.copy(alpha = 0.45f)))))
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.45f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.6f))))
     }
 }
 
@@ -209,7 +219,6 @@ private fun ChannelHeader(channelName: String, logoUrl: String?) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         ChannelLogo(logoUrl, channelName, Modifier.size(30.dp), monogramSize = 10.dp)
         Text(channelName, style = MaterialTheme.typography.titleMedium, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(stringResource(R.string.ad_board_resumes), style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.65f), maxLines = 1)
     }
 }
 
@@ -374,7 +383,7 @@ private fun MusicBar(radio: AdBoardRadio, spectrum: SpectrumAnalyzer, lowPower: 
         }
         Column(Modifier.weight(1f)) {
             Text(
-                stringResource(R.string.ad_board_music, radio.name).uppercase(),
+                radio.name.uppercase(),
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Bold,
                 color = NexTvColors.Accent,
@@ -411,7 +420,7 @@ private fun MusicBars(spectrum: SpectrumAnalyzer, lowPower: Boolean, animate: Bo
                 if (last != 0L && frame - last < (if (lowPower) LOW_POWER_FRAME_NANOS else 0L)) return@withFrameNanos
                 val elapsed = if (last == 0L) 1f / 30 else (frame - last) / 1e9f
                 last = frame
-                spectrum.read(bands, elapsed, System.nanoTime())
+                spectrum.read(bands, elapsed, android.os.SystemClock.elapsedRealtimeNanos())
                 tick++
             }
         }
@@ -426,9 +435,11 @@ private fun MusicBars(spectrum: SpectrumAnalyzer, lowPower: Boolean, animate: Bo
         repeat(bars) { i ->
             val from = i * used / bars
             val to = ((i + 1) * used / bars).coerceAtLeast(from + 1).coerceAtMost(bands.size)
-            var level = 0f
-            for (b in from until to) level = maxOf(level, bands[b])
-            val h = size.height * (0.12f + 0.88f * level.coerceIn(0f, 1f))
+            var sum = 0f
+            for (b in from until to) sum += bands[b]
+            // Moyenne du groupe, contrastée : la musique forte ne met pas toutes les barres au maximum.
+            val level = (sum / (to - from)).coerceIn(0f, 1f)
+            val h = size.height * (0.1f + 0.9f * level * level)
             drawRoundRect(
                 color = Color(0xFFFFB300),
                 topLeft = Offset(i * gap + gap * 0.2f, size.height - h),
@@ -470,149 +481,6 @@ private fun AdStatus(board: AdBoard, now: Long) {
     Text(stringResource(R.string.ad_board_hints), style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f), maxLines = 1)
 }
 
-/** Météo de la ville choisie : maintenant, les prochaines heures, demain. */
-@Composable
-private fun WeatherCard(weather: Weather) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(Color.White.copy(alpha = 0.08f))
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            SkyIcon(weather.sky, weather.day, Modifier.size(42.dp))
-            Column {
-                Text(
-                    weather.place.name.uppercase(),
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = NexTvColors.Accent,
-                    letterSpacing = 1.2.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text("${weather.temperature}°", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Color.White)
-            }
-            Spacer(Modifier.weight(1f))
-            Column(horizontalAlignment = Alignment.End) {
-                Text(stringResource(skyLabel(weather.sky, weather.day)), style = MaterialTheme.typography.titleSmall, color = Color.White, maxLines = 1)
-                Text(
-                    stringResource(R.string.weather_min_max, weather.todayMin, weather.todayMax),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = Color.White.copy(alpha = 0.7f),
-                )
-            }
-        }
-        if (weather.hours.isNotEmpty()) {
-            Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                weather.hours.forEach { hour ->
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(stringResource(R.string.weather_hour, hour.hour), style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.7f))
-                        SkyIcon(hour.sky, hour.day, Modifier.size(24.dp).padding(vertical = 2.dp))
-                        Text("${hour.temperature}°", style = MaterialTheme.typography.labelLarge, color = Color.White)
-                    }
-                }
-            }
-        }
-        val tomorrow = weather.tomorrowSky
-        val tomorrowMin = weather.tomorrowMin
-        val tomorrowMax = weather.tomorrowMax
-        if (tomorrow != null && tomorrowMin != null && tomorrowMax != null) {
-            Spacer(Modifier.height(6.dp))
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SkyIcon(tomorrow, day = true, Modifier.size(20.dp))
-                Text(
-                    stringResource(R.string.weather_tomorrow, stringResource(skyLabel(tomorrow, day = true)).lowercase(), tomorrowMin, tomorrowMax),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = Color.White.copy(alpha = 0.85f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-    }
-}
-
-private fun skyLabel(sky: Sky, day: Boolean): Int = when (sky) {
-    Sky.CLEAR -> if (day) R.string.weather_sunny else R.string.weather_clear_night
-    Sky.PARTLY_CLOUDY -> R.string.weather_partly_cloudy
-    Sky.CLOUDY -> R.string.weather_cloudy
-    Sky.FOG -> R.string.weather_fog
-    Sky.DRIZZLE -> R.string.weather_drizzle
-    Sky.RAIN -> R.string.weather_rain
-    Sky.SHOWERS -> R.string.weather_showers
-    Sky.SNOW -> R.string.weather_snow
-    Sky.STORM -> R.string.weather_storm
-}
-
-/** Pictogrammes dessinés (pas d'images à charger) : soleil ou lune, nuage, pluie, neige, orage, brouillard. */
-@Composable
-private fun SkyIcon(sky: Sky, day: Boolean, modifier: Modifier) {
-    Canvas(modifier) {
-        val w = size.width
-        fun sun(center: Offset, radius: Float) {
-            repeat(8) { i ->
-                val angle = i * Math.PI.toFloat() / 4
-                val direction = Offset(cos(angle), sin(angle))
-                drawLine(Color(0xFFFFC107), center + direction * radius * 1.35f, center + direction * radius * 1.75f, strokeWidth = w * 0.06f, cap = StrokeCap.Round)
-            }
-            drawCircle(Color(0xFFFFC107), radius, center)
-        }
-        fun moon(center: Offset, radius: Float) {
-            drawCircle(Color(0xFFFFF59D), radius, center)
-            drawCircle(Color(0xFF1B2433), radius * 0.86f, center + Offset(radius * 0.48f, -radius * 0.34f))
-        }
-        fun cloud(color: Color, dx: Float = 0f, dy: Float = 0f) {
-            drawCircle(color, w * 0.18f, Offset(w * 0.36f + dx, w * 0.52f + dy))
-            drawCircle(color, w * 0.24f, Offset(w * 0.56f + dx, w * 0.44f + dy))
-            drawRoundRect(color, Offset(w * 0.18f + dx, w * 0.5f + dy), Size(w * 0.64f, w * 0.2f), CornerRadius(w * 0.1f))
-        }
-        fun drops(color: Color, count: Int = 3) = repeat(count) { i ->
-            val x = w * (0.32f + i * 0.18f)
-            drawLine(color, Offset(x, w * 0.68f), Offset(x - w * 0.06f, w * 0.88f), strokeWidth = w * 0.06f, cap = StrokeCap.Round)
-        }
-        when (sky) {
-            Sky.CLEAR -> if (day) sun(center, w * 0.22f) else moon(center, w * 0.3f)
-            Sky.PARTLY_CLOUDY -> {
-                if (day) sun(Offset(w * 0.36f, w * 0.34f), w * 0.15f) else moon(Offset(w * 0.38f, w * 0.34f), w * 0.2f)
-                cloud(Color(0xFFECEFF1), dx = w * 0.06f, dy = w * 0.08f)
-            }
-            Sky.CLOUDY -> cloud(Color(0xFFCFD8DC))
-            Sky.FOG -> repeat(3) { i ->
-                val y = w * (0.36f + i * 0.16f)
-                drawLine(Color(0xFFB0BEC5), Offset(w * 0.18f, y), Offset(w * 0.82f, y), strokeWidth = w * 0.08f, cap = StrokeCap.Round)
-            }
-            Sky.DRIZZLE -> {
-                cloud(Color(0xFFCFD8DC), dy = -w * 0.12f)
-                drops(Color(0xFF90CAF9), 2)
-            }
-            Sky.RAIN, Sky.SHOWERS -> {
-                cloud(Color(0xFFB0BEC5), dy = -w * 0.12f)
-                drops(Color(0xFF64B5F6))
-            }
-            Sky.SNOW -> {
-                cloud(Color(0xFFECEFF1), dy = -w * 0.12f)
-                repeat(3) { i -> drawCircle(Color.White, w * 0.05f, Offset(w * (0.32f + i * 0.18f), w * 0.8f)) }
-            }
-            Sky.STORM -> {
-                cloud(Color(0xFF90A4AE), dy = -w * 0.12f)
-                val bolt = Path().apply {
-                    moveTo(w * 0.52f, w * 0.6f)
-                    lineTo(w * 0.4f, w * 0.8f)
-                    lineTo(w * 0.52f, w * 0.78f)
-                    lineTo(w * 0.46f, w * 0.96f)
-                    lineTo(w * 0.64f, w * 0.72f)
-                    lineTo(w * 0.52f, w * 0.74f)
-                    close()
-                }
-                drawPath(bolt, Color(0xFFFFD54F))
-            }
-        }
-    }
-}
-
 @Composable
 private fun Label(text: String) {
     Text(text.uppercase(), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = NexTvColors.Accent, letterSpacing = 1.5.sp)
@@ -645,7 +513,7 @@ private fun clockText(millis: Long): String {
 
 private fun timeOf(millis: Long): String = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(millis))
 
-private const val BLUR_SIZE_PX = 24
+private const val DIMMED_ALPHA = 0.15f
 private const val BARS = 9
 private const val LOW_POWER_FRAME_NANOS = 66_000_000L
 private val MATCH_HEIGHT = 40.dp

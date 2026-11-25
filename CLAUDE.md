@@ -304,8 +304,15 @@ Commandes :
   médiane des 10 dernières par chaîne dès 3, préférences `ad_breaks`) et `AdBoardScreen.kt` (fond découpé à la place de la
   pub : `clipPath` `Difference`, la vidéo est dessous). Image du direct : la même vue `AndroidView` réduite
   (`AdBoardLayout.window`, 340 × 191 en haut à droite sur 960 × 540), jamais une autre surface. Fin annoncée par le flux :
-  `AdCues.announcedEnd` (`PlayerEngine.adCueRemainingMillis`). Touches : OK = pub en grand jusqu'à la fin de la page,
-  Retour = `dismissAdBreak` (non compté). Barres de la radio : `AdMusicPlayer.spectrum` (`SpectrumTap`). Captures :
+  `AdCues.announcedEnd` (`PlayerEngine.adCueRemainingMillis`). Touches (0.2.234) : OK = le bandeau habituel (l'écran
+  s'efface dessous, `dimmed`), Retour = `dismissAdBreak` (non compté) ; pas de « pub en grand » (retiré à la demande de
+  l'utilisateur), ni « reprend après la pub » / « à la place de la pub ». Morceau de la radio des pubs : suivi par
+  `PlayerViewModel.followAdMusicTrack` (titre ICY du flux `AdMusicPlayer.streamTitle`, sinon service de la radio), dans
+  `PlayerUiState.adMusicTrack`, montré aussi dans le badge « Pub : radio · morceau » sans l'écran. Image de fond : en vraie
+  qualité (24 points agrandis = gros carrés sur la box). Rond de chargement dans la fenêtre de la pub
+  (`PlayerOverlay.centerSpinner`). Barres de la radio : `AdMusicPlayer.spectrum` (`SpectrumTap`), horloge
+  `SystemClock.elapsedRealtimeNanos` comme `RadioVisualizer`, moyenne par groupe de bandes. Météo (0.2.234,
+  `AdBoardWeather.kt`) : fond selon le temps et jour / nuit, ressenti, vent, pluie, humidité, 5 heures, demain. Captures :
   `stillAt` (sinon l'horloge et les barres empêchent le test de finir) ; maquettes et vidéo de démonstration :
   `screenshots/AdBreakMockups.kt` (`AD_VIDEO=1`). Météo : `core/weather/Weather.kt` (Open-Meteo sans clé, gardée 30 min,
   ville `weather_place` cherchée par son géocodage ; le cloud partagé atteint parfois la limite du jour : ne pas s'en

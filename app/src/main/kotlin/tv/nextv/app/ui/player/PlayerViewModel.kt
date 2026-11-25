@@ -53,6 +53,7 @@ import tv.nextv.app.player.toStream
 import tv.nextv.app.player.describePlaybackError
 import tv.nextv.app.ui.common.describe
 import tv.nextv.app.ui.home.Category
+import tv.nextv.core.audio.NowPlaying
 import tv.nextv.core.epg.Rebroadcast
 import tv.nextv.core.football.Broadcast
 import tv.nextv.core.football.BroadcastFinder
@@ -269,6 +270,10 @@ class PlayerViewModel(
     /** Écran pendant les pubs (réglage, activé d'office). */
     private var adScreenEnabled = true
 
+    /** Morceau en cours de la radio des pubs (services des radios), relu tant qu'elle joue. */
+    private val adRadioTitles = RadioTitleService({ container.httpClients.client(tv.nextv.core.net.RequestPurpose.METADATA) }, container.logger)
+    private var adTrackJob: kotlinx.coroutines.Job? = null
+
     /** Écran pendant les pubs : programme, matchs, radio et météo autour de la pub réduite dans un coin. */
     private val adBoard = AdBoardController(
         scope = viewModelScope,
@@ -282,7 +287,6 @@ class PlayerViewModel(
                 container.programmeDao.upcoming(current.id, System.currentTimeMillis(), limit = 2)
             }
         },
-        radioTitles = RadioTitleService({ container.httpClients.client(tv.nextv.core.net.RequestPurpose.METADATA) }, container.logger),
     )
 
     /** Son de la radio des pubs, pour les barres de l'écran des pubs. */
@@ -766,20 +770,48 @@ class PlayerViewModel(
             if (source != null) {
                 adMusic.start(source)
                 mutableState.update { it.copy(adMusic = label) }
+                followAdMusicTrack(source)
             }
         } else if (!wanted && adMusic.playing) {
             adMusic.stop()
+            followAdMusicTrack(null)
             mutableState.update { it.copy(adMusic = null) }
         }
         // Son de la chaîne coupé (et non baissé) seulement quand la musique joue vraiment.
         engine.adVolume.muteAds = adMusic.playing && !adMusic.failed
     }
 
-    /** Musique jouée à la place de la pub, pour l'écran des pubs. */
-    private fun adBoardMusic(): AdBoardController.Music? = when {
-        !adMusic.playing || adMusic.failed -> null
-        adSoundMode == AdSound.RADIO -> AdBoardController.Music(AdRadios.of(adRadioKey).name)
-        else -> AdBoardController.Music(resources.getString(R.string.player_ad_music_own), adMusic.currentTrack)
+    /**
+     * Morceau en cours de la musique des pubs, avec ou sans l'écran des pubs : titre donné par le flux de la radio, sinon
+     * par son service (Radio France, Nova…) ; nom du fichier pour « votre musique ». Relu toutes les 10 s.
+     */
+    private fun followAdMusicTrack(source: tv.nextv.app.player.AdMusicPlayer.Source?) {
+        adTrackJob?.cancel()
+        adTrackJob = null
+        if (source == null) {
+            if (state.value.adMusicTrack != null) mutableState.update { it.copy(adMusicTrack = null) }
+            return
+        }
+        val service = (source as? tv.nextv.app.player.AdMusicPlayer.Source.Radio)?.let { tv.nextv.core.catalog.InternetRadios.titlesFor(it.radio.name) }
+        adTrackJob = viewModelScope.launch {
+            while (true) {
+                val track = when (source) {
+                    is tv.nextv.app.player.AdMusicPlayer.Source.Tracks -> adMusic.currentTrack?.let { NowPlaying(artist = null, title = it) }
+                    is tv.nextv.app.player.AdMusicPlayer.Source.Radio -> adMusic.streamTitle?.let { NowPlaying.fromStreamTitle(it) ?: NowPlaying(null, it) }
+                        ?: service?.let { adRadioTitles.cached(it) }
+                }
+                if (state.value.adMusicTrack != track) mutableState.update { it.copy(adMusicTrack = track) }
+                delay(AD_TRACK_REFRESH_MILLIS)
+            }
+        }
+    }
+
+    /** Musique jouée pendant la pub et son morceau, pour l'écran des pubs. */
+    private fun adBoardMusic(): AdBoardController.Music? {
+        if (!adMusic.playing || adMusic.failed) return null
+        val name = if (adSoundMode == AdSound.RADIO) AdRadios.of(adRadioKey).name else resources.getString(R.string.player_ad_music_own)
+        val track = state.value.adMusicTrack
+        return AdBoardController.Music(name, track?.title, track?.artist, track?.cover)
     }
 
     /**
@@ -790,6 +822,7 @@ class PlayerViewModel(
         adBoard.dismiss()
         engine.adVolume.dismissBreak()
         if (adMusic.playing) adMusic.stop()
+        followAdMusicTrack(null)
         engine.adVolume.muteAds = false
         mutableState.update { it.copy(adMuted = false, adMusic = null) }
     }
@@ -1732,6 +1765,9 @@ class PlayerViewModel(
 
         /** Même période que la section Foot : la réponse de football-data.org est partagée. */
         private const val FOOTBALL_WINDOW_MILLIS = 8 * 24 * 60 * 60_000L
+
+        /** Morceau de la radio des pubs relu toutes les 10 s (le service garde sa réponse 20 s). */
+        private const val AD_TRACK_REFRESH_MILLIS = 10_000L
 
         /** Un programme de match commence souvent par l'avant-match : coup d'envoi jusqu'à 45 min avant lui compris. */
         private const val LIVE_MATCH_EARLY_MILLIS = 45 * 60_000L

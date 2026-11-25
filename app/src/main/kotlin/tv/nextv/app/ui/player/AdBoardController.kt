@@ -10,15 +10,14 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import tv.nextv.app.AppContainer
 import tv.nextv.app.data.db.ProgrammeEntity
-import tv.nextv.core.catalog.InternetRadios
 import tv.nextv.core.football.BroadcastFinder
 import tv.nextv.core.football.MatchStatus
 import tv.nextv.core.football.ScheduledMatch
 
 /**
  * Écran pendant les pubs ([AdBoard]) : ouvert quand une page de pub commence, refermé à sa fin. Le temps de la pub, il
- * relit le programme du guide, les matchs en direct (calendrier d'ESPN), la météo et le morceau de la radio jouée à la
- * place de la pub. À la fin d'une vraie page (ni « ce n'est pas une pub », ni changement de chaîne), sa durée compte pour
+ * relit le programme du guide, les matchs en direct (calendrier d'ESPN) et la météo ; le morceau de la radio des pubs
+ * lui vient du lecteur ([PlayerUiState.adMusicTrack]). À la fin d'une vraie page (ni « ce n'est pas une pub », ni changement de chaîne), sa durée compte pour
  * la durée habituelle des pubs de la chaîne (« Fin prévue dans… » des pages suivantes).
  */
 internal class AdBoardController(
@@ -27,7 +26,6 @@ internal class AdBoardController(
     private val state: MutableStateFlow<PlayerUiState>,
     /** Programme en cours de la chaîne et le suivant (le guide). */
     private val programmes: suspend () -> List<ProgrammeEntity>,
-    private val radioTitles: RadioTitleService,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private var job: Job? = null
@@ -40,8 +38,8 @@ internal class AdBoardController(
     private val goalsSeen = HashMap<Long, Int>()
     private val goalFlash = HashMap<Long, Long>()
 
-    /** Musique jouée à la place de la pub : nom de la radio (ou « Ma musique ») et morceau quand il est connu. */
-    data class Music(val name: String, val title: String? = null)
+    /** Musique jouée pendant la pub : nom de la radio (ou « votre musique ») et morceau en cours quand il est connu. */
+    data class Music(val name: String, val title: String? = null, val artist: String? = null, val cover: String? = null)
 
     /**
      * Deux fois par seconde : [open] (pub détectée, réglage activé, direct lu par le lecteur de l'appli), la chaîne et sa
@@ -61,10 +59,7 @@ internal class AdBoardController(
         val announced = cueRemainingMillis != null
         state.update { current ->
             val board = current.adBoard ?: return@update current
-            val radio = music?.let { wanted ->
-                board.radio?.takeIf { it.name == wanted.name }?.let { known -> if (wanted.title != null) known.copy(title = wanted.title) else known }
-                    ?: AdBoardRadio(wanted.name, title = wanted.title)
-            }
+            val radio = music?.let { AdBoardRadio(it.name, it.title, it.artist, it.cover) }
             if (board.endMillis == rounded && board.announced == announced && board.radio == radio) {
                 current
             } else {
@@ -113,7 +108,6 @@ internal class AdBoardController(
         while (true) {
             if (round % PROGRAMME_ROUNDS == 0) safely { refreshProgrammes() }
             safely { refreshMatches() }
-            safely { refreshRadio() }
             if (round % WEATHER_ROUNDS == 0) safely { refreshWeather() }
             round++
             delay(REFRESH_MILLIS)
@@ -182,17 +176,6 @@ internal class AdBoardController(
     private fun sameMatch(match: ScheduledMatch, onAir: PlayerMatch): Boolean =
         (BroadcastFinder.sameClub(onAir.home, match.home.name) || BroadcastFinder.sameClub(onAir.home, match.home.displayName)) &&
             (BroadcastFinder.sameClub(onAir.away, match.away.name) || BroadcastFinder.sameClub(onAir.away, match.away.displayName))
-
-    private suspend fun refreshRadio() {
-        val radio = state.value.adBoard?.radio ?: return
-        val source = InternetRadios.titlesFor(radio.name) ?: return
-        val playing = radioTitles.cached(source) ?: return
-        edit { board ->
-            board.radio?.takeIf { it.name == radio.name }?.let { current ->
-                board.copy(radio = current.copy(title = playing.title, artist = playing.artist, cover = playing.cover))
-            } ?: board
-        }
-    }
 
     private suspend fun refreshWeather() {
         val place = container.settings.weatherPlace.first()

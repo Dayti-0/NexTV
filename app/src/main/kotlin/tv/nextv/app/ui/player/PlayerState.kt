@@ -112,6 +112,8 @@ data class PlayerUiState(
     val match: PlayerMatch? = null,
     /** Écran pendant les pubs (pub détectée, réglage activé) ; `null` : image en plein écran. */
     val adBoard: AdBoard? = null,
+    /** Morceau en cours de la musique des pubs (radio ou « votre musique »), quand il est connu. */
+    val adMusicTrack: tv.nextv.core.audio.NowPlaying? = null,
     /** Qualité de la version en cours de lecture (« FHD »…), si la playlist l'indique. */
     val quality: String? = null,
     /** Message après un changement automatique de qualité. */

@@ -201,12 +201,10 @@ fun PlayerScreen(
     // Bandeau et touches du lecteur : direct, et replay (programme lu depuis l'enregistrement du serveur).
     val bannerMode = state.isLive || state.replay != null
 
-    // Écran pendant les pubs : la pub en petit dans un coin, le reste autour. OK : pub en grand jusqu'à la fin de cette
-    // page de pub ; Retour : « ce n'est pas une pub ». Écran en largeur seulement (télé, tablette couchée).
-    var boardHidden by remember { mutableStateOf(false) }
-    LaunchedEffect(state.adBoard == null) { if (state.adBoard == null) boardHidden = false }
+    // Écran pendant les pubs : la pub en petit dans un coin, le reste autour. OK : le bandeau, comme d'habitude ; Retour :
+    // « ce n'est pas une pub ». Écran en largeur seulement (télé, tablette couchée).
     val landscape = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-    val boardShown = state.adBoard != null && !boardHidden && landscape && !menu.open
+    val boardShown = state.adBoard != null && landscape && !menu.open
 
     // Lecture en pause (direct, replay, film…) : icône au centre de l'écran.
     var playWhenReady by remember(activePlayer) { mutableStateOf(activePlayer?.playWhenReady ?: true) }
@@ -335,8 +333,6 @@ fun PlayerScreen(
                         else -> if (!long) {
                             when {
                                 state.error != null -> viewModel.retry()
-                                // Écran des pubs : OK remet la pub en grand jusqu'à la fin de cette page.
-                                boardShown -> boardHidden = true
                                 bannerVisible || state.paused -> {
                                     viewModel.togglePause()
                                     bannerTrigger++
@@ -575,7 +571,12 @@ fun PlayerScreen(
         state.adBoard?.let { lastBoard = it }
         AnimatedVisibility(visible = boardShown, enter = fadeIn(), exit = fadeOut()) {
             lastBoard?.let { board ->
-                AdBoardScreen(board, state.channelName, state.logoUrl, viewModel.adMusicSpectrum, lowPower)
+                // Bandeau affiché (OK) : l'écran s'efface en dessous, pour qu'il se lise bien.
+                AdBoardScreen(
+                    board, state.channelName, state.logoUrl, viewModel.adMusicSpectrum, lowPower,
+                    dimmed = bannerVisible,
+                    buffering = state.buffering && state.error == null,
+                )
             }
         }
 
@@ -600,7 +601,7 @@ fun PlayerScreen(
             now = now,
             // Film : le bandeau du direct n'apparaît pas (ses commandes le remplacent), sauf en cas d'erreur.
             visible = (bannerVisible || state.error != null || state.paused || (state.fastSeek != 0 && bannerMode)) &&
-                !menu.open && state.resumePrompt == null && (bannerMode || state.error != null) && !boardShown,
+                !menu.open && state.resumePrompt == null && (bannerMode || state.error != null),
             showTouchControls = !window.isTv,
             onBack = leave,
             onZap = viewModel::zap,
@@ -608,6 +609,7 @@ fun PlayerScreen(
             onOpenMenu = viewModel::openMenu,
             onInfo = { infoVisible = !infoVisible },
             onBackToLive = if (canGoLive) viewModel::backToLive else null,
+            centerSpinner = !boardShown,
         )
 
         // Saut en cours (« +30 s »), avance / retour rapide ou pause : en grand au centre de l'écran (film avec ses
@@ -703,7 +705,9 @@ fun PlayerScreen(
             modifier = Modifier.align(Alignment.TopStart).padding(24.dp),
         ) {
             StatusPill(
-                state.adMusic?.let { stringResource(R.string.player_ad_music_playing, it) } ?: stringResource(R.string.player_ad_muted),
+                // Radio (ou votre musique) et son morceau en cours, quand il est connu.
+                state.adMusic?.let { name -> stringResource(R.string.player_ad_music_playing, listOfNotNull(name, state.adMusicTrack?.label).joinToString("  ·  ")) }
+                    ?: stringResource(R.string.player_ad_muted),
                 NexTvColors.Warning,
             )
         }
@@ -1104,6 +1108,8 @@ fun PlayerOverlay(
     onOpenMenu: () -> Unit = {},
     onInfo: () -> Unit = {},
     onBackToLive: (() -> Unit)? = null,
+    /** Rond de chargement au centre de l'écran (pendant l'écran des pubs, il est dans la fenêtre de la pub). */
+    centerSpinner: Boolean = true,
 ) {
     val window = rememberWindowInfo()
     Box(Modifier.fillMaxSize()) {
@@ -1154,7 +1160,7 @@ fun PlayerOverlay(
             }
         }
 
-        if (state.buffering && state.error == null) {
+        if (state.buffering && state.error == null && centerSpinner) {
             CircularProgressIndicator(Modifier.align(Alignment.Center).size(56.dp), color = NexTvColors.Primary, strokeWidth = 4.dp)
         }
 

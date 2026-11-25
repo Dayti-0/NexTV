@@ -21,10 +21,12 @@ class WeatherClientTest {
     /** Réponse relevée le 25/11/2026 à 22 h 30 (heures locales de la ville). */
     private val forecast = """
         {"latitude":48.85,"longitude":2.35,"utc_offset_seconds":3600,"timezone":"Europe/Paris",
-         "current":{"time":"2026-11-25T22:30","interval":900,"temperature_2m":5.9,"weather_code":80,"is_day":0},
+         "current":{"time":"2026-11-25T22:30","interval":900,"temperature_2m":5.9,"apparent_temperature":3.3,"relative_humidity_2m":94,"wind_speed_10m":8.4,"weather_code":80,"is_day":0},
          "hourly":{"time":["2026-11-25T21:00","2026-11-25T22:00","2026-11-25T23:00","2026-11-26T00:00","2026-11-26T01:00","2026-11-26T02:00","2026-11-26T03:00"],
-                   "temperature_2m":[5.8,5.9,5.8,5.4,5.6,4.2,4.0],"weather_code":[53,61,80,3,0,45,71],"is_day":[0,0,0,0,0,0,0]},
-         "daily":{"time":["2026-11-25","2026-11-26"],"weather_code":[80,2],"temperature_2m_max":[5.9,10.6],"temperature_2m_min":[4.0,1.2]}}
+                   "temperature_2m":[5.8,5.9,5.8,5.4,5.6,4.2,4.0],"weather_code":[53,61,80,3,0,45,71],"is_day":[0,0,0,0,0,0,0],
+                   "precipitation_probability":[40,38,35,28,20,10,null]},
+         "daily":{"time":["2026-11-25","2026-11-26"],"weather_code":[80,2],"temperature_2m_max":[5.9,10.6],"temperature_2m_min":[4.0,1.2],
+                  "precipitation_probability_max":[100,28],"sunrise":["2026-11-25T08:14","2026-11-26T08:15"],"sunset":["2026-11-25T17:00","2026-11-26T16:59"]}}
     """.trimIndent()
 
     private val server = MockWebServer()
@@ -58,9 +60,17 @@ class WeatherClientTest {
         assertFalse(weather.day)
         assertEquals(4, weather.todayMin)
         assertEquals(6, weather.todayMax)
-        assertEquals(listOf(23, 0, 1, 2), weather.hours.map { it.hour })
-        assertEquals(listOf(Sky.SHOWERS, Sky.CLOUDY, Sky.CLEAR, Sky.FOG), weather.hours.map { it.sky })
-        assertEquals(listOf(6, 5, 6, 4), weather.hours.map { it.temperature })
+        assertEquals(listOf(23, 0, 1, 2, 3), weather.hours.map { it.hour })
+        assertEquals(listOf(Sky.SHOWERS, Sky.CLOUDY, Sky.CLEAR, Sky.FOG, Sky.SNOW), weather.hours.map { it.sky })
+        assertEquals(listOf(6, 5, 6, 4, 4), weather.hours.map { it.temperature })
+        assertEquals(listOf(35, 28, 20, 10, null), weather.hours.map { it.rainChance })
+        assertEquals(3, weather.feelsLike)
+        assertEquals(94, weather.humidity)
+        assertEquals(8, weather.windKmh)
+        assertEquals(100, weather.todayRainChance)
+        assertEquals(28, weather.tomorrowRainChance)
+        assertEquals("08:14", weather.sunrise)
+        assertEquals("17:00", weather.sunset)
         assertEquals(Sky.PARTLY_CLOUDY, weather.tomorrowSky)
         assertEquals(1, weather.tomorrowMin)
         assertEquals(11, weather.tomorrowMax)

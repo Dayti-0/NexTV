@@ -35,7 +35,6 @@ class AdBoardControllerTest {
         container = container,
         state = state,
         programmes = { emptyList() },
-        radioTitles = RadioTitleService({ container.httpClients.client(tv.nextv.core.net.RequestPurpose.METADATA) }, container.logger),
         clock = { now },
     )
 

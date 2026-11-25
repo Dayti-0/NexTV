@@ -4,6 +4,13 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.234
+- Écran pendant les pubs : la météo est entièrement refaite (fond aux couleurs du temps, de jour comme de nuit ; ressenti, vent, risque de pluie, humidité ; cinq heures à venir avec leur risque de pluie ; demain avec ses températures)
+- Écran pendant les pubs : l'image de fond du programme est en vraie qualité (elle était pixellisée)
+- Écran pendant les pubs : OK affiche le bandeau, l'écran s'efface dessous ; les mentions « reprend après la pub » et « à la place de la pub » sont retirées
+- Radio pendant les pubs : le morceau en cours s'affiche, sur l'écran des pubs comme dans le petit badge « Pub » ; les barres suivent mieux la musique (elles restaient au maximum)
+- Le rond de chargement ne s'affiche plus au milieu de l'écran des pubs, mais dans la petite fenêtre de la pub
+
 ## 0.2.233
 - Écran pendant les pubs (Réglages › Son et radios, activé d'office avec « Baisser le son des pubs ») : la pub continue en petit en haut à droite, et autour s'affichent le programme en cours et la suite, le foot en direct (score, minute, buteurs, « BUT ! » quand un but tombe pendant la pub, reprise de la mi-temps), la radio qui remplace le son de la pub (morceau, pochette, barres au rythme de la musique) et la météo ; il se referme tout seul à la fin de la pub
 - Durée de la pub sur cet écran : « depuis 1 min 20 » et la fin prévue (annoncée par la chaîne quand elle le fait, sinon d'après la durée habituelle de ses pubs, apprise au fil des soirées)

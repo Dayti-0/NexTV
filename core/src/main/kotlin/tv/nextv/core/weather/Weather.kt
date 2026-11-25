@@ -55,8 +55,8 @@ enum class Sky {
     }
 }
 
-/** Une heure à venir : « 23 h », 5°, pluie, nuit. */
-data class WeatherHour(val hour: Int, val temperature: Int, val sky: Sky, val day: Boolean)
+/** Une heure à venir : « 23 h », 5°, pluie, nuit, risque de pluie en %. */
+data class WeatherHour(val hour: Int, val temperature: Int, val sky: Sky, val day: Boolean, val rainChance: Int? = null)
 
 /** Météo d'une ville : maintenant, les prochaines heures et demain. */
 data class Weather(
@@ -70,6 +70,18 @@ data class Weather(
     val tomorrowSky: Sky?,
     val tomorrowMin: Int?,
     val tomorrowMax: Int?,
+    /** Température ressentie. */
+    val feelsLike: Int? = null,
+    /** Humidité (%). */
+    val humidity: Int? = null,
+    /** Vent moyen (km/h). */
+    val windKmh: Int? = null,
+    /** Risque de pluie le plus fort d'aujourd'hui et de demain (%). */
+    val todayRainChance: Int? = null,
+    val tomorrowRainChance: Int? = null,
+    /** Lever et coucher du soleil, heure locale de la ville (« 08:14 »). */
+    val sunrise: String? = null,
+    val sunset: String? = null,
 )
 
 /**
@@ -100,9 +112,9 @@ class WeatherClient(
         val url = forecastUrl.newBuilder()
             .addQueryParameter("latitude", place.latitude.format())
             .addQueryParameter("longitude", place.longitude.format())
-            .addQueryParameter("current", "temperature_2m,weather_code,is_day")
-            .addQueryParameter("hourly", "temperature_2m,weather_code,is_day")
-            .addQueryParameter("daily", "weather_code,temperature_2m_max,temperature_2m_min")
+            .addQueryParameter("current", "temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,weather_code,is_day")
+            .addQueryParameter("hourly", "temperature_2m,weather_code,is_day,precipitation_probability")
+            .addQueryParameter("daily", "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset")
             .addQueryParameter("forecast_days", "2")
             .addQueryParameter("timezone", "auto")
             .build()
@@ -147,7 +159,7 @@ class WeatherClient(
         private const val TAG = "Weather"
 
         /** Heures à venir montrées. */
-        const val HOURS = 4
+        const val HOURS = 5
 
         private fun Double.format(): String = String.format(Locale.ROOT, "%.4f", this)
 
@@ -166,19 +178,24 @@ class WeatherClient(
                 val temperatures = block.optJSONArray("temperature_2m") ?: return@let emptyList()
                 val codes = block.optJSONArray("weather_code") ?: return@let emptyList()
                 val days = block.optJSONArray("is_day")
+                val rain = block.optJSONArray("precipitation_probability")
                 // Heure en cours (« 2026-11-25T22 ») : les suivantes.
                 val currentHour = time.substring(0, 13)
                 val start = (0 until times.length()).firstOrNull { times.optString(it).startsWith(currentHour) } ?: return@let emptyList()
                 (start + 1 until minOf(times.length(), start + 1 + HOURS)).mapNotNull { index ->
                     val hour = times.optString(index).substring(11, 13).toIntOrNull() ?: return@mapNotNull null
                     val value = temperatures.optDouble(index).takeIf { !it.isNaN() } ?: return@mapNotNull null
-                    WeatherHour(hour, value.roundToInt(), Sky.of(codes.optInt(index)), days?.optInt(index, 1) != 0)
+                    val chance = rain?.optDouble(index)?.takeIf { !it.isNaN() }?.roundToInt()
+                    WeatherHour(hour, value.roundToInt(), Sky.of(codes.optInt(index)), days?.optInt(index, 1) != 0, chance)
                 }
             }.orEmpty()
             val daily = json.optJSONObject("daily")
             fun dailyValue(name: String, index: Int): Double? =
                 daily?.optJSONArray(name)?.optDouble(index)?.takeIf { !it.isNaN() }
             val tomorrowCode = daily?.optJSONArray("weather_code")?.takeIf { it.length() > 1 }?.optInt(1)
+            fun current(name: String): Int? = current.optDouble(name).takeIf { !it.isNaN() }?.roundToInt()
+            /** « 2026-11-25T08:14 » → « 08:14 ». */
+            fun clock(name: String): String? = daily?.optJSONArray(name)?.optString(0)?.takeIf { it.length >= 16 }?.substring(11, 16)
             return Weather(
                 place = place,
                 temperature = temperature.roundToInt(),
@@ -190,6 +207,13 @@ class WeatherClient(
                 tomorrowSky = tomorrowCode?.let(Sky::of),
                 tomorrowMin = dailyValue("temperature_2m_min", 1)?.roundToInt(),
                 tomorrowMax = dailyValue("temperature_2m_max", 1)?.roundToInt(),
+                feelsLike = current("apparent_temperature"),
+                humidity = current("relative_humidity_2m"),
+                windKmh = current("wind_speed_10m"),
+                todayRainChance = dailyValue("precipitation_probability_max", 0)?.roundToInt(),
+                tomorrowRainChance = dailyValue("precipitation_probability_max", 1)?.roundToInt(),
+                sunrise = clock("sunrise"),
+                sunset = clock("sunset"),
             )
         }
 
