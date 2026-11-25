@@ -272,9 +272,18 @@ class HomeViewModel(
         }
     }
 
-    /** Chaînes de la liste « Toutes » (une ligne par chaîne, catégories masquées exclues). */
-    val channelCount: StateFlow<Int?> = sourceId.flatMapLatest { id ->
-        if (id == null) flowOf(null) else dao.observeListedCount(id)
+    /**
+     * Éléments de la liste « Toutes » de la section affichée (chaînes, films ou séries ; catégories masquées exclues) :
+     * le nombre exact de ce qu'elle montre, pas la somme des catégories (un film peut être dans deux catégories).
+     */
+    val channelCount: StateFlow<Int?> = combine(sourceId, section, ::Pair).flatMapLatest { (id, current) ->
+        when {
+            id == null -> flowOf(null)
+            current == HomeSection.TV -> dao.observeListedCount(id)
+            current == HomeSection.MOVIES -> dao.observeVisibleMovieCount(id)
+            current == HomeSection.SERIES -> dao.observeVisibleSeriesCount(id)
+            else -> flowOf(null)
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /** Nombres affichés sur les tuiles du menu de Classique : chaînes, films et séries. */
@@ -284,8 +293,8 @@ class HomeViewModel(
         } else {
             combine(
                 dao.observeListedCount(id),
-                dao.observeGroups(id, ContentKind.MOVIE.name).map { groups -> groups.sumOf { it.count } },
-                dao.observeGroups(id, ContentKind.SERIES.name).map { groups -> groups.sumOf { it.count } },
+                dao.observeVisibleMovieCount(id),
+                dao.observeVisibleSeriesCount(id),
             ) { channels, movies, series ->
                 buildMap {
                     channels?.let { put(HomeSection.TV, it) }

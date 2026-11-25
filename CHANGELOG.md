@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.231
+- Nombre de films (tuile du menu de Classique, « Tous les films ») : un film rangé dans deux catégories n'est plus compté deux fois (11 966 films annoncés au lieu de 12 419 sur une vraie playlist)
+
 ## 0.2.230
 - Navigation plus fluide pendant l'actualisation du guide et de la playlist : leur lecture demande beaucoup moins de calcul et de mémoire, et passe après l'affichage (sur la box, elle prenait près de la moitié du processeur de l'appli et faisait saccader les changements de section)
 

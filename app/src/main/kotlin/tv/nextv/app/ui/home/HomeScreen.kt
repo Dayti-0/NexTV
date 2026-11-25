@@ -601,7 +601,7 @@ fun HomeContent(
             window = window,
             groups = groups,
             recentCount = recentChannels.size.takeIf { section == HomeSection.TV },
-            allCount = channelCount?.takeIf { section == HomeSection.TV } ?: groups.sumOf { it.count },
+            allCount = channelCount ?: groups.sumOf { it.count },
             // Accueil à rangées : la catégorie de la rangée où est la sélection (un choix dans le volet ne fait que
             // descendre à sa rangée, la page reste « Tous »).
             category = if (rowsHome && category == Category.All) rowJump.focusedCategory ?: category else category,
@@ -865,7 +865,7 @@ private fun CatalogBody(
         else -> favoriteSeries.size
     }
     // Une chaîne peut figurer dans plusieurs catégories (une par qualité) : compte à part.
-    val allCount = channelCount?.takeIf { section == HomeSection.TV } ?: groups.sumOf { it.count }
+    val allCount = channelCount ?: groups.sumOf { it.count }
     val body: @Composable (GridLayout) -> Unit = { grid ->
         if (resumeItems != null && category == Category.ContinueWatching) {
             ContinueBody(resumeItems, grid, window, lastOpened, actions, focused)

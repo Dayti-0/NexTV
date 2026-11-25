@@ -1044,6 +1044,23 @@ interface ChannelDao {
     )
     suspend fun primaryIdByKey(sourceId: Long, itemKey: String): Long?
 
+    /**
+     * Nombre de films de la liste « Tous les films » : une ligne par film. La somme des catégories comptait deux fois
+     * un film rangé dans deux catégories (12 419 annoncés pour 11 966 listés sur la vraie playlist, le 25/11/2026).
+     */
+    @Query("SELECT COUNT(*) FROM channels c WHERE c.sourceId = :sourceId AND c.kind = 'MOVIE' AND $MOVIE_GROUP_VISIBLE AND $MOVIE_VISIBLE")
+    fun observeVisibleMovieCount(sourceId: Long): Flow<Int>
+
+    /** Nombre de séries de la liste « Toutes les séries », mêmes conditions que [pageSeries]. */
+    @Query(
+        """
+        SELECT COUNT(*) FROM channels
+        WHERE sourceId = :sourceId AND kind = 'SERIES' AND isPrimary = 1 AND seriesName IS NOT NULL
+          AND IFNULL(groupTitle, '') NOT IN $HIDDEN_SERIES_GROUPS
+        """,
+    )
+    fun observeVisibleSeriesCount(sourceId: Long): Flow<Int>
+
     /** Nombre de chaînes de la liste « Toutes ». */
     @Query("SELECT COUNT(*) FROM channels c WHERE c.sourceId = :sourceId AND c.kind = 'LIVE' AND $NOT_HIDDEN AND $BEST_VISIBLE")
     fun observeListedCount(sourceId: Long): Flow<Int>

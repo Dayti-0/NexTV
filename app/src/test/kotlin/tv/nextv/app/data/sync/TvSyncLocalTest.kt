@@ -191,12 +191,14 @@ class TvSyncLocalTest {
     fun `settings are shared except those of the device`() = runBlocking {
         settings.setAutoQuality(false)
         settings.ensureAdUploadBin { "nixtv-test" }
+        // Page déjà tirée par une autre appli de test du même processus (réglages partagés) : c'est elle qui doit rester.
+        val bin = settings.adUploadBin.first()
         val synced = settings.syncedPreferences()
         assertEquals("b:false", synced["auto_quality"])
         assertFalse("ad_upload_bin" in synced)
         assertEquals(1, settings.applySyncedPreferences(mapOf("auto_quality" to "b:true", "ad_upload_bin" to "s:autre", "inconnu" to "s:x")))
         assertTrue(settings.autoQuality.first())
-        assertEquals("nixtv-test", settings.adUploadBin.first())
+        assertEquals(bin, settings.adUploadBin.first())
         // Valeur d'un autre type (autre version de l'appli) : ignorée.
         settings.applySyncedPreferences(mapOf("auto_quality" to "i:3"))
         assertTrue(settings.autoQuality.first())

@@ -909,10 +909,14 @@ class PlayerViewModelTest {
         assertEquals("France 2", viewModel.state.value.channelName)
         assertEquals(2, viewModel.state.value.autoRecordingChannels)
         // Temps du lecteur avancé par pas de 10 s (au plus 40 min) jusqu'au changement de chaîne.
+        // L'erreur de lecture de la chaîne fermée arrive du lecteur en temps réel : sur une machine chargée (CI, suite
+        // complète), elle venait après les 40 min avancées d'un coup, et la chaîne ne changeait plus. Le temps continue
+        // donc d'avancer tant qu'elle n'a pas changé, pendant au plus 20 s réelles.
         var steps = 0
-        while (viewModel.state.value.channelName == "France 2" && steps++ < 240) {
+        val realDeadline = System.nanoTime() + 20_000_000_000L
+        while (viewModel.state.value.channelName == "France 2" && (steps++ < 240 || System.nanoTime() < realDeadline)) {
             shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(10))
-            Thread.sleep(5)
+            Thread.sleep(20)
         }
         awaitOtherChannel(viewModel, "France 2")
         // France 2 ne se lit pas : la suivante la moins connue, M6 (5 h 47 analysées), avant TF1 (6 h 40).
