@@ -28,6 +28,7 @@ import java.util.Locale
  * - `AD_TEACH` : la mémoire apprend aussi les pages de pub de la vérité (ce qu'une chaîne à repères lui apprendrait) ;
  * - `AD_PASSES` : passages sur l'ensemble (la mémoire des pubs, le logo et le carton de chaque chaîne sont gardés d'un
  *   passage à l'autre ; seul le dernier est noté) ;
+ * - `AD_SEED_OUT` : avec `AD_TEACH`, écrit la mémoire des pubs apprise (bibliothèque fournie avec l'appli) ;
  * - `AD_LATENCY` : retard de l'image sur le son traité (le son est traité avant d'être entendu), 400 ms par défaut.
  */
 class AdReplayTool {
@@ -142,6 +143,11 @@ class AdReplayTool {
         }
         recordings.values.forEach { it.close() }
         if (usePrints) println("mémoire des pubs : ${library.size} morceaux, ${library.seconds} s")
+        // `AD_SEED_OUT` (avec `AD_TEACH`) : mémoire des pages annoncées par le flux, pour la bibliothèque fournie avec l'appli.
+        System.getenv("AD_SEED_OUT")?.let { out ->
+            File(out).writeBytes(library.encode())
+            println("bibliothèque : ${library.size} morceaux, ${library.seconds} s, ${File(out).length() / 1024} Ko")
+        }
         println("TOTAL [$tag] : ${total.describe()}")
     }
 
@@ -195,7 +201,10 @@ class AdReplayTool {
 
         companion object {
             fun load(folder: File, framesName: String, pictures: Boolean, logos: Boolean): Recording {
-                val audio = File(folder, "audio.s16").takeIf { it.exists() }?.readBytes()?.let { bytes ->
+                // Son compressé (gzip) pour garder plusieurs nuits d'enregistrements : lu tel quel.
+                val audioBytes = File(folder, "audio.s16").takeIf { it.exists() }?.readBytes()
+                    ?: File(folder, "audio.s16.gz").takeIf { it.exists() }?.let { gz -> java.util.zip.GZIPInputStream(gz.inputStream()).use { it.readBytes() } }
+                val audio = audioBytes?.let { bytes ->
                     val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
                     ShortArray(buffer.remaining()).also(buffer::get)
                 }
