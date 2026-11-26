@@ -32,7 +32,14 @@ class AdDeviceReplayTool {
         val paths = System.getenv("AD_DEVICE")?.split(':')?.filter { it.isNotBlank() }.orEmpty()
         assumeTrue(paths.isNotEmpty())
         val tag = System.getenv("AD_TAG") ?: "current"
-        val usePrints = System.getenv("AD_PRINTS") != null
+        // `AD_SEED_OUT` : fabrique seulement une mémoire des pubs avec le son des pages de pub relevées (`<nom>.truth.tsv`)
+        // de ces enregistrements, écrite dans ce fichier (bibliothèque fournie avec l'appli). `AD_SEED` : mémoire de départ.
+        System.getenv("AD_SEED_OUT")?.let { out ->
+            buildSeed(paths, File(out))
+            return
+        }
+        val seed = System.getenv("AD_SEED")?.let(::File)
+        val usePrints = System.getenv("AD_PRINTS") != null || seed != null
         val imagesEvery = System.getenv("AD_IMAGES")?.toIntOrNull()
         // Totaux (ici, sur l'appareil) : pubs baissées, secondes de pub, programme baissé à tort, secondes de programme, délais, pages.
         val totals = Array(2) { IntArray(6) }
@@ -40,10 +47,11 @@ class AdDeviceReplayTool {
         // l'appareil, qui les garde d'un jour à l'autre). La mémoire des pubs, elle, repart de zéro au second passage.
         val passes = if (System.getenv("AD_KNOWN") != null) 2 else 1
         val marks = HashMap<String, AdMarks>()
-        var library = AdPrintLibrary()
+        fun startLibrary() = AdPrintLibrary().also { library -> seed?.inputStream()?.use { library.restore(it) } }
+        var library = startLibrary()
         for (pass in 1..passes) {
         val last = pass == passes
-        library = AdPrintLibrary()
+        library = startLibrary()
         for (path in paths) {
             val recording = DeviceRecording.load(File(path))
             val base = File(path).let { File(it.parentFile, it.name.removeSuffix(".zip")) }
@@ -206,6 +214,29 @@ class AdDeviceReplayTool {
     private class Slice(val meanSquare: Float, val durationMillis: Int, val samples: Int)
 
     private class Frame(val type: Char, val time: Long, val bytes: ByteArray)
+
+    /** Mémoire des pubs faite du son des pages relevées à l'œil (vérité) : à l'essai, comme sur l'appareil. */
+    private fun buildSeed(paths: List<String>, out: File) {
+        val library = AdPrintLibrary()
+        var pages = 0
+        for (path in paths) {
+            val base = File(path).let { File(it.parentFile, it.name.removeSuffix(".zip")) }
+            val truth = File("${base.path}.truth.tsv").takeIf { it.exists() }?.readLines()?.mapNotNull { line ->
+                val parts = line.trim().split(Regex("\\s+"))
+                if (parts.size < 2) null else (parts[0].toDoubleOrNull() ?: return@mapNotNull null) to (parts[1].toDoubleOrNull() ?: return@mapNotNull null)
+            } ?: continue
+            val recording = DeviceRecording.load(File(path))
+            for ((from, to) in truth) {
+                // Une seconde de marge à chaque bout : le programme juste avant ou après n'entre pas dans la mémoire.
+                val inside = recording.prints.filter { it.time / 1_000.0 in (from + 1)..(to - 1) }
+                if (inside.size < AudioFingerprinter.PER_SECOND * 4) continue
+                library.learn(inside.map { it.print }.toIntArray(), inside.map { it.loud }.toBooleanArray(), confirmed = false, now = 0)
+                pages++
+            }
+        }
+        out.writeBytes(library.encode())
+        println("mémoire des pubs : $pages pages, ${library.size} morceaux, ${library.seconds} s de pub, ${out.length() / 1024} Ko")
+    }
 
     private class Print(val time: Long, val print: Int, val loud: Boolean)
 
