@@ -260,6 +260,7 @@ class PlayerViewModel(
 
     /** Chaîne notée en dernier dans l'enregistrement d'analyse. */
     private var adRecordedChannel = ""
+    private var adRecordedQuality: String? = null
 
     /** Musique pendant les pubs (réglage « Pendant les pubs ») : radio ou morceaux de l'appareil, à la place du son baissé. */
     private val adMusic = tv.nextv.app.player.AdMusicPlayer(context.applicationContext)
@@ -329,6 +330,12 @@ class PlayerViewModel(
                 if (adRecording != null && state.value.channelName != adRecordedChannel) {
                     adRecordedChannel = state.value.channelName
                     engine.noteAdRecordingChannel(adRecordedChannel)
+                }
+                // Qualité lue, notée aussi : les enregistrements comparent la détection selon la qualité (rotation de
+                // l'enregistrement automatique, AppContainer.analysisQualityTurn).
+                if (adRecording != null && state.value.quality != null && state.value.quality != adRecordedQuality) {
+                    adRecordedQuality = state.value.quality
+                    adRecordedQuality?.let(engine::noteAdRecordingQuality)
                 }
                 if (state.value.adMuted != adMuted || state.value.adWatch != adWatch || state.value.adDetails != adDetails ||
                     state.value.adRecordingMinutes != adRecording
@@ -609,6 +616,7 @@ class PlayerViewModel(
         if (state.value.adRecordingMinutes == null) toggleAdRecording()
         if (state.value.adRecordingMinutes == null) return
         mutableState.update { it.copy(autoRecordingChannels = 1) }
+        container.analysisQualityRotation = true
         autoFailed.clear()
         autoRecording = viewModelScope.launch {
             // Dès le départ, la chaîne la moins connue de la liste, si celle-ci l'est déjà nettement plus.
@@ -634,6 +642,7 @@ class PlayerViewModel(
                 }
             }
             autoRecording = null
+            container.analysisQualityRotation = false
             mutableState.update { it.copy(autoRecordingChannels = null) }
         }
     }
@@ -701,6 +710,8 @@ class PlayerViewModel(
         val current = session.listed ?: return
         viewModelScope.launch {
             val next = withContext(Dispatchers.IO) { pickAutoChannel(autoCandidates(current), current.title) }
+            // Chaîne suivante dans la qualité suivante (voir AppContainer.analysisQualityRotation).
+            container.analysisQualityTurn++
             val id = next?.open()
             if (id != null && id != current.id) load(id) else zap(+1)
         }
@@ -709,6 +720,7 @@ class PlayerViewModel(
     private fun stopAutoRecording() {
         autoRecording?.cancel()
         autoRecording = null
+        container.analysisQualityRotation = false
         mutableState.update { it.copy(autoRecordingChannels = null) }
     }
 

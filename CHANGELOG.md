@@ -4,6 +4,9 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.232
+- Enregistrement automatique pour l'analyse des pubs : la qualité change d'une chaîne à l'autre (de la plus basse à la meilleure), et chaque enregistrement note la qualité lue, pour comparer la détection selon la qualité
+
 ## 0.2.231
 - Nombre de films (tuile du menu de Classique, « Tous les films ») : un film rangé dans deux catégories n'est plus compté deux fois (11 966 films annoncés au lieu de 12 419 sur une vraie playlist)
 

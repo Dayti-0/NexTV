@@ -787,6 +787,8 @@ internal class PlayerEngine(
     /** Chaîne en cours, notée dans l'enregistrement d'analyse. */
     fun noteAdRecordingChannel(name: String) = adVolume.noteChannel(name)
 
+    fun noteAdRecordingQuality(quality: String) = adVolume.noteQuality(quality)
+
     /** Repères connus du direct en cours, avec ce que la détection vient d'en apprendre. */
     private fun learnedAdMarks(): AdMarks {
         val learned = adVolume.marks()

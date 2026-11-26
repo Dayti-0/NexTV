@@ -134,6 +134,11 @@ class AdVolumeControl {
         recorder?.takeIf { it.active }?.event(guard.now, "chaine", name)
     }
 
+    /** Qualité lue (« FHD », « HD », « SD »), notée dans l'enregistrement d'analyse à chaque changement. */
+    fun noteQuality(quality: String) {
+        recorder?.takeIf { it.active }?.event(guard.now, "qualite", quality)
+    }
+
     /** Arrête l'enregistrement d'analyse en cours (lecteur fermé). */
     fun stopRecording() {
         recorder?.finish()

@@ -243,6 +243,16 @@ class AppContainer(context: Context) {
      */
     val analysisRecording: Boolean get() = adRecordingsLazy.isInitialized() && adRecordings.current != null
 
+    /**
+     * Enregistrement automatique en cours : la qualité d'analyse tourne d'une chaîne à l'autre ([analysisQualityTurn],
+     * avancé à chaque chaîne suivante). Coupé : la moins bonne version, comme avant.
+     */
+    @Volatile
+    var analysisQualityRotation = false
+
+    @Volatile
+    var analysisQualityTurn = 0
+
     private fun createAdRecordings(): AdRecordings =
         AdRecordings(File(appContext.filesDir, "ad_recordings"), BuildConfig.VERSION_NAME, removable = { removableRecordingPlaces(appContext) }).also { recordings ->
             applicationScope.launch { settings.adRecordingsLocation.collect { recordings.selected = it } }

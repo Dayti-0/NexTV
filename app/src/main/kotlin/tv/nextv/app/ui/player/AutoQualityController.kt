@@ -87,7 +87,7 @@ internal class AutoQualityController(
                 enabled = start.autoQuality,
                 clock = System::currentTimeMillis,
                 decoderCeilingRank = decoderCeilingRank,
-                maxRank = if (start.analysis) options.minOf { StreamQuality.rankOf(it.quality) } else start.qualityTarget.maxRank(options),
+                maxRank = if (start.analysis) start.analysisRank ?: options.minOf { StreamQuality.rankOf(it.quality) } else start.qualityTarget.maxRank(options),
             )
         } else {
             null
@@ -237,6 +237,8 @@ internal class ChannelStart(
     val lockedQuality: String? = null,
     /** Ouverte pour l'enregistrement d'analyse des pubs : moins bonne version, sans remontée de qualité. */
     val analysis: Boolean = false,
+    /** Enregistrement d'analyse : qualité gardée pendant toute la chaîne (pas de changement automatique). */
+    val analysisRank: Int? = null,
 )
 
 /** Nom d'une qualité de version dans les choix du lecteur : celui de StreamQuality, "" pour une version sans mention. */
@@ -296,8 +298,12 @@ internal suspend fun channelStart(
     // regarde que des images réduites (480 × 270) et le son, pareils dans toutes les qualités : moins de débit et de
     // décodage pour une box ou une Fire TV qui enregistre toute la nuit. Une qualité choisie à la main passe avant.
     if (options.size > 1 && container.analysisRecording) {
-        val lowest = options.minBy { StreamQuality.rankOf(it.quality) }
-        return ChannelStart(options, lowest.channelId, autoQuality, qualityTarget, sounds, analysis = true)
+        // Enregistrement automatique : la qualité change d'une chaîne à l'autre (basse, puis au-dessus… puis la meilleure),
+        // pour comparer la détection selon la qualité (demande du 25/11/2026). Sinon, la moins bonne.
+        val ranks = options.map { StreamQuality.rankOf(it.quality) }.distinct().sorted()
+        val rank = if (container.analysisQualityRotation) ranks[Math.floorMod(container.analysisQualityTurn, ranks.size)] else ranks.first()
+        val chosen = options.filter { StreamQuality.rankOf(it.quality) == rank }.minBy { options.indexOf(it) }
+        return ChannelStart(options, chosen.channelId, autoQuality, qualityTarget, sounds, analysis = true, analysisRank = rank)
     }
     // Qualité visée (réglages) : au plus HD, ou SD pour économiser la connexion.
     val startId = if (options.size > 1) qualityTarget.start(options, preferredId) else preferredId
