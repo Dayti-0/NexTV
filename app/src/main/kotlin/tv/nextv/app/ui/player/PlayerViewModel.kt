@@ -691,7 +691,7 @@ class PlayerViewModel(
                     session.listed?.let { if (failing) autoFailed += AdTestedChannels.key(it.title) }
                     withContext(Dispatchers.IO) { container.adTested.save() }
                     autoNext()
-                    since = now
+                    since = SystemClock.elapsedRealtime()
                     errorSince = 0L
                     mutableState.update { it.copy(autoRecordingChannels = (it.autoRecordingChannels ?: 0) + 1) }
                 }
@@ -757,19 +757,23 @@ class PlayerViewModel(
         if (id != current.id) {
             load(id)
             mutableState.update { it.copy(autoRecordingChannels = (it.autoRecordingChannels ?: 0) + 1) }
+            loadJob?.join()
         }
     }
 
-    /** Chaîne suivante de l'enregistrement automatique ([pickAutoChannel]) ; à défaut, la suivante de la liste. */
-    private fun autoNext() {
+    /**
+     * Chaîne suivante de l'enregistrement automatique ([pickAutoChannel]) ; à défaut, la suivante de la liste. Rend la
+     * main une fois la chaîne ouverte : jusque-là, l'erreur affichée est encore celle de la chaîne quittée, et elle ne
+     * doit pas compter contre la nouvelle (sur une machine lente, la nouvelle était marquée « ne se lit pas » et sautée).
+     */
+    private suspend fun autoNext() {
         val current = session.listed ?: return
-        viewModelScope.launch {
-            val next = withContext(Dispatchers.IO) { pickAutoChannel(autoCandidates(current), current.title) }
-            // Chaîne suivante dans la qualité suivante (voir AppContainer.analysisQualityRotation).
-            container.analysisQualityTurn++
-            val id = next?.open()
-            if (id != null && id != current.id) load(id) else zap(+1)
-        }
+        val next = withContext(Dispatchers.IO) { pickAutoChannel(autoCandidates(current), current.title) }
+        // Chaîne suivante dans la qualité suivante (voir AppContainer.analysisQualityRotation).
+        container.analysisQualityTurn++
+        val id = next?.open()
+        if (id != null && id != current.id) load(id) else zap(+1)
+        loadJob?.join()
     }
 
     private fun stopAutoRecording() {
