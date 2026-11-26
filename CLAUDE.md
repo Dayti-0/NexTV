@@ -30,6 +30,11 @@ Application IPTV Android en Kotlin / Jetpack Compose (Media3). Elle s'appelait N
   Audit du 23/11/2026 (0.2.218 → 0.2.222) : aucun plantage, box à l'aise (2,4 Go libres, 47-59 °C) ; H.264 décodé par
   le processeur (`c2.ffmpeg.h264`, le Pi 5 ne décode en matériel que le HEVC) ; défauts trouvés corrigés en
   0.2.219-0.2.222 (date du guide, Foot, bandes-annonces YouTube, volet des catégories, Classique, radios…).
+- Plusieurs sessions Claude travaillent parfois en même temps sur `main` (une autre a publié 0.2.232-0.2.236 dans la nuit
+  du 25/11) : avant de publier, `git fetch` et fusionner `origin/main` (jamais écraser), prendre le numéro suivant libre.
+- Relais Pi (suite) : la session du Pi ne peut pas écrire ici (« appareil de confiance ») ; inutile qu'elle essaie, lire ses
+  réponses finales avec `list_events` (`result`). Mesures faites par elle sur la box : `dumpsys gfxinfo` (fluidité) et
+  `simpleperf` (l'appli est `profileable` depuis 0.2.229 ; noms décodés avec `NexTV-vX.Y.Z-mapping.txt` de la version).
 - Point en attente : plantage du guide sur la Fire TV après la 25e chaîne, non reproduit. Il faut la photo de la
   carte « Dernier incident » (Réglages) pour en connaître la cause.
 
@@ -391,6 +396,15 @@ Commandes :
   fiche propose les autres (`movieVersions`, bouton « Version »). Toute nouvelle règle qui change un titre : augmenter
   `QualityParser.VERSION` (la playlist est relue au lancement) ; `ItemKeyRelinker` rattache les favoris, reprises,
   « Déjà vu » et chaînes récentes enregistrés sous l'ancienne clé (films, séries et chaînes).
+- Bibliothèque de pubs fournie (0.2.238) : `assets/ad_prints_seed.bin`, ajoutée une fois à la mémoire de l'appareil
+  (`AdPrintStore.addSeed`, `AdPrintLibrary.merge`, à l'essai, datée du rang de l'enregistrement : celles apprises par
+  l'appareil restent prioritaires). Refaite avec `AdDeviceReplayTool` (`AD_SEED_OUT`, son des pages des `.truth.tsv`, 5 s
+  de marge) et `AdReplayTool` (`AD_TEACH` + `AD_SEED_OUT`, pages annoncées des directs RMC) ; rejouer avec `AD_SEED`.
+  Nouvelle bibliothèque : augmenter `AdPrintStore.SEED_VERSION`. Mesuré le 26/11 en croisé (nuits jamais entendues) :
+  82 → 85 % et 84 → 86 % des pubs baissées, délai 21 → 16 s et 23 → 19 s, +40 s de programme à tort sur 15 h.
+- Directs RMC (repères SCTE) : « programme baissé à tort » y est surtout des bandes-annonces, jeux et pubs que RMC
+  n'annonce pas (vu sur les images le 26/11) ; bons pour comparer des qualités (1080p / 360p : 98 / 96 % baissées), pas
+  pour compter les bandes-annonces. Enregistrement automatique (0.2.237) : qualité tournante, événement `qualite`.
 - « Baisser le son des pubs » (direct et replay seulement, jamais un film : `PlayerEngine.adBreaks`) :
   `core/audio/AdVolumeGuard.kt` reconnaît les **jonctions** entre deux pubs — un silence complet pendant lequel l'image
   change de plan ou montre le carton de la chaîne (`SmallFrame`, images 96 × 54) — et décide selon le logo
