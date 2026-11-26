@@ -3,8 +3,11 @@ package tv.nextv.app.ui.detail
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import tv.nextv.app.ui.home.toPoster
 import tv.nextv.app.ui.home.PosterItem
 import tv.nextv.app.ui.home.HomeLayout
@@ -17,6 +20,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.withTimeoutOrNull
 import tv.nextv.app.AppContainer
+import tv.nextv.app.R
 import tv.nextv.app.data.catalog.MetadataState
 import tv.nextv.app.data.catalog.ServerSeries
 import tv.nextv.app.data.progress.ProgressEntity
@@ -90,6 +94,8 @@ data class DetailUiState(
     val item: PlaylistItem? = null,
     val metadata: MetadataState = MetadataState.Loading,
     val isFavorite: Boolean = false,
+    /** Favoris de la playlist (clés) : étoile des titres similaires, ajoutés ou retirés d'un appui long. */
+    val favoriteKeys: Set<String> = emptySet(),
     val seasons: List<Season> = emptyList(),
     val selectedSeason: Int = 0,
     val missing: Boolean = false,
@@ -145,6 +151,10 @@ class DetailViewModel(
 
     private val mutableState = MutableStateFlow(DetailUiState())
     val state: StateFlow<DetailUiState> = mutableState.asStateFlow()
+
+    private val mutableMessages = MutableSharedFlow<String>(extraBufferCapacity = 4)
+    /** Messages brefs de la fiche (titre similaire ajouté aux favoris ou retiré). */
+    val messages: SharedFlow<String> = mutableMessages.asSharedFlow()
 
     /** Vrai dès qu'une version a été choisie sur la fiche : la reprise en cours ne la change plus. */
     private var versionChosen = false
@@ -222,7 +232,8 @@ class DetailViewModel(
         }
         viewModelScope.launch {
             container.favorites.observeKeys(entity.sourceId).collect { keys ->
-                mutableState.update { it.copy(isFavorite = entity.itemKey in keys) }
+                val favorites = keys.toSet()
+                mutableState.update { it.copy(isFavorite = entity.itemKey in favorites, favoriteKeys = favorites) }
             }
         }
 
@@ -306,6 +317,15 @@ class DetailViewModel(
         val item = state.value.item ?: return
         viewModelScope.launch {
             container.favorites.toggle(item.sourceId, kind, item.itemKey, item.title, item.logoUrl)
+        }
+    }
+
+    /** Titre similaire ajouté aux favoris ou retiré (appui long sur son affiche), annoncé comme à l'accueil. */
+    fun toggleSimilarFavorite(similar: PosterItem) {
+        val sourceId = state.value.item?.sourceId ?: return
+        viewModelScope.launch {
+            val added = container.favorites.toggle(sourceId, similar.kind, similar.itemKey, similar.title, similar.imageUrl)
+            mutableMessages.emit(container.appContext.getString(if (added) R.string.favorite_added else R.string.favorite_removed, similar.title))
         }
     }
 }

@@ -2,12 +2,17 @@ package tv.nextv.app.ui.detail
 
 import android.app.Application
 import android.content.pm.PackageManager
+import android.view.KeyEvent
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.performKeyPress
 import androidx.compose.ui.test.pressKey
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
@@ -22,11 +27,12 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import tv.nextv.app.screenshots.SampleData
 import tv.nextv.app.ui.components.rememberWindowInfo
+import tv.nextv.app.ui.home.PosterItem
 import tv.nextv.app.ui.theme.NexTvTheme
 import tv.nextv.app.ui.theme.ThemeStyle
 import tv.nextv.core.model.ContentKind
 
-/** Fiche Streaming à la télécommande : départ sur « Reprendre », épisodes, retour aux boutons. */
+/** Fiche Streaming à la télécommande : départ sur « Reprendre », épisodes, retour aux boutons, titres similaires. */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class, qualifiers = "fr-rFR-w960dp-h540dp-land-television-xhdpi")
@@ -44,6 +50,23 @@ class StreamingDetailFocusTest {
     private fun press(key: Key) {
         compose.onRoot().performKeyInput { pressKey(key) }
         compose.mainClock.advanceTimeBy(500)
+        compose.waitForIdle()
+    }
+
+    /** Touche OK telle que l'envoie la télécommande (pression, répétitions tant qu'elle est tenue, relâchement). */
+    private fun ok(action: Int, repeat: Int = 0) {
+        compose.onRoot().performKeyPress(androidx.compose.ui.input.key.KeyEvent(KeyEvent(0L, 0L, action, KeyEvent.KEYCODE_DPAD_CENTER, repeat)))
+    }
+
+    private fun holdOk() {
+        ok(KeyEvent.ACTION_DOWN)
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
+        for (repeat in 1..10) {
+            ok(KeyEvent.ACTION_DOWN, repeat)
+            compose.mainClock.advanceTimeBy(50)
+        }
+        ok(KeyEvent.ACTION_UP)
         compose.waitForIdle()
     }
 
@@ -122,6 +145,56 @@ class StreamingDetailFocusTest {
         assertTrue("Bouton : ${focusedText()}", focusedText()?.contains("favoris") == true)
         press(Key.DirectionCenter)
         assertEquals(1, toggles)
+    }
+
+    /**
+     * Titres similaires : OK tenu sur une affiche l'ajoute aux favoris (étoile) sans l'ouvrir, comme à l'accueil ; un
+     * appui court l'ouvre.
+     */
+    @Test
+    fun holdingOkOnASimilarTitleTogglesItsFavorite() {
+        val similar = SampleData.movies.take(6).map { PosterItem(it.id, ContentKind.MOVIE, it.itemKey, it.title, it.year, it.logoUrl) }
+        var movie by mutableStateOf(SampleData.movieDetail.copy(similar = similar))
+        val toggled = mutableListOf<String>()
+        val opened = mutableListOf<String>()
+        compose.setContent {
+            NexTvTheme(ThemeStyle.NIGHT) {
+                StreamingDetailContent(
+                    state = movie,
+                    kind = ContentKind.MOVIE,
+                    window = rememberWindowInfo(),
+                    onPlay = {},
+                    onResume = {},
+                    onRestart = {},
+                    onToggleFavorite = {},
+                    onSelectSeason = {},
+                    onOpenItem = { opened += it.itemKey },
+                    onToggleSimilarFavorite = {
+                        toggled += it.itemKey
+                        movie = movie.copy(favoriteKeys = movie.favoriteKeys + it.itemKey)
+                    },
+                )
+            }
+        }
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
+        // ↓ : les titres similaires (pas de distribution sur cette fiche).
+        press(Key.DirectionDown)
+        val focused = focusedText()
+        println("↓ : $focused")
+        val poster = similar.firstOrNull { focused?.contains(it.title) == true }
+        assertTrue("↓ : $focused", poster != null)
+        holdOk()
+        println("OK tenu : favoris $toggled, ouverts $opened")
+        assertEquals(listOf(poster!!.itemKey), toggled)
+        assertEquals(emptyList<String>(), opened)
+        // La sélection reste sur l'affiche ; un appui court l'ouvre.
+        assertTrue("Après l'appui long : ${focusedText()}", focusedText()?.contains(poster.title) == true)
+        ok(KeyEvent.ACTION_DOWN)
+        ok(KeyEvent.ACTION_UP)
+        compose.waitForIdle()
+        assertEquals(listOf(poster.itemKey), opened)
+        assertEquals(1, toggled.size)
     }
 
     @Test

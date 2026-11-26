@@ -39,6 +39,8 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -102,7 +104,8 @@ import java.text.NumberFormat
  * droite (sa bande-annonce y démarre selon les réglages, muette ou non, bouton « Son »), fondu dans le
  * fond ; à gauche l'affiche, le titre, la note, l'année, les genres, la durée, l'accroche et le résumé,
  * puis « Reprendre » / « Regarder », « Depuis le début » et « Favoris ». Série : les saisons et leurs épisodes en
- * vignettes (déjà vus, en cours) ; puis les titres similaires, et tout en bas la bande-annonce.
+ * vignettes (déjà vus, en cours) ; puis les titres similaires (appui long : ajoutés aux favoris ou retirés), et tout
+ * en bas la bande-annonce.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -120,6 +123,10 @@ internal fun StreamingDetailContent(
     trailerAlternatives: suspend () -> List<Pair<String, String?>> = { emptyList() },
     /** Film en plusieurs versions : passe à la suivante. */
     onNextVersion: () -> Unit = {},
+    /** Appui long sur un titre similaire : ajouté aux favoris ou retiré. */
+    onToggleSimilarFavorite: (PosterItem) -> Unit = {},
+    /** Messages de la fiche (titre similaire ajouté aux favoris…), en bas de l'écran. */
+    snackbarHostState: SnackbarHostState? = null,
 ) {
     val colors = MaterialTheme.colorScheme
     val background = colors.background
@@ -300,9 +307,10 @@ internal fun StreamingDetailContent(
                                 StreamingPoster(
                                     similar.title,
                                     similar.imageUrl,
-                                    isFavorite = false,
+                                    isFavorite = similar.itemKey in state.favoriteKeys,
                                     onClick = { onOpenItem(similar) },
-                                    onLongClick = null,
+                                    // OK tenu (ou appui long au toucher) : ajouté aux favoris ou retiré, comme à l'accueil.
+                                    onLongClick = { onToggleSimilarFavorite(similar) },
                                     modifier = Modifier,
                                     width = 120.dp,
                                     watched = similar.kind == ContentKind.MOVIE && similar.itemKey in state.watched,
@@ -329,6 +337,7 @@ internal fun StreamingDetailContent(
             }
         }
         }
+        snackbarHostState?.let { SnackbarHost(it, Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp)) }
     }
     if (fullTrailer) {
         // Série : bande-annonce de la saison choisie si TMDB en a une.

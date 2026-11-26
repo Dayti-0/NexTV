@@ -102,6 +102,11 @@ fun DetailScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val layout by viewModel.layout.collectAsStateWithLifecycle()
     val window = rememberWindowInfo()
+    val snackbar = remember { SnackbarHostState() }
+    // Titre similaire ajouté aux favoris ou retiré (appui long) : message en bas de la fiche.
+    LaunchedEffect(viewModel) {
+        viewModel.messages.collect { snackbar.showSnackbar(it) }
+    }
     // Interface Streaming sur grand écran : fiche immersive (visuel, bande-annonce, épisodes en vignettes).
     if (layout == HomeLayout.STREAMING && window.isWide && !state.missing) {
         StreamingDetailContent(
@@ -116,10 +121,11 @@ fun DetailScreen(
             onOpenItem = { onOpenItem(it.id, it.kind) },
             trailerAlternatives = viewModel::trailerAlternatives,
             onNextVersion = viewModel::nextVersion,
+            onToggleSimilarFavorite = viewModel::toggleSimilarFavorite,
+            snackbarHostState = snackbar,
         )
         return
     }
-    val snackbar = remember { SnackbarHostState() }
     // Bande-annonce lue dans l'appli, en plein écran (une autre est essayée si elle ne se lit pas).
     var fullTrailer by remember { mutableStateOf<String?>(null) }
     DetailContent(
