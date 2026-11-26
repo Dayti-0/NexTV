@@ -290,6 +290,37 @@ Commandes :
   (« A / B » dans le titre) dont le même titre a commencé 1 h à 7 jours plus tôt dans le guide (`ProgrammeDao.airedBetween`),
   vu dans `PlayerViewModel.isRebroadcast` ; sur une rediffusion, pas de score dans le bandeau. Score « comme en direct »
   d'une rediffusion écarté : l'heure du coup d'envoi dans la rediffusion est inconnue (risque d'annoncer un but en avance).
+- Mi-temps (0.2.232) : temps restant avant la reprise à côté du badge du bandeau (`PlayerMatch.resumeAtMillis`, `MatchScore`),
+  estimé par `core/football/HalfTimes` (une seule pour l'appli, `AppContainer.halfTimes`, clé équipes + coup d'envoi) : les
+  scores (ESPN, football-data.org) disent seulement « mi-temps ». Pause vue commencer (dernier relevé « 44' » / « 45+x' » et
+  premier « mi-temps » à moins de 2 min) : entre les deux ; sinon coup d'envoi prévu + 45 + temps additionnel + 1 min 40 (à la
+  pause, ESPN garde la dernière minute de la première période, « 45' » ou « 45+2' » : `LiveScore.clock` la garde ; 2 min sans
+  elle). Reprise 16 min après (annonces d'ESPN espacées de 16 à 17 min) ; rien d'affiché une fois l'heure passée. Réglé sur
+  les 7 matchs de Ligue des champions du 25/11/2026 relevés toutes les 20 s.
+- Écran pendant les pubs (0.2.233, réglage `adScreen`, activé d'office ; seulement avec « Baisser le son des pubs ») :
+  `ui/player/AdBoardController.kt` (ouvert quand `adMuted`, direct lu par le lecteur de l'appli, image, sans erreur ; relit
+  toutes les 15 s guide, matchs en direct `liveScores.schedule` avec buteurs `ScheduledMatch.goals`, météo, morceau de la
+  radio des pubs ; à la fin d'une vraie page, sa durée → `AppContainer.noteAdBreak` / `core/audio/AdBreakDurations`,
+  médiane des 10 dernières par chaîne dès 3, préférences `ad_breaks`) et `AdBoardScreen.kt` (fond découpé à la place de la
+  pub : `clipPath` `Difference`, la vidéo est dessous). Image du direct : la même vue `AndroidView` réduite
+  (`AdBoardLayout.window`, 340 × 191 en haut à droite sur 960 × 540), jamais une autre surface. Fin annoncée par le flux :
+  `AdCues.announcedEnd` (`PlayerEngine.adCueRemainingMillis`). Touches (0.2.234) : OK = le bandeau habituel (l'écran
+  s'efface dessous, `dimmed`), Retour = `dismissAdBreak` (non compté) ; pas de « pub en grand » (retiré à la demande de
+  l'utilisateur), ni « reprend après la pub » / « à la place de la pub ». Morceau de la radio des pubs : suivi par
+  `PlayerViewModel.followAdMusicTrack` (titre ICY du flux `AdMusicPlayer.streamTitle`, sinon service de la radio), dans
+  `PlayerUiState.adMusicTrack`, montré aussi dans le badge « Pub : radio · morceau » sans l'écran. Image de fond : en vraie
+  qualité (24 points agrandis = gros carrés sur la box). Rond de chargement dans la fenêtre de la pub
+  (`PlayerOverlay.centerSpinner`). Barres de la radio : `AdMusicPlayer.spectrum` (`SpectrumTap`), horloge
+  `SystemClock.elapsedRealtimeNanos` comme `RadioVisualizer`, moyenne par groupe de bandes. Météo (0.2.234,
+  `AdBoardWeather.kt`) : fond selon le temps et jour / nuit, ressenti, vent, pluie, humidité, 5 heures, demain. Captures :
+  `stillAt` (sinon l'horloge et les barres empêchent le test de finir) ; maquettes et vidéo de démonstration :
+  `screenshots/AdBreakMockups.kt` (`AD_VIDEO=1`). Météo : `core/weather/Weather.kt` (Open-Meteo sans clé, gardée 30 min,
+  ville `weather_place` cherchée par son géocodage ; le cloud partagé atteint parfois la limite du jour : ne pas s'en
+  inquiéter, chaque télé a la sienne).
+- Rediffusion d'un match : un match des scores en direct dont le coup d'envoi tombe dans le programme (jusqu'à 45 min avant
+  son début) est le direct, même si le guide a déjà eu ce titre plus tôt (avant-match sous le titre du match : PSG – Roma
+  « Rediffusion » sans score le 25/11/2026). Le flux nommé « Canal+ Sport 2 » du fournisseur montrait ce soir-là le logo
+  « +LIVE 2 » (Lille – Bayern) pendant que le guide annonçait PSG – Roma : erreur du flux ou du guide, pas de l'appli.
 - Année de sortie dans la fiche programme : celle du guide (`<date>`, la moitié des films de xmltvfr), sinon celle de la
   fiche TMDB du même titre (`rememberProgrammeYear`, `sameTitleYear` dans `ProgrammeArt.kt`, même cache que l'image).
 - Fun Radio / RTL2 : `icecast.funradio.fr` redirige vers `streaming-ice.audiomeans.fr` (paramètres AdsWizz `aw_…` : pubs
@@ -342,6 +373,14 @@ Commandes :
   d'une catégorie choisie vide moins de 1,5 s (`EMPTY_LIST_CONFIRM_MILLIS`) : pas prise pour une catégorie vide (le volet
   restait ouvert sur la box, cause exacte non reproduite). Rangées de Streaming : `LazyListState` créé sur la rangée de
   `lastOpened` (en plus de `RestoreRow`) ; saut « haut de page → rangée » vu en vidéo sur la box, non reproduit ici.
+- Matchs dans le lecteur (0.2.235) : le calcul de la section Foot est partagé (`ui/football/FootballMatchesFeed.kt`, sorti
+  de `FootballViewModel`) ; `ChannelMenuController.liveMatches` le suit tant que le menu est ouvert ou qu'un match est
+  regardé (`state.match`), un calcul par playlist (`feeds`). Chaque match en direct (`menuMatchesOf` : coup d'envoi passé ou
+  dans 15 min, pas fini, au moins une chaîne) = `Category.Match` en tête du menu (◀ ▶ entre les matchs), chaînes par
+  `ChannelDao.channelRowsById` dans l'ordre du match (`MatchRows`). Zapping : `activeMatch` = match choisi (`zapMatch` :
+  section Foot via `AppContainer.pendingMatch` / `FootballViewModel.prepareMatch`, ou catégorie du menu), sinon le match en
+  direct sur la chaîne regardée ; ▲ ▼ font le tour de ses chaînes ; une chaîne choisie dans une autre catégorie le coupe.
+  Bandeau : `matchPosition` (« Chaîne 2 sur 4 du match »). `Category.Match` n'existe pas à l'accueil (branches vides).
 - Zapping (haut/bas, chaîne +/-) : `PlayerViewModel.zap` reste, en boucle, dans la liste d'où la chaîne a été ouverte :
   favoris (`ARG_FAVORITES`), catégorie (`ARG_GROUP` : `Routes.groupPlayer`, depuis `HomeActions.onPlayGroupChannel` et le
   guide), sinon toutes les chaînes ; `playFromMenu` prend la catégorie du menu. Requêtes `ChannelDao.nextChannelId` /

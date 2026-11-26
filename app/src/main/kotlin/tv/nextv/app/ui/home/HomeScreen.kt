@@ -1383,6 +1383,8 @@ internal fun railIndexOf(category: Category, groups: List<GroupRow>, recent: Boo
         Category.ContinueWatching -> if (recent) 2 else 1
         Category.All -> beforeAll
         is Category.Group -> groups.indexOfFirst { it.title.orEmpty() == category.title }.let { if (it < 0) 0 else beforeAll + 1 + it }
+        // Catégorie d'un match : menu du lecteur seulement.
+        is Category.Match -> 0
     }
 }
 
@@ -1417,6 +1419,7 @@ private fun SectionBody(
                 Category.Recent -> recentCount
                 Category.All -> allCount
                 is Category.Group -> groups.firstOrNull { it.title.orEmpty() == category.title }?.count ?: 0
+                is Category.Match -> 0
             },
         )
         val reorderButton: (@Composable () -> Unit)? = if (category == Category.Favorites && favoritesCount > 1) {
@@ -1499,6 +1502,7 @@ internal fun categoryTitle(section: HomeSection, category: Category): String = w
     Category.Recent -> stringResource(R.string.home_recent)
     Category.All -> allLabel(section)
     is Category.Group -> category.title.ifEmpty { stringResource(R.string.channels_no_group) }
+    is Category.Match -> category.label
 }
 
 @Composable

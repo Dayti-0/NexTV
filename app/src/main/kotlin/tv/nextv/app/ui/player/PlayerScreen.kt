@@ -26,7 +26,10 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.width
@@ -169,6 +172,8 @@ fun PlayerScreen(
     val menu by viewModel.menu.collectAsStateWithLifecycle()
     val menuGroups by viewModel.menuGroups.collectAsStateWithLifecycle()
     val menuFavorites by viewModel.menuFavorites.collectAsStateWithLifecycle()
+    val menuMatches by viewModel.menuMatches.collectAsStateWithLifecycle()
+    val menuMatchRows by viewModel.menuMatchRows.collectAsStateWithLifecycle()
     val menuChannels = viewModel.menuChannels.collectAsLazyPagingItems()
     val programmeSheet by viewModel.programmeSheet.collectAsStateWithLifecycle()
     val menuProgramme by viewModel.menuProgramme.collectAsStateWithLifecycle()
@@ -197,6 +202,11 @@ fun PlayerScreen(
 
     // Bandeau et touches du lecteur : direct, et replay (programme lu depuis l'enregistrement du serveur).
     val bannerMode = state.isLive || state.replay != null
+
+    // Écran pendant les pubs : la pub en petit dans un coin, le reste autour. OK : le bandeau, comme d'habitude ; Retour :
+    // « ce n'est pas une pub ». Écran en largeur seulement (télé, tablette couchée).
+    val landscape = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    val boardShown = state.adBoard != null && landscape && !menu.open
 
     // Lecture en pause (direct, replay, film…) : icône au centre de l'écran.
     var playWhenReady by remember(activePlayer) { mutableStateOf(activePlayer?.playWhenReady ?: true) }
@@ -261,6 +271,8 @@ fun PlayerScreen(
     // Premier « Retour » : menu des chaînes (sans interrompre la lecture) ; second : fermeture du menu.
     BackHandler(enabled = menu.open) { viewModel.closeMenu() }
     BackHandler(enabled = !menu.open && state.isLive) { viewModel.openMenu() }
+    // Écran des pubs affiché : « Retour » dit que ce n'est pas une pub (le son et l'image reviennent).
+    BackHandler(enabled = boardShown) { viewModel.dismissAdBreak() }
     // Film : « Retour » masque d'abord les commandes.
     BackHandler(enabled = film && filmControls && !optionsVisible && !menu.open && state.upNext == null) { filmControls = false }
     // Déclaré en dernier : prioritaire, « Retour » ferme d'abord le panneau d'infos.
@@ -458,32 +470,43 @@ fun PlayerScreen(
                 sampler.release()
             }
         }
-        AndroidView(
-            factory = { viewContext ->
-                VideoViews.create(viewContext).apply {
-                    layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-                    // Commandes dessinées par NixTV (direct, replay, films) : jamais celles de Media3.
-                    useController = false
-                    isFocusable = false
-                    descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
-                    playerView = this
-                }
-            },
-            update = { view ->
-                // Pause, différé, saut dans un replay : la dernière image reste affichée pendant le changement de flux.
-                view.setKeepContentOnPlayerReset(state.paused || state.liveDelayMs > 0 || state.seekable)
-                view.keepScreenOn = keepScreenOn
-                // Direct rendu à l'accueil (retour) : son image reste ici jusqu'à ce que l'aperçu la prenne.
-                VideoViews.bind(view, player)
-                view.resizeMode = when (aspect) {
-                    AspectMode.FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    AspectMode.FILL -> AspectRatioFrameLayout.RESIZE_MODE_FILL
-                    AspectMode.ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                }
-            },
-            onRelease = { view -> VideoViews.release(view) },
-            modifier = Modifier.fillMaxSize(),
-        )
+        // Image du direct : en plein écran, ou réduite à la place de la pub sur l'écran des pubs (la même vue, seulement plus
+        // petite : jamais une autre surface donnée au décodeur).
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val boardWindow = AdBoardLayout.window(maxWidth, maxHeight)
+            AndroidView(
+                factory = { viewContext ->
+                    VideoViews.create(viewContext).apply {
+                        layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                        // Commandes dessinées par NixTV (direct, replay, films) : jamais celles de Media3.
+                        useController = false
+                        isFocusable = false
+                        descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+                        playerView = this
+                    }
+                },
+                update = { view ->
+                    // Pause, différé, saut dans un replay : la dernière image reste affichée pendant le changement de flux.
+                    view.setKeepContentOnPlayerReset(state.paused || state.liveDelayMs > 0 || state.seekable)
+                    view.keepScreenOn = keepScreenOn
+                    // Direct rendu à l'accueil (retour) : son image reste ici jusqu'à ce que l'aperçu la prenne.
+                    VideoViews.bind(view, player)
+                    view.resizeMode = when (aspect) {
+                        AspectMode.FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        AspectMode.FILL -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+                        AspectMode.ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                    }
+                },
+                onRelease = { view -> VideoViews.release(view) },
+                modifier = if (boardShown) {
+                    Modifier
+                        .offset(x = boardWindow.left, y = boardWindow.top)
+                        .size(boardWindow.right - boardWindow.left, boardWindow.bottom - boardWindow.top)
+                } else {
+                    Modifier.fillMaxSize()
+                },
+            )
+        }
 
         // Moteur VLC : son image, par-dessus (le lecteur de l'appli est arrêté).
         vlc?.let { playback ->
@@ -545,6 +568,20 @@ fun PlayerScreen(
             }
         }
 
+        // Écran pendant les pubs, autour de l'image réduite (gardé le temps de son fondu de sortie).
+        var lastBoard by remember { mutableStateOf<AdBoard?>(null) }
+        state.adBoard?.let { lastBoard = it }
+        AnimatedVisibility(visible = boardShown, enter = fadeIn(), exit = fadeOut()) {
+            lastBoard?.let { board ->
+                // Bandeau affiché (OK) : l'écran s'efface en dessous, pour qu'il se lise bien.
+                AdBoardScreen(
+                    board, state.channelName, state.logoUrl, viewModel.adMusicSpectrum, lowPower,
+                    dimmed = bannerVisible,
+                    buffering = state.buffering && state.error == null,
+                )
+            }
+        }
+
         // Film ou épisode : commandes NixTV.
         if (film) {
             FilmControls(
@@ -574,6 +611,7 @@ fun PlayerScreen(
             onOpenMenu = viewModel::openMenu,
             onInfo = { infoVisible = !infoVisible },
             onBackToLive = if (canGoLive) viewModel::backToLive else null,
+            centerSpinner = !boardShown,
         )
 
         // Saut en cours (« +30 s »), avance / retour rapide ou pause : en grand au centre de l'écran (film avec ses
@@ -663,13 +701,15 @@ fun PlayerScreen(
 
         // Pub détectée : son baissé, signalé discrètement en haut à gauche.
         AnimatedVisibility(
-            visible = state.adMuted && !menu.open,
+            visible = state.adMuted && !menu.open && !boardShown,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.align(Alignment.TopStart).padding(24.dp),
         ) {
             StatusPill(
-                state.adMusic?.let { stringResource(R.string.player_ad_music_playing, it) } ?: stringResource(R.string.player_ad_muted),
+                // Radio (ou votre musique) et son morceau en cours, quand il est connu.
+                state.adMusic?.let { name -> stringResource(R.string.player_ad_music_playing, listOfNotNull(name, state.adMusicTrack?.label).joinToString("  ·  ")) }
+                    ?: stringResource(R.string.player_ad_muted),
                 NexTvColors.Warning,
             )
         }
@@ -729,6 +769,8 @@ fun PlayerScreen(
             favorites = menuFavorites,
             now = now,
             onCategory = viewModel::selectMenuCategory,
+            matches = menuMatches,
+            matchRows = menuMatchRows,
             onPlay = viewModel::playFromMenu,
             onProgramme = viewModel::showProgramme,
             programme = menuProgramme,
@@ -1070,6 +1112,8 @@ fun PlayerOverlay(
     onOpenMenu: () -> Unit = {},
     onInfo: () -> Unit = {},
     onBackToLive: (() -> Unit)? = null,
+    /** Rond de chargement au centre de l'écran (pendant l'écran des pubs, il est dans la fenêtre de la pub). */
+    centerSpinner: Boolean = true,
 ) {
     val window = rememberWindowInfo()
     Box(Modifier.fillMaxSize()) {
@@ -1120,7 +1164,7 @@ fun PlayerOverlay(
             }
         }
 
-        if (state.buffering && state.error == null) {
+        if (state.buffering && state.error == null && centerSpinner) {
             CircularProgressIndicator(Modifier.align(Alignment.Center).size(56.dp), color = NexTvColors.Primary, strokeWidth = 4.dp)
         }
 
@@ -1207,7 +1251,8 @@ private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Mo
                 if (programme.rebroadcast) StatusPill(stringResource(R.string.player_rebroadcast), NexTvColors.Warning)
                 Text(programme.title, style = MaterialTheme.typography.titleLarge, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            state.match?.let { MatchScore(it) }
+            state.match?.let { MatchScore(it, now) }
+            state.matchPosition?.let { MatchChannelsHint(it) }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.widthIn(max = 640.dp)) {
                 Text(timeOf(programme.startMillis), style = MaterialTheme.typography.labelLarge, color = Color.White)
                 LiveProgress(programme.startMillis, programme.stopMillis, watched, Modifier.weight(1f))
@@ -1220,7 +1265,10 @@ private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Mo
             }
         }
         // Chaîne « événement » (DAZN LALIGA… LIVE MATCH) : pas de programme dans le guide, le match seul.
-        if (state.now == null) state.match?.let { MatchScore(it) }
+        if (state.now == null) {
+            state.match?.let { MatchScore(it, now) }
+            state.matchPosition?.let { MatchChannelsHint(it) }
+        }
         state.next?.let { programme ->
             Text(
                 stringResource(R.string.player_next, timeOf(programme.startMillis), programme.title),
@@ -1241,7 +1289,7 @@ private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Mo
 
 /** Match en cours sur la chaîne : écussons, équipes et score (football-data.org). */
 @Composable
-private fun MatchScore(match: PlayerMatch) {
+private fun MatchScore(match: PlayerMatch, now: Long) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         match.homeCrest?.let { ChannelLogo(it, match.home, Modifier.size(32.dp), monogramSize = 11.dp) }
         Text(match.home, style = MaterialTheme.typography.titleMedium, color = Color.White, maxLines = 1)
@@ -1255,7 +1303,28 @@ private fun MatchScore(match: PlayerMatch) {
         // Minute de jeu ou mi-temps.
         val minute = if (match.halfTime) stringResource(R.string.football_half_time) else match.clock
         minute?.let { StatusPill(it, NexTvColors.Live) }
+        // Mi-temps : temps estimé avant la reprise (minute entamée comptée), rien une fois l'heure passée.
+        match.resumeAtMillis?.takeIf { match.halfTime && it > now }?.let { resumeAt ->
+            val minutes = (resumeAt - now + 59_999) / 60_000
+            Text(
+                stringResource(R.string.player_half_time_resume, formatDuration(minutes * 60_000)),
+                style = MaterialTheme.typography.labelLarge,
+                color = Color.White.copy(alpha = 0.85f),
+                maxLines = 1,
+            )
+        }
     }
+}
+
+/** Match sur plusieurs chaînes : « Chaîne 2 sur 4 du match · ▲ ▼ autres chaînes · Retour : autres matchs ». */
+@Composable
+private fun MatchChannelsHint(position: MatchPosition) {
+    Text(
+        stringResource(R.string.player_match_channels, position.index, position.count),
+        style = MaterialTheme.typography.labelMedium,
+        color = Color.White.copy(alpha = 0.8f),
+        maxLines = 1,
+    )
 }
 
 /** Débit mesuré, en Mbit/s. */
@@ -1291,6 +1360,9 @@ fun ChannelMenu(
     /** Programme de la chaîne sélectionnée, montré en grand à côté de la liste (écran large). */
     programme: MenuProgramme? = null,
     onFocusChannel: (ChannelListRow) -> Unit = {},
+    /** Matchs en direct : une catégorie chacun, en tête (◀ ▶ de l'un à l'autre), avec les chaînes du match affiché. */
+    matches: List<MenuMatch> = emptyList(),
+    matchRows: MatchRows? = null,
 ) {
     val window = rememberWindowInfo()
     val listState = rememberLazyListState()
@@ -1299,14 +1371,27 @@ fun ChannelMenu(
     val panelFocus = remember { FocusRequester() }
     val chipsState = rememberLazyListState()
     val favoritesMode = menu.category == Category.Favorites
-    val categories = remember(groups) { listOf(Category.Favorites, Category.All) + groups.map { Category.Group(it.title.orEmpty()) } }
+    val matchMode = menu.category is Category.Match
+    // Liste fixe (pas de pages) : favoris, ou chaînes d'un match.
+    val fixedMode = favoritesMode || matchMode
+    val fixedRows = when {
+        favoritesMode -> favorites
+        matchMode -> matchRows?.takeIf { it.category == menu.category }?.rows.orEmpty()
+        else -> emptyList()
+    }
+    val categories = remember(groups, matches) {
+        matches.map { it.category } + listOf(Category.Favorites, Category.All) + groups.map { Category.Group(it.title.orEmpty()) }
+    }
     var categoryChanges by remember { mutableIntStateOf(0) }
     var focusPlaced by remember { mutableStateOf(false) }
     var panelFocused by remember { mutableStateOf(false) }
 
     /** Vrai quand la liste affichée est celle de la catégorie choisie (et pas encore la précédente). */
-    fun listReady(category: Category): Boolean =
-        category == Category.Favorites || (channels.itemCount > 0 && channels.peek(0)?.category == category)
+    fun listReady(category: Category): Boolean = when (category) {
+        Category.Favorites -> true
+        is Category.Match -> matchRows?.category == category
+        else -> channels.itemCount > 0 && channels.peek(0)?.category == category
+    }
 
     // À l'ouverture : chaîne en cours visible et sélectionnée.
     LaunchedEffect(menu.open) {
@@ -1325,8 +1410,8 @@ fun ChannelMenu(
     // Programmes en cours de la liste : lus dans la base avec l'heure de son chargement. Une fois l'un d'eux
     // terminé (minuit…), la ligne restait sans programme : la liste est relue dès qu'un programme affiché
     // est fini (aussi à l'ouverture, liste chargée plus tôt), et de temps en temps pour ceux qui commencent.
-    LaunchedEffect(menu.open, focusPlaced, favoritesMode) {
-        if (!menu.open || !focusPlaced || favoritesMode) return@LaunchedEffect
+    LaunchedEffect(menu.open, focusPlaced, fixedMode) {
+        if (!menu.open || !focusPlaced || fixedMode) return@LaunchedEffect
         var lastRefresh = System.currentTimeMillis()
         while (true) {
             val clock = System.currentTimeMillis()
@@ -1403,6 +1488,13 @@ fun ChannelMenu(
                                 length = CHIPS_EDGE,
                             ),
                     ) {
+                        // Matchs en direct : « ⚽ PSG – Roma · 2 – 2 ».
+                        items(matches, key = { "match:" + it.category.key }) { match ->
+                            MenuChip(
+                                listOfNotNull("⚽ " + match.category.label, match.score, match.minute).joinToString("  ·  "),
+                                menu.category == match.category,
+                            ) { onCategory(match.category) }
+                        }
                         item { MenuChip(stringResource(R.string.home_favorites), favoritesMode, star = true) { onCategory(Category.Favorites) } }
                         item { MenuChip(stringResource(R.string.channels_all_short), menu.category == Category.All) { onCategory(Category.All) } }
                         items(groups, key = { it.title ?: "\u0000" }) { group ->
@@ -1435,18 +1527,18 @@ fun ChannelMenu(
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                     modifier = Modifier.fillMaxSize(),
                 ) {
-                    if (favoritesMode) {
-                        if (favorites.isEmpty()) {
+                    if (fixedMode) {
+                        if (fixedRows.isEmpty() && (favoritesMode || matchRows?.category == menu.category)) {
                             item {
                                 Text(
-                                    stringResource(R.string.favorites_empty_channels),
+                                    stringResource(if (matchMode) R.string.player_match_no_channel else R.string.favorites_empty_channels),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(16.dp),
                                 )
                             }
                         }
-                        items(favorites.size, key = { favorites[it].id }) { index -> rowFor(index, favorites[index]) }
+                        items(fixedRows.size, key = { fixedRows[it].id }) { index -> rowFor(index, fixedRows[index]) }
                     } else {
                         items(count = channels.itemCount, key = channels.itemKey { it.row.id }) { index ->
                             channels[index]?.let { rowFor(index, it.row) }

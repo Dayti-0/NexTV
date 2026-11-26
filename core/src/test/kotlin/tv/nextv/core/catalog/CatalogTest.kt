@@ -303,6 +303,23 @@ class ContentClassifierTest {
     }
 
     @Test
+    fun `dolby vision mentions are removed from film titles`() {
+        // « [VISION] » : copie en Dolby Vision. Cherché tel quel, « Dune - [VISION] » donnait une animation d'une minute
+        // de 1990 portant ce nom (photo du 25/11/2026) au lieu du film.
+        assertEquals("Dune", movie("Dune - [VISION]").title)
+        val second = movie("Dune : Deuxième partie - [VISION] (2024)")
+        assertEquals("Dune : Deuxième partie", second.title)
+        assertEquals(2024, second.year)
+        assertEquals("Avatar", movie("Avatar [DOLBY VISION]").title)
+        assertEquals("Avatar", movie("Avatar (Vision)").title)
+        // « Vision » hors d'une mention entre crochets fait partie du titre.
+        assertEquals("Tunnel Vision", movie("Tunnel Vision (2023)").title)
+        assertEquals("Vision", movie("Vision").title)
+        // Reprise enregistrée sous l'ancien titre : retrouvée.
+        assertEquals("dune", ContentClassifier.withoutVersionWords("dune vision", movie = true))
+    }
+
+    @Test
     fun `parentheses that belong to the title are kept`() {
         val series = ContentClassifier.classify("Rick and Morty (US) S01E02", "http://p.example/series/u/p/4.mkv", "SERIES | ANIMATION")
         assertEquals("Rick and Morty (US)", series.title)

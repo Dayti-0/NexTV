@@ -52,10 +52,19 @@ object ContentClassifier {
     private val RELEASE_WORDS = setOf(
         "HDLIGHT", "LIGHT", "BLURAY", "BDRIP", "BRRIP", "WEBRIP", "WEBDL", "WEB", "DL", "DVDRIP", "HDRIP", "REMUX", "CAM", "HDCAM",
         "TS", "HDTS", "MD", "AC3", "DTS", "AAC", "10BIT", "TRUE",
+        // Copie en Dolby Vision : « [VISION] », « [DOLBY VISION] ».
+        "VISION", "DOLBY",
     )
 
     /** Sources de copie sans autre sens possible : la parenthèse est retirée même sans mention de langue (« (BluRay 1080p) »). */
-    private val RELEASE_ONLY_WORDS = setOf("HDLIGHT", "BLURAY", "BDRIP", "BRRIP", "WEBRIP", "WEBDL", "DVDRIP", "HDRIP", "REMUX", "HDCAM", "HDTS")
+    private val RELEASE_ONLY_WORDS = setOf(
+        "HDLIGHT", "BLURAY", "BDRIP", "BRRIP", "WEBRIP", "WEBDL", "DVDRIP", "HDRIP", "REMUX", "HDCAM", "HDTS",
+        // « Dune - [VISION] » : copie en Dolby Vision (entre crochets ou parenthèses seulement ; « Tunnel Vision » reste).
+        "VISION",
+    )
+
+    /** Séparateur laissé seul en fin de titre une fois la mention retirée (« Dune - [VISION] » → « Dune - »). */
+    private val DANGLING_SEPARATOR = Regex("""\s+[\-–|:]+(?=\s*(?:\((?:19|20)\d{2}\))?\s*$)""")
     private val WORD = Regex("[\\p{L}\\p{Nd}+]+")
     private val YEAR_WORD = Regex("(?:19|20)\\d{2}")
 
@@ -202,6 +211,7 @@ object ContentClassifier {
         var title = name.trim()
         repeat(2) { title = LANGUAGE_PREFIX.replace(title, "") }
         title = stripVersionBrackets(title)
+        title = DANGLING_SEPARATOR.replace(title, "")
         title = TRAILING_NOISE.replace(title, "")
         title = QualityParser.parse(title).baseName.ifBlank { title }.trim()
         // « Avatar VOSTFR 4K » : la mention de version précédait celle de qualité.

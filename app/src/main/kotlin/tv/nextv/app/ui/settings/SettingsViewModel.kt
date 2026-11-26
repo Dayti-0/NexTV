@@ -561,6 +561,24 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch { settings.setLowerAdVolume(enabled) }
     }
 
+    /** Écran pendant les pubs (programme, foot, radio, météo autour de la pub en petit). */
+    val adScreen: StateFlow<Boolean> = settings.adScreen.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+
+    fun setAdScreen(enabled: Boolean) {
+        viewModelScope.launch { settings.setAdScreen(enabled) }
+    }
+
+    /** Ville de la météo de l'écran des pubs. */
+    val weatherPlace: StateFlow<tv.nextv.core.weather.WeatherPlace?> =
+        settings.weatherPlace.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** Villes trouvées pour [name] ; `null` : service injoignable. */
+    suspend fun searchWeatherPlaces(name: String): List<tv.nextv.core.weather.WeatherPlace>? = container.weather.search(name)
+
+    fun setWeatherPlace(place: tv.nextv.core.weather.WeatherPlace) {
+        viewModelScope.launch { settings.setWeatherPlace(place) }
+    }
+
     fun setStartOnLastChannel(enabled: Boolean) {
         viewModelScope.launch { settings.setStartOnLastChannel(enabled) }
     }

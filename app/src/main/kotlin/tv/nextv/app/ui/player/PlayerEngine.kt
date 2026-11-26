@@ -754,6 +754,14 @@ internal class PlayerEngine(
         adVolume.cueAt(position + CUE_LEAD_MILLIS)
     }
 
+    /** Temps restant de la page de pub en cours quand le flux en donne la durée (repères de la chaîne) ; `null` sinon. */
+    fun adCueRemainingMillis(): Long? {
+        val player = mutablePlayer.value ?: return null
+        if (!adVolume.enabled) return null
+        val position = periodPositionMs(player) ?: return null
+        return adVolume.cues.announcedEnd(position)?.minus(position)?.takeIf { it > 0 }
+    }
+
     /** Renforts de la détection des pubs (repères du flux, pubs connues), pour les infos de lecture. */
     fun adDetails(): AdDetails? = adVolume.details()
 

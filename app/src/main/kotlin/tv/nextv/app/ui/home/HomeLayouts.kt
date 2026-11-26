@@ -508,6 +508,8 @@ internal fun rowKeyOf(category: Category, content: ShelfContent, shelves: List<S
         Category.Recent -> "recent"
         Category.ContinueWatching -> "continue"
         is Category.Group -> content.groups.firstOrNull { it.title.orEmpty() == category.title }?.let { "group:" + (it.title ?: NO_GROUP_KEY) }
+        // Catégorie d'un match : menu du lecteur seulement.
+        is Category.Match -> null
     }
     return key?.takeIf { k -> shelves.any { it.key == k } }
 }

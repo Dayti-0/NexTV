@@ -30,6 +30,9 @@ data class Team(val name: String, val shortName: String?, val code: String?, val
 
 enum class MatchStatus { SCHEDULED, LIVE, FINISHED, POSTPONED, CANCELLED }
 
+/** But d'un match : minute (« 13' », « 90'+2' »), buteur (« A. Isak »), équipe qui marque, penalty, contre son camp. */
+data class MatchGoal(val minute: String, val scorer: String, val home: Boolean, val penalty: Boolean = false, val ownGoal: Boolean = false)
+
 /** Match programmé, d'après football-data.org. Score : en cours de match ou final, `null` avant le coup d'envoi. */
 data class ScheduledMatch(
     val id: Long,
@@ -40,10 +43,15 @@ data class ScheduledMatch(
     val away: Team,
     val homeScore: Int? = null,
     val awayScore: Int? = null,
-    /** Minute de jeu pendant le match (« 81' », « 45+2' »), si la source des scores la donne. */
+    /**
+     * Minute de jeu pendant le match (« 81' », « 45+2' »), si la source des scores la donne ; à la mi-temps, la
+     * dernière de la première période (temps additionnel, pour estimer la reprise).
+     */
     val clock: String? = null,
     /** Mi-temps. */
     val halfTime: Boolean = false,
+    /** Buts marqués, dans l'ordre (calendrier d'ESPN seulement). */
+    val goals: List<MatchGoal> = emptyList(),
 ) {
     /** En cours ou sur le point de commencer : le score change, il est redemandé plus souvent. */
     fun isActive(now: Long): Boolean =

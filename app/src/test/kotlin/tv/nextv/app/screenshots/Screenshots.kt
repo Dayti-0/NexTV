@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
@@ -825,6 +826,128 @@ abstract class ScreenshotSuite(private val device: String) {
     }
 
     @Test
+    fun playerHalfTime() = capture("13e2_lecteur_mi_temps") {
+        FakeVideo()
+        PlayerOverlay(
+            state = SampleData.player.copy(
+                match = PlayerMatch("PSG", "Marseille", null, null, "1 – 0", live = true, halfTime = true, resumeAtMillis = SampleData.NOW + 11 * 60_000L + 20_000),
+            ),
+            now = SampleData.NOW,
+            visible = true,
+            showTouchControls = false,
+            onBack = {},
+            onZap = {},
+            onRetry = {},
+        )
+    }
+
+    /** Écran pendant les pubs : la pub (fausse image) en haut à droite, le reste autour. */
+    @Test
+    fun adBoard() = capture("13e3_lecteur_ecran_pubs") { AdBoardSample(bannerShown = false) }
+
+    /** Écran pendant les pubs, bandeau du lecteur ouvert par OK : l'écran s'efface dessous. */
+    @Test
+    fun adBoardBanner() = capture("13e4_lecteur_ecran_pubs_bandeau") { AdBoardSample(bannerShown = true) }
+
+    @OptIn(coil3.annotation.ExperimentalCoilApi::class)
+    @Composable
+    private fun AdBoardSample(bannerShown: Boolean) {
+        val now = SampleData.NOW
+        // Image du programme fabriquée (pas de réseau dans les tests), à la taille d'une vraie image de fond.
+        val art = androidx.compose.runtime.remember {
+            android.graphics.Bitmap.createBitmap(1280, 720, android.graphics.Bitmap.Config.ARGB_8888).also { bitmap ->
+                val canvas = android.graphics.Canvas(bitmap)
+                canvas.drawColor(0xFF1E5F74.toInt())
+                val paint = android.graphics.Paint().apply { isAntiAlias = true }
+                paint.color = 0xFFF2A65A.toInt()
+                canvas.drawCircle(900f, 260f, 150f, paint)
+                paint.color = 0xFF133B4F.toInt()
+                canvas.drawRect(0f, 470f, 1280f, 720f, paint)
+                paint.color = 0xFF2E7D32.toInt()
+                canvas.drawCircle(300f, 560f, 220f, paint)
+            }
+        }
+        androidx.compose.runtime.CompositionLocalProvider(
+            androidx.compose.ui.platform.LocalInspectionMode provides true,
+            coil3.compose.LocalAsyncImagePreviewHandler provides coil3.compose.AsyncImagePreviewHandler { art.asImage() },
+        ) {
+            Box(Modifier.fillMaxSize()) {
+                androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+                    val rect = tv.nextv.app.ui.player.AdBoardLayout.window(maxWidth, maxHeight)
+                    Box(
+                        Modifier
+                            .padding(start = rect.left, top = rect.top)
+                            .size(rect.right - rect.left, rect.bottom - rect.top)
+                            .background(Brush.linearGradient(listOf(Color(0xFFFFD54F), Color(0xFFFF7043), Color(0xFFD81B60)))),
+                    )
+                }
+                tv.nextv.app.ui.player.AdBoardScreen(
+                    board = adBoardSampleData(now),
+                    channelName = "M6",
+                    logoUrl = null,
+                    spectrum = tv.nextv.core.audio.SpectrumAnalyzer(),
+                    lowPower = false,
+                    stillAt = now,
+                    dimmed = bannerShown,
+                )
+                if (bannerShown) {
+                    PlayerOverlay(
+                        state = SampleData.player.copy(adMuted = true),
+                        now = now,
+                        visible = true,
+                        showTouchControls = false,
+                        onBack = {},
+                        onZap = {},
+                        onRetry = {},
+                        centerSpinner = false,
+                    )
+                }
+            }
+        }
+    }
+
+    private fun adBoardSampleData(now: Long) = tv.nextv.app.ui.player.AdBoard(
+        sinceMillis = now - 80_000,
+        endMillis = now + 70_000,
+        programme = tv.nextv.app.ui.player.AdBoardProgramme(
+            "Zone interdite", now - 60 * 60_000L, now + 50 * 60_000L,
+            subtitle = "Vacances au camping : les nouveaux rois de l'été",
+            description = "Chaque été, des milliers de familles posent leurs valises dans les campings du littoral : enquête sur un secteur en plein essor.",
+            category = "magazine",
+            imageUrl = "https://exemple.invalid/programme.jpg",
+        ),
+        next = tv.nextv.app.ui.player.AdBoardProgramme("Enquête exclusive", now + 50 * 60_000L, now + 120 * 60_000L, category = "magazine"),
+        matches = listOf(
+            tv.nextv.app.ui.player.AdBoardMatch(
+                "PSG", "Roma", null, null, 2, 1, "67'", halfTime = false,
+                goals = listOf(
+                    tv.nextv.core.football.MatchGoal("12'", "L. Martin", home = true),
+                    tv.nextv.core.football.MatchGoal("38'", "M. Rossi", home = false),
+                    tv.nextv.core.football.MatchGoal("54'", "K. Diallo", home = true, penalty = true),
+                ),
+                onThisChannel = true,
+            ),
+            tv.nextv.app.ui.player.AdBoardMatch("Liverpool", "Bruges", null, null, 3, 0, "71'", halfTime = false, goalUntilMillis = now + 30_000),
+            tv.nextv.app.ui.player.AdBoardMatch("Bayern", "Lille", null, null, 1, 1, "45+1'", halfTime = true, resumeAtMillis = now + 9 * 60_000L),
+        ),
+        weather = tv.nextv.core.weather.Weather(
+            place = tv.nextv.core.weather.WeatherPlace("Paris", null, 48.85, 2.35),
+            temperature = 6, sky = tv.nextv.core.weather.Sky.SHOWERS, day = false, todayMin = 3, todayMax = 9,
+            hours = listOf(
+                tv.nextv.core.weather.WeatherHour(23, 5, tv.nextv.core.weather.Sky.RAIN, false, rainChance = 65),
+                tv.nextv.core.weather.WeatherHour(0, 5, tv.nextv.core.weather.Sky.SHOWERS, false, rainChance = 40),
+                tv.nextv.core.weather.WeatherHour(1, 4, tv.nextv.core.weather.Sky.CLOUDY, false, rainChance = 20),
+                tv.nextv.core.weather.WeatherHour(2, 4, tv.nextv.core.weather.Sky.PARTLY_CLOUDY, false, rainChance = 10),
+                tv.nextv.core.weather.WeatherHour(3, 3, tv.nextv.core.weather.Sky.CLEAR, false, rainChance = 5),
+            ),
+            tomorrowSky = tv.nextv.core.weather.Sky.PARTLY_CLOUDY, tomorrowMin = 4, tomorrowMax = 11,
+            feelsLike = 3, humidity = 94, windKmh = 18, todayRainChance = 100, tomorrowRainChance = 28,
+            sunrise = "08:14", sunset = "17:00",
+        ),
+        radio = tv.nextv.app.ui.player.AdBoardRadio("FIP Groove", title = "Move On Up", artist = "Curtis Mayfield"),
+    )
+
+    @Test
     fun playerInfo() = capture("13b_lecteur_infos") {
         FakeVideo()
         val state = SampleData.player.copy(bandwidthMbps = 21.6, receivedMbps = 14.2, quality = "4K", info = SampleData.playbackInfo)
@@ -878,6 +1001,30 @@ abstract class ScreenshotSuite(private val device: String) {
         Box(Modifier.fillMaxSize()) {
             ResumePromptCard(ResumePrompt("Enquêtes en série", "S01E08", 754_000, "S01E01"), onAnswer = {}, modifier = Modifier.align(Alignment.Center))
         }
+    }
+
+    /** Menu des chaînes pendant deux matchs : une catégorie par match en tête, celle du match regardé ouverte. */
+    @Test
+    fun playerMenuMatches() = capture("14b_lecteur_menu_matchs") {
+        FakeVideo()
+        val psg = tv.nextv.app.ui.home.Category.Match("CHAMPIONS_LEAGUE-1-PSG – Roma", "PSG – Roma")
+        val lille = tv.nextv.app.ui.home.Category.Match("CHAMPIONS_LEAGUE-2-Lille – Bayern", "Lille – Bayern")
+        val rows = SampleData.channels.take(3)
+        val channels = remember { flowOf(PagingData.empty<MenuChannel>()) }.collectAsLazyPagingItems()
+        ChannelMenu(
+            menu = SampleData.menu.copy(category = psg, currentChannelId = rows[1].id, currentItemKey = rows[1].itemKey),
+            groups = SampleData.groups,
+            channels = channels,
+            favorites = SampleData.favoriteChannels,
+            now = SampleData.NOW,
+            onCategory = {},
+            onPlay = {},
+            matches = listOf(
+                tv.nextv.app.ui.player.MenuMatch(psg, rows.map { it.id }, score = "2 – 2", minute = "86'"),
+                tv.nextv.app.ui.player.MenuMatch(lille, listOf(rows[0].id), score = "2 – 1", minute = "88'"),
+            ),
+            matchRows = tv.nextv.app.ui.player.MatchRows(psg, rows),
+        )
     }
 
     @Test

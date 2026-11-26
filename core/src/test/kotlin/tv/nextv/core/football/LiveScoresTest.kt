@@ -41,7 +41,8 @@ class LiveScoresTest {
         assertTrue(barca.inPlay)
         assertFalse(barca.halfTime)
         assertTrue(scores[1].halfTime)
-        assertNull(scores[1].clock)
+        // Dernière minute de la première période : temps additionnel, pour estimer la reprise.
+        assertEquals("45+2'", scores[1].clock)
         assertTrue(scores[2].finished)
         assertEquals("45+2'", scores[3].clock)
     }
@@ -157,6 +158,35 @@ class LiveScoresTest {
         assertNull(hamburg.homeScore)
         assertEquals("HSV", hamburg.home.code)
         assertEquals(MatchStatus.POSTPONED, celtic.status)
+    }
+
+    @Test
+    fun `schedule reads the scorers of each side`() {
+        // Forme relevée sur Bruges – Liverpool le 25/11/2026 (Liverpool à l'extérieur, identifiant 364).
+        val json = JSONObject(
+            """{"events":[{"id":"7","date":"2026-11-25T20:00Z","status":{"displayClock":"71'","type":{"name":"STATUS_SECOND_HALF","state":"in"}},
+             "competitions":[{"competitors":[
+               {"homeAway":"home","score":"1","team":{"id":"570","displayName":"Club Brugge"}},
+               {"homeAway":"away","score":"2","team":{"id":"364","displayName":"Liverpool"}}],
+              "details":[
+               {"type":{"id":"70","text":"Goal"},"clock":{"value":723.0,"displayValue":"13'"},"team":{"id":"364"},"scoringPlay":true,
+                "penaltyKick":false,"ownGoal":false,"shootout":false,"athletesInvolved":[{"displayName":"Alexander Isak","shortName":"A. Isak"}]},
+               {"type":{"id":"94","text":"Yellow Card"},"clock":{"displayValue":"63'"},"team":{"id":"364"},"scoringPlay":false,
+                "athletesInvolved":[{"shortName":"V. van Dijk"}]},
+               {"type":{"id":"98","text":"Penalty - Scored"},"clock":{"displayValue":"66'"},"team":{"id":"570"},"scoringPlay":true,
+                "penaltyKick":true,"ownGoal":false,"athletesInvolved":[{"shortName":"H. Vanaken"}]},
+               {"type":{"id":"70","text":"Goal"},"clock":{"displayValue":"70'"},"team":{"id":"364"},"scoringPlay":true,
+                "penaltyKick":false,"ownGoal":false,"athletesInvolved":[{"displayName":"Cody Gakpo"}]}]}]}]}""",
+        )
+        val goals = LiveScoreClient.parseSchedule(json, Competition.CHAMPIONS_LEAGUE).single().goals
+        assertEquals(
+            listOf(
+                MatchGoal("13'", "A. Isak", home = false),
+                MatchGoal("66'", "H. Vanaken", home = true, penalty = true),
+                MatchGoal("70'", "Cody Gakpo", home = false),
+            ),
+            goals,
+        )
     }
 
     @Test

@@ -48,6 +48,14 @@ class AdCues {
         return if (breaks.any { positionMs >= it.start && positionMs < it.end }) CueState.BREAK else CueState.PROGRAMME
     }
 
+    /**
+     * Fin annoncée par le flux (durée de la page, ou retour au programme déjà donné) de la page de pub en cours à
+     * [positionMs] ; `null` hors d'une page, ou quand le flux n'en a pas donné la fin.
+     */
+    @Synchronized
+    fun announcedEnd(positionMs: Long): Long? =
+        breaks.firstOrNull { it.closed && positionMs >= it.start && positionMs < it.end }?.end
+
     /** Pages de pub connues (début et fin, en millisecondes de lecture) : pour les essais. */
     @Synchronized
     fun intervals(): List<LongArray> = breaks.map { longArrayOf(it.start, it.end) }

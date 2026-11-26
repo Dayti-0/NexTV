@@ -4,8 +4,33 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
-## 0.2.232
+## 0.2.237
 - Enregistrement automatique pour l'analyse des pubs : la qualité change d'une chaîne à l'autre (de la plus basse à la meilleure), et chaque enregistrement note la qualité lue, pour comparer la détection selon la qualité
+
+## 0.2.236
+- Films en Dolby Vision (« Dune - [VISION] ») : la mention est retirée du titre, et la fiche est celle du vrai film (au lieu d'une animation d'une minute portant ce nom) ; la reprise de lecture est gardée
+
+## 0.2.235
+- Match sur plusieurs chaînes : pendant le match, ▲ ▼ passent d'une chaîne du match à l'autre (la première de la liste n'est pas toujours la bonne) ; le bandeau indique « Chaîne 2 sur 4 du match »
+- Plusieurs matchs en même temps : le menu des chaînes (Retour) a une catégorie par match en direct, en tête, avec le score et la minute ; ◀ ▶ passent d'un match à l'autre, ▲ ▼ parcourent ses chaînes ; le menu s'ouvre directement sur le match regardé
+- Match lancé depuis la section Foot : toutes ses chaînes suivent dans le lecteur
+
+## 0.2.234
+- Écran pendant les pubs : la météo est entièrement refaite (fond aux couleurs du temps, de jour comme de nuit ; ressenti, vent, risque de pluie, humidité ; cinq heures à venir avec leur risque de pluie ; demain avec ses températures)
+- Écran pendant les pubs : l'image de fond du programme est en vraie qualité (elle était pixellisée)
+- Écran pendant les pubs : OK affiche le bandeau, l'écran s'efface dessous ; les mentions « reprend après la pub » et « à la place de la pub » sont retirées
+- Radio pendant les pubs : le morceau en cours s'affiche, sur l'écran des pubs comme dans le petit badge « Pub » ; les barres suivent mieux la musique (elles restaient au maximum)
+- Le rond de chargement ne s'affiche plus au milieu de l'écran des pubs, mais dans la petite fenêtre de la pub
+
+## 0.2.233
+- Écran pendant les pubs (Réglages › Son et radios, activé d'office avec « Baisser le son des pubs ») : la pub continue en petit en haut à droite, et autour s'affichent le programme en cours et la suite, le foot en direct (score, minute, buteurs, « BUT ! » quand un but tombe pendant la pub, reprise de la mi-temps), la radio qui remplace le son de la pub (morceau, pochette, barres au rythme de la musique) et la météo ; il se referme tout seul à la fin de la pub
+- Durée de la pub sur cet écran : « depuis 1 min 20 » et la fin prévue (annoncée par la chaîne quand elle le fait, sinon d'après la durée habituelle de ses pubs, apprise au fil des soirées)
+- Touches pendant la pub : OK remet la pub en grand, Retour dit que ce n'est pas une pub
+- Météo : ville à choisir dans Réglages › Son et radios › Ville de la météo
+- Match en direct marqué « Rediffusion » (sans score) quand le guide avait déjà eu son titre plus tôt dans la soirée (PSG – Roma) : c'est corrigé, un match commencé pendant le programme est toujours le direct
+
+## 0.2.232
+- Match dans le bandeau du lecteur : pendant la mi-temps, le temps restant avant la reprise s'affiche à côté du badge « Mi-temps » (« Reprise dans 9 min » ; estimé, les scores en direct ne disent pas à quelle heure la pause a commencé)
 
 ## 0.2.231
 - Nombre de films (tuile du menu de Classique, « Tous les films ») : un film rangé dans deux catégories n'est plus compté deux fois (11 966 films annoncés au lieu de 12 419 sur une vraie playlist)

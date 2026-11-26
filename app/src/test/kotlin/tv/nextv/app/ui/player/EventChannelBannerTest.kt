@@ -1,6 +1,9 @@
 package tv.nextv.app.ui.player
 
 import android.app.Application
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -44,5 +47,32 @@ class EventChannelBannerTest {
         compose.onNodeWithText("Parma").assertIsDisplayed()
         compose.onNodeWithText("0 – 0").assertIsDisplayed()
         compose.onNodeWithText("45+3'").assertIsDisplayed()
+    }
+
+    @Test
+    fun `half-time shows the time left before the restart`() {
+        var now by mutableLongStateOf(SampleData.NOW)
+        compose.setContent {
+            NexTvTheme(ThemeStyle.NIGHT) {
+                PlayerOverlay(
+                    state = SampleData.player.copy(
+                        match = PlayerMatch("Parma", "Bologna", null, null, "1 – 0", live = true, halfTime = true, resumeAtMillis = SampleData.NOW + 8 * 60_000L + 30_000),
+                    ),
+                    now = now,
+                    visible = true,
+                    showTouchControls = false,
+                    onBack = {},
+                    onZap = {},
+                    onRetry = {},
+                )
+            }
+        }
+        compose.onNodeWithText("Mi-temps").assertIsDisplayed()
+        // Minute entamée comptée : 8 min 30 s → 9 min.
+        compose.onNodeWithText("Reprise dans 9 min").assertIsDisplayed()
+        // Heure de la reprise passée (pause prolongée) : plus de temps restant, le badge reste.
+        now = SampleData.NOW + 9 * 60_000L
+        compose.onNodeWithText("Mi-temps").assertIsDisplayed()
+        compose.onNodeWithText("Reprise dans", substring = true).assertDoesNotExist()
     }
 }

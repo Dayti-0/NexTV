@@ -10,11 +10,15 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import tv.nextv.app.data.settings.AdMusicLevel
+import tv.nextv.core.audio.SpectrumAnalyzer
 import tv.nextv.core.catalog.InternetRadios
 import java.io.File
 
@@ -160,13 +164,38 @@ class AdMusicPlayer(private val context: Context) {
         }
     }
 
-    private fun player(): ExoPlayer = player ?: ExoPlayer.Builder(context)
+    /** Son de la musique, pour les barres de l'écran des pubs (rien n'est calculé tant qu'il n'est pas affiché). */
+    val spectrum = SpectrumAnalyzer()
+
+    /** Titre donné par le flux de la radio (« Artiste - Titre », métadonnées ICY) ; `null` s'il n'en donne pas. */
+    val streamTitle: String?
+        get() = if (source is Source.Radio) player?.mediaMetadata?.title?.toString()?.trim()?.takeIf { it.isNotEmpty() } else null
+
+    /** Morceau de « Ma musique » en cours (nom du fichier, sans extension) ; `null` pour une radio. */
+    val currentTrack: String?
+        get() = if (source is Source.Tracks) {
+            player?.currentMediaItem?.localConfiguration?.uri?.lastPathSegment?.substringBeforeLast('.')?.replace('_', ' ')
+        } else {
+            null
+        }
+
+    private fun player(): ExoPlayer = player ?: ExoPlayer.Builder(context, spectrumRenderers())
         .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), false)
         .build()
         .also {
             it.addListener(listener)
             player = it
         }
+
+    /** Lecteur dont le son passe aussi par [spectrum]. */
+    private fun spectrumRenderers() = object : DefaultRenderersFactory(context) {
+        override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): AudioSink =
+            DefaultAudioSink.Builder(context)
+                .setEnableFloatOutput(enableFloatOutput)
+                .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                .setAudioProcessors(arrayOf(SpectrumTap(spectrum)))
+                .build()
+    }
 
     /** La pub commence : [wanted] monte en fondu (la radio est rouverte, la musique reprend où elle en était). */
     fun start(wanted: Source) {
