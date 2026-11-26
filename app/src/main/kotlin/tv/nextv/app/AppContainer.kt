@@ -316,6 +316,7 @@ class AppContainer(context: Context) {
             applicationScope,
             // Appareil d'environ 1 Go (Fire TV d'entrée de gamme) : moitié moins de pubs gardées (~2 Mo en mémoire).
             if (smallMemoryDevice(appContext)) AdPrintLibrary.DEFAULT_MAX_PRINTS / 2 else AdPrintLibrary.DEFAULT_MAX_PRINTS,
+            seed = { runCatching { appContext.assets.open(AdPrintStore.SEED_ASSET) }.getOrNull() },
         )
     }
 

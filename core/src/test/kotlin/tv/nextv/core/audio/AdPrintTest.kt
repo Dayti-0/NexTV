@@ -129,6 +129,31 @@ class AdPrintTest {
         assertFalse(AdPrintLibrary().restore(ByteArrayInputStream(byteArrayOf(1, 2, 3))))
     }
 
+    /**
+     * Bibliothèque fournie avec l'appli ajoutée à celle de l'appareil : ses pubs y sont reconnues, à l'essai, sans
+     * doublon de ce que l'appareil connaissait déjà, et sans vieillir la pub déjà apprise par l'appareil.
+     */
+    @Test
+    fun aSeedLibraryIsMergedWithoutDuplicates() {
+        val device = AdPrintLibrary()
+        val (known, knownLoud) = prints(ad(seed = 11, seconds = 15.0, rate = 48_000), 48_000)
+        device.learn(known, knownLoud, confirmed = true, now = 29_000_000)
+        val seed = AdPrintLibrary()
+        seed.learn(known, knownLoud, confirmed = false, now = 3)
+        val (fresh, freshLoud) = prints(ad(seed = 12, seconds = 15.0, rate = 48_000), 48_000)
+        seed.learn(fresh, freshLoud, confirmed = false, now = 4)
+        val pack = AdPrintLibrary(Int.MAX_VALUE).apply { restore(ByteArrayInputStream(seed.encode())) }
+        assertTrue(device.merge(pack) > 0)
+        assertEquals(2, device.size)
+        val match = device.match(fresh, freshLoud, AdPrintLibrary.BLOCK, 200)
+        assertNotNull(match)
+        assertFalse(match!!.chunk.confirmed)
+        // La pub déjà connue reste celle de l'appareil, sûre et récente.
+        val own = device.match(known, knownLoud, AdPrintLibrary.BLOCK, 200)!!.chunk
+        assertTrue(own.confirmed)
+        assertEquals(29_000_000L, own.lastUsed)
+    }
+
     @Test
     fun aKnownAdLowersTheSoundThroughTheGuard() {
         val library = AdPrintLibrary()

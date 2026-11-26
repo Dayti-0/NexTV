@@ -36,6 +36,15 @@ class AdPrintLibrary(private val maxPrints: Int = DEFAULT_MAX_PRINTS) {
     /** Morceaux connus. */
     val size: Int get() = table.chunks.size
 
+    /**
+     * Ajoute les pubs d'une autre mémoire (bibliothèque fournie avec l'appli) : ce qui n'est pas déjà connu, à l'essai,
+     * avec sa date. La bibliothèque fournie est datée de petits nombres (rang de l'enregistrement) : quand la place
+     * manque, les pubs apprises par l'appareil (datées en minutes) restent prioritaires, puis les plus récentes fournies.
+     * @return nombre d'empreintes nouvelles gardées.
+     */
+    fun merge(other: AdPrintLibrary): Int =
+        other.table.chunks.sumOf { chunk -> learn(chunk.prints, chunk.loud, confirmed = false, now = chunk.lastUsed) }
+
     /** Durée de pub connue, en secondes. */
     val seconds: Int get() = (table.chunks.sumOf { it.prints.size } / AudioFingerprinter.PER_SECOND).toInt()
 
@@ -105,7 +114,8 @@ class AdPrintLibrary(private val maxPrints: Int = DEFAULT_MAX_PRINTS) {
             val match = match(prints, loud, BLOCK, position)
             if (match != null) {
                 for (j in position until position + BLOCK) known[j] = true
-                match.chunk.lastUsed = now
+                // Jamais plus ancien : une pub de la bibliothèque fournie (petite date) ne vieillit pas celle de l'appareil.
+                match.chunk.lastUsed = maxOf(match.chunk.lastUsed, now)
                 if (confirmed) match.chunk.confirmed = true
             }
             position += BLOCK / 4

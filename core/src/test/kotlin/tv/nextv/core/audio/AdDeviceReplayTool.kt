@@ -219,7 +219,7 @@ class AdDeviceReplayTool {
     private fun buildSeed(paths: List<String>, out: File) {
         val library = AdPrintLibrary()
         var pages = 0
-        for (path in paths) {
+        for ((index, path) in paths.withIndex()) {
             val base = File(path).let { File(it.parentFile, it.name.removeSuffix(".zip")) }
             val truth = File("${base.path}.truth.tsv").takeIf { it.exists() }?.readLines()?.mapNotNull { line ->
                 val parts = line.trim().split(Regex("\\s+"))
@@ -227,10 +227,13 @@ class AdDeviceReplayTool {
             } ?: continue
             val recording = DeviceRecording.load(File(path))
             for ((from, to) in truth) {
-                // Une seconde de marge à chaque bout : le programme juste avant ou après n'entre pas dans la mémoire.
-                val inside = recording.prints.filter { it.time / 1_000.0 in (from + 1)..(to - 1) }
+                // Marge à chaque bout (`AD_SEED_MARGIN`, 5 s) : ni le programme juste avant ou après, ni les jingles et
+                // parrainages de la chaîne en bord de page (« ÉDITION » de CNews), reconnus ensuite au retour du programme.
+                val margin = System.getenv("AD_SEED_MARGIN")?.toDoubleOrNull() ?: 5.0
+                val inside = recording.prints.filter { it.time / 1_000.0 in (from + margin)..(to - margin) }
                 if (inside.size < AudioFingerprinter.PER_SECOND * 4) continue
-                library.learn(inside.map { it.print }.toIntArray(), inside.map { it.loud }.toBooleanArray(), confirmed = false, now = 0)
+                // Daté de son rang : la place manquant, ce sont les pubs des enregistrements les plus récents qui restent.
+                library.learn(inside.map { it.print }.toIntArray(), inside.map { it.loud }.toBooleanArray(), confirmed = false, now = index.toLong())
                 pages++
             }
         }
