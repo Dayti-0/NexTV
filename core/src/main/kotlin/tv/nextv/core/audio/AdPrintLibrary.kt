@@ -36,6 +36,9 @@ class AdPrintLibrary(private val maxPrints: Int = DEFAULT_MAX_PRINTS) {
     /** Morceaux connus. */
     val size: Int get() = table.chunks.size
 
+    /** Morceaux connus (lecture seule). */
+    fun chunks(): List<Chunk> = table.chunks
+
     /**
      * Ajoute les pubs d'une autre mémoire (bibliothèque fournie avec l'appli) : ce qui n'est pas déjà connu, à l'essai,
      * avec sa date. La bibliothèque fournie est datée de petits nombres (rang de l'enregistrement) : quand la place

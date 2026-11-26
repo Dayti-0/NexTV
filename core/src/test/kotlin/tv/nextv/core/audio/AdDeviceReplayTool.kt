@@ -241,6 +241,11 @@ class AdDeviceReplayTool {
                 pages++
             }
         }
+        // `AD_SEED_ADD` : autres mémoires à ajouter, les plus récentes (pages annoncées des directs RMC, `AdReplayTool`).
+        System.getenv("AD_SEED_ADD")?.split(':')?.filter { it.isNotBlank() }?.forEach { extra ->
+            val other = AdPrintLibrary(Int.MAX_VALUE).also { lib -> File(extra).inputStream().use { lib.restore(it) } }
+            other.chunks().forEach { chunk -> library.learn(chunk.prints, chunk.loud, confirmed = false, now = paths.size.toLong()) }
+        }
         out.writeBytes(library.encode())
         println("mémoire des pubs : $pages pages, ${library.size} morceaux, ${library.seconds} s de pub, ${out.length() / 1024} Ko")
     }
