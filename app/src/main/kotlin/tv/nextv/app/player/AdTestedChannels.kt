@@ -67,12 +67,12 @@ class AdTestedChannels(private val file: File) {
 
         /** Minutes déjà analysées par Claude, par numéro de la TNT (enregistrements du 15 au 19/11/2026, box et Fire TV). */
         val ANALYZED: Map<String, Int> = mapOf(
-            "tnt1" to 400, "tnt2" to 129, "tnt3" to 163, "tnt4" to 59, "tnt5" to 79, "tnt6" to 347, "tnt7" to 59,
-            "tnt8" to 54, "tnt9" to 218, "tnt10" to 127, "tnt11" to 287, "tnt12" to 95, "tnt13" to 136, "tnt14" to 145,
-            "tnt15" to 153, "tnt16" to 60, "tnt17" to 128, "tnt18" to 241, "tnt19" to 101, "tnt20" to 152, "tnt21" to 147,
-            "tnt22" to 143,
+            "tnt1" to 400, "tnt2" to 218, "tnt3" to 202, "tnt4" to 59, "tnt5" to 79, "tnt6" to 347, "tnt7" to 59,
+            "tnt8" to 54, "tnt9" to 218, "tnt10" to 169, "tnt11" to 287, "tnt12" to 95, "tnt13" to 136, "tnt14" to 145,
+            "tnt15" to 182, "tnt16" to 60, "tnt17" to 128, "tnt18" to 241, "tnt19" to 190, "tnt20" to 152, "tnt21" to 147,
+            "tnt22" to 167,
             // Chaînes RMC : directs publics notés avec les repères de pub de leur flux, puis enregistrements de la box.
-            "tnt23" to 215, "tnt24" to 181, "tnt25" to 259,
+            "tnt23" to 244, "tnt24" to 211, "tnt25" to 259,
         )
     }
 }

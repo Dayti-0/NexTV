@@ -405,6 +405,13 @@ Commandes :
 - Directs RMC (repères SCTE) : « programme baissé à tort » y est surtout des bandes-annonces, jeux et pubs que RMC
   n'annonce pas (vu sur les images le 26/11) ; bons pour comparer des qualités (1080p / 360p : 98 / 96 % baissées), pas
   pour compter les bandes-annonces. Enregistrement automatique (0.2.237) : qualité tournante, événement `qualite`.
+- Nuit du 25 au 26/11/2026 (box, 0.2.237, qualité tournante, 10 fichiers, vérités dans `tools/ad_truth/`) : appareil 86 %
+  des pubs baissées, 852 s de programme à tort (surtout Télématin de France 2 en FHD : logo vu présent / absent toutes les
+  30 s, pages rouvertes « logo reparti juste après son retour » ; piste : logo blanc sur le plateau très clair, sous
+  `LogoWatcher.WHITE_OUT` = 235 ; non reproduit par le rejeu, donc pas changé). Rejeu du code 0.2.238 (bibliothèque
+  fournie) : 88 %, 83 s à tort, délai 8 s. `AdDeviceReplayTool` garde ce qu'il apprend par chaîne **et qualité**
+  (événement `qualite`) comme l'appareil (un fichier par adresse de flux) : sinon le logo appris en FHD était cherché en SD
+  (France 2 : 460 s « à tort » qui n'existaient pas).
 - « Baisser le son des pubs » (direct et replay seulement, jamais un film : `PlayerEngine.adBreaks`) :
   `core/audio/AdVolumeGuard.kt` reconnaît les **jonctions** entre deux pubs — un silence complet pendant lequel l'image
   change de plan ou montre le carton de la chaîne (`SmallFrame`, images 96 × 54) — et décide selon le logo
