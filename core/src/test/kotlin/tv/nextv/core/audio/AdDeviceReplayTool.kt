@@ -73,10 +73,14 @@ class AdDeviceReplayTool {
                 // Chaîne de ce flux : notée par l'appareil juste après (sinon la même qu'avant : flux rouvert).
                 // Celle notée à partir de cet instant d'abord : un flux changé moins d'une seconde après le précédent ne doit
                 // pas prendre le nom de celui-ci (Gulli appris comme TF1).
-                channel = (
+                val name = (
                     recording.events.firstOrNull { it.second == "chaine" && it.first in at..at + 20_000 }
                         ?: recording.events.firstOrNull { it.second == "chaine" && it.first in at - 1_000..at }
-                    )?.third ?: channel
+                    )?.third ?: channel?.substringBefore(QUALITY_SEPARATOR)
+                // Qualité lue (0.2.237) : l'appareil garde ce qu'il apprend par flux, donc par qualité ; le logo appris en
+                // FHD ne se retrouve pas en SD (France 2 du 26/11/2026 : logo dit absent, programme baissé à tort).
+                val quality = recording.events.lastOrNull { it.second == "qualite" && it.first <= at + 20_000 }?.third
+                channel = name?.let { if (quality != null) "$it$QUALITY_SEPARATOR$quality" else it }
                 guard = AdVolumeGuard()
                 watcher = LogoWatcher(WIDTH, HEIGHT)
                 channel?.let(marks::get)?.let { known ->
@@ -360,6 +364,7 @@ class AdDeviceReplayTool {
     }
 
     private companion object {
+        const val QUALITY_SEPARATOR = " · "
         const val WIDTH = 480
         const val HEIGHT = 270
     }
