@@ -76,7 +76,10 @@ Commandes :
   le défilement n'est pas celui d'une télé.
 - Pour une capture ponctuelle dans un test temporaire, passer `-Proborazzi.test.record=true`.
 - Robolectric télécharge `android-all-instrumented` au premier test ; si Maven Central répond 429, le prendre sur
-  `maven-central.storage-download.googleapis.com/maven2/…` (avec son `.sha512`) dans `~/.m2/repository/` au même chemin.
+  `maven-central.storage-download.googleapis.com/maven2/…` (avec son `.sha512`) dans `~/.m2/repository/` au même chemin
+  (SDK 35 avec Robolectric 4.16 : `15-robolectric-13954326-i7`). Dépendances Gradle refusées (429) après un redémarrage du
+  conteneur : script `~/.gradle/init.d/central-mirror.gradle` hors du dépôt, qui met ce miroir en premier
+  (`settingsEvaluated { … repositories.addFirst(...) }`).
 - Image Coil dans une capture : `LocalInspectionMode` + `LocalAsyncImagePreviewHandler` (`Screenshots.radioVinylCover`),
   sans fondu (`crossfade`), sinon l'image reste transparente.
 
