@@ -14,15 +14,25 @@ Application IPTV Android en Kotlin / Jetpack Compose (Media3). Elle s'appelait N
   Demander sur quel appareil est prise une autre photo avant d'en tirer une cause propre à un modèle. Répondre en français, simplement, sans jargon.
 - Les tests sur l'appareil sont faits par lui : dire clairement ce qui a été vérifié ici (tests, captures) et ce
   qui reste à voir sur la télé.
-- Relais chez lui (23/11/2026) : un Raspberry Pi 4 (2 Go, Raspberry Pi OS Lite, nom `nixtv-pi`, utilisateur `nixtv-pi`)
-  sur le même réseau que les télés, avec `adb`, `git` et Claude Code lancé en `claude remote-control` dans `~/nixtv`
-  (dans `tmux`, à relancer après un redémarrage). Une session lancée dessus (`create_session` sur son environnement
-  « nixtv-pi », de type bridge) commande les télés par ADB : installer une version, lire `logcat`, faire des captures.
-  Box reliée (appli `tv.nextv.app`) ; les deux Fire TV restent à relier (débogage ADB à activer). Ne jamais écrire les
-  adresses du réseau de l'utilisateur dans le dépôt. Rien n'est désinstallé ni effacé sur les télés sans son accord.
+- Relais chez lui (réinstallé le 28/11/2026) : un Raspberry Pi 4 (2 Go, Raspberry Pi OS Lite 64 bits, Debian 13, nom
+  et utilisateur `nix`) sur le même réseau que les télés, avec `adb`, `git`, `tmux` et Claude Code lancé en
+  `claude remote-control` (mode « same-dir ») dans `~/nixtv`, clone public sans compte GitHub (`git pull` seulement),
+  dans la session `tmux` « claude ». Une session lancée dessus (`create_session` sur son environnement de type bridge
+  « nix:nixtv:… », à retrouver avec `list_environments`) commande les télés par ADB : installer une version, lire
+  `logcat`, faire des captures. Une session cloud doit d'abord y être autorisée par l'utilisateur
+  (`confirm_repository_trust`, une carte qu'il accepte). Session restée « en attente » : `remote-control` ne tourne plus
+  (arrêté par Ctrl+C ; pour sortir de tmux sans l'arrêter : Ctrl+B puis D, ou fermer la fenêtre SSH).
+  Reconnexion ADB automatique : `~/.local/bin/adb-box` (hors du dépôt, il contient les adresses), lancé chaque minute
+  par `cron`, reconnecte chaque télé de sa liste qui n'est plus en `device` ; `@reboot` relance `~/.local/bin/claude-relais`
+  dans `tmux`. Vérifié le 28/11 : les deux télés coupées reviennent seules en moins de 75 s. Reliées : box Pi 5 et
+  Fire TV Stick Lite (`AFTSS`, Android 9, 922 Mo, ~240 Mo libres) ; Fire TV 4K encore à relier (ajouter son adresse à
+  la liste d'`adb-box`). Fire TV : la fenêtre d'autorisation ADB n'apparaît que télé réveillée (écran d'accueil), au
+  moment du `adb connect`. Ne jamais écrire les adresses du réseau de l'utilisateur dans le dépôt. Rien n'est
+  désinstallé ni effacé sur les télés sans son accord.
   La session du Pi ne peut pas écrire à celle-ci : lire ses réponses avec `list_events` (types `result`, `assistant`).
   Sa sécurité refuse de changer un réglage de la box sur la seule demande d'une autre session : l'utilisateur le lui
-  confirme lui-même (règles `allow` dans `~/nixtv/.claude/settings.json` du Pi). Installer une version : APK officiel
+  confirme lui-même (règles `allow` / `ask` dans `~/nixtv/.claude/settings.local.json` du Pi : adb, curl, sha256sum,
+  git pull permis ; désinstaller ou effacer les données demande son accord). Installer une version : APK officiel
   `NexTV-vX.Y.Z.arm64-v8a.apk` de la version GitHub + `.sha256`, `adb install -r` (données gardées).
   Film de l'écran de la box (`screenrecord`) : pas d'encodeur matériel sur le Pi 5, 7 images/s en 1080p, 11 en 720p,
   16 en 540p ; bon pour l'analyse (640×360 toute une nuit, +12 % de processeur), pas pour une vidéo de présentation :
