@@ -7,6 +7,7 @@ d'installer la mise à jour (Réglages › Mise à jour), avec celles des versio
 ## 0.2.241
 - MMA : les vainqueurs d'un gala diffusé en différé restent cachés tant que la diffusion n'est pas finie (plus de surprise gâchée)
 - MMA : un gala dont seul le jour est connu prend l'heure de sa diffusion du soir (un programme du matin lui donnait parfois 11:21)
+- Interface Streaming : un titre long sur deux lignes en haut de page ne pousse plus le résumé sur la rangée « Top 10 »
 - Radios de la playlist : leur vrai nom (« EUROPE 1 RADIO » → « Europe 1 », « SkyRock FM » → « Skyrock ») ; les noms tout en majuscules s'écrivent normalement
 
 ## 0.2.240

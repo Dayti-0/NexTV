@@ -20,12 +20,12 @@ Sources :
 - ☑ (0.2.240) « Recherche Globale » → « Recherche globale ».
 - ☑ (0.2.240, marge entre les deux ; à revoir sur la télé) Menu des chaînes du lecteur : l'horloge chevauche la rangée des catégories (« Séries et divertisse… »), box et Fire TV.
 - ☑ (0.2.240, dégradé plus sombre dès le haut du texte) Bandeau du direct sans fond sombre sur la Fire TV (Classique) : texte blanc illisible sur une image claire.
-- ☐ Séries (Streaming) : haut de page tassé, le texte touche « Top 10 », titre de la série n° 1 coupé.
+- ☑ (0.2.241, une ligne de résumé de moins sous un titre sur deux lignes) Séries (Streaming) : haut de page tassé, le texte touche « Top 10 », titre de la série n° 1 coupé.
 - ☐ Bande-annonce de fond : gros bouton « pause » de YouTube visible 1 à 2 s.
 - ☑ (0.2.240, ligne réservée) Accueil Classique : les nombres (chaînes, films…) et la date d'abonnement arrivent ~3 s après, les titres sautent.
 - ☐ Aperçu noir et vide tant qu'aucune chaîne n'est sélectionnée (Classique, TV).
-- ☐ Radios de la playlist : noms en majuscules (« EUROPE 1 RADIO »), logo drapeau pour les HOTMIXRADIO.
-- ☐ MMA : « .. » devant les horaires de diffusion ; heure du gala Hexagone fausse (11:21 au lieu de 20:30).
+- ☑ (0.2.241 pour les noms ; logos HOTMIXRADIO pas encore) Radios de la playlist : noms en majuscules (« EUROPE 1 RADIO »), logo drapeau pour les HOTMIXRADIO.
+- ☑ (0.2.241 pour l'heure ; « .. » à décrire plus précisément) MMA : « .. » devant les horaires de diffusion ; heure du gala Hexagone fausse (11:21 au lieu de 20:30).
 - ☐ Fiche de film : l'étoile des favoris seule sur une deuxième ligne quand les boutons ne tiennent pas.
 
 ## Défauts de fonctionnement
@@ -36,10 +36,10 @@ Sources :
 - ☐ Grille des chaînes (Streaming) : ← depuis la 4e colonne fait glisser toute la grille, la sélection reste en 4e colonne.
 - ☐ Classique : sélection sur « ← Menu » à l'ouverture de TV et de Films (un appui de plus pour atteindre le contenu).
 - ☐ Recherche de chaîne dans le volet des catégories : résultats seulement en quittant le volet, filtre invisible ensuite.
-- ☐ MMA : 15-20 s de chargement avec « 0 » partout (garder le dernier calendrier) ; vainqueur affiché pour un gala
+- ☑ (0.2.241 pour les résultats cachés ; chargement pas encore) MMA : 15-20 s de chargement avec « 0 » partout (garder le dernier calendrier) ; vainqueur affiché pour un gala
   annoncé « en différé ».
 - ☐ Fausse page de pub sur M6 au début de « 66 minutes » (~30 s), cause inconnue (pas d'enregistrement).
-- ☐ « Dernier incident » : une fermeture forcée (Android 9, sans `ApplicationExitInfo`) passe pour un plantage.
+- ✗ (avant Android 11, rien ne distingue un arrêt forcé d'une fermeture par le système : même signal) « Dernier incident » : une fermeture forcée (Android 9, sans `ApplicationExitInfo`) passe pour un plantage.
 
 ## Fluidité et mémoire (mesures du 28/11)
 

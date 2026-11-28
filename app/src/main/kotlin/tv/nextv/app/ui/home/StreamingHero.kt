@@ -32,6 +32,7 @@ import androidx.compose.material3.Text
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -154,12 +155,16 @@ internal fun StreamingHero(
                 label = "heroText",
             ) { shown ->
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // Titre sur deux lignes : une ligne de résumé de moins, sinon le texte débordait du bandeau et
+                    // touchait le titre de la rangée du dessous (« Top 10 », vu sur la box le 28/11/2026).
+                    var titleLines by remember(shown?.item?.itemKey) { mutableIntStateOf(1) }
                     Text(
                         shown?.item?.title ?: allLabel(section),
                         style = MaterialTheme.typography.displaySmall,
                         fontWeight = FontWeight.Bold,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
+                        onTextLayout = { titleLines = it.lineCount },
                     )
                     shown?.let { MetaLine(it) }
                     shown?.overview?.let { overview ->
@@ -167,7 +172,7 @@ internal fun StreamingHero(
                             overview,
                             style = MaterialTheme.typography.bodyMedium,
                             color = colors.onSurfaceVariant,
-                            maxLines = if (featured) 3 else 2,
+                            maxLines = (if (featured) 3 else 2) - (titleLines - 1).coerceIn(0, 1),
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
