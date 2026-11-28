@@ -58,7 +58,7 @@ object ChannelLineup {
      * Version des règles de [arrange] : l'augmenter fait recalculer au lancement le rang, la catégorie, le nom et la
      * nationalité des chaînes déjà enregistrées, sans attendre une relecture de la playlist.
      */
-    const val VERSION = 6
+    const val VERSION = 7
 
     /** Place d'une chaîne : sa rubrique, puis son rang dans la rubrique ([UNRANKED] : ordre de la playlist). */
     data class Placement(val section: Section, val rank: Int = UNRANKED) : Comparable<Placement> {
@@ -116,7 +116,7 @@ object ChannelLineup {
                     Section.GENERAL.title.takeIf { channel.groupTitle.orEmpty() in leftovers }
                 else -> section.title
             }
-            val name = if (section == Section.OTHER || separator) null else properName(channel, names.getValue(channel))
+            val name = if (section == Section.OTHER || separator) null else properName(channel, names.getValue(channel), radio = section == Section.RADIO)
             // « Autres chaînes » (KTO, Daystar, NHK World…) : masquées aussi par « Contenus français seulement ».
             result[channel.position] = Arrangement(index, theme, name, french = section != Section.OTHER && section != Section.GENERAL)
         }
@@ -147,7 +147,8 @@ object ChannelLineup {
      * Nom propre d'une chaîne française : celui de la chaîne connue (« Canal+ Cinéma(s) », « France 3 Alpes »), sinon le
      * nom de la playlist sans le pays (« FR| TURBO 24/24 » → « TURBO 24/24 »).
      */
-    private fun properName(channel: Channel, names: Names): String? {
+    private fun properName(channel: Channel, names: Names, radio: Boolean = false): String? {
+        if (radio) InternetRadios.properName(channel.title)?.let { return it }
         names.region?.let { return "France 3 ${it.label}" }
         names.tnt?.let { number -> TNT_NAMES[number]?.let { return it } }
         KNOWN_NAMES[names.glued]?.let { return it }
@@ -155,8 +156,15 @@ object ChannelLineup {
         val title = channel.title
         val prefix = COUNTRY_PREFIX.find(title)?.takeIf { it.groupValues[1].uppercase() in FRENCH_CODES }
         val withoutCountry = prefix?.let { title.substring(it.range.last + 1).trim() }?.ifEmpty { null } ?: title
+        // Radio inconnue écrite tout en majuscules (« HOTMIXRADIO HITS ») : écriture normale, sigles gardés (« FG »).
+        if (radio && withoutCountry.none { it.isLowerCase() }) return radioCase(withoutCountry)
         // « LIGUE 1+| MATCH 1 » : la barre qui suit le nom du championnat.
         return LEAGUE_BAR.replaceFirst(withoutCountry, "$1 ")
+    }
+
+    /** « HOTMIXRADIO HITS » → « Hotmixradio Hits » ; mots de trois lettres ou moins et mots avec chiffres inchangés. */
+    private fun radioCase(name: String): String = name.split(' ').joinToString(" ") { word ->
+        if (word.length <= 3 || word.any { it.isDigit() }) word else word.lowercase().replaceFirstChar { it.titlecase() }
     }
 
     /** Rubrique et rang d'une chaîne d'après son seul nom et sa catégorie (sans les rubriques de la playlist). */

@@ -4,6 +4,11 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.241
+- MMA : les vainqueurs d'un gala diffusé en différé restent cachés tant que la diffusion n'est pas finie (plus de surprise gâchée)
+- MMA : un gala dont seul le jour est connu prend l'heure de sa diffusion du soir (un programme du matin lui donnait parfois 11:21)
+- Radios de la playlist : leur vrai nom (« EUROPE 1 RADIO » → « Europe 1 », « SkyRock FM » → « Skyrock ») ; les noms tout en majuscules s'écrivent normalement
+
 ## 0.2.240
 - Affiches sans image : le titre n'est plus coupé au milieu d'un mot (« Opérati / on ») ; il s'écrit un peu plus petit quand un mot est long, comme le titre sous les petites affiches
 - Fiche d'une série : chaque épisode n'apparaît plus qu'une fois quand le fournisseur en a deux copies (la version française en priorité)

@@ -309,6 +309,21 @@ class ChannelLineupTest {
         assertEquals("skyrock", InternetRadios.logoKey("|FR| SkyRock FM"))
     }
 
+    /** Radios de la playlist : leur nom propre (« EUROPE 1 RADIO » → « Europe 1 »), écriture normale pour les autres. */
+    @Test
+    fun `playlist radios get their proper name`() {
+        val channels = load(
+            "" to "|FR| EUROPE 1 RADIO", "" to "|FR| RFM RADIO", "" to "|FR| SkyRock FM",
+            "" to "|FR| HOTMIXRADIO HITS RADIO", "FR TV HD" to "|FR| TF1 HD",
+        )
+        val names = channels.associate { it.name to it.niceTitle }
+        assertEquals("Europe 1", names["|FR| EUROPE 1 RADIO"])
+        assertEquals("RFM", names["|FR| RFM RADIO"])
+        assertEquals("Skyrock", names["|FR| SkyRock FM"])
+        assertEquals("Hotmixradio Hits Radio", names["|FR| HOTMIXRADIO HITS RADIO"])
+        assertEquals("TF1", names["|FR| TF1 HD"])
+    }
+
     /** Radio connue de la playlist avec sa propre image (un drapeau) : le vrai logo la remplace ; une chaîne de télé garde la sienne. */
     @Test
     fun `known playlist radios get their real logo instead of the playlist image`() {

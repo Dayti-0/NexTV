@@ -224,6 +224,29 @@ object InternetRadios {
         return NON_ALPHANUMERIC.replace(RADIO_WORDS.replace(plain, " "), "")
     }
 
+    /** Noms propres des radios connues (clé [logoKey]) : « |FR| EUROPE 1 RADIO » → « Europe 1 ». */
+    private val PLAYLIST_NAMES: Map<String, String> by lazy {
+        (all + french).associate { logoKey(it.name) to it.name } + mapOf(
+            "nrj" to "NRJ",
+            "rtl" to "RTL",
+            "rfm" to "RFM",
+            "rmc" to "RMC",
+            "nostalgie" to "Nostalgie",
+            "skyrock" to "Skyrock",
+            "europe1" to "Europe 1",
+            "europe2" to "Europe 2",
+            "vibration" to "Vibration",
+            "franceinter" to "France Inter",
+            "franceinfo" to "franceinfo",
+            "franceculture" to "France Culture",
+            "francemusique" to "France Musique",
+            "sudradio" to "Sud Radio",
+        )
+    }
+
+    /** Nom propre d'une radio de la playlist d'après son nom, `null` si elle n'est pas connue. */
+    fun properName(name: String): String? = PLAYLIST_NAMES[logoKey(name)]
+
     /** Logo d'une radio de la playlist d'après son nom, `null` si elle n'est pas connue. */
     fun logoFor(name: String): String? = PLAYLIST_LOGOS[logoKey(name)]
 
