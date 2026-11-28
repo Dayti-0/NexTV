@@ -53,7 +53,7 @@ class GlobalSearchTest {
             }
         }
         compose.waitForIdle()
-        compose.onNodeWithText("Recherche Globale").assertIsDisplayed()
+        compose.onNodeWithText("Recherche globale").assertIsDisplayed()
         compose.onNodeWithText("Chaînes").assertIsDisplayed()
         compose.onNodeWithText("Films").assertIsDisplayed()
         compose.onNodeWithText("Séries").assertDoesNotExist()
