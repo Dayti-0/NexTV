@@ -321,7 +321,7 @@ private fun EventRow(card: MmaCard, now: Long, compact: Boolean) {
                     )
                 }
             }
-            val mainEvent = card.event?.mainEvent
+            val mainEvent = card.event?.mainEvent?.withoutResult(resultsHidden(card, now))
             if (mainEvent != null) {
                 MatchUpLine(mainEvent, large = !compact)
                 mainEvent.weightClass?.let {
@@ -456,7 +456,8 @@ private fun EventSheet(card: MmaCard, now: Long, onWatch: (Long) -> Unit, onDism
         ) {
             Column(Modifier.padding(horizontal = 24.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 SheetHeader(card, now, onWatch, onDismiss, firstFocus, wide = window.isWide)
-                val fights = card.event?.fights.orEmpty()
+                val hide = resultsHidden(card, now)
+                val fights = card.event?.fights.orEmpty().map { it.withoutResult(hide) }
                 if (fights.isEmpty()) {
                     // Gala du guide seul : les combattants quand le guide les donne, puis chaque diffusion (pas de description).
                     card.programme?.subtitle?.takeIf { it.isNotBlank() && !it.equals(card.name, ignoreCase = true) }?.let {
@@ -718,6 +719,19 @@ private fun delayedLabel(card: MmaCard): String? {
 }
 
 private const val DELAY_MILLIS = 30 * 60_000L
+
+/**
+ * Gala diffusé en différé (au moins 30 min après la carte principale) dont la diffusion n'est pas finie : vainqueurs et
+ * méthodes cachés, sinon la fiche gâchait les combats qu'on allait regarder (vu sur la box le 28/11/2026).
+ */
+private fun resultsHidden(card: MmaCard, now: Long): Boolean {
+    if (card.usualChannel || card.event == null) return false
+    val programme = card.programme ?: return false
+    val main = card.mainCardMillis ?: card.startMillis
+    return programme.startMillis - main >= DELAY_MILLIS && now < programme.stopMillis
+}
+
+private fun MmaFight.withoutResult(hide: Boolean): MmaFight = if (hide && result != null) copy(result = null) else this
 
 @Composable
 private fun PromotionItem(name: String, count: Int, promotion: MmaPromotion?, selected: Boolean, onClick: () -> Unit) {

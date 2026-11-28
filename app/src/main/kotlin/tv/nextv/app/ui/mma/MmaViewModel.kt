@@ -215,8 +215,9 @@ internal fun mmaCards(
         val card = if (event.timeKnown || shows.isEmpty()) {
             MmaCard(event.promotion, event.name, event.startMillis, event.mainCardMillis, event.endMillis, event = event, timeKnown = event.timeKnown)
         } else {
-            // L'heure du gala est celle de sa diffusion dans le guide.
-            val start = shows.minOf { it.startMillis }
+            // L'heure du gala est celle de sa diffusion dans le guide : celle du soir ou de la nuit d'abord (un magazine ou
+            // une ancienne soirée le matin donnait « 11:21 » à un gala Hexagone diffusé à 20:30, vu sur la box le 28/11/2026).
+            val start = shows.filter { eveningOrNight(it.startMillis) }.ifEmpty { shows }.minOf { it.startMillis }
             MmaCard(event.promotion, event.name, start, null, maxOf(shows.maxOf { it.stopMillis }, start + GUIDE_EVENT_MILLIS / 2), event = event)
         }
         cards += withChannels(card, shows)
@@ -243,6 +244,15 @@ internal fun mmaCards(
     return cards.filter { it.endMillis > now - MmaViewModel.HISTORY_MILLIS && (it.event == null || !it.finished || it.endMillis > now - MmaViewModel.HISTORY_MILLIS) }
         .sortedWith(compareBy({ it.startMillis }, { it.promotion.ordinal }))
 }
+
+/** Début entre 17 h et 6 h (heure de l'appareil) : moment habituel de la diffusion d'un gala. */
+private fun eveningOrNight(millis: Long): Boolean {
+    val hour = java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.systemDefault()).hour
+    return hour >= EVENING_HOUR || hour < NIGHT_END_HOUR
+}
+
+private const val EVENING_HOUR = 17
+private const val NIGHT_END_HOUR = 6
 
 /** « ARES 45. 1re partie » → « ARES 45 ». */
 private val PART = Regex("""[.,:-]?\s*(1re|1ère|premiere|première|2e|deuxieme|deuxième)?\s*partie\s*\d*\s*$""", RegexOption.IGNORE_CASE)

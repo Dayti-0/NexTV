@@ -95,4 +95,24 @@ class MmaCardsTest {
         assertEquals(false, cards.first { it.event == later }.timeKnown)
         assertEquals(2, cards.size)
     }
+
+    @Test
+    fun aDayOnlyEventPrefersItsEveningBroadcastToAMorningShow() {
+        val utc = java.util.TimeZone.getDefault()
+        java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Europe/Paris"))
+        try {
+            val day = (now / (24 * hour)) * (24 * hour) + 24 * hour
+            val hexagone = MmaEvent("sherdog-3", MmaPromotion.HEXAGONE, "Hexagone MMA 30", day + 20 * hour, null, emptyList(), timeKnown = false)
+            val rows = listOf(
+                // Le matin : une ancienne soirée (autre sous-titre, donc pas vue comme une rediffusion).
+                row(rmc, "MMA : Hexagone MMA", day + 10 * hour + 21 * 60_000L, length = 2 * hour, subtitle = "Hexagone 29"),
+                // Le soir : le gala en direct (19:30 UTC = 20:30 à Paris).
+                row(rmc, "MMA : Hexagone MMA", day + 19 * hour + 30 * 60_000L, length = 3 * hour, subtitle = "Hexagone 30"),
+            )
+            val card = mmaCards(listOf(hexagone), rows, now).first { it.event == hexagone }
+            assertEquals(day + 19 * hour + 30 * 60_000L, card.startMillis)
+        } finally {
+            java.util.TimeZone.setDefault(utc)
+        }
+    }
 }
