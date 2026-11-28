@@ -33,7 +33,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.text
+import androidx.compose.ui.text.drawText
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -341,13 +345,21 @@ fun PosterCard(
             if (compact) {
                 // Affiche étroite : titre sur trois lignes (une seule coupait presque tous les titres), sans
                 // espacement entre les lettres ; trois lignes réservées pour que les affiches restent alignées.
-                Text(
+                // Police réduite si un mot ne tient pas sur la largeur (« Les Faussaire / s »).
+                val style = MaterialTheme.typography.labelMedium.copy(
+                    letterSpacing = 0.sp,
+                    lineHeight = 15.sp,
+                    color = androidx.compose.material3.LocalContentColor.current,
+                )
+                WholeWordsText(
                     title,
-                    style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 0.sp, lineHeight = 15.sp),
-                    minLines = 3,
+                    style = style,
                     maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 4.dp),
+                    minFontSize = 9.sp,
+                    modifier = Modifier
+                        .padding(horizontal = 5.dp, vertical = 4.dp)
+                        .fillMaxWidth()
+                        .height(with(LocalDensity.current) { (15.sp * 3).toDp() }),
                 )
             } else {
                 Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
@@ -368,15 +380,15 @@ fun PosterImage(title: String, imageUrl: String?, modifier: Modifier = Modifier,
     val (start, end) = NexTvColors.swatchFor(title)
     Box(modifier.background(Brush.linearGradient(listOf(start.copy(alpha = 0.75f), end.copy(alpha = 0.55f), Color(0xFF111827)))), contentAlignment = Alignment.Center) {
         if (!loaded) {
-            Text(
+            val style = (if (compact) MaterialTheme.typography.labelMedium else MaterialTheme.typography.titleMedium)
+                .copy(fontWeight = FontWeight.Bold, color = Color.White, textAlign = TextAlign.Center, letterSpacing = 0.sp)
+            WholeWordsText(
                 title,
-                style = if (compact) MaterialTheme.typography.labelMedium else MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                textAlign = TextAlign.Center,
+                style = style,
                 maxLines = 4,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(if (compact) 5.dp else 12.dp),
+                minFontSize = if (compact) 8.sp else 11.sp,
+                centerVertically = true,
+                modifier = Modifier.fillMaxSize().padding(if (compact) 5.dp else 12.dp),
             )
         }
         if (imageUrl != null) {
@@ -389,6 +401,72 @@ fun PosterImage(title: String, imageUrl: String?, modifier: Modifier = Modifier,
             )
         }
     }
+}
+
+/**
+ * Texte sur [maxLines] lignes dont aucun mot n'est coupé en deux au passage à la ligne (« Opérati / on ») : la police
+ * rétrécit, jusqu'à [minFontSize], tant que le mot le plus long ne tient pas sur la largeur. Le texte est dessiné
+ * directement, sans sous-composition (grilles d'affiches fluides sur les petites Fire TV) ; il reste lu par les
+ * tests et l'accessibilité. La taille vient de [modifier] (largeur et hauteur fixées par le parent).
+ */
+@Composable
+internal fun WholeWordsText(
+    text: String,
+    style: TextStyle,
+    maxLines: Int,
+    minFontSize: androidx.compose.ui.unit.TextUnit,
+    modifier: Modifier = Modifier,
+    centerVertically: Boolean = false,
+) {
+    val measurer = androidx.compose.ui.text.rememberTextMeasurer(cacheSize = 16)
+    Spacer(
+        modifier
+            .semantics { this.text = androidx.compose.ui.text.AnnotatedString(text) }
+            .drawWithCache {
+                val width = size.width.toInt()
+                val layout = if (width > 0) fitWholeWords(measurer, text, style, width, maxLines, minFontSize) else null
+                onDrawBehind {
+                    if (layout == null) return@onDrawBehind
+                    val top = if (centerVertically) ((size.height - layout.size.height) / 2f).coerceAtLeast(0f) else 0f
+                    drawText(layout, topLeft = androidx.compose.ui.geometry.Offset(0f, top))
+                }
+            },
+    )
+}
+
+/**
+ * Mise en page de [text] sur [width] points : la plus grande police (de celle de [style] à [minFontSize], par pas
+ * de 1 sp) où le mot le plus long tient sur une ligne, l'interligne réduit d'autant.
+ */
+internal fun fitWholeWords(
+    measurer: androidx.compose.ui.text.TextMeasurer,
+    text: String,
+    style: TextStyle,
+    width: Int,
+    maxLines: Int,
+    minFontSize: androidx.compose.ui.unit.TextUnit,
+): androidx.compose.ui.text.TextLayoutResult {
+    val base = if (style.fontSize.isSp) style.fontSize.value else 14f
+    val min = if (minFontSize.isSp) minFontSize.value.coerceAtMost(base) else base
+    fun styleAt(size: Float) = style.copy(
+        fontSize = size.sp,
+        lineHeight = if (style.lineHeight.isSp) (style.lineHeight.value * size / base).sp else style.lineHeight,
+    )
+    val words = text.split(' ', '\n').filter { it.isNotBlank() }
+    var size = base
+    while (size > min) {
+        val current = styleAt(size)
+        val widest = words.maxOfOrNull { measurer.measure(it, current, softWrap = false, maxLines = 1).size.width } ?: 0
+        if (widest <= width) break
+        size = (size - 1f).coerceAtLeast(min)
+    }
+    return measurer.measure(
+        text,
+        styleAt(size),
+        overflow = TextOverflow.Ellipsis,
+        maxLines = maxLines,
+        constraints = androidx.compose.ui.unit.Constraints.fixedWidth(width),
+    )
 }
 
 /** Films et épisodes déjà vus (clés), pour le badge « Déjà vu » des affiches de l'accueil. */

@@ -52,6 +52,23 @@ data class PlaylistItem(
 data class Season(val number: Int?, val episodes: List<EpisodeRow>)
 
 /**
+ * Épisodes d'une série, un seul par numéro : le fournisseur en a parfois deux copies (« Épisode 1, Épisode 1,
+ * Épisode 2… », vu sur la box le 28/11/2026). La même copie rangée deux fois ne compte qu'une fois ; entre deux copies
+ * d'un même épisode, la version française passe avant une version multilingue ou sous-titrée, puis la première de la
+ * playlist ([rows] dans son ordre). Les épisodes sans numéro restent tous.
+ */
+internal fun distinctEpisodes(rows: List<EpisodeRow>): List<EpisodeRow> {
+    val copies = rows.distinctBy { it.streamUrl.ifEmpty { "id:" + it.id } }
+    val best = HashMap<Pair<Int?, Int>, EpisodeRow>()
+    for (row in copies) {
+        val key = row.season to (row.episode ?: continue)
+        val kept = best[key]
+        if (kept == null || ContentClassifier.versionOf(row.name).rank > ContentClassifier.versionOf(kept.name).rank) best[key] = row
+    }
+    return copies.filter { row -> row.episode == null || best[row.season to row.episode] === row }
+}
+
+/**
  * Version d'un film : une de ses copies dans la playlist (« Truefrench », « FR », « VOSTFR », 4K…).
  *
  * @property label ce qui la distingue des autres (« TRUEFRENCH », « VOSTFR · 4K », sinon son titre quand le film est
@@ -186,7 +203,7 @@ class DetailViewModel(
         }
 
         if (kind == ContentKind.SERIES) {
-            val seasons = container.channelDao.episodes(entity.sourceId, entity.itemKey)
+            val seasons = distinctEpisodes(container.channelDao.episodes(entity.sourceId, entity.itemKey))
                 .groupBy { it.season }
                 .map { (number, episodes) -> Season(number, episodes) }
                 .sortedBy { it.number ?: 0 }

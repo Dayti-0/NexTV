@@ -4,6 +4,18 @@ Changements de chaque version, la plus récente en haut. À la publication, la s
 (« ## 0.2.36 ») devient les notes de la version GitHub, et l'application n'affiche qu'elle avant
 d'installer la mise à jour (Réglages › Mise à jour), avec celles des versions sautées.
 
+## 0.2.240
+- Affiches sans image : le titre n'est plus coupé au milieu d'un mot (« Opérati / on ») ; il s'écrit un peu plus petit quand un mot est long, comme le titre sous les petites affiches
+- Fiche d'une série : chaque épisode n'apparaît plus qu'une fois quand le fournisseur en a deux copies (la version française en priorité)
+- Guide TV : il s'ouvre sur l'heure actuelle, même quand le programme en cours de la première chaîne a commencé tôt le matin (il s'ouvrait parfois sur 5 h)
+- Lecteur en pause ou en différé : « OK long pour revenir au direct » passe sous le programme ; le débit et la qualité restent sur la ligne du nom de la chaîne
+- Bandeau du direct plus sombre derrière le texte : le nom de la chaîne reste lisible sur une image claire
+- Menu des chaînes du lecteur : l'heure est séparée des catégories
+- Menu de l'interface Classique : les tuiles TV, Films et Séries ne sautent plus quand les nombres arrivent
+- Petites Fire TV : animation des radios plus légère (20 images par seconde, vinyle simplifié)
+- Démarrage : les images de l'accueil n'attendent plus l'ouverture du cache d'images (jusqu'à 2 s sur la box)
+- « Recherche globale » sans majuscule à « globale »
+
 ## 0.2.239
 - Fiche d'un film ou d'une série (interface Streaming) : rester appuyé sur OK sur un titre de « Titres similaires » l'ajoute aux favoris (ou l'en retire), comme à l'accueil ; l'étoile s'affiche sur son affiche
 

@@ -46,6 +46,11 @@ class NexTvApplication : Application(), SingletonImageLoader.Factory {
         SystemExits.check(this, crashLog)
         container = AppContainer(this)
         container.start()
+        // Cache disque des images ouvert tout de suite, en arrière-plan : sa première ouverture (lecture du journal
+        // d'un cache plein) bloquait ~2 s toutes les images de l'accueil sur la box (8 en attente, 28/11/2026).
+        Thread({ runCatching { SingletonImageLoader.get(this).diskCache?.openSnapshot(DISK_CACHE_WARM_UP_KEY)?.close() } }, "image-cache-warm-up")
+            .apply { isDaemon = true }
+            .start()
         // Session notée tant que l'application est à l'écran : où elle en était si le système la ferme.
         val boot = SystemExits.bootCount(this)
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
@@ -141,6 +146,9 @@ class NexTvApplication : Application(), SingletonImageLoader.Factory {
 }
 
 private const val CRASH_FILE = "last_crash.txt"
+
+/** Clé lue (absente) pour ouvrir le cache disque des images au lancement. */
+private const val DISK_CACHE_WARM_UP_KEY = "warm-up"
 
 /** Fondu d'apparition des images. */
 private const val IMAGE_CROSSFADE_MILLIS = 180

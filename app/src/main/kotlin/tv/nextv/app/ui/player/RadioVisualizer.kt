@@ -139,7 +139,7 @@ private class VisualFrame(bandCount: Int, particleCount: Int) {
 /**
  * Animation plein écran d'une radio ou Web radio ([RadioVisual]), au rythme du son ([analyzer]) quand le lecteur de
  * l'appli le décode, sinon un mouvement doux de remplacement (moteur VLC). Par-dessus : le morceau en cours en grand
- * (titre, artiste), la radio et son genre en petit ; en mode Vinyle, la pochette sert d'étiquette au disque et s'affiche aussi en carré, fixe, au-dessus du texte. [lowPower] (petite Fire TV) : 30 images par seconde et moins de particules.
+ * (titre, artiste), la radio et son genre en petit ; en mode Vinyle, la pochette sert d'étiquette au disque et s'affiche aussi en carré, fixe, au-dessus du texte. [lowPower] (petite Fire TV) : 20 images par seconde, moins de particules, vinyle simplifié.
  */
 @Composable
 fun RadioVisualizer(
@@ -181,12 +181,13 @@ fun RadioVisualizer(
     }
     LaunchedEffect(analyzer, lowPower, visual, name, animate) {
         if (!animate) return@LaunchedEffect
-        var skip = false
+        var vsync = 0
         while (true) {
             withFrameNanos { now ->
-                // Petite Fire TV : une image sur deux.
-                skip = lowPower && !skip
-                if (skip) return@withFrameNanos
+                // Petite Fire TV : une image sur trois (20 par seconde). Une sur deux restait trop lourde : 99,8 % des
+                // images en retard sur la Fire TV Stick Lite (mesuré le 28/11/2026).
+                vsync++
+                if (lowPower && vsync % 3 != 0) return@withFrameNanos
                 if (frame.startNanos == 0L) {
                     frame.startNanos = now
                     frame.lastNanos = now
@@ -213,7 +214,7 @@ fun RadioVisualizer(
                 RadioVisual.WAVES -> drawWaves(frame, palette)
                 RadioVisual.AURORA -> drawAurora(frame, palette)
                 RadioVisual.PARTICLES -> drawParticles(frame, palette)
-                RadioVisual.VINYL -> drawVinyl(frame, palette)
+                RadioVisual.VINYL -> drawVinyl(frame, palette, lowPower)
                 else -> drawSpectrum(frame, palette)
             }
         }
@@ -745,7 +746,7 @@ private fun DrawScope.drawParticles(frame: VisualFrame, palette: Palette) {
 }
 
 /** Vinyle : disque qui tourne, sillons éclairés par le spectre, reflet tournant, halo des basses. */
-private fun DrawScope.drawVinyl(frame: VisualFrame, palette: Palette) {
+private fun DrawScope.drawVinyl(frame: VisualFrame, palette: Palette, lowPower: Boolean = false) {
     val radius = size.minDimension * VINYL_RADIUS
     // Même centre que l'étiquette (logo ou pochette) posée dessus.
     val center = vinylCenter(size.width, size.height)
@@ -754,12 +755,14 @@ private fun DrawScope.drawVinyl(frame: VisualFrame, palette: Palette) {
     drawCircle(Color(0xFF0B0B0E), radius, center)
     val n = frame.bands.size
     val labelRadius = radius * VINYL_LABEL_SHARE
-    for (i in 0 until n) {
+    // Petite Fire TV : un sillon sur deux, sans reflet tournant (le disque entier redessiné à chaque image).
+    val step = if (lowPower) 2 else 1
+    for (i in 0 until n step step) {
         val r = labelRadius + (radius - labelRadius) * (i + 0.5f) / n
         val energy = frame.bands[n - 1 - i]
-        drawCircle(palette.tint(i / 8).copy(alpha = 0.08f + 0.6f * energy), r, center, style = Stroke(width = 1.5f + 2.5f * energy))
+        drawCircle(palette.tint(i / 8).copy(alpha = 0.08f + 0.6f * energy), r, center, style = Stroke(width = (1.5f + 2.5f * energy) * step))
     }
-    rotate(frame.spin * 180f / PI.toFloat(), center) {
+    if (!lowPower) rotate(frame.spin * 180f / PI.toFloat(), center) {
         drawCircle(
             Brush.sweepGradient(
                 listOf(Color.Transparent, Color.White.copy(alpha = 0.16f), Color.Transparent, Color.Transparent, Color.White.copy(alpha = 0.10f), Color.Transparent),

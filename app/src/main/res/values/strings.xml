@@ -231,7 +231,7 @@
     <string name="settings_trailer_delay_value">%1$d s</string>
     <string name="nav_categories">Catégories</string>
     <string name="home_rows_top10">Top 10 de la semaine</string>
-    <string name="search_everywhere">Recherche Globale</string>
+    <string name="search_everywhere">Recherche globale</string>
     <string name="search_everywhere_channels">Chaînes</string>
     <string name="search_everywhere_hint">Chaîne, film ou série…</string>
     <string name="search_everywhere_none">Rien ne correspond à « %1$s ».</string>

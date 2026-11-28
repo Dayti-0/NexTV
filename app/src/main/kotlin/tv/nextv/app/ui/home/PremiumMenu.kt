@@ -142,6 +142,9 @@ fun PremiumMenu(
 /** Boutons du bas du menu de Classique. */
 enum class MenuButton { SEARCH, FAVORITES, CONTINUE, SETTINGS }
 
+/** Tuiles qui affichent un nombre (chaînes, films, séries). */
+private val COUNTED_SECTIONS = setOf(HomeSection.TV, HomeSection.MOVIES, HomeSection.SERIES)
+
 /** Ordre des tuiles : le direct et son guide, puis films, séries et foot. */
 private val MENU_ORDER = listOf(HomeSection.TV, HomeSection.GUIDE, HomeSection.MOVIES, HomeSection.SERIES, HomeSection.FOOTBALL, HomeSection.MMA)
 
@@ -176,10 +179,16 @@ private fun MenuTile(section: HomeSection, count: Int?, onClick: () -> Unit, mod
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                // Nombre de chaînes, de films ou de séries ; rien pour le guide et le foot.
-                count?.let {
+                // Nombre de chaînes, de films ou de séries ; rien pour le guide et le foot. Ligne réservée avant
+                // qu'il arrive (~3 s sur la Fire TV) : le titre ne saute plus.
+                if (count != null || section in COUNTED_SECTIONS) {
                     Spacer(Modifier.height(2.dp))
-                    Text(itemCount(section, it), style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, maxLines = 1)
+                    Text(
+                        count?.let { itemCount(section, it) } ?: " ",
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                    )
                 }
             }
         }

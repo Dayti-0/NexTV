@@ -345,11 +345,18 @@ private fun GuideGrid(
             initialScrollDone = true
         }
     }
+    // Haut / bas : la frise horaire reste en place (le programme visé couvre l'heure affichée) ;
+    // gauche / droite la font défiler comme avant.
+    var timelineLocked by remember { mutableStateOf(false) }
     val firstLive = state.channels.firstOrNull()?.let { channel -> channel.programmes.firstOrNull { it.isLive(state.now) } }
     // Guide ouvert en parcourant les onglets du haut : le focus y reste.
     val tabsFocused = LocalTabsFocused.current
     if (requestInitialFocus && initialScrollDone && !initialFocusDone && firstLive != null && back == null) {
         LaunchedEffect(firstLive) {
+            // Frise figée sur l'heure actuelle : le programme en cours de la première chaîne a pu commencer des
+            // heures plus tôt (TF1 depuis 05:50, vu sur la box à 11:02), le sélectionner faisait défiler la frise
+            // jusqu'à son début. Gauche / droite la libèrent comme d'habitude.
+            timelineLocked = true
             if (!tabsFocused()) runCatching { initialFocus.requestFocus() }
             initialFocusDone = true
         }
@@ -360,9 +367,6 @@ private fun GuideGrid(
     var anchor by remember { mutableLongStateOf(state.now) }
     var focusedRow by remember { mutableIntStateOf(-1) }
     var verticalMove by remember { mutableStateOf(false) }
-    // Haut / bas : la frise horaire reste en place (le programme visé couvre l'heure affichée) ;
-    // gauche / droite la font défiler comme avant.
-    var timelineLocked by remember { mutableStateOf(false) }
     val minutePx = with(density) { minuteWidth.toPx() }
     val rowStepPx = with(density) { (rowHeight + 6.dp).toPx() }
     val onProgrammeFocus: (Int, GuideProgramme) -> Unit = { index, programme ->

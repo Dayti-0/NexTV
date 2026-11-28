@@ -1121,7 +1121,16 @@ fun PlayerOverlay(
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.6f), Color.Black.copy(alpha = 0.92f))))
+                    // Fond assez sombre dès la première ligne du texte : sur une image claire (TF1 Séries Films, vu
+                    // sur la Fire TV le 28/11/2026), le nom de la chaîne en blanc devenait illisible.
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            0.22f to Color.Black.copy(alpha = 0.55f),
+                            0.55f to Color.Black.copy(alpha = 0.8f),
+                            1f to Color.Black.copy(alpha = 0.92f),
+                        ),
+                    )
                     .padding(start = window.horizontalPadding, end = window.horizontalPadding, top = 72.dp, bottom = if (window.isTv) 36.dp else 24.dp),
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.Bottom) {
@@ -1227,15 +1236,6 @@ private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Mo
                 if (delay >= 1_000) {
                     StatusPill(stringResource(R.string.player_delay, formatClock(delay)), NexTvColors.Warning, Modifier.align(Alignment.CenterVertically))
                 }
-                // En pause ou en différé : comment rattraper le direct.
-                if (state.paused || delay >= 1_000) {
-                    Text(
-                        stringResource(R.string.player_hold_ok_for_live),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = Color.White.copy(alpha = 0.8f),
-                        modifier = Modifier.align(Alignment.CenterVertically),
-                    )
-                }
             }
             if (state.replay != null) StatusPill(stringResource(R.string.player_replay), NexTvColors.Primary, Modifier.align(Alignment.CenterVertically))
             state.quality?.let { Badge(it, Modifier.align(Alignment.CenterVertically), color = NexTvColors.Primary) }
@@ -1276,6 +1276,15 @@ private fun ChannelInfo(state: PlayerUiState, now: Long, modifier: Modifier = Mo
                 color = Color.White.copy(alpha = 0.75f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+            )
+        }
+        // En pause ou en différé : comment rattraper le direct. Sous le programme et non à côté du nom : dans la
+        // ligne des pastilles, il repoussait le débit et la qualité sur une deuxième ligne.
+        if (state.isLive && (state.paused || liveDelay(state, now) >= 1_000)) {
+            Text(
+                stringResource(R.string.player_hold_ok_for_live),
+                style = MaterialTheme.typography.labelLarge,
+                color = Color.White.copy(alpha = 0.8f),
             )
         }
         state.qualityNotice?.let {
@@ -1504,8 +1513,9 @@ fun ChannelMenu(
                             }
                         }
                     }
-                    // Heure actuelle.
-                    Text(timeOf(now), style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(end = 24.dp))
+                    // Heure actuelle, séparée des catégories (une catégorie coupée par le bord semblait passer sous
+                    // l'heure, vu sur la box et la Fire TV le 28/11/2026).
+                    Text(timeOf(now), style = MaterialTheme.typography.titleLarge, maxLines = 1, modifier = Modifier.padding(start = 16.dp, end = 24.dp))
                 }
                 val rowFor: @Composable (Int, ChannelListRow) -> Unit = { index, channel ->
                     val current = channel.id == menu.currentChannelId || channel.itemKey == menu.currentItemKey
